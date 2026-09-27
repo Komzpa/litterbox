@@ -13,8 +13,12 @@ Each requirement is **decided** or **open** and names its source.
   AI research results, unanswered chats from messengers and dating apps,
   system alerts.
 - **R2 Private journal** (decided, owner 2026-09-27). The owner can write
-  journal notes in Litterbox. Notes are never sent anywhere; the owner's AI
-  assistant may read them. How the assistant gets access: open.
+  journal notes in Litterbox. Litterbox never sends notes anywhere. The
+  owner's AI assistant reads them through Litterbox's own MCP server, with
+  its own token that the owner can revoke. That token can read journal notes
+  and create cards, and nothing else; after revocation every call with it
+  fails. Cards it creates enter through the ingest API of R12. The owner's
+  own backup copy of the database (R13) is not sending.
 - **R3 Reachable Inbox Zero** (decided, owner 2026-09-27). The open list can
   be emptied in normal use; bundles clear many cards with one action.
 - **R4 No daily pages** (decided, from the owner's failed daily-note setup,
@@ -25,9 +29,11 @@ Each requirement is **decided** or **open** and names its source.
   grew slow on the phone, 2026-09-27). Opening the app shows the inbox from
   the local copy without waiting for the network; the amount of archived
   history does not slow it down.
-- **R6 Native mobile app first** (decided, owner 2026-09-27). The main client
-  is a native mobile app. Reminders set on the phone show up on every client.
-  Platform and desktop surface: open.
+- **R6 Native mobile app first** (decided, owner 2026-09-27). The main
+  client is a mobile app written in Flutter, shipped for Android first.
+  Other clients come from the same Flutter code. Reminders set on the phone
+  show up on every client. On the desktop the owner uses an installed Linux
+  app.
 
 ## Mail
 
@@ -36,15 +42,51 @@ Each requirement is **decided** or **open** and names its source.
   came from. A user can connect several Gmail accounts.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.
+- **R18 Gmail app published unverified** (decided, owner 2026-09-27).
+  Litterbox's Google Cloud app is published without Google verification.
+  Connecting a Gmail account shows Google's unverified-app warning, and the
+  app serves at most 100 users. A connected account keeps working without
+  weekly reconnection.
+- **R19 Rich mail readable offline** (decided, owner 2026-09-27). Synced mail
+  renders its full HTML and images properly, including when read offline.
+
+## Card lifecycle
+
+- **R20 Snooze** (decided, owner 2026-09-27). The owner can snooze a card
+  until a chosen date and time. A snoozed mail card leaves the open list at
+  once, and its thread leaves the Gmail Inbox. At the chosen time the server
+  brings the card back to the open list on every client and moves the thread
+  back to the Gmail Inbox, within 1 minute (proposed, no source), with no
+  client running. Gmail shows this as archived and later moved to Inbox, not
+  as Gmail's own Snoozed. A new incoming message in a snoozed thread brings
+  the card back early (proposed, no source).
+- **R21 Pin** (decided, owner 2026-09-27). The owner can pin a card. Pinned
+  cards stay at the top of the open list (proposed, no source) in the order
+  the owner sets, on every client; that order is kept only in Litterbox.
+  Pinning a mail card stars its thread in Gmail; unpinning removes the star.
+- **R22 Bundle archive skips pinned cards** (decided, owner 2026-09-27).
+  Archiving a bundle archives every card in it except pinned ones. Pinned
+  cards stay open, and their mail stays in the Gmail Inbox.
+- **R23 Bundles formed by Litterbox** (decided, owner 2026-09-27). Litterbox
+  forms bundles from the start; using tags or labels like Simplify Gmail's
+  bundles is not enough. How Litterbox forms bundles remains open.
+- **R24 Mail cards close on archive elsewhere** (decided, owner 2026-09-27).
+  A mail card closes by itself on every client when, in another Gmail client,
+  its thread was archived (no message of it is in the Inbox any more), within
+  5 minutes (proposed, no source) while the server is online. Closing by
+  itself changes nothing in Gmail. Changes that Litterbox made itself do not
+  count. A new message arriving later in the Gmail Inbox opens the card again
+  (proposed, no source).
 
 ## Offline
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
   open card with its content, not only titles. Reading needs no network.
 - **R10 Offline actions** (decided, owner 2026-09-27). Archive, bundle
-  archive and writing journal notes work with no network. They apply locally
-  at once and sync when the connection returns; the Gmail archive of R7 runs
-  then.
+  archive, snooze, pin, done and writing journal notes work with no network.
+  They apply locally at once and sync when the connection returns. Gmail
+  changes for archive and snooze (R7, R20), and star changes for pin (R21),
+  run then; other source actions run on sync through R12.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not
   break in the elevator"). Losing the network mid-use never blocks the
   interface or shows an error screen.
@@ -54,21 +96,51 @@ Each requirement is **decided** or **open** and names its source.
 - **R12 Own Gmail connector, one ingest API for the rest** (decided, owner
   2026-09-27). Litterbox talks to Gmail itself, both ways. Every other source
   (phone notifications, messengers, calendar, alerts, AI research) pushes
-  cards through one ingest API. Collectors for private sources live outside
-  this repository.
+  cards, and closes them, through one ingest API. When the owner marks such a
+  card done and R25 names a source action for it, the same API hands the done
+  back to that source's collector, which performs the action. Collectors for
+  private sources live outside this repository.
+- **R25 Done on non-mail cards** (decided, owner 2026-09-27). Done removes the
+  card from the open list on every client. Done never means "answered".
+  Home Assistant: done dismisses the card's notification in Home Assistant.
+  This does not fix the cause; if an automation creates the notification
+  again, it arrives as a new open card. Meeting-soon cards close themselves
+  when the meeting's scheduled end time passes. Done before that closes the
+  card at once. Neither changes anything in the calendar. Chat cards close
+  themselves when the owner replies in that chat, in the source app, after
+  the card's message, for sources where the reply is visible (Telegram,
+  Slack). Reading alone does not close a card.
+- **R26 Assistant output as cards** (decided, owner 2026-09-27). The owner's
+  assistant turns each of these into cards through the ingest API of R12:
+  research results when the research task's result is ready (readable offline
+  like any card, R9); reminders the assistant sets (behaving like reminders
+  the owner sets and appearing on every client, R6); and proactive briefs,
+  which today go to Telegram. Other assistant output does not become a card.
+- **R27 Telegram after cards** (decided, owner 2026-09-27). Once an assistant
+  output arrives as a Litterbox card (R26), the assistant no longer sends it
+  to Telegram. Telegram keeps urgent messages and approval requests only.
 
 ## Server
 
 - **R13 Self-hosted PostgreSQL** (decided, owner 2026-09-27). The server runs
-  on the owner's home server with PostgreSQL; the database is part of that
-  host's backups.
+  on the owner's home server with PostgreSQL, in its own production cluster
+  built from a release version with no development extensions, separate from
+  the owner's development databases. The Litterbox database is dumped once a
+  day; each dump is kept 14 days, and a restore of the latest dump is tested
+  once a week. At most one day of changes can be lost. Every dump is also
+  copied, unencrypted, to a second machine the owner runs.
 - **R14 Multi-tenant** (decided, owner 2026-09-27). Every stored row belongs
   to one tenant, and no request can read or change another tenant's rows.
   Load sizing: 1, then 2, then about 10 users (family, colleagues).
-- **R15 Remote access resists scanners** (open, owner 2026-09-27). The phone
-  reaches the home server from mobile networks, possibly through the owner's
-  VPS, and the entry point withstands internet-wide scanner bots. Mechanism:
-  open.
+- **R15 Remote access resists scanners** (decided, owner 2026-09-27). The
+  phone reaches the home server from mobile networks over HTTPS through the
+  owner's VPS using a reverse SSH tunnel initiated by the home server. No
+  inbound port is open at home. Every device has its own token, received by
+  entering a one-time invite code; a code works once. Each token can be
+  revoked on its own, and a revoked token is refused on its next request. A
+  request without a valid token gets HTTP 401 and no card data. The public
+  entry point limits the request rate per client address; limit 60 requests
+  per minute (proposed, no source).
 
 ## Project
 
@@ -78,13 +150,38 @@ Each requirement is **decided** or **open** and names its source.
 - **R17 Public repository without private data** (decided, owner
   2026-09-27). The code is public. Credentials, personal data and deployment
   details of the owner's machines never enter the repository.
+- **R28 First slice: all connected Gmail accounts** (decided, owner
+  2026-09-27). The first thing built is triage of all the owner's Gmail
+  accounts (at least three) on the phone, working with no network. Archiving
+  a card or a Litterbox-formed bundle archives those messages in their
+  originating Gmail accounts once the phone reconnects. Bundles are formed
+  by Litterbox; Gmail categories alone are not bundles. The slice counts as
+  done only if the owner opens it every day instead of what he uses now.
+  In the acceptance scenario, connect all the owner's accounts and send
+  `LB1-A`, `LB1-B`, `LB1-C <run-id>` and `LB1-P1..P3 <run-id>` fixtures to
+  them, identified by account and Gmail message id. Include a rich HTML mail
+  with inline and remote images. After sync, turn on airplane mode, kill and
+  reopen the app: the last synced inbox and full bodies, including that
+  message's HTML and images, are readable without a spinner or error. Archive
+  `LB1-A`, then archive one Litterbox bundle containing `LB1-P1..P3`. Kill and
+  reopen: the archived items remain gone locally, while Gmail still shows
+  them in Inbox until reconnection. After reconnect, within 60 s (proposed,
+  no source), Gmail shows the selected messages archived in their originating
+  accounts, not in Trash and not deleted. Turning on airplane mode during
+  bundle archive shows no error text, dialog or blocked screen; after
+  reconnect the archive completes and the server operation log has exactly
+  one archive operation per message. Untouched `LB1-B` stays in both inboxes
+  and opens its thread in the Gmail app. `LB1-C`, archived in Gmail web while
+  the phone is offline and archived again on the phone, is archived once
+  after reconnect, with no error and no return to Inbox. Mail sent while the
+  phone is offline appears after reconnect. With 50,000 archived cards
+  seeded, an airplane-mode cold start shows the first list frame in under
+  1 s (proposed, no source). A request with another tenant's device token
+  cannot read any `LB1-*` card belonging to the first tenant.
 
 ## Open questions
 
-- phone-to-server access path (R15)
-- how the database backups of R13 are made and where they go
-- card lifecycle: done, snooze, pin, bundles, cards that close themselves
-- what "done" does for non-mail cards (chats, alerts, meetings)
-- client platform and desktop surface
-- AI research cards and how the assistant reads the journal
-- first slice and its acceptance scenario
+- What done does for Telegram, Slack, WhatsApp/Instagram/dating apps and agent
+  results; the owner does not yet know where he has not replied.
+- How Litterbox forms bundles.
+- Whether remote images are fetched at sync or on open.
