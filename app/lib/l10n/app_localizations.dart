@@ -100,67 +100,67 @@ abstract class AppLocalizations {
     Locale('ru'),
   ];
 
-  /// No description provided for @nowSection.
+  /// No description provided for @pinned.
   ///
   /// In en, this message translates to:
-  /// **'Now'**
-  String get nowSection;
+  /// **'Pinned'**
+  String get pinned;
 
-  /// No description provided for @laterSection.
+  /// No description provided for @archiveBundle.
   ///
   /// In en, this message translates to:
-  /// **'Later'**
-  String get laterSection;
+  /// **'Archive bundle'**
+  String get archiveBundle;
 
-  /// No description provided for @missedCount.
+  /// No description provided for @pin.
   ///
   /// In en, this message translates to:
-  /// **'Missed ({count})'**
-  String missedCount(int count);
+  /// **'Pin'**
+  String get pin;
 
-  /// No description provided for @emptyCards.
+  /// No description provided for @unpin.
   ///
   /// In en, this message translates to:
-  /// **'No cards'**
-  String get emptyCards;
+  /// **'Unpin'**
+  String get unpin;
 
-  /// No description provided for @retry.
+  /// No description provided for @takeOutOfBundle.
   ///
   /// In en, this message translates to:
-  /// **'Retry'**
-  String get retry;
+  /// **'Take out of bundle'**
+  String get takeOutOfBundle;
 
-  /// No description provided for @oldServer.
+  /// No description provided for @snooze.
   ///
   /// In en, this message translates to:
-  /// **'Server is older than the app'**
-  String get oldServer;
+  /// **'Snooze'**
+  String get snooze;
 
-  /// No description provided for @restart.
+  /// No description provided for @laterToday.
   ///
   /// In en, this message translates to:
-  /// **'Restart'**
-  String get restart;
+  /// **'Later today'**
+  String get laterToday;
 
-  /// No description provided for @done.
+  /// No description provided for @tomorrowMorning.
   ///
   /// In en, this message translates to:
-  /// **'Done'**
-  String get done;
+  /// **'Tomorrow morning'**
+  String get tomorrowMorning;
 
-  /// No description provided for @note.
+  /// No description provided for @nextWeek.
   ///
   /// In en, this message translates to:
-  /// **'Note'**
-  String get note;
+  /// **'Next week'**
+  String get nextWeek;
 
-  /// No description provided for @noteHint.
+  /// No description provided for @customDateTime.
   ///
   /// In en, this message translates to:
-  /// **'What should the task generator know?'**
-  String get noteHint;
+  /// **'Custom date/time'**
+  String get customDateTime;
 
-  /// No description provided for @cancel.
+  /// No description provided for @bundleCount.
   ///
   /// In en, this message translates to:
   /// **'Cancel'**

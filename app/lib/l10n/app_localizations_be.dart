@@ -10,67 +10,38 @@ class AppLocalizationsBe extends AppLocalizations {
   AppLocalizationsBe([String locale = 'be']) : super(locale);
 
   @override
-  String get nowSection => 'Зараз';
+  String get pinned => 'Замацаваныя';
 
   @override
-  String get laterSection => 'Пазней';
+  String get archiveBundle => 'Архіваваць групу';
 
   @override
-  String missedCount(int count) {
-    return 'Прапушчана ($count)';
-  }
+  String get pin => 'Замацаваць';
 
   @override
-  String get emptyCards => 'Няма картак';
+  String get unpin => 'Адмацаваць';
 
   @override
-  String get retry => 'Паўтарыць';
+  String get takeOutOfBundle => 'Прыбраць з групы';
 
   @override
-  String get oldServer => 'Сервер старэйшы за праграму';
+  String get snooze => 'Адкласці';
 
   @override
-  String get restart => 'Перазапусціць';
+  String get laterToday => 'Пазней сёння';
 
   @override
-  String get done => 'Гатова';
+  String get tomorrowMorning => 'Заўтра раніцай';
 
   @override
-  String get note => 'Нататка';
+  String get nextWeek => 'На наступным тыдні';
 
   @override
-  String get noteHint => 'Што трэба сказаць генератару задач?';
+  String get customDateTime => 'Выбраць дату і час';
 
   @override
-  String get cancel => 'Адмена';
-
-  @override
-  String get save => 'Захаваць';
-
-  @override
-  String get doneWithNote => 'Гатова з нататкай';
-
-  @override
-  String get loadError => 'Не атрымалася загрузіць карткі';
-
-  @override
-  String actionError(Object error) {
-    return 'Не атрымалася выканаць дзеянне: $error';
-  }
-
-  @override
-  String noteSaveError(Object error) {
-    return 'Не атрымалася захаваць нататку: $error';
-  }
-
-  @override
-  String outdatedApi(int client, int server) {
-    return 'Праграма састарэла (API $client), серверу патрэбны $server';
-  }
-
-  @override
-  String aboutBuild(Object clientBuild, Object serverBuild) {
-    return 'Аб праграме · праграма $clientBuild, сервер $serverBuild';
+  String bundleCount(Object bundle, int count) {
+    return '$bundle ($count)';
   }
 
   @override

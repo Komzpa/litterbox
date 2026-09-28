@@ -27,4 +27,23 @@
   "reminderTitle": "Title",
   "reminderWhen": "Date and time",
   "create": "Create"
+  "pinned": "Pinned",
+  "archiveBundle": "Archive bundle",
+  "pin": "Pin",
+  "unpin": "Unpin",
+  "takeOutOfBundle": "Take out of bundle",
+  "snooze": "Snooze",
+  "laterToday": "Later today",
+  "tomorrowMorning": "Tomorrow morning",
+  "nextWeek": "Next week",
+  "customDateTime": "Custom date/time",
+  "bundleCount": "{bundle} ({count})",
+  "@bundleCount": {
+    "placeholders": {
+      "bundle": {},
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

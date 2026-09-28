@@ -1,10 +1,18 @@
 {
-  "@@locale": "ru",
-  "nowSection": "Сейчас",
-  "laterSection": "Позже",
-  "missedCount": "Пропущено ({count})",
-  "@missedCount": {
+  "pinned": "Закреплённые",
+  "archiveBundle": "Архивировать группу",
+  "pin": "Закрепить",
+  "unpin": "Открепить",
+  "takeOutOfBundle": "Убрать из группы",
+  "snooze": "Отложить",
+  "laterToday": "Позже сегодня",
+  "tomorrowMorning": "Завтра утром",
+  "nextWeek": "На следующей неделе",
+  "customDateTime": "Выбрать дату и время",
+  "bundleCount": "{bundle} ({count})",
+  "@bundleCount": {
     "placeholders": {
+      "bundle": {},
       "count": {
         "type": "int"
       }
@@ -55,4 +63,5 @@
   "reminderTitle": "Название",
   "reminderWhen": "Дата и время",
   "create": "Создать"
+  }
 }

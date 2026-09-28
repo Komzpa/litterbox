@@ -1,10 +1,18 @@
 {
-  "@@locale": "be",
-  "nowSection": "Зараз",
-  "laterSection": "Пазней",
-  "missedCount": "Прапушчана ({count})",
-  "@missedCount": {
+  "pinned": "Замацаваныя",
+  "archiveBundle": "Архіваваць групу",
+  "pin": "Замацаваць",
+  "unpin": "Адмацаваць",
+  "takeOutOfBundle": "Прыбраць з групы",
+  "snooze": "Адкласці",
+  "laterToday": "Пазней сёння",
+  "tomorrowMorning": "Заўтра раніцай",
+  "nextWeek": "На наступным тыдні",
+  "customDateTime": "Выбраць дату і час",
+  "bundleCount": "{bundle} ({count})",
+  "@bundleCount": {
     "placeholders": {
+      "bundle": {},
       "count": {
         "type": "int"
       }
@@ -55,4 +63,5 @@
   "reminderTitle": "Назва",
   "reminderWhen": "Дата і час",
   "create": "Стварыць"
+  }
 }
