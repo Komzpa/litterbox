@@ -16,6 +16,7 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
+	"github.com/Komzpa/litterbox/server/internal/ingest"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/offline"
@@ -115,6 +116,12 @@ func main() {
 			}
 			journalMux.ServeHTTP(w, r.WithContext(ctx))
 		}))
+		mux.Handle("POST /v1/ingest", ingest.Handler{DB: db})
+		go func() {
+			if err := ingest.RunCallbacks(context.Background(), db, &http.Client{Timeout: 10 * time.Second}); err != nil {
+				log.Printf("source callback worker stopped: %v", err)
+			}
+		}()
 		if devTenantID != "" {
 			devOnly := func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

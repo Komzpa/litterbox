@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -10,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/sources/todos"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/Komzpa/litterbox/server/internal/ingest"
 )
 
 // RunIngestTodos imports open daily-note tasks. main.go wires this command with:
@@ -25,9 +24,9 @@ func RunIngestTodos(args []string, stdout io.Writer) int {
 	fs := flag.NewFlagSet("ingest-todos", flag.ContinueOnError)
 	fs.SetOutput(stdout)
 	notesDir := fs.String("notes-dir", os.Getenv("LITTERBOX_DAILY_NOTES_DIR"), "daily notes directory (or LITTERBOX_DAILY_NOTES_DIR)")
-	tenant := fs.String("tenant", os.Getenv("LITTERBOX_TENANT_ID"), "tenant UUID (or LITTERBOX_TENANT_ID)")
-	dsn := fs.String("database-url", os.Getenv("DATABASE_URL"), "database URL (or DATABASE_URL)")
 	timezone := fs.String("tz", time.Local.String(), "timezone interpreting daily-note slots (default system local)")
+	endpoint := fs.String("ingest-url", os.Getenv("LITTERBOX_INGEST_URL"), "Litterbox server URL (or LITTERBOX_INGEST_URL)")
+	token := fs.String("source-token", os.Getenv("LITTERBOX_SOURCE_TOKEN"), "todo-scoped source token (or LITTERBOX_SOURCE_TOKEN)")
 	dryRun := fs.Bool("dry-run", false, "read notes and print count and up to three titles without writing")
 	if fs.Parse(args) != nil {
 		return 2
@@ -47,19 +46,13 @@ func RunIngestTodos(args []string, stdout io.Writer) int {
 		return 1
 	}
 	if !*dryRun {
-		if *tenant == "" || *dsn == "" {
-			fmt.Fprintln(stdout, "ingest-todos: tenant and database URL required (or use -dry-run)")
+		if *endpoint == "" || *token == "" {
+			fmt.Fprintln(stdout, "ingest-todos: ingest URL and source token required (or use -dry-run)")
 			return 2
 		}
-		db, err := sql.Open("pgx", *dsn)
-		if err != nil {
-			fmt.Fprintln(stdout, "ingest-todos:", err)
-			return 1
-		}
-		defer db.Close()
-		if err = todos.Upsert(context.Background(), db, *tenant, cards); err != nil {
-			fmt.Fprintln(stdout, "ingest-todos:", err)
-			return 1
+		for _, card := range cards {
+			err = ingest.Post(context.Background(), *endpoint, *token, ingest.Request{Card: ingest.Card{ExternalID: card.ExternalID, Kind: "todo", Title: card.Title, At: card.At, Timed: card.Timed, Order: card.Order}})
+			if err != nil { fmt.Fprintln(stdout, "ingest-todos:", err); return 1 }
 		}
 	}
 	fmt.Fprintf(stdout, "count=%d\n", len(cards))
