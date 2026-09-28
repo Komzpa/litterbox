@@ -55,6 +55,21 @@ func TestSummaryTruncatesAtRuneBoundary(t *testing.T) {
 	}
 }
 
+func TestReadOMPHandlesSessionLinesOver16MiB(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/omp-session.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeLine := "{\"type\":\"ignored\",\"payload\":\"" + strings.Repeat("x", 16*1024*1024) + "\"}\n"
+	card, ok, err := readOMP(strings.NewReader(largeLine + string(fixture)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || card.ExternalID != "omp:omp-fixture-1" {
+		t.Fatalf("large session record lost result: %#v, %v", card, ok)
+	}
+}
+
 func TestOMPInFlightAndInterruptedTurnsDoNotEmitOldResult(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/omp-session.jsonl")
 	if err != nil {
