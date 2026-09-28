@@ -13,6 +13,8 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
+	"github.com/Komzpa/litterbox/server/internal/mailbody"
+	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -74,6 +76,7 @@ func main() {
 			cardMux := http.NewServeMux()
 			cardHandler.Routes(cardMux)
 			mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
+			mux.Handle("GET /v1/cards/{id}/body", devOnly(mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}))
 			mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
 		}
 	}
