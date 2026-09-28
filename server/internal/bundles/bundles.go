@@ -112,6 +112,12 @@ func ArchiveBundle(ctx context.Context, tx pgx.Tx, tenant, bundle uuid.UUID) err
 	return err
 }
 
+// CompleteBundle marks open, unpinned bundle cards done while leaving pinned cards open.
+func CompleteBundle(ctx context.Context, tx pgx.Tx, tenant, bundle uuid.UUID) error {
+	_, err := tx.Exec(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, bundle)
+	return err
+}
+
 // ReorderPins applies a complete ordered list of pinned card UUIDs.
 func ReorderPins(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, ids []uuid.UUID) error {
 	if len(ids) == 0 {
@@ -197,6 +203,14 @@ func ArchiveOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json
 	return ArchiveBundle(ctx, tx, tenant, args.Bundle)
 }
 
+func CompleteOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {
+	var args ArchiveArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return err
+	}
+	return CompleteBundle(ctx, tx, tenant, args.Bundle)
+}
+
 func init() {
 	ops.Register("snooze", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
 		return Snooze(ctx, tx, tenant, card, args)
@@ -212,6 +226,9 @@ func init() {
 	})
 	ops.Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		return ArchiveOperation(ctx, tx, tenant, args)
+	})
+	ops.Register("bundle_done", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		return CompleteOperation(ctx, tx, tenant, args)
 	})
 	ops.Register("take_out", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		return TakeOutOperation(ctx, tx, tenant, args)

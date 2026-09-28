@@ -87,6 +87,16 @@ class _BundleInboxState extends State<BundleInbox> {
     setState(() => _hidden.addAll(cards.where((card) => !card.pinned).map((card) => card.id)));
   }
 
+  Future<void> _completeBundle(String bundleId, List<BundleCard> cards) async {
+	final first = cards.first;
+	await widget.opsClient.sendOp(
+	  cardId: first.id,
+	  type: 'bundle_done',
+	  args: {'bundle_id': bundleId},
+	);
+	setState(() => _hidden.addAll(cards.where((card) => !card.pinned).map((card) => card.id)));
+  }
+
   Future<void> _takeOut(BundleCard card) async {
     await widget.opsClient.sendOp(
       cardId: card.id,
@@ -117,6 +127,7 @@ class _BundleInboxState extends State<BundleInbox> {
           cards: entry.value,
           opsClient: widget.opsClient,
           onArchive: () => _archiveBundle(entry.key, entry.value),
+	  onDone: () => _completeBundle(entry.key, entry.value),
           onPin: _setPinned,
           onSnoozed: _hideCard,
           onTakeOut: _takeOut,
@@ -137,19 +148,18 @@ class _BundleInboxState extends State<BundleInbox> {
           SizedBox(
             height: (pinned.length * 76.0).clamp(76.0, 228.0),
             child: ReorderableListView.builder(
+              buildDefaultDragHandles: false,
               itemCount: pinned.length,
               onReorder: _reorderPinned,
               itemBuilder: (context, index) => KeyedSubtree(
                 key: ValueKey(pinned[index].id),
-                child: ReorderableDragStartListener(
-                  index: index,
-                  child: _CardTile(
-                    card: pinned[index],
-                    opsClient: widget.opsClient,
-                    onPin: (value) => _setPinned(pinned[index], value),
-                    onSnoozed: () => _hideCard(pinned[index]),
-                    onTakeOut: pinned[index].bundleId == null ? null : () => _takeOut(pinned[index]),
-                  ),
+                child: _CardTile(
+                  card: pinned[index],
+                  opsClient: widget.opsClient,
+                  onPin: (value) => _setPinned(pinned[index], value),
+                  onSnoozed: () => _hideCard(pinned[index]),
+                  onTakeOut: pinned[index].bundleId == null ? null : () => _takeOut(pinned[index]),
+                  dragIndex: index,
                 ),
               ),
             ),
@@ -168,6 +178,7 @@ class _BundleSection extends StatelessWidget {
     required this.cards,
     required this.opsClient,
     required this.onArchive,
+    required this.onDone,
     required this.onPin,
     required this.onSnoozed,
     required this.onTakeOut,
@@ -177,6 +188,7 @@ class _BundleSection extends StatelessWidget {
   final List<BundleCard> cards;
   final OpsClient opsClient;
   final VoidCallback onArchive;
+  final VoidCallback onDone;
   final Future<void> Function(BundleCard, bool) onPin;
   final ValueChanged<BundleCard> onSnoozed;
   final Future<void> Function(BundleCard) onTakeOut;
@@ -187,11 +199,21 @@ class _BundleSection extends StatelessWidget {
         children: [
           ListTile(
             title: Text(AppLocalizations.of(context)!.bundleCount(id, cards.length)),
-            trailing: IconButton(
-              key: Key('archive-bundle-$id'),
-              tooltip: AppLocalizations.of(context)!.archiveBundle,
-              icon: const Icon(Icons.archive_outlined),
-              onPressed: onArchive,
+            trailing: Wrap(
+              children: [
+                IconButton(
+                  key: Key('archive-bundle-$id'),
+                  tooltip: AppLocalizations.of(context)!.archiveBundle,
+                  icon: const Icon(Icons.archive_outlined),
+                  onPressed: onArchive,
+                ),
+                IconButton(
+                  key: Key('done-bundle-$id'),
+                  tooltip: 'Done',
+                  icon: const Icon(Icons.check),
+                  onPressed: onDone,
+                ),
+              ],
             ),
           ),
           for (final card in cards.where((card) => !card.pinned))
@@ -215,6 +237,7 @@ class _CardTile extends StatelessWidget {
     required this.onPin,
     required this.onSnoozed,
     this.onTakeOut,
+    this.dragIndex,
   });
 
   final BundleCard card;
@@ -222,6 +245,7 @@ class _CardTile extends StatelessWidget {
   final ValueChanged<bool> onPin;
   final VoidCallback onSnoozed;
   final VoidCallback? onTakeOut;
+  final int? dragIndex;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -246,6 +270,14 @@ class _CardTile extends StatelessWidget {
                 tooltip: AppLocalizations.of(context)!.takeOutOfBundle,
                 icon: const Icon(Icons.remove_circle_outline),
                 onPressed: onTakeOut,
+              ),
+            if (dragIndex != null)
+              ReorderableDragStartListener(
+                index: dragIndex!,
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Icon(Icons.drag_handle),
+                ),
               ),
           ],
         ),

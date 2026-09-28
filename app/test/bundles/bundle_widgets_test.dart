@@ -67,6 +67,21 @@ void main() {
     expect(find.text('Unpinned mail'), findsNothing);
   });
 
+  testWidgets('bundle done sends bundle id and leaves pinned cards visible', (tester) async {
+	final ops = RecordingOpsClient();
+	const cards = [
+	  BundleCard(id: 'p', subject: 'Pinned mail', sender: 'A', bundleId: 'news', pinned: true),
+	  BundleCard(id: 'u', subject: 'Unpinned mail', sender: 'A', bundleId: 'news'),
+	];
+	await tester.pumpWidget(app(cards, ops));
+	await tester.tap(find.byKey(const Key('done-bundle-news')));
+	await tester.pumpAndSettle();
+	expect(ops.calls.single.type, 'bundle_done');
+	expect(ops.calls.single.args, {'bundle_id': 'news'});
+	expect(find.text('Pinned mail'), findsOneWidget);
+	expect(find.text('Unpinned mail'), findsNothing);
+  });
+
   testWidgets('take out sends card correction and keeps the card visible', (tester) async {
     final ops = RecordingOpsClient();
     await tester.pumpWidget(app(const [
@@ -87,7 +102,7 @@ void main() {
       BundleCard(id: 'a', subject: 'Alpha', sender: 'A', pinned: true),
       BundleCard(id: 'b', subject: 'Beta', sender: 'B', pinned: true),
     ], ops));
-    await tester.drag(find.text('Beta'), const Offset(0, -100));
+    await tester.drag(find.byIcon(Icons.drag_handle).last, const Offset(0, -60));
     await tester.pumpAndSettle();
     expect(ops.calls, isNotEmpty);
     expect(ops.calls.last.type, 'reorder_pins');

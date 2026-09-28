@@ -125,6 +125,24 @@ func TestPostgresBundleActions(t *testing.T) {
 	if state != "archived" {
 		t.Fatalf("archive left unpinned card state %q", state)
 	}
+	if _, err = tx.Exec(ctx, `UPDATE cards SET snooze_until=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c3, time.Now().Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := WakeDueCards(ctx, tx); err != nil || count != 1 {
+		t.Fatalf("WakeDueCards()=(%d,%v), want one woken card", count, err)
+	}
+	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c3).Scan(&state); err != nil || state != "open" {
+		t.Fatalf("due snooze state=%q err=%v", state, err)
+	}
+	if err = CompleteBundle(ctx, tx, tenant, b4); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c4).Scan(&state); err != nil || state != "open" {
+		t.Fatalf("bundle completion changed pinned card to %q: %v", state, err)
+	}
+	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c3).Scan(&state); err != nil || state != "done" {
+		t.Fatalf("bundle completion left unpinned card %q: %v", state, err)
+	}
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}

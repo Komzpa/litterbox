@@ -14,6 +14,8 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
+	"github.com/Komzpa/litterbox/server/internal/bundles"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -55,6 +57,14 @@ func main() {
 		if err := db.Ping(); err != nil {
 			log.Fatal(err)
 		}
+		wakerPool, err := pgxpool.New(context.Background(), databaseURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer wakerPool.Close()
+		wakerCtx, stopWaker := context.WithCancel(context.Background())
+		defer stopWaker()
+		bundles.StartWaker(wakerCtx, wakerPool)
 		defer db.Close()
 		if devTenantID != "" {
 			devOnly := func(next http.Handler) http.Handler {
