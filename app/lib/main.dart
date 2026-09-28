@@ -54,6 +54,24 @@ class InboxCard {
 
 typedef ServerVersion = ({int api, int minClientApi, String build});
 
+class OldServerException implements Exception {}
+
+class CardSections {
+  final List<InboxCard> now, later, missed;
+  const CardSections({required this.now, required this.later, required this.missed});
+
+  factory CardSections.fromJson(Map<String, dynamic> json) {
+    if (json['now'] is! List || json['later'] is! List || json['missed'] is! List) {
+      throw const FormatException('Old cards response');
+    }
+    return CardSections(now: _cards(json['now']), later: _cards(json['later']), missed: _cards(json['missed']));
+  }
+
+  static List<InboxCard> _cards(dynamic value) => (value as List<dynamic>? ?? [])
+      .map((item) => InboxCard.fromJson(item as Map<String, dynamic>))
+      .where((card) => card.state != 'done').toList();
+}
+
 class CardsApi {
   final String baseUrl;
   final http.Client client;
@@ -195,11 +213,11 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Future<void> _refresh() async {
-    final cards = widget.api.fetchCards();
-    setState(() {
-      _cards = cards;
-    });
-    await cards;
+    final cards = _fetchCards();
+    if (!mounted) return;
+    setState(() { _cards = cards; });
+    final sections = await cards;
+    _scheduleNextSlot(sections);
   }
 
   Future<void> _dismiss(InboxCard card) async {
