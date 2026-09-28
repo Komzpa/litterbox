@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-    "time"
+	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/sources/todos"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -37,7 +37,10 @@ func RunIngestTodos(args []string, stdout io.Writer) int {
 		return 2
 	}
 	loc, err := time.LoadLocation(*timezone)
-	if err != nil { fmt.Fprintln(stdout, "ingest-todos:", err); return 2 }
+	if err != nil {
+		fmt.Fprintln(stdout, "ingest-todos:", err)
+		return 2
+	}
 	cards, err := todos.ReadDir(*notesDir, time.Now().In(loc))
 	if err != nil {
 		fmt.Fprintln(stdout, "ingest-todos:", err)

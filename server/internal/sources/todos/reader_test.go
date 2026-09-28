@@ -36,11 +36,24 @@ func TestReadDirIncludesOpenTodayAndCarriedOverOnly(t *testing.T) {
 }
 
 func TestUntimedTodoHasNoArtificialAt(t *testing.T) {
- root:=t.TempDir(); writeNote(t,root,"2026-09-28","- [ ] 23:00 Sleep\n- [ ] do this when ready\n- [ ] 9:30 invalid slot\n- [ ] Rejected task — invalid: not actionable\n")
- loc:=time.FixedZone("Tbilisi",4*60*60); cards,err:=ReadDir(root,time.Date(2026,9,28,15,0,0,0,loc)); if err!=nil { t.Fatal(err) }
- if len(cards)!=3 { t.Fatalf("cards=%+v",cards) }
- if !cards[0].Timed || cards[0].At==nil || cards[0].Title!="Sleep" { t.Fatalf("timed card=%+v",cards[0]) }
- for _,card:=range cards[1:] { if card.Timed || card.At!=nil { t.Fatalf("untimed card has schedule: %+v",card) } }
+	root := t.TempDir()
+	writeNote(t, root, "2026-09-28", "- [ ] 23:00 Sleep\n- [ ] do this when ready\n- [ ] 9:30 invalid slot\n- [ ] Rejected task — invalid: not actionable\n")
+	loc := time.FixedZone("Tbilisi", 4*60*60)
+	cards, err := ReadDir(root, time.Date(2026, 9, 28, 15, 0, 0, 0, loc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 3 {
+		t.Fatalf("cards=%+v", cards)
+	}
+	if !cards[0].Timed || cards[0].At == nil || cards[0].Title != "Sleep" {
+		t.Fatalf("timed card=%+v", cards[0])
+	}
+	for _, card := range cards[1:] {
+		if card.Timed || card.At != nil {
+			t.Fatalf("untimed card has schedule: %+v", card)
+		}
+	}
 }
 
 func TestExternalIDUsesNoteDateAndOriginalItemText(t *testing.T) {

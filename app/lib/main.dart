@@ -1,58 +1,85 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'l10n/app_localizations.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 
 const _serverUrl = String.fromEnvironment('LITTERBOX_URL');
 const buildSha = String.fromEnvironment('BUILD_SHA', defaultValue: 'unknown');
 const kClientApi = 1;
 const _apiHeaders = {'X-Litterbox-Api': '$kClientApi'};
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Future.wait(['en', 'ru', 'be'].map(initializeDateFormatting));
   runApp(LitterboxApp(api: CardsApi(_serverUrl)));
 }
 
-class LitterboxApp extends StatelessWidget {
+class LitterboxApp extends StatefulWidget {
   final CardsApi api;
-
   const LitterboxApp({super.key, required this.api});
+  @override
+  State<LitterboxApp> createState() => _LitterboxAppState();
+}
+
+class _LitterboxAppState extends State<LitterboxApp> {
+  int _generation = 0;
+  late final DateTime? _binaryModified = Platform.isLinux
+      ? File(Platform.resolvedExecutable).lastModifiedSync() : null;
+
+  Future<void> _restart() async {
+    if (Platform.isLinux && _binaryModified != null) {
+      try {
+        if (File(Platform.resolvedExecutable).lastModifiedSync().isAfter(_binaryModified)) {
+          await Process.start(Platform.resolvedExecutable, [], mode: ProcessStartMode.detached);
+          exit(0);
+        }
+      } on FileSystemException {
+        // A changed executable may no longer be available; restart the widget tree.
+      }
+    }
+    if (mounted) setState(() { _generation++; });
+  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+        key: ValueKey(_generation),
         title: 'Litterbox',
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         theme: ThemeData(colorSchemeSeed: Colors.deepPurple),
-        home: InboxScreen(api: api),
+        builder: (context, child) => CallbackShortcuts(
+          bindings: {const SingleActivator(LogicalKeyboardKey.keyR, control: true, shift: true): _restart},
+          child: Focus(autofocus: true, child: child!),
+        ),
+        home: InboxScreen(api: widget.api, onRestart: _restart),
       );
 }
 
 class InboxCard {
-  final String id;
-  final String source;
-  final String title;
-  final String summary;
-  final DateTime sortAt;
-  final String state;
-
-  const InboxCard({
-    required this.id,
-    required this.source,
-    required this.title,
-    required this.summary,
-    required this.sortAt,
-    required this.state,
-  });
+  final String id, source, title, summary, state, note;
+  final DateTime? at;
+  final bool timed;
+  const InboxCard({required this.id, required this.source, required this.title, required this.summary, required this.at, required this.timed, required this.state, required this.note});
 
   factory InboxCard.fromJson(Map<String, dynamic> json) => InboxCard(
         id: json['id'] as String,
         source: json['source'] as String,
         title: json['title'] as String,
         summary: json['summary'] as String? ?? '',
-        sortAt: DateTime.parse(json['sort_at'] as String).toLocal(),
-        state: json['state'] as String,
+        at: json['at'] == null ? null : DateTime.parse(json['at'] as String),
+        timed: json['timed'] as bool? ?? false,
+        state: json['state'] as String? ?? 'open',
+        note: json['note'] as String? ?? '',
       );
-}
 
-typedef ServerVersion = ({int api, int minClientApi, String build});
+  DateTime? get localTime => at?.toLocal();
+}
 
 class OldServerException implements Exception {}
 
@@ -72,10 +99,11 @@ class CardSections {
       .where((card) => card.state != 'done').toList();
 }
 
+typedef ServerVersion = ({int api, int minClientApi, String build});
+
 class CardsApi {
   final String baseUrl;
   final http.Client client;
-
   CardsApi(this.baseUrl, {http.Client? client}) : client = client ?? http.Client();
 
   Future<ServerVersion> version() async {
@@ -118,9 +146,8 @@ class CardsApi {
 
 class InboxScreen extends StatefulWidget {
   final CardsApi api;
-
-  const InboxScreen({super.key, required this.api});
-
+  final VoidCallback onRestart;
+  const InboxScreen({super.key, required this.api, required this.onRestart});
   @override
   State<InboxScreen> createState() => _InboxScreenState();
 }
@@ -221,17 +248,63 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Future<void> _dismiss(InboxCard card) async {
+    try { await widget.api.dismiss(card.id); await _refresh(); }
+    catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.actionError(error.toString())))); }
+  }
+
+  Future<void> _editNote(InboxCard card) async {
+    var draft = card.note;
+    final action = await showDialog<(String, bool)>(context: context, builder: (context) => AlertDialog(
+      title: Text(AppLocalizations.of(context)!.note),
+      content: TextFormField(initialValue: draft, onChanged: (value) => draft = value, autofocus: true, maxLines: 5,
+          decoration: InputDecoration(hintText: AppLocalizations.of(context)!.noteHint)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context)!.cancel)),
+        TextButton(onPressed: () => Navigator.pop(context, (draft, true)), child: Text(AppLocalizations.of(context)!.doneWithNote)),
+        FilledButton(onPressed: () => Navigator.pop(context, (draft, false)), child: Text(AppLocalizations.of(context)!.save)),
+      ],
+    ));
+    if (action == null) return;
     try {
-      await widget.api.dismiss(card.id);
-      await _refresh();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not dismiss card: $error')),
-      );
+      if (action.$2) { await widget.api.dismiss(card.id, note: action.$1); }
+      else { await widget.api.saveNote(card.id, action.$1); }
       await _refresh();
     }
+    catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.noteSaveError(error.toString())))); }
   }
+
+  String _time(InboxCard card) {
+    final time = card.localTime;
+    if (time == null) return '';
+    final locale = Localizations.localeOf(context).toString();
+    final pattern = MediaQuery.alwaysUse24HourFormatOf(context) ? DateFormat.Hm(locale) : DateFormat.jm(locale);
+    final today = DateTime.now();
+    final sameDay = time.year == today.year && time.month == today.month && time.day == today.day;
+    return sameDay ? pattern.format(time) : '${DateFormat.yMMMd(locale).format(time)} ${pattern.format(time)}';
+  }
+
+  Widget _card(InboxCard card) => Card(
+    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+    child: Padding(padding: const EdgeInsets.fromLTRB(16, 12, 8, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Text(card.title, style: Theme.of(context).textTheme.titleMedium)),
+        if (card.timed && card.at != null) Padding(padding: const EdgeInsets.only(left: 8), child: Text(_time(card), style: Theme.of(context).textTheme.titleSmall)),
+      ]),
+      if (card.summary.isNotEmpty) ...[const SizedBox(height: 6), Text(card.summary, maxLines: 3, overflow: TextOverflow.ellipsis)],
+      if (card.note.isNotEmpty) ...[const SizedBox(height: 6), Text(card.note, style: Theme.of(context).textTheme.bodySmall)],
+      const SizedBox(height: 4),
+      Row(children: [
+        Chip(label: Text(card.source), visualDensity: VisualDensity.compact), const Spacer(),
+        IconButton(tooltip: AppLocalizations.of(context)!.note, onPressed: () => _editNote(card), icon: const Icon(Icons.note_add_outlined)),
+        IconButton(tooltip: AppLocalizations.of(context)!.done, onPressed: () => _dismiss(card), icon: const Icon(Icons.check)),
+      ]),
+    ])),
+  );
+
+  Widget _section(String title, List<InboxCard> cards) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Padding(padding: const EdgeInsets.fromLTRB(16, 18, 16, 4), child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+    if (cards.isEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text(AppLocalizations.of(context)!.emptyCards)) else ...cards.map(_card),
+  ]);
 
   @override
   Widget build(BuildContext context) => Scaffold(

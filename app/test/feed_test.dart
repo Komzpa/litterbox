@@ -54,17 +54,6 @@ void main() {
     expect(find.text('Server is older than the app'), findsOneWidget);
   });
 
-    final live = LiveClient(MockClient((request) async {
-      if (request.url.path == '/v1/version') {
-        return http.Response(jsonEncode({'api': 1, 'min_client_api': 1, 'server_build': 'different-sha'}), 200);
-      }
-      return http.Response(jsonEncode({'cards': []}), 200);
-    }));
-    await tester.pumpWidget(LitterboxApp(api: CardsApi('http://fake', client: live)));
-    await tester.pumpAndSettle();
-    expect(find.text('Server is older than the app'), findsOneWidget);
-  });
-
   testWidgets('higher minimum API shows banner; different sha at same API does not', (tester) async {
     var minimumApi = 2;
     final live = LiveClient(MockClient((request) async {
