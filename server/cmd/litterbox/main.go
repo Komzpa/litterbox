@@ -15,6 +15,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "connect" {
+		os.Exit(RunConnect(os.Args[2:], os.Stdout))
+	}
+
 	listenAddr := envOrDefault("LISTEN_ADDR", ":8080")
 	databaseURL := os.Getenv("DATABASE_URL")
 	flag.StringVar(&listenAddr, "listen", listenAddr, "HTTP listen address (or LISTEN_ADDR)")
