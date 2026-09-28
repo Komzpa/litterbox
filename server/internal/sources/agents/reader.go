@@ -435,7 +435,7 @@ func sourceTitle(source, title, summary string) string {
 
 func scanLines(r io.Reader, visit func([]byte)) error {
 	s := bufio.NewScanner(r)
-	s.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	s.Buffer(make([]byte, 64*1024), 256*1024*1024)
 	for s.Scan() {
 		visit(s.Bytes())
 	}
