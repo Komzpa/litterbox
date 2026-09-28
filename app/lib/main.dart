@@ -8,6 +8,8 @@ import 'l10n/app_localizations.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
+import 'mail/body_repository.dart';
+import 'mail/mail_detail.dart';
 
 const _serverUrl = String.fromEnvironment('LITTERBOX_URL');
 const buildSha = String.fromEnvironment('BUILD_SHA', defaultValue: 'unknown');
@@ -137,6 +139,10 @@ class CardsApi {
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Reminder creation failed (${response.statusCode})');
   }
 
+  BodyRepository get bodyRepository => HttpBodyRepository(
+    baseUri: Uri.parse(baseUrl), client: client, headers: _apiHeaders,
+  );
+
   Future<void> dismiss(String id, {String? note}) async {
     final response = await client.post(Uri.parse('$baseUrl/v1/cards/$id/dismiss'),
         headers: {..._apiHeaders, 'content-type': 'application/json'},
@@ -254,6 +260,20 @@ class _InboxScreenState extends State<InboxScreen> {
     _scheduleNextSlot(sections);
   }
 
+  Future<void> _openMail(InboxCard card) async {
+    try {
+      final body = await widget.api.bodyRepository.fetchBody(card.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MailDetail(
+        html: body.html, threadId: body.threadId, accountId: body.accountId,
+      )));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context)!.loadError),
+      ));
+    }
+  }
+
   Future<void> _dismiss(InboxCard card) async {
     try { await widget.api.dismiss(card.id); await _refresh(); }
     catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.actionError(error.toString())))); }
@@ -313,7 +333,7 @@ class _InboxScreenState extends State<InboxScreen> {
 
   Widget _card(InboxCard card) => Card(
     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-    child: Padding(padding: const EdgeInsets.fromLTRB(16, 12, 8, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    child: InkWell(onTap: card.source == 'mail' ? () => _openMail(card) : null, child: Padding(padding: const EdgeInsets.fromLTRB(16, 12, 8, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: Text(card.title, style: Theme.of(context).textTheme.titleMedium)),
         if (card.timed && card.at != null) Padding(padding: const EdgeInsets.only(left: 8), child: Text(_time(card), style: Theme.of(context).textTheme.titleSmall)),
@@ -326,7 +346,7 @@ class _InboxScreenState extends State<InboxScreen> {
         IconButton(tooltip: AppLocalizations.of(context)!.note, onPressed: () => _editNote(card), icon: const Icon(Icons.note_add_outlined)),
         IconButton(tooltip: AppLocalizations.of(context)!.done, onPressed: () => _dismiss(card), icon: const Icon(Icons.check)),
       ]),
-    ])),
+    ]))),
   );
 
   Widget _section(String title, List<InboxCard> cards) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
