@@ -13,6 +13,7 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
+	"github.com/Komzpa/litterbox/server/internal/ingest"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -56,6 +57,10 @@ func main() {
 			log.Fatal(err)
 		}
 		defer db.Close()
+		mux.Handle("POST /v1/ingest", ingest.Handler{DB: db})
+		go func() {
+			if err := ingest.RunCallbacks(context.Background(), db, &http.Client{Timeout: 10 * time.Second}); err != nil { log.Printf("source callback worker stopped: %v", err) }
+		}()
 		if devTenantID != "" {
 			devOnly := func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

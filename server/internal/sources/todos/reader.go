@@ -1,9 +1,7 @@
 package todos
 
 import (
-	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"io/fs"
@@ -113,22 +111,3 @@ func ReadDirAt(root string) ([]Card, error) {
 	return ReadDir(root, time.Now())
 }
 
-// Upsert is tenant-scoped and leaves state unchanged on conflict so done cards
-// remain done while the corresponding checkbox is still open in the note.
-func Upsert(ctx context.Context, db *sql.DB, tenantID string, cards []Card) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `SELECT set_config('litterbox.tenant_id', $1, true)`, tenantID); err != nil {
-		return err
-	}
-	for _, card := range cards {
-		_, err = tx.ExecContext(ctx, `INSERT INTO cards (tenant_id,id,source,external_id,title,sort_at,at,timed,note_order,state) VALUES ($1,gen_random_uuid(),'todo',$2,$3,COALESCE($4,now()),$4,$5,$6,'open') ON CONFLICT (tenant_id,source,external_id) DO UPDATE SET title=EXCLUDED.title,at=EXCLUDED.at,timed=EXCLUDED.timed,note_order=EXCLUDED.note_order`, tenantID, card.ExternalID, card.Title, card.At, card.Timed, card.Order)
-		if err != nil {
-			return fmt.Errorf("upsert todo %q: %w", card.ExternalID, err)
-		}
-	}
-	return tx.Commit()
-}

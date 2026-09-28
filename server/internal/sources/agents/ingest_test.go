@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -42,12 +41,11 @@ func TestPostgresCardsIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := Card{Source: "agent", ExternalID: "omp:fixture", Title: "Fixture result", Summary: "Synthetic result.", SortAt: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC), State: "open"}
-	ctx := context.Background()
-	for _, tenant := range []string{a, a, b} {
-		if err := Upsert(ctx, db, tenant, []Card{c}); err != nil {
-			t.Fatal(err)
-		}
+	for _, tenant := range []string{a, b} {
+ if _, err := db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil { t.Fatal(err) }
+		if _, err := db.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,title,summary,sort_at,state) VALUES($1,gen_random_uuid(),$2,$3,$4,$5,$6,$7)`, tenant, c.Source, c.ExternalID, c.Title, c.Summary, c.SortAt, c.State); err != nil { t.Fatal(err) }
 	}
+	if _, err := db.Exec(`SET ROLE litterbox_app`); err != nil { t.Fatal(err) }
 	list := func(tenant string) []Card {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, "/v1/cards", nil)
@@ -88,10 +86,10 @@ func TestPostgresCardsIntegration(t *testing.T) {
 	if status := dismiss(a, ac[0].ID); status != http.StatusNoContent {
 		t.Fatalf("dismissal status=%d", status)
 	}
+
 	c.Summary = "Updated synthetic result."
-	if err := Upsert(ctx, db, a, []Card{c}); err != nil {
-		t.Fatal(err)
-	}
+ if _, err := db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, a); err != nil { t.Fatal(err) }
+	if _, err := db.Exec(`UPDATE cards SET summary=$3 WHERE tenant_id=$1 AND source='agent' AND external_id=$2`,a,c.ExternalID,c.Summary); err != nil { t.Fatal(err) }
 	ac = list(a)
 	if ac[0].State != "done" || ac[0].Summary != c.Summary || ac[0].ID != idBefore {
 		t.Fatalf("dismiss/update failed: %#v", ac)
@@ -99,7 +97,8 @@ func TestPostgresCardsIntegration(t *testing.T) {
 	if list(b)[0].State != "open" {
 		t.Fatal("dismiss crossed tenants")
 	}
-	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, a); err != nil {
+	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil { t.Fatal(err) }
+ if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, a); err != nil {
 		t.Fatal(err)
 	}
 	var foreign int
@@ -109,6 +108,7 @@ func TestPostgresCardsIntegration(t *testing.T) {
 	if foreign != 0 {
 		t.Fatal("RLS leaked foreign cards")
 	}
+	if _, err := db.Exec(`RESET ROLE`); err != nil { t.Fatal(err) }
 	w := httptest.NewRecorder()
 	CardsHandler(db)(w, httptest.NewRequest("GET", "/v1/cards", nil))
 	if w.Code != 401 || strings.Contains(w.Body.String(), c.Summary) {
