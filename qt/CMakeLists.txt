@@ -33,6 +33,10 @@ qt_add_qml_module(litterbox-qt
         qml/InboxView.qml
 )
 
+set(LB_KIRIGAMI_QML_IMPORT_PATH "" CACHE PATH "Kirigami QML import root for Android deployment")
+if(LB_KIRIGAMI_QML_IMPORT_PATH)
+    set_property(TARGET litterbox-qt PROPERTY QT_QML_IMPORT_PATH "${LB_KIRIGAMI_QML_IMPORT_PATH}")
+endif()
 target_link_libraries(litterbox-qt PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -41,6 +45,7 @@ target_link_libraries(litterbox-qt PRIVATE
     Qt6::Network
     Qt6::Sql
     Qt6::QuickControls2
+    KF6::Kirigami
 )
 
 # Reuse the canonical CardStore's isolated QtTest target.
