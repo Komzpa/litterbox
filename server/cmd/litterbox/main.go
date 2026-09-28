@@ -15,6 +15,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "ingest-todos" {
+		os.Exit(RunIngestTodos(os.Args[2:], os.Stdout))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "ingest-agents" {
+		os.Exit(RunIngestAgents(os.Args[2:], os.Stdout))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "connect" {
 		os.Exit(RunConnect(os.Args[2:], os.Stdout))
 	}
