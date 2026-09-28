@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
+	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -33,6 +34,8 @@ func main() {
 	listenAddr := envOrDefault("LISTEN_ADDR", ":8080")
 	databaseURL := os.Getenv("DATABASE_URL")
 	devTenantID := os.Getenv("LITTERBOX_DEV_TENANT_ID")
+	timezone := time.Local.String()
+	noteSink := os.Getenv("LITTERBOX_NOTE_SINK")
 	flag.StringVar(&listenAddr, "listen", listenAddr, "HTTP listen address (or LISTEN_ADDR)")
 	flag.StringVar(&databaseURL, "database-url", databaseURL, "PostgreSQL connection URL (or DATABASE_URL)")
 	flag.StringVar(&devTenantID, "dev-tenant-id", devTenantID, "development-only tenant UUID for cards API (or LITTERBOX_DEV_TENANT_ID)")
@@ -56,18 +59,20 @@ func main() {
 		if devTenantID != "" {
 			devOnly := func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					next.ServeHTTP(w, r.WithContext(agents.WithTenant(r.Context(), devTenantID)))
+					ctx := agents.WithTenant(r.Context(), devTenantID)
+					ctx = cards.WithTenant(ctx, devTenantID)
+					next.ServeHTTP(w, r.WithContext(ctx))
 				})
 			}
-			mux.Handle("GET /v1/cards", devOnly(agents.CardsHandler(db)))
-			mux.Handle("POST /v1/cards/{id}/dismiss", devOnly(agents.DismissHandler(db)))
+			cardHandler, err := cards.NewHandler(db, timezone, noteSink)
+			if err != nil { log.Fatal(err) }
+			cardMux := http.NewServeMux()
+			cardHandler.Routes(cardMux)
+			mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){ cardMux.ServeHTTP(w,r) })))
+			mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){ cardMux.ServeHTTP(w,r) })))
 		}
 	}
-<<<<<<< HEAD
-	server := &http.Server{Addr: listenAddr, Handler: mux}
-=======
 	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, mux)}
->>>>>>> ca96043 (Version API compatibility numerically)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

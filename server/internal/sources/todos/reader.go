@@ -16,13 +16,15 @@ import (
 
 var noteDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\.md$`)
 var checkboxPattern = regexp.MustCompile(`^[-*]\s+\[ \]\s+(.+?)\s*$`)
-var itemTimePattern = regexp.MustCompile(`^(\d{1,2}:\d{2})\s+(.+)$`)
+var itemTimePattern = regexp.MustCompile(`^(\d{2}:\d{2})\s+(.+)$`)
 
 type Card struct {
 	Source     string
 	ExternalID string
 	Title      string
-	SortAt     time.Time
+	At         *time.Time
+	Timed      bool
+	Order      int
 	State      string
 }
 
@@ -75,14 +77,18 @@ func ReadDir(root string, today time.Time) ([]Card, error) {
 				continue
 			}
 			item := strings.TrimSpace(match[1])
-			if item == "" || strings.EqualFold(item, "(добавлять по ходу дня)") {
+			if item == "" || strings.EqualFold(item, "(добавлять по ходу дня)") || strings.Contains(strings.ToLower(item), "invalid:") || strings.Contains(strings.ToLower(item), "(invalid)") {
 				continue
 			}
-			title, sortAt := item, noteDate
-			if timed := itemTimePattern.FindStringSubmatch(item); timed != nil {
-				title = strings.TrimSpace(timed[2])
-				if parsed, parseErr := time.ParseInLocation("15:04", timed[1], today.Location()); parseErr == nil {
-					sortAt = time.Date(noteDate.Year(), noteDate.Month(), noteDate.Day(), parsed.Hour(), parsed.Minute(), 0, 0, today.Location())
+			title := item
+			var at *time.Time
+			timed := false
+			if slot := itemTimePattern.FindStringSubmatch(item); slot != nil {
+				if parsed, parseErr := time.ParseInLocation("15:04", slot[1], today.Location()); parseErr == nil {
+					title = strings.TrimSpace(slot[2])
+					value := time.Date(noteDate.Year(), noteDate.Month(), noteDate.Day(), parsed.Hour(), parsed.Minute(), 0, 0, today.Location())
+					at = &value
+					timed = true
 				}
 			}
 			if title == "" {
@@ -93,7 +99,9 @@ func ReadDir(root string, today time.Time) ([]Card, error) {
 				Source:     "todo",
 				ExternalID: hex.EncodeToString(digest[:]),
 				Title:      title,
-				SortAt:     sortAt.UTC(),
+				At:         at,
+				Timed:      timed,
+				Order:      len(cards),
 				State:      "open",
 			})
 		}
@@ -117,7 +125,7 @@ func Upsert(ctx context.Context, db *sql.DB, tenantID string, cards []Card) erro
 		return err
 	}
 	for _, card := range cards {
-		_, err = tx.ExecContext(ctx, `INSERT INTO cards (tenant_id,id,source,external_id,title,sort_at,state) VALUES ($1,gen_random_uuid(),'todo',$2,$3,$4,'open') ON CONFLICT (tenant_id,source,external_id) DO UPDATE SET title=EXCLUDED.title,sort_at=EXCLUDED.sort_at`, tenantID, card.ExternalID, card.Title, card.SortAt)
+		_, err = tx.ExecContext(ctx, `INSERT INTO cards (tenant_id,id,source,external_id,title,sort_at,at,timed,note_order,state) VALUES ($1,gen_random_uuid(),'todo',$2,$3,COALESCE($4,now()),$4,$5,$6,'open') ON CONFLICT (tenant_id,source,external_id) DO UPDATE SET title=EXCLUDED.title,at=EXCLUDED.at,timed=EXCLUDED.timed,note_order=EXCLUDED.note_order`, tenantID, card.ExternalID, card.Title, card.At, card.Timed, card.Order)
 		if err != nil {
 			return fmt.Errorf("upsert todo %q: %w", card.ExternalID, err)
 		}

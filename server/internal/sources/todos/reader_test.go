@@ -22,17 +22,25 @@ func TestReadDirIncludesOpenTodayAndCarriedOverOnly(t *testing.T) {
 	if len(cards) != 2 {
 		t.Fatalf("got %d cards, want today's and carried-over open items", len(cards))
 	}
-	if cards[0].Title != "Yesterday's unfinished item" || cards[0].SortAt.Format(time.RFC3339) != "2026-09-27T19:00:00Z" {
+	if cards[0].Title != "Yesterday's unfinished item" || cards[0].At == nil || !cards[0].At.Equal(time.Date(2026, 9, 27, 19, 0, 0, 0, time.UTC)) {
 		t.Fatalf("unexpected carried-over card: %+v", cards[0])
 	}
-	if cards[1].Title != "Today's task" || cards[1].SortAt.Format(time.RFC3339) != "2026-09-28T05:30:00Z" {
+	if cards[1].Title != "Today's task" || cards[1].At == nil || !cards[1].At.Equal(time.Date(2026, 9, 28, 5, 30, 0, 0, time.UTC)) {
 		t.Fatalf("unexpected today's card: %+v", cards[1])
 	}
 	for _, card := range cards {
-		if card.Source != "todo" || card.State != "open" || len(card.ExternalID) != 64 {
+		if card.Source != "todo" || !card.Timed || card.State != "open" || len(card.ExternalID) != 64 {
 			t.Fatalf("unexpected card identity/state: %+v", card)
 		}
 	}
+}
+
+func TestUntimedTodoHasNoArtificialAt(t *testing.T) {
+ root:=t.TempDir(); writeNote(t,root,"2026-09-28","- [ ] 23:00 Sleep\n- [ ] do this when ready\n- [ ] 9:30 invalid slot\n- [ ] Rejected task — invalid: not actionable\n")
+ loc:=time.FixedZone("Tbilisi",4*60*60); cards,err:=ReadDir(root,time.Date(2026,9,28,15,0,0,0,loc)); if err!=nil { t.Fatal(err) }
+ if len(cards)!=3 { t.Fatalf("cards=%+v",cards) }
+ if !cards[0].Timed || cards[0].At==nil || cards[0].Title!="Sleep" { t.Fatalf("timed card=%+v",cards[0]) }
+ for _,card:=range cards[1:] { if card.Timed || card.At!=nil { t.Fatalf("untimed card has schedule: %+v",card) } }
 }
 
 func TestExternalIDUsesNoteDateAndOriginalItemText(t *testing.T) {

@@ -1,0 +1,64 @@
+package cards
+
+import (
+    "sort"
+    "time"
+)
+
+type Card struct {
+    ID string `json:"id"`
+    Source string `json:"source"`
+    Title string `json:"title"`
+    Summary string `json:"summary"`
+    At *time.Time `json:"at"`
+    Timed bool `json:"timed"`
+    State string `json:"state"`
+    Note string `json:"note"`
+    // internal ordering metadata, excluded from the API
+    createdAt time.Time
+    order int
+}
+
+type Sections struct {
+    Now []Card `json:"now"`
+    Later []Card `json:"later"`
+    Missed []Card `json:"missed"`
+}
+
+// Section classifies open timed tasks into slots and leaves untimed and agent
+// results in now. at values are absolute instants; location controls date/time.
+func Section(input []Card, now time.Time) Sections {
+    out := Sections{Now: []Card{}, Later: []Card{}, Missed: []Card{}}
+    timed := make([]Card, 0, len(input))
+    sort.SliceStable(input,func(i,j int) bool { if input[i].Source=="todo" && input[j].Source=="todo" { return input[i].order<input[j].order }; if input[i].Source=="todo" { return true }; if input[j].Source=="todo" { return false }; return input[i].createdAt.After(input[j].createdAt) })
+    for _, c := range input {
+        if c.State != "open" { continue }
+        if c.Timed && c.At != nil {
+            timed = append(timed, c)
+        } else if c.Source == "todo" {
+            out.Now = append(out.Now, c)
+        } else if c.Source == "agent" {
+            out.Now = append(out.Now, c)
+        } else {
+            out.Now = append(out.Now, c)
+        }
+    }
+    sort.SliceStable(timed, func(i,j int) bool { return timed[i].At.Before(*timed[j].At) })
+    current := -1
+    for i := range timed {
+        if !timed[i].At.After(now) { current = i } else { break }
+    }
+    currentTimed := make([]Card, 0)
+    for _, c := range timed {
+        switch {
+        case c.At.After(now): out.Later = append(out.Later, c)
+        case current >= 0 && c.At.Equal(*timed[current].At): currentTimed = append(currentTimed,c)
+        default: out.Missed = append(out.Missed, c)
+        }
+    }
+    out.Now = append(currentTimed, out.Now...)
+    // Pinned future timeline ascending; past missed descending.
+    sort.SliceStable(out.Later, func(i,j int) bool { return out.Later[i].At.Before(*out.Later[j].At) })
+    sort.SliceStable(out.Missed, func(i,j int) bool { return out.Missed[i].At.After(*out.Missed[j].At) })
+    return out
+}

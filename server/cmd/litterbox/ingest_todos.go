@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+    "time"
 
 	"github.com/Komzpa/litterbox/server/internal/sources/todos"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -26,6 +27,7 @@ func RunIngestTodos(args []string, stdout io.Writer) int {
 	notesDir := fs.String("notes-dir", os.Getenv("LITTERBOX_DAILY_NOTES_DIR"), "daily notes directory (or LITTERBOX_DAILY_NOTES_DIR)")
 	tenant := fs.String("tenant", os.Getenv("LITTERBOX_TENANT_ID"), "tenant UUID (or LITTERBOX_TENANT_ID)")
 	dsn := fs.String("database-url", os.Getenv("DATABASE_URL"), "database URL (or DATABASE_URL)")
+	timezone := fs.String("tz", time.Local.String(), "timezone interpreting daily-note slots (default system local)")
 	dryRun := fs.Bool("dry-run", false, "read notes and print count and up to three titles without writing")
 	if fs.Parse(args) != nil {
 		return 2
@@ -34,7 +36,9 @@ func RunIngestTodos(args []string, stdout io.Writer) int {
 		fmt.Fprintln(stdout, "ingest-todos: set -notes-dir or LITTERBOX_DAILY_NOTES_DIR")
 		return 2
 	}
-	cards, err := todos.ReadDirAt(*notesDir)
+	loc, err := time.LoadLocation(*timezone)
+	if err != nil { fmt.Fprintln(stdout, "ingest-todos:", err); return 2 }
+	cards, err := todos.ReadDir(*notesDir, time.Now().In(loc))
 	if err != nil {
 		fmt.Fprintln(stdout, "ingest-todos:", err)
 		return 1
