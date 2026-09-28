@@ -64,6 +64,16 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if err = todos.Upsert(context.Background(), db, other, rows); err != nil {
 		t.Fatal(err)
 	}
+	bundleID := "33333333-3333-4333-8333-333333333333"
+	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO bundles(tenant_id,id,title,centroid) VALUES($1,$2,'Synthetic bundle',ARRAY[]::real[])`, tenant, bundleID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE cards SET bundle_id=$1,pinned_rank=2 WHERE tenant_id=$2 AND source='todo'`, bundleID, tenant); err != nil {
+		t.Fatal(err)
+	}
 	sink := filepath.Join(t.TempDir(), "feedback.md")
 	handler, err := NewHandler(db, "Asia/Tbilisi", sink)
 	if err != nil {
@@ -145,6 +155,24 @@ func TestPostgresNotePersistence(t *testing.T) {
 	foreign := get(other).Now
 	if len(mine) != 1 || len(foreign) != 1 || mine[0].ID == foreign[0].ID || mine[0].At != nil || mine[0].Timed {
 		t.Fatalf("card identity and time: %v / %v", mine, foreign)
+	}
+	if mine[0].BundleID == nil || *mine[0].BundleID != bundleID || mine[0].PinnedRank == nil || *mine[0].PinnedRank != 2 {
+		t.Fatalf("card metadata bundle_id=%v pinned_rank=%v", mine[0].BundleID, mine[0].PinnedRank)
+	}
+	if foreign[0].BundleID != nil || foreign[0].PinnedRank != nil {
+		t.Fatalf("foreign card metadata leaked: bundle_id=%v pinned_rank=%v", foreign[0].BundleID, foreign[0].PinnedRank)
+	}
+	wire := request(other, "GET", "/v1/cards?now=2026-09-28T15:00:00%2B04:00", "")
+	var payload struct {
+		Now []map[string]json.RawMessage `json:"now"`
+	}
+	if wire.Code != http.StatusOK || json.Unmarshal(wire.Body.Bytes(), &payload) != nil || len(payload.Now) != 1 {
+		t.Fatalf("metadata wire response=%d %s", wire.Code, wire.Body.String())
+	}
+	for _, key := range []string{"bundle_id", "pinned_rank"} {
+		if value, ok := payload.Now[0][key]; !ok || string(value) != "null" {
+			t.Fatalf("unassigned %s must be explicit null, got %s (present=%t)", key, value, ok)
+		}
 	}
 	id := mine[0].ID
 	if status := request(tenant, "GET", "/v1/cards?tz=Not%2FA%2FZone", "").Code; status != 400 {

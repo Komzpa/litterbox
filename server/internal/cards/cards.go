@@ -6,14 +6,16 @@ import (
 )
 
 type Card struct {
-	ID      string     `json:"id"`
-	Source  string     `json:"source"`
-	Title   string     `json:"title"`
-	Summary string     `json:"summary"`
-	At      *time.Time `json:"at"`
-	Timed   bool       `json:"timed"`
-	State   string     `json:"state"`
-	Note    string     `json:"note"`
+	ID         string     `json:"id"`
+	BundleID   *string    `json:"bundle_id"`
+	PinnedRank *int64     `json:"pinned_rank"`
+	Source     string     `json:"source"`
+	Title      string     `json:"title"`
+	Summary    string     `json:"summary"`
+	At         *time.Time `json:"at"`
+	Timed      bool       `json:"timed"`
+	State      string     `json:"state"`
+	Note       string     `json:"note"`
 	// internal ordering metadata, excluded from the API
 	createdAt time.Time
 	order     int
@@ -77,8 +79,45 @@ func Section(input []Card, now time.Time) Sections {
 		}
 	}
 	out.Now = append(currentTimed, out.Now...)
-	// Pinned future timeline ascending; past missed descending.
-	sort.SliceStable(out.Later, func(i, j int) bool { return out.Later[i].At.Before(*out.Later[j].At) })
-	sort.SliceStable(out.Missed, func(i, j int) bool { return out.Missed[i].At.After(*out.Missed[j].At) })
+	// Pins lead each R30 section by rank; stable sorting preserves its existing
+	// ordering for unpinned cards and for tied ranks.
+	sort.SliceStable(out.Now, func(i, j int) bool {
+		a, b := out.Now[i].PinnedRank, out.Now[j].PinnedRank
+		if a == nil {
+			return false
+		}
+		if b == nil {
+			return true
+		}
+		return *a < *b
+	})
+	// Pinned future timeline ascending; past missed descending, with pins
+	// promoted ahead of unpinned cards in either timeline.
+	sort.SliceStable(out.Later, func(i, j int) bool {
+		a, b := out.Later[i], out.Later[j]
+		if a.PinnedRank != nil {
+			if b.PinnedRank == nil {
+				return true
+			}
+			return *a.PinnedRank < *b.PinnedRank
+		}
+		if b.PinnedRank != nil {
+			return false
+		}
+		return a.At.Before(*b.At)
+	})
+	sort.SliceStable(out.Missed, func(i, j int) bool {
+		a, b := out.Missed[i], out.Missed[j]
+		if a.PinnedRank != nil {
+			if b.PinnedRank == nil {
+				return true
+			}
+			return *a.PinnedRank < *b.PinnedRank
+		}
+		if b.PinnedRank != nil {
+			return false
+		}
+		return a.At.After(*b.At)
+	})
 	return out
 }

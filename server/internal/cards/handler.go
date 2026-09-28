@@ -146,7 +146,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,source,COALESCE(NULLIF(title,''),subject),summary,at,timed,state,note,created_at,note_order FROM cards WHERE tenant_id=$1 AND state='open' ORDER BY created_at DESC`, tenant)
+	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,source,COALESCE(NULLIF(title,''),subject),summary,at,timed,state,note,created_at,note_order,bundle_id::text,pinned_rank FROM cards WHERE tenant_id=$1 AND state='open' ORDER BY created_at DESC`, tenant)
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -156,13 +156,23 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c Card
 		var at sql.NullTime
-		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order); err != nil {
+		var bundleID sql.NullString
+		var pinnedRank sql.NullInt64
+		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order, &bundleID, &pinnedRank); err != nil {
 			http.Error(w, "internal server error", 500)
 			return
 		}
 		if at.Valid {
 			v := at.Time.In(loc)
 			c.At = &v
+		}
+		if bundleID.Valid {
+			v := bundleID.String
+			c.BundleID = &v
+		}
+		if pinnedRank.Valid {
+			v := pinnedRank.Int64
+			c.PinnedRank = &v
 		}
 		all = append(all, c)
 	}
