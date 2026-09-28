@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
+	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -85,6 +86,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "kind and title required", http.StatusBadRequest)
 		return
 	}
+	if req.Operation == "upsert" {
+		if noise, reason := isNoiseSummary(req.Summary, req.Title); noise {
+			http.Error(w, reason, http.StatusBadRequest)
+			return
+		}
+	}
 	err = apply(r.Context(), h.DB, a, req)
 	if err == nil && req.Operation == "upsert" && h.Pool != nil {
 		err = h.afterIngest(r.Context(), a.TenantID)
@@ -97,6 +104,23 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func hashToken(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
+
+// isNoiseSummary applies the agent-result noise contract at the ingest
+// chokepoint, and also rejects summaries that duplicate their title.
+func isNoiseSummary(summary, title string) (bool, string) {
+	s := strings.TrimSpace(summary)
+	if s == "" {
+		return false, ""
+	}
+	t := strings.TrimSpace(title)
+	if t != "" && strings.EqualFold(t, s) {
+		return true, "summary duplicates title"
+	}
+	if agents.IsNoiseResult(s, "") {
+		return true, "noise summary"
+	}
+	return false, ""
+}
 
 func (h Handler) afterIngest(ctx context.Context, tenant string) error {
 	tenantID, err := uuid.Parse(tenant)

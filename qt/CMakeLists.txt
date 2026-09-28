@@ -76,7 +76,7 @@ if (QMLTESTRUNNER6)
     endforeach()
 endif()
 
-# Installation for Debian packaging and general `cmake --install`.
-install(TARGETS litterbox-qt RUNTIME DESTINATION bin)
+# Install desktop executables to bin and Android module libraries to lib.
+install(TARGETS litterbox-qt RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
 install(FILES debian/litterbox-qt.desktop DESTINATION share/applications)
 install(FILES debian/litterbox-qt.svg DESTINATION share/icons/hicolor/scalable/apps)

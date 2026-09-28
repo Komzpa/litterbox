@@ -47,54 +47,111 @@ ApplicationWindow {
         anchors.fill: parent
         initialItem: Item {
             ListView {
+                id: inboxList
+                objectName: "inboxList"
                 anchors.fill: parent
                 clip: true
+                Component.onCompleted: forceActiveFocus()
+                function captureLayoutMetrics() {
+                    function find(item, name) {
+                        if (item.objectName === name) return item
+                        for (const child of item.children) {
+                            const found = find(child, name)
+                            if (found) return found
+                        }
+                        return null
+                    }
+                    const card = find(contentItem, "inboxCard")
+                    const actions = card ? find(card, "inboxActions") : null
+                    return ({
+                        itemCount: count,
+                        cardWidth: card ? card.width : -1,
+                        cardX: card ? card.mapToItem(null, 0, 0).x : -1,
+                        hasActions: actions !== null,
+                        actionsX: actions ? actions.mapToItem(null, 0, 0).x : -1,
+                        actionsWidth: actions ? actions.width : -1
+                    })
+                }
+                Keys.onPressed: function(event) {
+                    const page = Math.max(1, height * 0.85)
+                    switch (event.key) {
+                    case Qt.Key_Home: contentY = 0; break
+                    case Qt.Key_End: contentY = Math.max(0, contentHeight - height); break
+                    case Qt.Key_PageUp: contentY = Math.max(0, contentY - page); break
+                    case Qt.Key_PageDown: contentY = Math.max(0, Math.min(contentHeight - height, contentY + page)); break
+                    case Qt.Key_Up: contentY = Math.max(0, contentY - 48); break
+                    case Qt.Key_Down: contentY = Math.max(0, Math.min(contentHeight - height, contentY + 48)); break
+                    default: return
+                    }
+                    event.accepted = true
+                }
+                WheelHandler {
+                    target: null
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: function(event) {
+                        const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y * 3 : event.angleDelta.y / 120 * 48
+                        inboxList.contentY = Math.max(0, Math.min(inboxList.contentHeight - inboxList.height, inboxList.contentY - delta))
+                        event.accepted = true
+                    }
+                }
                 model: store
                 spacing: 8
-                section.property: "section"
-                section.delegate: Kirigami.Heading {
+                section.delegate: Item {
                     width: ListView.view.width
-                    level: 3
-                    text: section === "pinned" ? "Pinned" : section === "now" ? "Now" : section === "later" ? "Later" : "Missed"
-                    padding: 8
+                    height: sectionHeading.implicitHeight + 16
+                    Kirigami.Heading {
+                        id: sectionHeading
+                        width: Math.min(parent.width - 32, 1200)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        level: 3
+                        text: section === "pinned" ? "Pinned" : section === "now" ? "Now" : section === "later" ? "Later" : "Missed"
+                        padding: 8
+                    }
                 }
-                delegate: Frame {
+                delegate: Item {
                     required property var card
                     required property string cardId
                     required property string title
-                    width: ListView.view.width - 20
-                    x: 10
-                    ColumnLayout {
-                        width: parent.width
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label {
-                                text: title
-                                font.bold: true
-                                wrapMode: Text.Wrap
+                    width: ListView.view.width
+                    height: cardFrame.implicitHeight
+                    Frame {
+                        id: cardFrame
+                        objectName: "inboxCard"
+                        width: Math.min(parent.width - 32, 1200)
+                        x: (parent.width - width) / 2
+                        ColumnLayout {
+                            width: parent.width
+                            RowLayout {
                                 Layout.fillWidth: true
-                                TapHandler {
-                                    enabled: card.source === "mail"
-                                    onTapped: window.openPage("MailDetailPage", { api: api, cardId: cardId })
+                                Label {
+                                    text: title
+                                    font.bold: true
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                    TapHandler {
+                                        enabled: card.source === "mail"
+                                        onTapped: window.openPage("MailDetailPage", { api: api, cardId: cardId })
+                                    }
                                 }
+                                Label { text: window.clock(card) }
                             }
-                            Label { text: window.clock(card) }
-                        }
-                        Label { text: card.summary || ""; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                        Label { text: card.note || ""; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                        RowLayout {
-                            Label { text: card.source || ""; Layout.fillWidth: true }
-                            Button { text: "Note"; onClicked: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() } }
-                            Button { text: "Done"; visible: card.source !== "mail"; onClicked: store.dismiss(cardId) }
-                            CardActions {
-                                id: cardActions
-                                store: window.cardStore
-                                cardKey: cardId
-                                source: card.source || ""
-                                bundleId: card.bundle_id || ""
-                                pinnedRank: card.pinned_rank
-                                Component.onCompleted: window.captureActions[cardId] = cardActions
-                                Component.onDestruction: delete window.captureActions[cardId]
+                            Label { text: card.summary || ""; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            Label { text: card.note || ""; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            RowLayout {
+                                Label { text: card.source || ""; Layout.fillWidth: true }
+                                Button { text: "Note"; onClicked: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() } }
+                                Button { text: "Done"; visible: card.source !== "mail"; onClicked: store.dismiss(cardId) }
+                                CardActions {
+                                    id: cardActions
+                                    objectName: "inboxActions"
+                                    store: window.cardStore
+                                    cardKey: cardId
+                                    source: card.source || ""
+                                    bundleId: card.bundle_id || ""
+                                    pinnedRank: card.pinned_rank
+                                    Component.onCompleted: window.captureActions[cardId] = cardActions
+                                    Component.onDestruction: delete window.captureActions[cardId]
+                                }
                             }
                         }
                     }

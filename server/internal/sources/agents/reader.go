@@ -133,7 +133,7 @@ func readOMP(r io.Reader) (Card, bool, error) {
 	if err != nil {
 		return Card{}, false, err
 	}
-	if card.ExternalID == "" || summary == "" || !ready || childSession || isNoiseResult(summary, userPrompt) {
+	if card.ExternalID == "" || summary == "" || !ready || childSession || IsNoiseResult(summary, userPrompt) {
 		return Card{}, false, nil
 	}
 	summary = cleanSummary(summary)
@@ -223,7 +223,7 @@ func readCodex(r io.Reader) (Card, bool, error) {
 	if err != nil {
 		return Card{}, false, err
 	}
-	if card.ExternalID == "" || summary == "" || !completed || childSession || isNoiseResult(summary, userPrompt) {
+	if card.ExternalID == "" || summary == "" || !completed || childSession || IsNoiseResult(summary, userPrompt) {
 		return Card{}, false, nil
 	}
 	summary = cleanSummary(summary)
@@ -280,7 +280,9 @@ func hasChildMarker(value any) bool {
 	}
 	return false
 }
-func isNoiseResult(summary, prompt string) bool {
+
+// IsNoiseResult reports whether an agent result is only acknowledgement or process-status noise.
+func IsNoiseResult(summary, prompt string) bool {
 	normalized := strings.ToLower(strings.Join(strings.Fields(summary), " "))
 	p := strings.ToLower(prompt)
 	if strings.Contains(p, "channel") && (strings.Contains(p, "confirm") || strings.Contains(p, "exact")) && len(normalized) <= 120 {

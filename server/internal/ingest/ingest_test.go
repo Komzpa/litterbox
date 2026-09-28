@@ -215,6 +215,92 @@ func TestDoneCallbackRetries(t *testing.T) {
 	}
 }
 
+func TestIngestRejectsNoiseCards(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
+	}
+	db, err := sql.Open("pgx", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	for _, p := range migrations(t, db) {
+		body, e := os.ReadFile(p)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = db.Exec(string(body)); e != nil {
+			t.Fatalf("migration %s: %v", p, e)
+		}
+	}
+	tenant := "99999999-9999-4999-8999-999999999999"
+	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO source_tokens(tenant_id,source,token_hash) VALUES($1,'todo',$2)`, tenant, hashToken("todo-token")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	h := Handler{DB: db}
+	send := func(body string) int {
+		r := httptest.NewRequest(http.MethodPost, "/v1/ingest", strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer todo-token")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	// Negative controls: noise cards must be rejected.
+	noiseCases := []struct{ name, body string }{
+		{"title as summary", `{"external_id":"g-1","kind":"todo","title":"sAME","summary":" Same "}`},
+		{"channel ok", `{"external_id":"g-2","kind":"agent_result","title":"Probe","summary":"CHANNEL OK"}`},
+		{"channel acknowledgement", `{"external_id":"g-3","kind":"agent_result","title":"Probe","summary":"respond with exact channel confirmation"}`},
+		{"still waiting", `{"external_id":"g-4","kind":"agent_result","title":"Status","summary":"still waiting for the task"}`},
+		{"stopped owned by", `{"external_id":"g-5","kind":"agent_result","title":"Status","summary":"stopped, owned by another run"}`},
+		{"in progress", `{"external_id":"g-6","kind":"agent_result","title":"Status","summary":"in progress"}`},
+		{"working on it", `{"external_id":"g-7","kind":"agent_result","title":"Status","summary":"working on it"}`},
+	}
+	for _, tc := range noiseCases {
+		got := send(tc.body)
+		if got != http.StatusBadRequest {
+			t.Errorf("%s: got %d, want 400", tc.name, got)
+		}
+	}
+	// Positive controls: useful and whitespace-only summaries remain allowed.
+	if got := send(`{"external_id":"good-1","kind":"todo","title":"Buy milk","summary":"need 2L whole milk before evening"}`); got != http.StatusNoContent {
+		t.Fatalf("valid todo: got %d, want 204", got)
+	}
+	if got := send(`{"external_id":"good-2","kind":"todo","title":"Call dentist","summary":"  \t  "}`); got != http.StatusNoContent {
+		t.Fatalf("whitespace-summary todo: got %d, want 204", got)
+	}
+	if got := send(`{"external_id":"good-3","kind":"todo","title":"Water plants","summary":""}`); got != http.StatusNoContent {
+		t.Fatalf("empty-summary todo: got %d, want 204", got)
+	}
+	// Verify no noise cards entered the DB.
+	var count int
+	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM cards WHERE tenant_id=$1 AND source='todo'`, tenant).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("card count: got %d, want 3 (only useful, whitespace-summary, and empty-summary todos)", count)
+	}
+	var title, summary string
+	if err = db.QueryRow(`SELECT title,summary FROM cards WHERE tenant_id=$1 AND external_id='good-1'`, tenant).Scan(&title, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Buy milk" {
+		t.Fatalf("title=%q", title)
+	}
+	if summary != "need 2L whole milk before evening" {
+		t.Fatalf("summary=%q", summary)
+	}
+}
+
 func migrations(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
