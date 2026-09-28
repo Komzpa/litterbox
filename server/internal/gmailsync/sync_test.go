@@ -94,7 +94,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 		t.Fatal(e)
 	}
 	t.Cleanup(db.Close)
-	for _, name := range []string{"001_mail.sql", "003_agent_cards.sql", "006_mail_sync.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)
