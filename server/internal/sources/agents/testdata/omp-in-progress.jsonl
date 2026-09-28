@@ -1,0 +1,2 @@
+{"type":"session","id":"omp-pending","timestamp":"2026-09-27T12:00:00Z"}
+{"type":"message","timestamp":"2026-09-27T12:01:00Z","message":{"role":"assistant","content":[{"type":"text","text":"Synthetic tool call."}],"stopReason":"toolUse"}}
