@@ -49,9 +49,12 @@ Each requirement is **decided** or **open** and names its source.
   weekly reconnection.
 - **R19 Rich mail readable offline** (decided, owner 2026-09-28). Synced mail
   renders its full HTML and images properly, including when read offline.
-  The home server fetches remote images during sync, so mail reads offline;
-  senders' trackers can see an open at sync time, from the home server's
-  address.
+  The home server fetches remote images during sync, so mail reads offline.
+  Before fetching remote images at sync, the home server removes known
+  tracking pixels and links by a maintained list (e.g. MailTrackerBlocker
+  patterns, BSD-3; EasyPrivacy email-tracker section) plus a heuristic for
+  1x1 and invisible images; removed trackers are never requested, and other
+  images are fetched as before.
 
 ## Card lifecycle
 
@@ -198,5 +201,3 @@ Each requirement is **decided** or **open** and names its source.
 
 - What done does for Telegram, Slack, WhatsApp/Instagram/dating apps and agent
   results; the owner does not yet know where he has not replied.
-- Whether known tracking pixels are stripped before fetching (research
-  pending).
