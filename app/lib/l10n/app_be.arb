@@ -64,4 +64,10 @@
   "reminderWhen": "Дата і час",
   "create": "Стварыць"
   }
+  "journal": "Журнал",
+  "journalEntryHint": "Новы запіс",
+  "mcpSettings": "Токены MCP",
+  "createToken": "Стварыць токен",
+  "revokeToken": "Адклікаць",
+  "tokenShownOnce": "Скапіруйце токен зараз. Пазней ён не будзе паказаны."
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/offline"
 	"github.com/Komzpa/litterbox/server/internal/ops"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
+	"github.com/Komzpa/litterbox/server/internal/journal"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -77,6 +78,43 @@ func main() {
 			log.Fatal(poolErr)
 		}
 		defer pool.Close()
+		journalPool, err := pgxpool.New(context.Background(), databaseURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer journalPool.Close()
+		journalStore := journal.Store{DB: journalPool, Cards: journal.SQLCardIngest{DB: journalPool}}
+		journalStore.Register(mux)
+		journalMux := http.NewServeMux()
+		journalStore.RegisterPrivate(journalMux)
+		mux.Handle("/v1/journal", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if devTenantID != "" {
+				ctx = journal.WithTenant(ctx, devTenantID)
+			}
+			journalMux.ServeHTTP(w, r.WithContext(ctx))
+		}))
+		mux.Handle("/v1/journal/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if devTenantID != "" {
+				ctx = journal.WithTenant(ctx, devTenantID)
+			}
+			journalMux.ServeHTTP(w, r.WithContext(ctx))
+		}))
+		mux.Handle("/v1/mcp-tokens", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if devTenantID != "" {
+				ctx = journal.WithTenant(ctx, devTenantID)
+			}
+			journalMux.ServeHTTP(w, r.WithContext(ctx))
+		}))
+		mux.Handle("/v1/mcp-tokens/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if devTenantID != "" {
+				ctx = journal.WithTenant(ctx, devTenantID)
+			}
+			journalMux.ServeHTTP(w, r.WithContext(ctx))
+		}))
 		if devTenantID != "" {
 			devOnly := func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
