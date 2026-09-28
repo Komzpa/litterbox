@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -19,9 +18,6 @@ func TestOperationReplayIsIdempotent(t *testing.T) {
 		t.Skip("set CARD_TEST_POSTGRES=1 to run PostgreSQL integration test")
 	}
 	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = fmt.Sprintf("postgres://%s:%s@%s:%s/%s", env("PGUSER", "postgres"), env("PGPASSWORD", ""), env("PGHOST", "127.0.0.1"), env("PGPORT", "5432"), env("PGDATABASE", "postgres"))
-	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -78,11 +74,4 @@ func TestOperationReplayIsIdempotent(t *testing.T) {
 	if applied != 1 || opCount != 1 {
 		t.Fatalf("replay applied=%d stored_ops=%d, want 1 each", applied, opCount)
 	}
-}
-
-func env(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
 }
