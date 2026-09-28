@@ -28,6 +28,18 @@ func TestPostgresNotePersistence(t *testing.T) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "015_card_note_updated.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {

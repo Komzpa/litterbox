@@ -18,14 +18,17 @@ class BundleCard {
   final String? bundleId;
   final bool pinned;
 
-  BundleCard copyWith({String? bundleId, bool clearBundle = false, bool? pinned}) =>
-      BundleCard(
-        id: id,
-        subject: subject,
-        sender: sender,
-        bundleId: clearBundle ? null : (bundleId ?? this.bundleId),
-        pinned: pinned ?? this.pinned,
-      );
+  BundleCard copyWith({
+    String? bundleId,
+    bool clearBundle = false,
+    bool? pinned,
+  }) => BundleCard(
+    id: id,
+    subject: subject,
+    sender: sender,
+    bundleId: clearBundle ? null : (bundleId ?? this.bundleId),
+    pinned: pinned ?? this.pinned,
+  );
 }
 
 class BundleInbox extends StatefulWidget {
@@ -84,17 +87,25 @@ class _BundleInboxState extends State<BundleInbox> {
       type: 'bundle_archive',
       args: {'bundle_id': bundleId},
     );
-    setState(() => _hidden.addAll(cards.where((card) => !card.pinned).map((card) => card.id)));
+    setState(
+      () => _hidden.addAll(
+        cards.where((card) => !card.pinned).map((card) => card.id),
+      ),
+    );
   }
 
   Future<void> _completeBundle(String bundleId, List<BundleCard> cards) async {
-	final first = cards.first;
-	await widget.opsClient.sendOp(
-	  cardId: first.id,
-	  type: 'bundle_done',
-	  args: {'bundle_id': bundleId},
-	);
-	setState(() => _hidden.addAll(cards.where((card) => !card.pinned).map((card) => card.id)));
+    final first = cards.first;
+    await widget.opsClient.sendOp(
+      cardId: first.id,
+      type: 'bundle_done',
+      args: {'bundle_id': bundleId},
+    );
+    setState(
+      () => _hidden.addAll(
+        cards.where((card) => !card.pinned).map((card) => card.id),
+      ),
+    );
   }
 
   Future<void> _takeOut(BundleCard card) async {
@@ -117,8 +128,13 @@ class _BundleInboxState extends State<BundleInbox> {
     for (final card in visible.where((card) => card.bundleId != null)) {
       bundles.putIfAbsent(card.bundleId!, () => []).add(card);
     }
-    final bundledIds = bundles.values.expand((cards) => cards).map((card) => card.id).toSet();
-    final ordinary = visible.where((card) => !card.pinned && !bundledIds.contains(card.id));
+    final bundledIds = bundles.values
+        .expand((cards) => cards)
+        .map((card) => card.id)
+        .toSet();
+    final ordinary = visible.where(
+      (card) => !card.pinned && !bundledIds.contains(card.id),
+    );
     final rest = <Widget>[
       for (final entry in bundles.entries)
         _BundleSection(
@@ -127,7 +143,7 @@ class _BundleInboxState extends State<BundleInbox> {
           cards: entry.value,
           opsClient: widget.opsClient,
           onArchive: () => _archiveBundle(entry.key, entry.value),
-	  onDone: () => _completeBundle(entry.key, entry.value),
+          onDone: () => _completeBundle(entry.key, entry.value),
           onPin: _setPinned,
           onSnoozed: _hideCard,
           onTakeOut: _takeOut,
@@ -142,6 +158,7 @@ class _BundleInboxState extends State<BundleInbox> {
         ),
     ];
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         if (pinned.isNotEmpty) ...[
           ListTile(title: Text(AppLocalizations.of(context)!.pinned)),
@@ -158,14 +175,16 @@ class _BundleInboxState extends State<BundleInbox> {
                   opsClient: widget.opsClient,
                   onPin: (value) => _setPinned(pinned[index], value),
                   onSnoozed: () => _hideCard(pinned[index]),
-                  onTakeOut: pinned[index].bundleId == null ? null : () => _takeOut(pinned[index]),
+                  onTakeOut: pinned[index].bundleId == null
+                      ? null
+                      : () => _takeOut(pinned[index]),
                   dragIndex: index,
                 ),
               ),
             ),
           ),
         ],
-        Expanded(child: ListView(children: rest)),
+        ...rest,
       ],
     );
   }
@@ -195,38 +214,40 @@ class _BundleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            title: Text(AppLocalizations.of(context)!.bundleCount(id, cards.length)),
-            trailing: Wrap(
-              children: [
-                IconButton(
-                  key: Key('archive-bundle-$id'),
-                  tooltip: AppLocalizations.of(context)!.archiveBundle,
-                  icon: const Icon(Icons.archive_outlined),
-                  onPressed: onArchive,
-                ),
-                IconButton(
-                  key: Key('done-bundle-$id'),
-                  tooltip: 'Done',
-                  icon: const Icon(Icons.check),
-                  onPressed: onDone,
-                ),
-              ],
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ListTile(
+        title: Text(
+          AppLocalizations.of(context)!.bundleCount(id, cards.length),
+        ),
+        trailing: Wrap(
+          children: [
+            IconButton(
+              key: Key('archive-bundle-$id'),
+              tooltip: AppLocalizations.of(context)!.archiveBundle,
+              icon: const Icon(Icons.archive_outlined),
+              onPressed: onArchive,
             ),
-          ),
-          for (final card in cards.where((card) => !card.pinned))
-            _CardTile(
-              key: ValueKey(card.id),
-              card: card,
-              opsClient: opsClient,
-              onPin: (value) => onPin(card, value),
-              onSnoozed: () => onSnoozed(card),
-              onTakeOut: () => onTakeOut(card),
+            IconButton(
+              key: Key('done-bundle-$id'),
+              tooltip: 'Done',
+              icon: const Icon(Icons.check),
+              onPressed: onDone,
             ),
-        ],
-      );
+          ],
+        ),
+      ),
+      for (final card in cards.where((card) => !card.pinned))
+        _CardTile(
+          key: ValueKey(card.id),
+          card: card,
+          opsClient: opsClient,
+          onPin: (value) => onPin(card, value),
+          onSnoozed: () => onSnoozed(card),
+          onTakeOut: () => onTakeOut(card),
+        ),
+    ],
+  );
 }
 
 class _CardTile extends StatelessWidget {
@@ -249,51 +270,60 @@ class _CardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
-        title: Text(card.subject),
-        subtitle: Text(card.sender),
-        trailing: Wrap(
-          children: [
-            IconButton(
-              key: Key('pin-${card.id}'),
-              tooltip: card.pinned ? AppLocalizations.of(context)!.unpin : AppLocalizations.of(context)!.pin,
-              icon: Icon(card.pinned ? Icons.push_pin : Icons.push_pin_outlined),
-              onPressed: () => onPin(!card.pinned),
-            ),
-            SnoozePicker(
-              cardId: card.id,
-              opsClient: opsClient,
-              onSnoozed: onSnoozed,
-            ),
-            if (onTakeOut != null)
-              IconButton(
-                key: Key('take-out-${card.id}'),
-                tooltip: AppLocalizations.of(context)!.takeOutOfBundle,
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: onTakeOut,
-              ),
-            if (dragIndex != null)
-              ReorderableDragStartListener(
-                index: dragIndex!,
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(Icons.drag_handle),
-                ),
-              ),
-          ],
+    title: Text(card.subject),
+    subtitle: Text(card.sender),
+    trailing: Wrap(
+      children: [
+        IconButton(
+          key: Key('pin-${card.id}'),
+          tooltip: card.pinned
+              ? AppLocalizations.of(context)!.unpin
+              : AppLocalizations.of(context)!.pin,
+          icon: Icon(card.pinned ? Icons.push_pin : Icons.push_pin_outlined),
+          onPressed: () => onPin(!card.pinned),
         ),
-      );
+        SnoozePicker(
+          cardId: card.id,
+          opsClient: opsClient,
+          onSnoozed: onSnoozed,
+        ),
+        if (onTakeOut != null)
+          IconButton(
+            key: Key('take-out-${card.id}'),
+            tooltip: AppLocalizations.of(context)!.takeOutOfBundle,
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: onTakeOut,
+          ),
+        if (dragIndex != null)
+          ReorderableDragStartListener(
+            index: dragIndex!,
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Icon(Icons.drag_handle),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class SnoozePicker extends StatelessWidget {
-  const SnoozePicker({super.key, required this.cardId, required this.opsClient, required this.onSnoozed});
+  const SnoozePicker({
+    super.key,
+    required this.cardId,
+    required this.opsClient,
+    required this.onSnoozed,
+  });
 
   final String cardId;
   final OpsClient opsClient;
   final VoidCallback onSnoozed;
 
-  DateTime _tomorrowMorning(DateTime now) => DateTime(now.year, now.month, now.day + 1, 9);
+  DateTime _tomorrowMorning(DateTime now) =>
+      DateTime(now.year, now.month, now.day + 1, 9);
 
-  DateTime _nextWeek(DateTime now) => DateTime(now.year, now.month, now.day + 7, 9);
+  DateTime _nextWeek(DateTime now) =>
+      DateTime(now.year, now.month, now.day + 7, 9);
 
   Future<void> _send(DateTime until) async {
     await opsClient.sendOp(
@@ -313,34 +343,56 @@ class SnoozePicker extends StatelessWidget {
       lastDate: now.add(const Duration(days: 3650)),
     );
     if (date == null || !context.mounted) return;
-    final time = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 9, minute: 0));
-    if (time != null) await _send(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    final time = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (time != null)
+      await _send(
+        DateTime(date.year, date.month, date.day, time.hour, time.minute),
+      );
   }
 
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
-        key: Key('snooze-$cardId'),
-        tooltip: AppLocalizations.of(context)!.snooze,
-        icon: const Icon(Icons.snooze),
-        onSelected: (choice) {
-          final now = DateTime.now();
-          switch (choice) {
-            case 'today':
-              final later = DateTime(now.year, now.month, now.day, 17);
-              _send(later.isAfter(now) ? later : DateTime(now.year, now.month, now.day + 1, 17));
-            case 'tomorrow':
-              _send(_tomorrowMorning(now));
-            case 'week':
-              _send(_nextWeek(now));
-            case 'custom':
-              _custom(context);
-          }
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem(value: 'today', child: Text(AppLocalizations.of(context)!.laterToday)),
-          PopupMenuItem(value: 'tomorrow', child: Text(AppLocalizations.of(context)!.tomorrowMorning)),
-          PopupMenuItem(value: 'week', child: Text(AppLocalizations.of(context)!.nextWeek)),
-          PopupMenuItem(value: 'custom', child: Text(AppLocalizations.of(context)!.customDateTime)),
-        ],
-      );
+    key: Key('snooze-$cardId'),
+    tooltip: AppLocalizations.of(context)!.snooze,
+    icon: const Icon(Icons.snooze),
+    onSelected: (choice) {
+      final now = DateTime.now();
+      switch (choice) {
+        case 'today':
+          final later = DateTime(now.year, now.month, now.day, 17);
+          _send(
+            later.isAfter(now)
+                ? later
+                : DateTime(now.year, now.month, now.day + 1, 17),
+          );
+        case 'tomorrow':
+          _send(_tomorrowMorning(now));
+        case 'week':
+          _send(_nextWeek(now));
+        case 'custom':
+          _custom(context);
+      }
+    },
+    itemBuilder: (context) => [
+      PopupMenuItem(
+        value: 'today',
+        child: Text(AppLocalizations.of(context)!.laterToday),
+      ),
+      PopupMenuItem(
+        value: 'tomorrow',
+        child: Text(AppLocalizations.of(context)!.tomorrowMorning),
+      ),
+      PopupMenuItem(
+        value: 'week',
+        child: Text(AppLocalizations.of(context)!.nextWeek),
+      ),
+      PopupMenuItem(
+        value: 'custom',
+        child: Text(AppLocalizations.of(context)!.customDateTime),
+      ),
+    ],
+  );
 }

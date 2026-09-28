@@ -22,9 +22,6 @@ func TenantFrom(ctx context.Context) (string, bool) {
 	return t, ok
 }
 
-
-func TenantFrom(ctx context.Context) (string, bool) { t, ok := ctx.Value(tenantContextKey{}).(string); return t, ok }
-
 type Handler struct {
 	DB       *sql.DB
 	Location *time.Location

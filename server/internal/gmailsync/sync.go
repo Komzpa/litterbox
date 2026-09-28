@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -242,6 +243,9 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		if e != nil {
 			return e
 		}
+	}
+	if e = bundles.AfterIngest(ctx, tx, a.TenantID, nil); e != nil {
+		return e
 	}
 	return tx.Commit(ctx)
 }

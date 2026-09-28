@@ -1,23 +1,9 @@
 {
-  "pinned": "Замацаваныя",
-  "archiveBundle": "Архіваваць групу",
-  "pin": "Замацаваць",
-  "unpin": "Адмацаваць",
-  "takeOutOfBundle": "Прыбраць з групы",
-  "snooze": "Адкласці",
-  "laterToday": "Пазней сёння",
-  "tomorrowMorning": "Заўтра раніцай",
-  "nextWeek": "На наступным тыдні",
-  "customDateTime": "Выбраць дату і час",
-  "bundleCount": "{bundle} ({count})",
-  "@bundleCount": {
-    "placeholders": {
-      "bundle": {},
-      "count": {
-        "type": "int"
-      }
-    }
-  },
+  "@@locale": "be",
+  "nowSection": "Зараз",
+  "laterSection": "Пазней",
+  "missedCount": "Прапушчаныя ({count})",
+  "@missedCount": {"placeholders": {"count": {"type": "int"}}},
   "emptyCards": "Няма картак",
   "retry": "Паўтарыць",
   "oldServer": "Сервер старэйшы за праграму",
@@ -30,40 +16,29 @@
   "doneWithNote": "Гатова з нататкай",
   "loadError": "Не атрымалася загрузіць карткі",
   "actionError": "Не атрымалася выканаць дзеянне: {error}",
-  "@actionError": {
-    "placeholders": {
-      "error": {}
-    }
-  },
+  "@actionError": {"placeholders": {"error": {}}},
   "noteSaveError": "Не атрымалася захаваць нататку: {error}",
-  "@noteSaveError": {
-    "placeholders": {
-      "error": {}
-    }
-  },
+  "@noteSaveError": {"placeholders": {"error": {}}},
   "outdatedApi": "Праграма састарэла (API {client}), серверу патрэбны {server}",
-  "@outdatedApi": {
-    "placeholders": {
-      "client": {
-        "type": "int"
-      },
-      "server": {
-        "type": "int"
-      }
-    }
-  },
+  "@outdatedApi": {"placeholders": {"client": {"type": "int"}, "server": {"type": "int"}}},
   "aboutBuild": "Аб праграме · праграма {clientBuild}, сервер {serverBuild}",
-  "@aboutBuild": {
-    "placeholders": {
-      "clientBuild": {},
-      "serverBuild": {}
-    }
-  },
+  "@aboutBuild": {"placeholders": {"clientBuild": {}, "serverBuild": {}}},
   "createReminder": "Дадаць напамін",
   "reminderTitle": "Назва",
   "reminderWhen": "Дата і час",
-  "create": "Стварыць"
-  }
+  "create": "Стварыць",
+  "pinned": "Замацаваныя",
+  "archiveBundle": "Архіваваць групу",
+  "pin": "Замацаваць",
+  "unpin": "Адмацаваць",
+  "takeOutOfBundle": "Прыбраць з групы",
+  "snooze": "Адкласці",
+  "laterToday": "Пазней сёння",
+  "tomorrowMorning": "Заўтра раніцай",
+  "nextWeek": "На наступным тыдні",
+  "customDateTime": "Выбраць дату і час",
+  "bundleCount": "{bundle} ({count})",
+  "@bundleCount": {"placeholders": {"bundle": {}, "count": {"type": "int"}}},
   "journal": "Журнал",
   "journalEntryHint": "Новы запіс",
   "mcpSettings": "Токены MCP",

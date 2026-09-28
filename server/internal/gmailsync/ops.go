@@ -17,7 +17,7 @@ type actionArgs struct {
 // RegisterOps binds mail actions to account/thread ownership stored on the card.
 func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (*Client, string, error)) {
 	register := func(name string, add, remove []string) {
-		ops.Register(name, func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID, args json.RawMessage) error {
+		ops.Register("gmail."+name, func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID, args json.RawMessage) error {
 			c, thread, e := clientFor(ctx, tx, tenant, cardID)
 			if e != nil {
 				return e
@@ -55,13 +55,7 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 					adds = nil
 				}
 			}
-			if e = c.Modify(ctx, thread, adds, removes); e != nil {
-				return e
-			}
-			if name == "archive" {
-				_, e = tx.Exec(ctx, "UPDATE cards SET state='archived',version=version+1 WHERE tenant_id=$1 AND id=$2", tenant, cardID)
-			}
-			return e
+			return c.Modify(ctx, thread, adds, removes)
 		})
 	}
 	register("archive", nil, []string{"INBOX"})

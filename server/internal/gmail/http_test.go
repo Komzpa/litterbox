@@ -26,6 +26,18 @@ func webTestDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if err != nil {

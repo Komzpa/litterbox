@@ -9,7 +9,6 @@ import (
 	"net/mail"
 	"strings"
 
-	"github.com/Komzpa/litterbox/server/internal/ops"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -89,7 +88,7 @@ func Snooze(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, raw json.Raw
 		return err
 	}
 	if source == "mail" {
-		return ops.CallIfRegistered(ctx, tx, tenant, card, "gmail.snooze_label", raw)
+		return callOperation(ctx, tx, tenant, card, "gmail.snooze", raw)
 	}
 	return nil
 }
@@ -116,6 +115,19 @@ func ArchiveBundle(ctx context.Context, tx pgx.Tx, tenant, bundle uuid.UUID) err
 func CompleteBundle(ctx context.Context, tx pgx.Tx, tenant, bundle uuid.UUID) error {
 	_, err := tx.Exec(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, bundle)
 	return err
+}
+
+type OperationHook func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, string, json.RawMessage) error
+
+var operationHook OperationHook
+
+func SetOperationHook(hook OperationHook) { operationHook = hook }
+
+func callOperation(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, kind string, args json.RawMessage) error {
+	if operationHook == nil {
+		return nil
+	}
+	return operationHook(ctx, tx, tenant, card, kind, args)
 }
 
 // ReorderPins applies a complete ordered list of pinned card UUIDs.
@@ -146,7 +158,7 @@ func Pin(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID) error {
 		return err
 	}
 	if source == "mail" {
-		return ops.CallIfRegistered(ctx, tx, tenant, card, "gmail.star", json.RawMessage(`{"starred":true}`))
+		return callOperation(ctx, tx, tenant, card, "gmail.star", json.RawMessage(`{"starred":true}`))
 	}
 	return nil
 }
@@ -162,7 +174,7 @@ func Unpin(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID) error {
 		return err
 	}
 	if source == "mail" {
-		return ops.CallIfRegistered(ctx, tx, tenant, card, "gmail.star", json.RawMessage(`{"starred":false}`))
+		return callOperation(ctx, tx, tenant, card, "gmail.star", json.RawMessage(`{"starred":false}`))
 	}
 	return nil
 }
@@ -209,28 +221,4 @@ func CompleteOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw jso
 		return err
 	}
 	return CompleteBundle(ctx, tx, tenant, args.Bundle)
-}
-
-func init() {
-	ops.Register("snooze", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
-		return Snooze(ctx, tx, tenant, card, args)
-	})
-	ops.Register("pin", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
-		return Pin(ctx, tx, tenant, card)
-	})
-	ops.Register("unpin", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
-		return Unpin(ctx, tx, tenant, card)
-	})
-	ops.Register("reorder_pins", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
-		return Reorder(ctx, tx, tenant, args)
-	})
-	ops.Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
-		return ArchiveOperation(ctx, tx, tenant, args)
-	})
-	ops.Register("bundle_done", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
-		return CompleteOperation(ctx, tx, tenant, args)
-	})
-	ops.Register("take_out", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
-		return TakeOutOperation(ctx, tx, tenant, args)
-	})
 }

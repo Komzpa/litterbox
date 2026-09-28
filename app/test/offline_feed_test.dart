@@ -38,7 +38,7 @@ void main() {
           'messages': [{'text': 'Saved body', 'timed': false, 'section': 'now'}]},
       ],
     });
-    final api = CardsApi('http://offline', client: OfflineClient());
+    final api = CardsApi('http://offline', client: OfflineClient())..token = 'test-token';
     await tester.pumpWidget(LitterboxApp(api: api, store: store));
     await tester.pumpAndSettle();
     expect(find.text('Cached message'), findsOneWidget);

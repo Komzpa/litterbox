@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"sync"
 
+	"github.com/Komzpa/litterbox/server/internal/bundles"
+	"github.com/Komzpa/litterbox/server/internal/ingest"
 	"github.com/google/uuid"
 )
 
@@ -46,7 +48,25 @@ func Register(typ string, h Handler) {
 
 func init() {
 	Register("done", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
-		return applyCardUpdate(ctx, tx, tenant, card, true, "")
+		if err := applyCardUpdate(ctx, tx, tenant, card, true, ""); err != nil {
+			return err
+		}
+		return ingest.OnDone(ctx, tx, tenant, card)
+	})
+	Register("archive", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
+		var source string
+		if err := tx.QueryRow(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2 RETURNING source`, tenant, card).Scan(&source); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("card not found")
+			}
+			return err
+		}
+		if source == "mail" {
+			if err := CallIfRegistered(ctx, tx, tenant, card, "gmail.archive", args); err != nil {
+				return err
+			}
+		}
+		return ingest.OnDone(ctx, tx, tenant, card)
 	})
 	Register("note", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
 		var v struct {
@@ -57,6 +77,65 @@ func init() {
 		}
 		return applyCardUpdate(ctx, tx, tenant, card, false, v.Note)
 	})
+	Register("snooze", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
+		return bundles.Snooze(ctx, tx, tenant, card, args)
+	})
+	Register("pin", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
+		return bundles.Pin(ctx, tx, tenant, card)
+	})
+	Register("unpin", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
+		return bundles.Unpin(ctx, tx, tenant, card)
+	})
+	Register("reorder_pins", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		return bundles.Reorder(ctx, tx, tenant, args)
+	})
+	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		if err := enqueueBundleDone(ctx, tx, tenant, args); err != nil {
+			return err
+		}
+		return bundles.ArchiveOperation(ctx, tx, tenant, args)
+	})
+	Register("bundle_done", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		if err := enqueueBundleDone(ctx, tx, tenant, args); err != nil {
+			return err
+		}
+		return bundles.CompleteOperation(ctx, tx, tenant, args)
+	})
+	Register("take_out", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		return bundles.TakeOutOperation(ctx, tx, tenant, args)
+	})
+	bundles.SetOperationHook(CallIfRegistered)
+}
+
+func enqueueBundleDone(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {
+	var args bundles.ArchiveArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `SELECT id FROM cards WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, args.Bundle)
+	if err != nil {
+		return err
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := ingest.OnDone(ctx, tx, tenant, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func applyCardUpdate(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, done bool, note string) error {
@@ -168,4 +247,15 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
+// CallIfRegistered invokes an optional handler when one exists.
+func CallIfRegistered(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, name string, args json.RawMessage) error {
+	registry.RLock()
+	h, ok := registry.handlers[name]
+	registry.RUnlock()
+	if !ok {
+		return nil
+	}
+	return h(ctx, tx, tenant, card, args)
 }

@@ -9,12 +9,16 @@ class SyncClient {
   final Uri baseUri;
   final LocalCardStore store;
   final http.Client client;
-  SyncClient(this.baseUri, this.store, this.client);
+  final Map<String, String> Function() headers;
+
+  SyncClient(this.baseUri, this.store, this.client, {Map<String, String> Function()? headers})
+      : headers = headers ?? (() => const {});
 
   Future<void> synchronize() async {
     for (final op in await store.pending()) {
       final response = await client.post(baseUri.resolve('/v1/ops'),
-          headers: {'content-type': 'application/json'}, body: jsonEncode({
+          headers: {...headers(), 'content-type': 'application/json'},
+          body: jsonEncode({
             'op_id': op.opId,
             'card_id': op.cardId,
             'type': op.type,
@@ -25,7 +29,7 @@ class SyncClient {
       }
       await store.removeOperation(op.opId);
     }
-    final response = await client.get(baseUri.resolve('/v1/snapshot'));
+    final response = await client.get(baseUri.resolve('/v1/snapshot'), headers: headers());
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw http.ClientException('snapshot failed', baseUri);
     }

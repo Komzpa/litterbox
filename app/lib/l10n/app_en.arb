@@ -26,7 +26,7 @@
   "createReminder": "Add reminder",
   "reminderTitle": "Title",
   "reminderWhen": "Date and time",
-  "create": "Create"
+  "create": "Create",
   "pinned": "Pinned",
   "archiveBundle": "Archive bundle",
   "pin": "Pin",
@@ -38,22 +38,7 @@
   "nextWeek": "Next week",
   "customDateTime": "Custom date/time",
   "bundleCount": "{bundle} ({count})",
-  "@bundleCount": {
-    "placeholders": {
-      "bundle": {},
-      "count": {
-        "type": "int"
-      }
-    }
-  }
-  },
-  "aboutBuild": "About · app {clientBuild}, server {serverBuild}",
-  "@aboutBuild": {
-    "placeholders": {
-      "clientBuild": {},
-      "serverBuild": {}
-    }
-  },
+  "@bundleCount": {"placeholders": {"bundle": {}, "count": {"type": "int"}}},
   "journal": "Journal",
   "journalEntryHint": "Write a journal entry",
   "mcpSettings": "MCP tokens",

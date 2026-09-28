@@ -51,9 +51,12 @@ class _JournalScreenState extends State<JournalScreen> {
 }
 
 class HttpJournalClient implements JournalClient {
-  final String baseUrl; final http.Client client;
-  HttpJournalClient(this.baseUrl, {http.Client? client}) : client=client??http.Client();
-  Future<List<JournalEntry>> list() async { final r=await client.get(Uri.parse('$baseUrl/v1/journal')); if(r.statusCode!=200) throw Exception('Journal load failed'); return (jsonDecode(r.body) as List).map((v)=>JournalEntry(v['id'] as String,v['body'] as String)).toList(); }
-  Future<void> append(String body) async { final r=await client.post(Uri.parse('$baseUrl/v1/journal'),headers:{'content-type':'application/json'},body:jsonEncode({'body':body})); if(r.statusCode!=201) throw Exception('Journal append failed'); }
-  Future<void> update(String id,String body) async { final r=await client.put(Uri.parse('$baseUrl/v1/journal/$id'),headers:{'content-type':'application/json'},body:jsonEncode({'body':body})); if(r.statusCode!=200) throw Exception('Journal update failed'); }
+  final String baseUrl;
+  final http.Client client;
+  final Map<String, String> Function() headers;
+  HttpJournalClient(this.baseUrl, {http.Client? client, Map<String, String> Function()? headers})
+      : client = client ?? http.Client(), headers = headers ?? (() => const {});
+  Future<List<JournalEntry>> list() async { final r=await client.get(Uri.parse('$baseUrl/v1/journal'), headers: headers()); if(r.statusCode!=200) throw Exception('Journal load failed'); return (jsonDecode(r.body) as List).map((v)=>JournalEntry(v['id'] as String,v['body'] as String)).toList(); }
+  Future<void> append(String body) async { final r=await client.post(Uri.parse('$baseUrl/v1/journal'),headers:{...headers(),'content-type':'application/json'},body:jsonEncode({'body':body})); if(r.statusCode!=201) throw Exception('Journal append failed'); }
+  Future<void> update(String id,String body) async { final r=await client.put(Uri.parse('$baseUrl/v1/journal/$id'),headers:{...headers(),'content-type':'application/json'},body:jsonEncode({'body':body})); if(r.statusCode!=200) throw Exception('Journal update failed'); }
 }

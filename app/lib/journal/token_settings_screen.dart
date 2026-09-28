@@ -20,7 +20,8 @@ class _TokenSettingsScreenState extends State<TokenSettingsScreen> {
 }
 
 class HttpMcpTokenClient implements McpTokenClient {
- final String baseUrl; final http.Client client; HttpMcpTokenClient(this.baseUrl,{http.Client? client}):client=client??http.Client();
- Future<({String id,String token})> create() async {final r=await client.post(Uri.parse('$baseUrl/v1/mcp-tokens'));if(r.statusCode!=200)throw Exception('Token creation failed');final v=jsonDecode(r.body) as Map<String,dynamic>;return (id:v['id'] as String,token:v['token'] as String);}
- Future<void> revoke(String id) async {final r=await client.delete(Uri.parse('$baseUrl/v1/mcp-tokens/$id'));if(r.statusCode!=204)throw Exception('Token revocation failed');}
+ final String baseUrl; final http.Client client; final Map<String, String> Function() headers;
+ HttpMcpTokenClient(this.baseUrl,{http.Client? client, Map<String, String> Function()? headers}):client=client??http.Client(), headers=headers??(()=>const {});
+ Future<({String id,String token})> create() async {final r=await client.post(Uri.parse('$baseUrl/v1/mcp-tokens'),headers:headers());if(r.statusCode!=200)throw Exception('Token creation failed');final v=jsonDecode(r.body) as Map<String,dynamic>;return (id:v['id'] as String,token:v['token'] as String);}
+ Future<void> revoke(String id) async {final r=await client.delete(Uri.parse('$baseUrl/v1/mcp-tokens/$id'),headers:headers());if(r.statusCode!=204)throw Exception('Token revocation failed');}
 }

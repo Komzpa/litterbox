@@ -14,6 +14,11 @@ func WithTenant(ctx context.Context, tenantID string) context.Context {
 	return context.WithValue(ctx, tenantContextKey{}, tenantID)
 }
 
+func TenantFrom(ctx context.Context) (string, bool) {
+	tenant, ok := ctx.Value(tenantContextKey{}).(string)
+	return tenant, ok
+}
+
 // CardsHandler serves cards for an authenticated tenant. Authentication
 // middleware must attach the tenant with WithTenant before this handler runs.
 func CardsHandler(db *sql.DB) http.HandlerFunc {

@@ -11,22 +11,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/auth"
+	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/gmail"
 	"github.com/Komzpa/litterbox/server/internal/gmailsync"
-	"github.com/Komzpa/litterbox/server/internal/auth"
-	"github.com/jackc/pgx/v5"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
-	"github.com/Komzpa/litterbox/server/internal/reminders"
+	"github.com/Komzpa/litterbox/server/internal/ingest"
+	"github.com/Komzpa/litterbox/server/internal/journal"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
-	"github.com/Komzpa/litterbox/server/internal/ingest"
-	"github.com/Komzpa/litterbox/server/internal/sources/agents"
-	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/offline"
 	"github.com/Komzpa/litterbox/server/internal/ops"
+	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
-	"github.com/Komzpa/litterbox/server/internal/journal"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -64,7 +63,9 @@ func main() {
 	var protected http.Handler = mux
 	if databaseURL != "" {
 		pg, err := pgx.Connect(context.Background(), databaseURL)
-		if err != nil { log.Fatal(err) }
+		if err != nil {
+			log.Fatal(err)
+		}
 		defer pg.Close(context.Background())
 		authHandler := auth.NewHandler(auth.NewPostgresStore(pg), devTenantID)
 		authHandler.Register(mux)
@@ -101,97 +102,121 @@ func main() {
 		journalStore.RegisterPrivate(journalMux)
 		mux.Handle("/v1/journal", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			if devTenantID != "" {
-				ctx = journal.WithTenant(ctx, devTenantID)
+			if tenant, ok := cards.TenantFrom(r.Context()); ok {
+				ctx = journal.WithTenant(ctx, tenant)
 			}
 			journalMux.ServeHTTP(w, r.WithContext(ctx))
 		}))
 		mux.Handle("/v1/journal/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			if devTenantID != "" {
-				ctx = journal.WithTenant(ctx, devTenantID)
+			if tenant, ok := cards.TenantFrom(r.Context()); ok {
+				ctx = journal.WithTenant(ctx, tenant)
 			}
 			journalMux.ServeHTTP(w, r.WithContext(ctx))
 		}))
 		mux.Handle("/v1/mcp-tokens", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			if devTenantID != "" {
-				ctx = journal.WithTenant(ctx, devTenantID)
+			if tenant, ok := cards.TenantFrom(r.Context()); ok {
+				ctx = journal.WithTenant(ctx, tenant)
 			}
 			journalMux.ServeHTTP(w, r.WithContext(ctx))
 		}))
 		mux.Handle("/v1/mcp-tokens/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			if devTenantID != "" {
-				ctx = journal.WithTenant(ctx, devTenantID)
+			if tenant, ok := cards.TenantFrom(r.Context()); ok {
+				ctx = journal.WithTenant(ctx, tenant)
 			}
 			journalMux.ServeHTTP(w, r.WithContext(ctx))
 		}))
-		mux.Handle("POST /v1/ingest", ingest.Handler{DB: db})
+		mux.Handle("POST /v1/ingest", ingest.Handler{DB: db, Pool: pool})
 		go func() {
 			if err := ingest.RunCallbacks(context.Background(), db, &http.Client{Timeout: 10 * time.Second}); err != nil {
 				log.Printf("source callback worker stopped: %v", err)
 			}
 		}()
+		devOnly := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				tenant, ok := cards.TenantFrom(r.Context())
+				if !ok {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+				ctx := agents.WithTenant(r.Context(), tenant)
+				ctx = gmail.WithTenant(ctx, tenant)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			})
+		}
 		if devTenantID != "" {
-			devOnly := func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					ctx := agents.WithTenant(r.Context(), devTenantID)
-					ctx = cards.WithTenant(ctx, devTenantID)
-					ctx = gmail.WithTenant(ctx, devTenantID)
-					next.ServeHTTP(w, r.WithContext(ctx))
-				})
-			}
-			go func() { if err := reminders.Run(context.Background(), db, devTenantID, time.Minute); err != nil { log.Printf("reminder scheduler: %v", err) } }()
-			reminderMux := http.NewServeMux()
-			(&reminders.Handler{DB: db}).Routes(reminderMux)
-			mux.Handle("/v1/reminders", devOnly(reminderMux))
-			cardHandler, err := cards.NewHandler(db, timezone, noteSink)
+			go func() {
+				if err := reminders.Run(context.Background(), db, devTenantID, time.Minute); err != nil {
+					log.Printf("reminder scheduler: %v", err)
+				}
+			}()
+		}
+		reminderMux := http.NewServeMux()
+		(&reminders.Handler{DB: db}).Routes(reminderMux)
+		mux.Handle("/v1/reminders", devOnly(reminderMux))
+		cardHandler, err := cards.NewHandler(db, timezone, noteSink)
+		if err != nil {
+			log.Fatal(err)
+		}
+		eventsCtx, stopEvents := context.WithCancel(context.Background())
+		defer stopEvents()
+		cardHandler.Events = cards.StartEvents(eventsCtx, databaseURL)
+		cardMux := http.NewServeMux()
+		cardHandler.Routes(cardMux)
+		mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
+		mux.Handle("GET /v1/cards/{id}/body", devOnly(mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}))
+		mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
+		snapshotAPI := offline.API{DB: db, Identity: func(r *http.Request) (string, bool) { return cards.TenantFrom(r.Context()) }}
+		mux.Handle("GET /v1/snapshot", devOnly(http.HandlerFunc(snapshotAPI.Snapshot)))
+		mux.Handle("GET /v1/changes", devOnly(http.HandlerFunc(snapshotAPI.Changes)))
+		opsAPI := ops.API{DB: pool, Identity: func(ctx context.Context) (string, string, bool) {
+			tenant, ok := cards.TenantFrom(ctx)
+			return tenant, "", ok
+		}}
+		mux.Handle("POST /v1/ops", devOnly(opsAPI))
+		if path := os.Getenv("GMAIL_OAUTH_CREDENTIALS"); path != "" {
+			credentials, err := gmail.LoadCredentials(path)
 			if err != nil {
 				log.Fatal(err)
 			}
-			eventsCtx, stopEvents := context.WithCancel(context.Background())
-			defer stopEvents()
-			cardHandler.Events = cards.StartEvents(eventsCtx, databaseURL)
-			cardMux := http.NewServeMux()
-			cardHandler.Routes(cardMux)
-			mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
-			mux.Handle("GET /v1/cards/{id}/body", devOnly(mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}))
-			mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
-			snapshotAPI := offline.API{DB: db, Identity: func(r *http.Request) (string, bool) { return cards.TenantFrom(r.Context()) }}
-			mux.Handle("GET /v1/snapshot", devOnly(http.HandlerFunc(snapshotAPI.Snapshot)))
-			mux.Handle("GET /v1/changes", devOnly(http.HandlerFunc(snapshotAPI.Changes)))
-			opsAPI := ops.API{DB: pool, Identity: func(ctx context.Context) (string, string, bool) {
-				tenant, ok := cards.TenantFrom(ctx)
-				return tenant, "", ok
-			}}
-			mux.Handle("POST /v1/ops", devOnly(opsAPI))
-			if path := os.Getenv("GMAIL_OAUTH_CREDENTIALS"); path != "" {
-				credentials, err := gmail.LoadCredentials(path)
-				if err != nil { log.Fatal(err) }
-				secret := []byte(os.Getenv("GMAIL_OAUTH_STATE_SECRET"))
-				if len(secret) < 32 { log.Fatal("GMAIL_OAUTH_STATE_SECRET must be at least 32 bytes") }
-				callback := os.Getenv("GMAIL_OAUTH_CALLBACK_URL")
-				if callback == "" { log.Fatal("GMAIL_OAUTH_CALLBACK_URL required") }
-				web := &gmail.WebHandler{DB: db, Config: gmail.WebConfig{Credentials: credentials, CallbackURL: callback, StateSecret: secret}}
-				gmux := http.NewServeMux()
-				web.Routes(gmux)
-				syncDB, err := pgxpool.New(context.Background(), databaseURL)
-				if err != nil { log.Fatal(err) }
-				defer syncDB.Close()
-				syncCtx, stopSync := context.WithCancel(context.Background())
-				defer stopSync()
-				syncer := &gmailsync.Syncer{DB: syncDB, Client: gmailsync.ClientFactory(credentials.ClientID, credentials.ClientSecret, "", "", nil)}
-				gmailsync.RegisterOps(gmailsync.ClientForCard(credentials.ClientID, credentials.ClientSecret, "", "", nil))
-				go func() {
-					for syncCtx.Err() == nil {
-						if err := syncer.Run(syncCtx, func(ctx context.Context) ([]gmailsync.Account, error) { return gmailsync.LoadAccounts(ctx, syncDB) }); err != nil && syncCtx.Err() == nil { log.Printf("Gmail synchronization: %v", err) }
-						select { case <-syncCtx.Done(): return; case <-time.After(time.Minute): }
-					}
-				}()
-				for _, route := range []string{gmail.AccountsPath, gmail.AccountsPath + "/", gmail.ConnectPath} { mux.Handle(route, devOnly(gmux)) }
-				mux.Handle(gmail.OAuthCallbackPath, gmux)
+			secret := []byte(os.Getenv("GMAIL_OAUTH_STATE_SECRET"))
+			if len(secret) < 32 {
+				log.Fatal("GMAIL_OAUTH_STATE_SECRET must be at least 32 bytes")
 			}
+			callback := os.Getenv("GMAIL_OAUTH_CALLBACK_URL")
+			if callback == "" {
+				log.Fatal("GMAIL_OAUTH_CALLBACK_URL required")
+			}
+			web := &gmail.WebHandler{DB: db, Config: gmail.WebConfig{Credentials: credentials, CallbackURL: callback, StateSecret: secret}}
+			gmux := http.NewServeMux()
+			web.Routes(gmux)
+			syncDB, err := pgxpool.New(context.Background(), databaseURL)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer syncDB.Close()
+			syncCtx, stopSync := context.WithCancel(context.Background())
+			defer stopSync()
+			syncer := &gmailsync.Syncer{DB: syncDB, Client: gmailsync.ClientFactory(credentials.ClientID, credentials.ClientSecret, "", "", nil)}
+			gmailsync.RegisterOps(gmailsync.ClientForCard(credentials.ClientID, credentials.ClientSecret, "", "", nil))
+			go func() {
+				for syncCtx.Err() == nil {
+					if err := syncer.Run(syncCtx, func(ctx context.Context) ([]gmailsync.Account, error) { return gmailsync.LoadAccounts(ctx, syncDB) }); err != nil && syncCtx.Err() == nil {
+						log.Printf("Gmail synchronization: %v", err)
+					}
+					select {
+					case <-syncCtx.Done():
+						return
+					case <-time.After(time.Minute):
+					}
+				}
+			}()
+			for _, route := range []string{gmail.AccountsPath, gmail.AccountsPath + "/", gmail.ConnectPath} {
+				mux.Handle(route, devOnly(gmux))
+			}
+			mux.Handle(gmail.OAuthCallbackPath, gmux)
 		}
 	}
 	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, protected)}

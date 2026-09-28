@@ -94,7 +94,19 @@ func testPool(t *testing.T) *pgxpool.Pool {
 		t.Fatal(e)
 	}
 	t.Cleanup(db.Close)
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql"} {
+	if _, e := db.Exec(ctx, `DROP SCHEMA public CASCADE`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(ctx, `DROP ROLE IF EXISTS litterbox_app`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(ctx, `CREATE SCHEMA public`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); e != nil {
+		t.Fatal(e)
+	}
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)

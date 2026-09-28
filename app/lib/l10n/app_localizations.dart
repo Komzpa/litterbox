@@ -100,67 +100,67 @@ abstract class AppLocalizations {
     Locale('ru'),
   ];
 
-  /// No description provided for @pinned.
+  /// No description provided for @nowSection.
   ///
   /// In en, this message translates to:
-  /// **'Pinned'**
-  String get pinned;
+  /// **'Now'**
+  String get nowSection;
 
-  /// No description provided for @archiveBundle.
+  /// No description provided for @laterSection.
   ///
   /// In en, this message translates to:
-  /// **'Archive bundle'**
-  String get archiveBundle;
+  /// **'Later'**
+  String get laterSection;
 
-  /// No description provided for @pin.
+  /// No description provided for @missedCount.
   ///
   /// In en, this message translates to:
-  /// **'Pin'**
-  String get pin;
+  /// **'Missed ({count})'**
+  String missedCount(int count);
 
-  /// No description provided for @unpin.
+  /// No description provided for @emptyCards.
   ///
   /// In en, this message translates to:
-  /// **'Unpin'**
-  String get unpin;
+  /// **'No cards'**
+  String get emptyCards;
 
-  /// No description provided for @takeOutOfBundle.
+  /// No description provided for @retry.
   ///
   /// In en, this message translates to:
-  /// **'Take out of bundle'**
-  String get takeOutOfBundle;
+  /// **'Retry'**
+  String get retry;
 
-  /// No description provided for @snooze.
+  /// No description provided for @oldServer.
   ///
   /// In en, this message translates to:
-  /// **'Snooze'**
-  String get snooze;
+  /// **'Server is older than the app'**
+  String get oldServer;
 
-  /// No description provided for @laterToday.
+  /// No description provided for @restart.
   ///
   /// In en, this message translates to:
-  /// **'Later today'**
-  String get laterToday;
+  /// **'Restart'**
+  String get restart;
 
-  /// No description provided for @tomorrowMorning.
+  /// No description provided for @done.
   ///
   /// In en, this message translates to:
-  /// **'Tomorrow morning'**
-  String get tomorrowMorning;
+  /// **'Done'**
+  String get done;
 
-  /// No description provided for @nextWeek.
+  /// No description provided for @note.
   ///
   /// In en, this message translates to:
-  /// **'Next week'**
-  String get nextWeek;
+  /// **'Note'**
+  String get note;
 
-  /// No description provided for @customDateTime.
+  /// No description provided for @noteHint.
   ///
   /// In en, this message translates to:
-  /// **'Custom date/time'**
-  String get customDateTime;
+  /// **'What should the task generator know?'**
+  String get noteHint;
 
-  /// No description provided for @bundleCount.
+  /// No description provided for @cancel.
   ///
   /// In en, this message translates to:
   /// **'Cancel'**
@@ -231,6 +231,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create'**
   String get create;
+
+  /// No description provided for @pinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned'**
+  String get pinned;
+
+  /// No description provided for @archiveBundle.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive bundle'**
+  String get archiveBundle;
+
+  /// No description provided for @pin.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get pin;
+
+  /// No description provided for @unpin.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get unpin;
+
+  /// No description provided for @takeOutOfBundle.
+  ///
+  /// In en, this message translates to:
+  /// **'Take out of bundle'**
+  String get takeOutOfBundle;
+
+  /// No description provided for @snooze.
+  ///
+  /// In en, this message translates to:
+  /// **'Snooze'**
+  String get snooze;
+
+  /// No description provided for @laterToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Later today'**
+  String get laterToday;
+
+  /// No description provided for @tomorrowMorning.
+  ///
+  /// In en, this message translates to:
+  /// **'Tomorrow morning'**
+  String get tomorrowMorning;
+
+  /// No description provided for @nextWeek.
+  ///
+  /// In en, this message translates to:
+  /// **'Next week'**
+  String get nextWeek;
+
+  /// No description provided for @customDateTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom date/time'**
+  String get customDateTime;
+
+  /// No description provided for @bundleCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{bundle} ({count})'**
+  String bundleCount(Object bundle, int count);
+
+  /// No description provided for @journal.
+  ///
+  /// In en, this message translates to:
+  /// **'Journal'**
+  String get journal;
+
+  /// No description provided for @journalEntryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a journal entry'**
+  String get journalEntryHint;
+
+  /// No description provided for @mcpSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'MCP tokens'**
+  String get mcpSettings;
+
+  /// No description provided for @createToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Create token'**
+  String get createToken;
+
+  /// No description provided for @revokeToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke'**
+  String get revokeToken;
+
+  /// No description provided for @tokenShownOnce.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy this token now. It will not be shown again.'**
+  String get tokenShownOnce;
 }
 
 class _AppLocalizationsDelegate
