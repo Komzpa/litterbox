@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:litterbox/main.dart';
 
 class LiveClient extends http.BaseClient {
@@ -142,7 +143,7 @@ void main() {
         if (request.method == 'GET') {
           return http.Response(jsonEncode({
             'now': done ? [] : [card('one', 'Current work', null, note: note)],
-            'later': [card('two', 'Sleep later', '2026-09-28T23:00:00+04:00')],
+            'later': [card('two', 'Sleep later', '2026-09-29T23:00:00+04:00')],
             'missed': [card('three', 'Earlier work', '2026-09-28T10:00:00+04:00')],
           }), 200);
         }
@@ -166,6 +167,8 @@ void main() {
       expect(find.text(locale == 'be' ? 'Пазней' : 'Later'), findsOneWidget);
       expect(find.text('Current work'), findsOneWidget);
       expect(find.text('Sleep later'), findsOneWidget);
+      final rendered = '${DateFormat.yMMMd(locale).format(DateTime.parse('2026-09-29T23:00:00+04:00').toLocal())} ${DateFormat.jm(locale).format(DateTime.parse('2026-09-29T23:00:00+04:00').toLocal())}';
+      expect(find.text(rendered), findsOneWidget);
       expect(find.text('Earlier work'), findsNothing);
       expect(find.byIcon(Icons.refresh), findsNothing);
       final fetched = calls.where((call) => call.startsWith('GET /v1/cards ')).length;

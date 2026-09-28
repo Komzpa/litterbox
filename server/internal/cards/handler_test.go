@@ -28,7 +28,7 @@ func TestPostgresNotePersistence(t *testing.T) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "015_card_note_updated.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {
 			t.Fatal(err)
@@ -83,9 +83,14 @@ func TestPostgresNotePersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	eventReader := bufio.NewReader(response.Body)
-	readEvent := func() {
+	response2, err := http.Get(streamServer.URL + "/v1/cards/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response2.Body.Close()
+	readEvent := func(response *http.Response) {
 		t.Helper()
+		eventReader := bufio.NewReader(response.Body)
 		deadline := time.After(2 * time.Second)
 		done := make(chan error, 1)
 		go func() {
@@ -110,7 +115,8 @@ func TestPostgresNotePersistence(t *testing.T) {
 			t.Fatal("timed out waiting for cards event")
 		}
 	}
-	readEvent()
+	readEvent(response)
+	readEvent(response2)
 	get := func(tenant string) Sections {
 		t.Helper()
 		w := request(tenant, "GET", "/v1/cards?now=2026-09-28T15:00:00%2B04:00", "")
@@ -138,9 +144,20 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if w := request(tenant, "POST", "/v1/cards/"+id+"/note", `{"text":"not actionable"}`); w.Code != 204 {
 		t.Fatalf("note status=%d body=%s", w.Code, w.Body.String())
 	}
+	readEvent(response)
+	readEvent(response2)
 	if got := get(tenant).Now[0].Note; got != "not actionable" {
 		t.Fatalf("persisted note=%q", got)
 	}
+	noteFeed := request(tenant, "GET", "/v1/cards/notes?since=2000-01-01T00:00:00Z", "")
+	if noteFeed.Code != 200 || !strings.Contains(noteFeed.Body.String(), "not actionable") || !strings.Contains(noteFeed.Body.String(), id) {
+		t.Fatalf("note feed=%d %s", noteFeed.Code, noteFeed.Body.String())
+	}
+	foreignFeed := request(other, "GET", "/v1/cards/notes?since=2000-01-01T00:00:00Z", "")
+	if foreignFeed.Code != 200 || strings.Contains(foreignFeed.Body.String(), "not actionable") {
+		t.Fatalf("foreign note feed=%d %s", foreignFeed.Code, foreignFeed.Body.String())
+	}
+
 	if err = todos.Upsert(context.Background(), db, tenant, rows); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +167,8 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if w := request(tenant, "POST", "/v1/cards/"+id+"/dismiss", `{"note":"do not repeat"}`); w.Code != 204 {
 		t.Fatalf("dismiss status=%d body=%s", w.Code, w.Body.String())
 	}
-	readEvent()
+	readEvent(response)
+	readEvent(response2)
 
 	if len(get(tenant).Now) != 0 || len(get(other).Now) != 1 {
 		t.Fatal("dismiss visibility or tenant isolation failed")
@@ -170,7 +188,8 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if _, err = separate.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,title) VALUES ($1,$2,'todo',$3,$4)`, tenant, "33333333-3333-4333-8333-333333333333", "event-separate", "Separate insert"); err != nil {
 		t.Fatal(err)
 	}
-	readEvent()
+	readEvent(response)
+	readEvent(response2)
 	if err = todos.Upsert(context.Background(), db, tenant, rows); err != nil {
 		t.Fatal(err)
 	}
