@@ -41,16 +41,15 @@ int main(int argc, char *argv[])
     TimeRules timeRules;
     engine.rootContext()->setContextProperty(QStringLiteral("timeRules"), &timeRules);
 
-    // The canonical offline store emits transport requests. Adapt its queued
-    // done/note actions to the existing v1 card routes, not the unimplemented
-    // /v1/ops route. A 204 from the server is an acknowledged operation.
+    // Preserve the existing v1 note/done routes. Other queued actions use
+    // the server operation API, which acknowledges durable outbox entries.
     QSet<int> cardsRequests;
     QHash<int, QString> operationRequests;
     QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path) {
         cardsRequests.insert(api.get(path));
     });
     QObject::connect(&store, &CardStore::requestPost, &app,
-        [&](const QString &opId, const QString &, const QVariantMap &payload) {
+        [&](const QString &opId, const QString &requestPath, const QVariantMap &payload) {
             const QString cardId = payload.value(QStringLiteral("card_id")).toString();
             const QString type = payload.value(QStringLiteral("type")).toString();
             const QVariantMap args = payload.value(QStringLiteral("args")).toMap();
@@ -62,6 +61,9 @@ int main(int argc, char *argv[])
             } else if (type == QStringLiteral("note")) {
                 path += QStringLiteral("/note");
                 body.insert(QStringLiteral("text"), args.value(QStringLiteral("note")).toString());
+            } else if (requestPath == QStringLiteral("/v1/ops")) {
+                operationRequests.insert(api.post(requestPath, QJsonObject::fromVariantMap(payload)), opId);
+                return;
             } else {
                 store.reportPostResult(opId, 0, {});
                 return;
@@ -74,8 +76,11 @@ int main(int argc, char *argv[])
                 store.applyRemoteCards(data.toObject().toVariantMap());
                 return;
             }
-            if (operationRequests.contains(id))
-                store.reportPostResult(operationRequests.take(id), status, {{QStringLiteral("ok"), true}});
+            if (operationRequests.contains(id)) {
+                QVariantMap response = data.toObject().toVariantMap();
+                if (status == 204) response.insert(QStringLiteral("ok"), true);
+                store.reportPostResult(operationRequests.take(id), status, response);
+            }
         });
     QObject::connect(&api, &Api::requestFailed, &app,
         [&](int id, int status, const QString &) {

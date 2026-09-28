@@ -9,6 +9,7 @@ ApplicationWindow {
     width: 520
     height: 800
     title: "Litterbox"
+    property var cardStore: store
 
     function openPage(name, properties) {
         const page = pagesDir.toString() + name + ".qml"
@@ -39,7 +40,7 @@ ApplicationWindow {
                 section.delegate: Kirigami.Heading {
                     width: ListView.view.width
                     level: 3
-                    text: section === "now" ? "Now" : section === "later" ? "Later" : "Missed"
+                    text: section === "pinned" ? "Pinned" : section === "now" ? "Now" : section === "later" ? "Later" : "Missed"
                     padding: 8
                 }
                 delegate: Frame {
@@ -52,7 +53,16 @@ ApplicationWindow {
                         width: parent.width
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: title; font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            Label {
+                                text: title
+                                font.bold: true
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                TapHandler {
+                                    enabled: card.source === "mail"
+                                    onTapped: window.openPage("MailDetailPage", { api: api, cardId: cardId })
+                                }
+                            }
                             Label { text: window.clock(card) }
                         }
                         Label { text: card.summary || ""; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
@@ -60,10 +70,16 @@ ApplicationWindow {
                         RowLayout {
                             Label { text: card.source || ""; Layout.fillWidth: true }
                             Button { text: "Note"; onClicked: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() } }
-                            Button { text: "Done"; onClicked: store.dismiss(cardId) }
+                            Button { text: "Done"; visible: card.source !== "mail"; onClicked: store.dismiss(cardId) }
+                            CardActions {
+                                store: window.cardStore
+                                cardKey: cardId
+                                source: card.source || ""
+                                bundleId: card.bundle_id || ""
+                                pinnedRank: card.pinned_rank
+                            }
                         }
                     }
-                    TapHandler { onTapped: if (card.source === "mail") window.openPage("MailDetailPage", { api: api, cardId: cardId }) }
                 }
             }
         }
@@ -75,7 +91,34 @@ ApplicationWindow {
         modal: true
         anchors.centerIn: parent
         standardButtons: Dialog.Save | Dialog.Cancel
-        contentItem: TextArea { id: noteField; width: 360; height: 120; wrapMode: TextEdit.Wrap }
+        onOpened: noteField.forceActiveFocus()
+        // KDE Breeze TextArea assigns its TextArea target to a TextInput-only
+        // mobile toolbar and aborts desktop root creation. Keep multiline edit
+        // semantics using QtQuick.TextEdit inside a styled, scrollable frame.
+        contentItem: Frame {
+            implicitWidth: 360
+            implicitHeight: 120
+            padding: Kirigami.Units.smallSpacing
+            Flickable {
+                id: noteScroll
+                anchors.fill: parent
+                clip: true
+                contentWidth: width
+                contentHeight: Math.max(height, noteField.contentHeight)
+                boundsBehavior: Flickable.StopAtBounds
+                TextEdit {
+                    id: noteField
+                    width: noteScroll.width
+                    height: Math.max(noteScroll.height, contentHeight)
+                    wrapMode: TextEdit.Wrap
+                    selectByMouse: true
+                    color: Kirigami.Theme.textColor
+                    selectionColor: Kirigami.Theme.highlightColor
+                    selectedTextColor: Kirigami.Theme.highlightedTextColor
+                    Accessible.role: Accessible.EditableText
+                }
+            }
+        }
         onAccepted: store.saveNote(cardId, noteField.text)
     }
 }

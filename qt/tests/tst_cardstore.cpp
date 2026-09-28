@@ -9,6 +9,13 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QDateTime>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QTime>
+#include <QUrl>
 #include <QUuid>
 
 static const QString cardId = QStringLiteral("11111111-1111-4111-8111-111111111111");
@@ -160,6 +167,145 @@ private slots:
         QCOMPARE(server.received[1].value("op_id").toString(),id);
         QCOMPARE(server.applied,1);
     }
+    void snoozeAndPinOrderSurviveColdRestartAndAcknowledgement() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("cache.sqlite");
+        const QString firstPin = cardId;
+        const QString secondPin = QStringLiteral("22222222-2222-4222-8222-222222222222");
+        const QString snoozedCard = QStringLiteral("33333333-3333-4333-8333-333333333333");
+        const QString until = QStringLiteral("2030-03-04T05:06:00.000Z");
+        const QVariantMap sections{{"now", QVariantList{
+            QVariantMap{{"id", firstPin}, {"title", "First"}, {"pinned_rank", 1}},
+            QVariantMap{{"id", secondPin}, {"title", "Second"}, {"pinned_rank", 2}}}},
+            {"later", QVariantList{QVariantMap{{"id", snoozedCard}, {"title", "Snooze"}}}},
+            {"missed", QVariantList{}}};
+        QString reorderId, snoozeId;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(sections));
+            QCOMPARE(store.data(store.index(0), CardStore::SectionRole).toString(), QStringLiteral("pinned"));
+            reorderId = store.enqueueOp(firstPin, QStringLiteral("reorder_pins"),
+                {{QStringLiteral("cards"), QVariantList{secondPin, firstPin}}});
+            snoozeId = store.enqueueOp(snoozedCard, QStringLiteral("snooze"),
+                {{QStringLiteral("until"), until}});
+            QVERIFY(!QUuid(reorderId).isNull());
+            QVERIFY(!QUuid(snoozeId).isNull());
+            QCOMPARE(store.pinnedCardIds(), QStringList({secondPin, firstPin}));
+            QCOMPARE(store.pendingOps(), 2);
+            QCOMPARE(store.rowCount(), 2);
+        }
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        {
+            CardStore restored;
+            QVERIFY(restored.open(path));
+            QCOMPARE(restored.pinnedCardIds(), QStringList({secondPin, firstPin}));
+            QCOMPARE(restored.rowCount(), 2);
+            QCOMPARE(restored.data(restored.index(0), CardStore::CardRole).toMap().value("id").toString(), secondPin);
+            restored.setTransport(&transport);
+            restored.setOnline(true);
+            QTRY_COMPARE(restored.pendingOps(), 0);
+            QCOMPARE(server.received.size(), 2);
+            QCOMPARE(server.received[0].value("op_id").toString(), reorderId);
+            QCOMPARE(server.received[0].value("type").toString(), QStringLiteral("reorder_pins"));
+            QCOMPARE(server.received[0].value("args").toMap().value("cards").toList(), QVariantList({secondPin, firstPin}));
+            QCOMPARE(server.received[1].value("op_id").toString(), snoozeId);
+            QCOMPARE(server.received[1].value("type").toString(), QStringLiteral("snooze"));
+            QCOMPARE(server.received[1].value("args").toMap().value("until").toString(), until);
+        }
+        CardStore coldStart;
+        QVERIFY(coldStart.open(path));
+        QCOMPARE(coldStart.pendingOps(), 0);
+        QCOMPARE(coldStart.pinnedCardIds(), QStringList({secondPin, firstPin}));
+        QCOMPARE(coldStart.rowCount(), 2);
+    }
+    void qmlActionsReachDurableOutboxAndHttpAck() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("cache.sqlite");
+        const QString firstPin = cardId;
+        const QString secondPin = QStringLiteral("22222222-2222-4222-8222-222222222222");
+        const QString snoozedCard = QStringLiteral("33333333-3333-4333-8333-333333333333");
+        const QString expectedUntil = QDateTime(QDate(2030, 3, 4), QTime(5, 6), Qt::LocalTime)
+            .toUTC().toString(Qt::ISODateWithMs);
+        const QVariantMap sections{{"now", QVariantList{
+            QVariantMap{{"id", firstPin}, {"title", "First"}, {"pinned_rank", 1}},
+            QVariantMap{{"id", secondPin}, {"title", "Second"}, {"pinned_rank", 2}}}},
+            {"later", QVariantList{QVariantMap{{"id", snoozedCard}, {"title", "Snooze"}}}},
+            {"missed", QVariantList{}}};
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        {
+            CardStore offline;
+            QVERIFY(offline.open(path));
+            QVERIFY(offline.applyRemoteCards(sections));
+            QQmlEngine engine;
+            QQmlComponent component(&engine, QUrl::fromLocalFile(QStringLiteral(LB_SOURCE_ACTIONS_QML)));
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            QQuickWindow window;
+            window.resize(520, 800);
+            QVariantMap snoozeProperties{{"store", QVariant::fromValue(static_cast<QObject *>(&offline))},
+                {"cardKey", snoozedCard}, {"pinnedRank", QVariant()}};
+            QObject *snoozeActions = component.createWithInitialProperties(snoozeProperties);
+            QVERIFY2(snoozeActions, qPrintable(component.errorString()));
+            auto *snoozeItem = qobject_cast<QQuickItem *>(snoozeActions);
+            QVERIFY(snoozeItem);
+            snoozeItem->setParentItem(window.contentItem());
+            window.show();
+            QCoreApplication::processEvents();
+            QVERIFY(QMetaObject::invokeMethod(snoozeActions, "chooseSnoozeDateTime"));
+            QObject *dialog = snoozeActions->findChild<QObject *>(QStringLiteral("snoozeDialog"));
+            QObject *field = snoozeActions->findChild<QObject *>(QStringLiteral("snoozeDateTime"));
+            QVERIFY(dialog);
+            QVERIFY(field);
+            field->setProperty("text", QStringLiteral("2030-03-04 05:06"));
+            QVERIFY(QMetaObject::invokeMethod(dialog, "accept"));
+            QCOMPARE(offline.pendingOps(), 1);
+            QCOMPARE(offline.rowCount(), 2);
+
+            QVERIFY(QMetaObject::invokeMethod(snoozeActions, "chooseSnoozeDateTime"));
+            field->setProperty("text", QStringLiteral("2030-02-30 12:00"));
+            QVERIFY(QMetaObject::invokeMethod(dialog, "accept"));
+            QCOMPARE(offline.pendingOps(), 1);
+            QVERIFY(snoozeActions->property("snoozeError").toString().size() > 0);
+
+            QVariantMap pinProperties{{"store", QVariant::fromValue(static_cast<QObject *>(&offline))},
+                {"cardKey", secondPin}, {"pinnedRank", 2}};
+            QObject *pinActions = component.createWithInitialProperties(pinProperties);
+            QVERIFY2(pinActions, qPrintable(component.errorString()));
+            auto *pinItem = qobject_cast<QQuickItem *>(pinActions);
+            QVERIFY(pinItem);
+            pinItem->setParentItem(window.contentItem());
+            QVERIFY(QMetaObject::invokeMethod(pinActions, "movePin", Q_ARG(QVariant, QVariant(-1))));
+            QCOMPARE(offline.pinnedCardIds(), QStringList({secondPin, firstPin}));
+            QCOMPARE(offline.pendingOps(), 2);
+            QVERIFY(QMetaObject::invokeMethod(pinActions, "movePin", Q_ARG(QVariant, QVariant(-1))));
+            QCOMPARE(offline.pendingOps(), 2);
+        }
+        {
+            CardStore restored;
+            QVERIFY(restored.open(path));
+            QCOMPARE(restored.pinnedCardIds(), QStringList({secondPin, firstPin}));
+            QCOMPARE(restored.rowCount(), 2);
+            restored.setTransport(&transport);
+            restored.setOnline(true);
+            QTRY_COMPARE(restored.pendingOps(), 0);
+            QCOMPARE(server.received.size(), 2);
+            QCOMPARE(server.received[0].value("type").toString(), QStringLiteral("snooze"));
+            QCOMPARE(server.received[0].value("args").toMap().value("until").toString(), expectedUntil);
+            QCOMPARE(server.received[1].value("type").toString(), QStringLiteral("reorder_pins"));
+            QCOMPARE(server.received[1].value("args").toMap().value("cards").toList(), QVariantList({secondPin, firstPin}));
+        }
+        CardStore coldStart;
+        QVERIFY(coldStart.open(path));
+        QCOMPARE(coldStart.pendingOps(), 0);
+        QCOMPARE(coldStart.pinnedCardIds(), QStringList({secondPin, firstPin}));
+        QCOMPARE(coldStart.rowCount(), 2);
+    }
     void rejectionRetainsHeadAndBlocksLaterOps() {
         QTemporaryDir directory;
         OpsServer server;
@@ -184,5 +330,5 @@ private slots:
         QCOMPARE(server.received[2].value("type").toString(),QStringLiteral("unpin"));
     }
 };
-QTEST_GUILESS_MAIN(CardStoreTest)
+QTEST_MAIN(CardStoreTest)
 #include "tst_cardstore.moc"

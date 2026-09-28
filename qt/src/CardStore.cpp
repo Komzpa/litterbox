@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "CardStore.h"
+#include <algorithm>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
@@ -47,7 +48,16 @@ void CardStore::reloadCache() {
     if (!q.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) {
         emit storageError(q.lastError().text()); return;
     }
-    while (q.next()) cards.append(QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap());
+    while (q.next()) {
+        QVariantMap card = QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap();
+        const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+        const bool pinned = card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
+        if (pinned && card.value(QStringLiteral("section")).toString() != QStringLiteral("pinned")) {
+            card.insert(QStringLiteral("section_before_pin"), card.value(QStringLiteral("section")));
+            card.insert(QStringLiteral("section"), QStringLiteral("pinned"));
+        }
+        cards.append(std::move(card));
+    }
     beginResetModel(); m_cards = std::move(cards); endResetModel();
 }
 int CardStore::pendingOps() const {
@@ -79,9 +89,24 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
             QVariantMap card = value.toMap();
             const QString id = card.value(QStringLiteral("id")).toString();
             if (id.isEmpty() || ids.contains(id)) return false;
-            ids.insert(id); card.insert(QStringLiteral("section"), section); cards.append(card);
+            ids.insert(id);
+            card.insert(QStringLiteral("section"), section);
+            const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+            if (card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull()) {
+                card.insert(QStringLiteral("section_before_pin"), section);
+                card.insert(QStringLiteral("section"), QStringLiteral("pinned"));
+            }
+            cards.append(card);
         }
     }
+    std::stable_sort(cards.begin(), cards.end(), [](const QVariantMap &left, const QVariantMap &right) {
+        const QVariant leftRank = left.value(QStringLiteral("pinned_rank"));
+        const QVariant rightRank = right.value(QStringLiteral("pinned_rank"));
+        const bool leftPinned = left.contains(QStringLiteral("pinned_rank")) && leftRank.isValid() && !leftRank.isNull();
+        const bool rightPinned = right.contains(QStringLiteral("pinned_rank")) && rightRank.isValid() && !rightRank.isNull();
+        if (leftPinned != rightPinned) return leftPinned;
+        return leftPinned && leftRank.toLongLong() < rightRank.toLongLong();
+    });
     if (!m_db.transaction()) return false;
     QSqlQuery q(m_db);
     bool ok = q.exec(QStringLiteral("DELETE FROM cards"));
@@ -97,18 +122,120 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
     }
     reloadCache(); return true;
 }
+QStringList CardStore::pinnedCardIds() const {
+    QList<QPair<qint64, QString>> ordered;
+    for (const QVariantMap &card : m_cards) {
+        const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+        if (card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull())
+            ordered.append({rank.toLongLong(), card.value(QStringLiteral("id")).toString()});
+    }
+    std::stable_sort(ordered.begin(), ordered.end(), [](const auto &left, const auto &right) {
+        return left.first < right.first;
+    });
+    QStringList ids;
+    ids.reserve(ordered.size());
+    for (const auto &entry : ordered) ids.append(entry.second);
+    return ids;
+}
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_db.isOpen() || QUuid(cardId).isNull()) return {};
-    static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
+    static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
         QStringLiteral("reorder_pins"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QJsonObject payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
         {QStringLiteral("type"), type}, {QStringLiteral("args"), QJsonObject::fromVariantMap(args)}};
+
+    QList<QVariantMap> cards = m_cards;
+    auto isPinned = [](const QVariantMap &card) {
+        const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+        return card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
+    };
+    bool changed = false;
+    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("snooze")) {
+        const auto oldSize = cards.size();
+        cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
+            return card.value(QStringLiteral("id")).toString() == cardId;
+        }), cards.end());
+        changed = cards.size() != oldSize;
+    } else if (type == QStringLiteral("bundle_archive") || type == QStringLiteral("bundle_done")) {
+        const QString bundle = args.value(QStringLiteral("bundle_id")).toString();
+        if (!bundle.isEmpty()) {
+            const auto oldSize = cards.size();
+            cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
+                return card.value(QStringLiteral("bundle_id")).toString() == bundle &&
+                    card.value(QStringLiteral("state")).toString() == QStringLiteral("open") &&
+                    card.contains(QStringLiteral("pinned_rank")) && !isPinned(card);
+            }), cards.end());
+            changed = cards.size() != oldSize;
+        }
+    } else if (type == QStringLiteral("take_out")) {
+        const QString target = args.value(QStringLiteral("card")).toString();
+        for (QVariantMap &card : cards) {
+            if (card.value(QStringLiteral("id")).toString() == target) {
+                card.insert(QStringLiteral("bundle_id"), QVariant());
+                changed = true;
+            }
+        }
+    } else if (type == QStringLiteral("pin") || type == QStringLiteral("unpin")) {
+        qint64 maxRank = 0;
+        for (const QVariantMap &card : cards)
+            if (isPinned(card)) maxRank = qMax(maxRank, card.value(QStringLiteral("pinned_rank")).toLongLong());
+        for (QVariantMap &card : cards) {
+            if (card.value(QStringLiteral("id")).toString() != cardId) continue;
+            if (type == QStringLiteral("pin")) {
+                if (!isPinned(card) && card.value(QStringLiteral("section")).toString() != QStringLiteral("pinned"))
+                    card.insert(QStringLiteral("section_before_pin"), card.value(QStringLiteral("section")));
+                card.insert(QStringLiteral("section"), QStringLiteral("pinned"));
+                card.insert(QStringLiteral("pinned_rank"), QVariant::fromValue(maxRank + 1));
+            } else {
+                card.insert(QStringLiteral("pinned_rank"), QVariant());
+                if (card.value(QStringLiteral("section")).toString() == QStringLiteral("pinned")) {
+                    if (card.contains(QStringLiteral("section_before_pin")))
+                        card.insert(QStringLiteral("section"), card.value(QStringLiteral("section_before_pin")));
+                    card.remove(QStringLiteral("section_before_pin"));
+                }
+            }
+        }
+    } else if (type == QStringLiteral("reorder_pins")) {
+        const QVariantList ordered = args.value(QStringLiteral("cards")).toList();
+        for (int i = 0; i < ordered.size(); ++i) {
+            for (QVariantMap &card : cards) {
+                if (card.value(QStringLiteral("id")).toString() == ordered[i].toString() && isPinned(card)) {
+                    card.insert(QStringLiteral("pinned_rank"), i + 1);
+                    changed = true;
+                }
+            }
+        }
+    }
+    if (changed) {
+        std::stable_sort(cards.begin(), cards.end(), [&](const QVariantMap &left, const QVariantMap &right) {
+            const bool leftPinned = isPinned(left), rightPinned = isPinned(right);
+            if (leftPinned != rightPinned) return leftPinned;
+            if (leftPinned) return left.value(QStringLiteral("pinned_rank")).toLongLong() < right.value(QStringLiteral("pinned_rank")).toLongLong();
+            return false;
+        });
+    }
+
+    if (!m_db.transaction()) return {};
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("INSERT INTO outbox(op_id,payload) VALUES(?,?)"));
     q.addBindValue(id); q.addBindValue(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
-    if (!q.exec()) { emit storageError(q.lastError().text()); return {}; }
+    if (!q.exec()) { m_db.rollback(); emit storageError(q.lastError().text()); return {}; }
+    if (changed) {
+        if (!q.exec(QStringLiteral("DELETE FROM cards")) ||
+            !q.prepare(QStringLiteral("INSERT INTO cards(id,position,payload) VALUES(?,?,?)"))) {
+            m_db.rollback(); emit storageError(q.lastError().text()); return {};
+        }
+        for (int i = 0; i < cards.size(); ++i) {
+            q.bindValue(0, cards[i].value(QStringLiteral("id")));
+            q.bindValue(1, i);
+            q.bindValue(2, QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(cards[i])).toJson(QJsonDocument::Compact)));
+            if (!q.exec()) { m_db.rollback(); emit storageError(q.lastError().text()); return {}; }
+        }
+    }
+    if (!m_db.commit()) { emit storageError(m_db.lastError().text()); m_db.rollback(); return {}; }
+    if (changed) reloadCache();
     emit pendingOpsChanged(); flush(); return id;
 }
 void CardStore::flush() {

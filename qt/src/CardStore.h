@@ -3,6 +3,7 @@
 
 #include <QAbstractListModel>
 #include <QSqlDatabase>
+#include <QStringList>
 #include <QVariantMap>
 #include <functional>
 
@@ -37,6 +38,7 @@ public:
     Q_INVOKABLE bool applyRemoteCards(const QVariantMap &sections);
     Q_INVOKABLE QString enqueueOp(const QString &cardId, const QString &type,
                                   const QVariantMap &args = {});
+    Q_INVOKABLE QStringList pinnedCardIds() const;
     Q_INVOKABLE QString dismiss(const QString &cardId) { return enqueueOp(cardId, QStringLiteral("done")); }
     Q_INVOKABLE QString saveNote(const QString &cardId, const QString &note) {
         return enqueueOp(cardId, QStringLiteral("note"), {{QStringLiteral("note"), note}});

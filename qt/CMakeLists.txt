@@ -26,11 +26,14 @@ qt_add_executable(litterbox-qt
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 
 
+set_source_files_properties(src/qml/CardActions.qml PROPERTIES QT_RESOURCE_ALIAS qml/CardActions.qml)
+
 qt_add_qml_module(litterbox-qt
     URI litterbox
     VERSION 1.0
     QML_FILES
         qml/InboxView.qml
+        src/qml/CardActions.qml
 )
 
 set(LB_KIRIGAMI_QML_IMPORT_PATH "" CACHE PATH "Kirigami QML import root for Android deployment")
