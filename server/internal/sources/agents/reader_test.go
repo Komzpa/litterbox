@@ -88,7 +88,7 @@ func TestFinishedCardProjection(t *testing.T) {
 	if !ok {
 		t.Fatal("finished session absent")
 	}
-	if card.Title != "OMP fixture result" || card.Summary != "Synthetic OMP result." || !card.SortAt.Equal(time.Date(2026, 9, 27, 12, 1, 0, 0, time.UTC)) {
+	if card.Title != "OMP: fixture result" || card.Summary != "Synthetic OMP result." || !card.SortAt.Equal(time.Date(2026, 9, 27, 12, 1, 0, 0, time.UTC)) {
 		t.Fatalf("projection=%#v", card)
 	}
 }

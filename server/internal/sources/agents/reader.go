@@ -74,9 +74,9 @@ func ReadRoots(ompRoot, codexRoot string) ([]Card, error) {
 
 func readOMP(r io.Reader) (Card, bool, error) {
 	var card Card
-	var summary string
+	var summary, userPrompt string
 	var sortAt time.Time
-	ready := false
+	ready, childSession := false, false
 	err := scanLines(r, func(line []byte) {
 		var row struct {
 			Type      string `json:"type"`
@@ -95,30 +95,30 @@ func readOMP(r io.Reader) (Card, bool, error) {
 		}
 		switch row.Type {
 		case "session":
+			if isChildMetadata(line) {
+				childSession = true
+			}
 			if row.ID != "" {
 				card.ExternalID = "omp:" + row.ID
 			}
-			if card.Title == "" {
-				card.Title = row.Title
-			}
-			card.SortAt, _ = time.Parse(time.RFC3339Nano, row.Timestamp)
-		case "title":
 			if row.Title != "" {
 				card.Title = row.Title
 			}
-		case "title_change":
+			card.SortAt, _ = time.Parse(time.RFC3339Nano, row.Timestamp)
+		case "title", "title_change":
 			if row.Title != "" {
 				card.Title = row.Title
 			}
 		case "message":
+			text := contentText(row.Message.Content)
 			if row.Message.Role == "user" {
-				ready = false
+				ready, userPrompt = false, text
+				return
 			}
 			if row.Message.Role != "assistant" {
 				return
 			}
 			ready = row.Message.StopReason == "stop" || row.Message.StopReason == "endTurn"
-			text := contentText(row.Message.Content)
 			summary = text
 			if text == "" {
 				return
@@ -133,12 +133,20 @@ func readOMP(r io.Reader) (Card, bool, error) {
 	if err != nil {
 		return Card{}, false, err
 	}
-	if card.ExternalID == "" || summary == "" || !ready {
+	if card.ExternalID == "" || summary == "" || !ready || childSession || isNoiseResult(summary, userPrompt) {
+		return Card{}, false, nil
+	}
+	summary = cleanSummary(summary)
+	if summary == "" {
 		return Card{}, false, nil
 	}
 	card.Source, card.Summary, card.State = "agent", truncate(summary, SummaryLimit), "open"
 	if card.Title == "" {
-		card.Title = "OMP: " + truncate(strings.SplitN(summary, "\n", 2)[0], 120)
+		card.Title = truncate(strings.SplitN(summary, "\n", 2)[0], 80)
+	}
+	card.Title = sourceTitle("OMP", card.Title, summary)
+	if strings.EqualFold(card.Summary, card.Title) {
+		card.Summary = ""
 	}
 	if !sortAt.IsZero() {
 		card.SortAt = sortAt
@@ -148,10 +156,13 @@ func readOMP(r io.Reader) (Card, bool, error) {
 
 func readCodex(r io.Reader) (Card, bool, error) {
 	var card Card
-	var summary string
+	var summary, userPrompt string
 	var summaryAt time.Time
-	completed := false
+	completed, childSession := false, false
 	err := scanLines(r, func(line []byte) {
+		if isChildMetadata(line) {
+			childSession = true
+		}
 		var row struct {
 			Type      string          `json:"type"`
 			Timestamp string          `json:"timestamp"`
@@ -163,6 +174,9 @@ func readCodex(r io.Reader) (Card, bool, error) {
 		at, _ := time.Parse(time.RFC3339Nano, row.Timestamp)
 		switch row.Type {
 		case "session_meta":
+			if isChildMetadata(line) {
+				childSession = true
+			}
 			var meta struct {
 				ID        string `json:"id"`
 				SessionID string `json:"session_id"`
@@ -184,6 +198,7 @@ func readCodex(r io.Reader) (Card, bool, error) {
 			if item.Type == "message" && item.Role == "user" {
 				completed = false
 				summary = ""
+				userPrompt = contentText(item.Content)
 			}
 			if item.Type == "message" && item.Role == "assistant" && item.Phase != "commentary" {
 				summary, summaryAt = contentText(item.Content), at
@@ -208,12 +223,20 @@ func readCodex(r io.Reader) (Card, bool, error) {
 	if err != nil {
 		return Card{}, false, err
 	}
-	if card.ExternalID == "" || summary == "" || !completed {
+	if card.ExternalID == "" || summary == "" || !completed || childSession || isNoiseResult(summary, userPrompt) {
+		return Card{}, false, nil
+	}
+	summary = cleanSummary(summary)
+	if summary == "" {
 		return Card{}, false, nil
 	}
 	card.Source, card.Summary, card.State = "agent", truncate(summary, SummaryLimit), "open"
 	if card.Title == "" {
-		card.Title = "Codex: " + truncate(strings.SplitN(summary, "\n", 2)[0], 120)
+		card.Title = truncate(strings.SplitN(summary, "\n", 2)[0], 80)
+	}
+	card.Title = sourceTitle("Codex", card.Title, summary)
+	if strings.EqualFold(card.Summary, card.Title) {
+		card.Summary = ""
 	}
 	card.ExternalID = "codex:" + card.ExternalID
 	if !summaryAt.IsZero() {
