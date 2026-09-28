@@ -16,6 +16,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+var buildSHA = "unknown"
+var minClientAPI = httpapi.APIVersion
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "ingest-todos" {
 		os.Exit(RunIngestTodos(os.Args[2:], os.Stdout))
@@ -33,10 +36,14 @@ func main() {
 	flag.StringVar(&listenAddr, "listen", listenAddr, "HTTP listen address (or LISTEN_ADDR)")
 	flag.StringVar(&databaseURL, "database-url", databaseURL, "PostgreSQL connection URL (or DATABASE_URL)")
 	flag.StringVar(&devTenantID, "dev-tenant-id", devTenantID, "development-only tenant UUID for cards API (or LITTERBOX_DEV_TENANT_ID)")
+	flag.StringVar(&timezone, "tz", timezone, "timezone for card display (default system local)")
+	flag.StringVar(&noteSink, "note-sink", noteSink, "Markdown daily-note path receiving generator feedback")
+	flag.IntVar(&minClientAPI, "min-client-api", minClientAPI, "minimum supported client API version")
 	flag.Parse()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", httpapi.Healthz)
+	mux.HandleFunc("GET /v1/version", httpapi.Version(buildSHA, minClientAPI))
 	if databaseURL != "" {
 		db, err := sql.Open("pgx", databaseURL)
 		if err != nil {
@@ -56,7 +63,11 @@ func main() {
 			mux.Handle("POST /v1/cards/{id}/dismiss", devOnly(agents.DismissHandler(db)))
 		}
 	}
+<<<<<<< HEAD
 	server := &http.Server{Addr: listenAddr, Handler: mux}
+=======
+	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, mux)}
+>>>>>>> ca96043 (Version API compatibility numerically)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
