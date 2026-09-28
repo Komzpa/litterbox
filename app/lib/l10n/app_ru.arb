@@ -50,5 +50,9 @@
       "clientBuild": {},
       "serverBuild": {}
     }
-  }
+  },
+  "createReminder": "Добавить напоминание",
+  "reminderTitle": "Название",
+  "reminderWhen": "Дата и время",
+  "create": "Создать"
 }

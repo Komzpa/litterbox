@@ -72,4 +72,16 @@ class AppLocalizationsBe extends AppLocalizations {
   String aboutBuild(Object clientBuild, Object serverBuild) {
     return 'Аб праграме · праграма $clientBuild, сервер $serverBuild';
   }
+
+  @override
+  String get createReminder => 'Дадаць напамін';
+
+  @override
+  String get reminderTitle => 'Назва';
+
+  @override
+  String get reminderWhen => 'Дата і час';
+
+  @override
+  String get create => 'Стварыць';
 }

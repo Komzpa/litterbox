@@ -130,6 +130,13 @@ class CardsApi {
     return CardSections.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<void> createReminder(String title, DateTime dueAt) async {
+    final response = await client.post(Uri.parse('$baseUrl/v1/reminders'),
+        headers: {..._apiHeaders, 'content-type': 'application/json'},
+        body: jsonEncode({'title': title, 'due_at': dueAt.toUtc().toIso8601String()}));
+    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Reminder creation failed (${response.statusCode})');
+  }
+
   Future<void> dismiss(String id, {String? note}) async {
     final response = await client.post(Uri.parse('$baseUrl/v1/cards/$id/dismiss'),
         headers: {..._apiHeaders, 'content-type': 'application/json'},
@@ -252,6 +259,27 @@ class _InboxScreenState extends State<InboxScreen> {
     catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.actionError(error.toString())))); }
   }
 
+  Future<void> _createReminder() async {
+    var title = '';
+    var dueAt = DateTime.now().add(const Duration(hours: 1));
+    final result = await showDialog<(String, DateTime)?>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+      title: Text(AppLocalizations.of(context)!.createReminder),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(autofocus: true, onChanged: (value) => title = value, decoration: InputDecoration(labelText: AppLocalizations.of(context)!.reminderTitle)),
+        TextButton.icon(icon: const Icon(Icons.calendar_today), label: Text(DateFormat.yMd(Localizations.localeOf(context).toString()).add_jm().format(dueAt.toLocal())), onPressed: () async {
+          final date = await showDatePicker(context: context, initialDate: dueAt, firstDate: DateTime.now().subtract(const Duration(days: 1)), lastDate: DateTime.now().add(const Duration(days: 3650)));
+          if (date == null || !context.mounted) return;
+          final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(dueAt));
+          if (time != null) setDialogState(() => dueAt = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+        }),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AppLocalizations.of(context)!.cancel)), FilledButton(onPressed: () { final value=title.trim(); if(value.isNotEmpty) Navigator.pop(dialogContext, (value,dueAt)); }, child: Text(AppLocalizations.of(context)!.create))],
+    )));
+    if (result == null) return;
+    try { await widget.api.createReminder(result.$1, result.$2); await _refresh(); }
+    catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.actionError(error.toString())))); }
+  }
+
   Future<void> _editNote(InboxCard card) async {
     var draft = card.note;
     final action = await showDialog<(String, bool)>(context: context, builder: (context) => AlertDialog(
@@ -308,6 +336,7 @@ class _InboxScreenState extends State<InboxScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    floatingActionButton: FloatingActionButton(onPressed: _createReminder, tooltip: AppLocalizations.of(context)!.createReminder, child: const Icon(Icons.add_alarm)),
     appBar: AppBar(title: const Text('Litterbox'), actions: [
       PopupMenuButton<String>(onSelected: (value) { if (value == 'restart') widget.onRestart(); }, itemBuilder: (context) => [
         PopupMenuItem(value: 'restart', child: Text(AppLocalizations.of(context)!.restart)),

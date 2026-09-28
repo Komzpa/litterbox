@@ -72,4 +72,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String aboutBuild(Object clientBuild, Object serverBuild) {
     return 'About · app $clientBuild, server $serverBuild';
   }
+
+  @override
+  String get createReminder => 'Add reminder';
+
+  @override
+  String get reminderTitle => 'Title';
+
+  @override
+  String get reminderWhen => 'Date and time';
+
+  @override
+  String get create => 'Create';
 }

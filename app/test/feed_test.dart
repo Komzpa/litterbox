@@ -32,6 +32,29 @@ void main() {
         'at': at, 'timed': at != null, 'state': 'open', 'note': note,
       };
 
+  testWidgets('reminder creation is reachable and submits title and chosen date-time', (tester) async {
+    Map<String, dynamic>? submitted;
+    final live = LiveClient(MockClient((request) async {
+      if (request.url.path == '/v1/version') return http.Response(jsonEncode({'api': 1, 'min_client_api': 1, 'server_build': 'test'}), 200);
+      if (request.url.path == '/v1/reminders') { submitted = jsonDecode(request.body) as Map<String, dynamic>; return http.Response('{}', 200); }
+      return http.Response(jsonEncode({'now': [], 'later': [], 'missed': []}), 200);
+    }));
+    await tester.pumpWidget(LitterboxApp(api: CardsApi('http://fake', client: live)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Add reminder'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Call dentist');
+    await tester.tap(find.byType(TextButton).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(submitted?['title'], 'Call dentist');
+    expect(DateTime.tryParse(submitted?['due_at'] as String), isNotNull);
+  });
+
   testWidgets('missing version and old cards response identify older server', (tester) async {
     final live = LiveClient(MockClient((request) async {
       if (request.url.path == '/v1/version') return http.Response('', 404);

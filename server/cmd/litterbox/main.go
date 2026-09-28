@@ -13,6 +13,7 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
+	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -64,6 +65,10 @@ func main() {
 					next.ServeHTTP(w, r.WithContext(ctx))
 				})
 			}
+			go func() { if err := reminders.Run(context.Background(), db, devTenantID, time.Minute); err != nil { log.Printf("reminder scheduler: %v", err) } }()
+			reminderMux := http.NewServeMux()
+			(&reminders.Handler{DB: db}).Routes(reminderMux)
+			mux.Handle("/v1/reminders", devOnly(reminderMux))
 			cardHandler, err := cards.NewHandler(db, timezone, noteSink)
 			if err != nil {
 				log.Fatal(err)

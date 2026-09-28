@@ -18,6 +18,8 @@ func WithTenant(ctx context.Context, tenant string) context.Context {
 	return context.WithValue(ctx, tenantContextKey{}, tenant)
 }
 
+func TenantFrom(ctx context.Context) (string, bool) { t, ok := ctx.Value(tenantContextKey{}).(string); return t, ok }
+
 type Handler struct {
 	DB       *sql.DB
 	Location *time.Location

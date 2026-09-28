@@ -207,6 +207,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'About · app {clientBuild}, server {serverBuild}'**
   String aboutBuild(Object clientBuild, Object serverBuild);
+
+  /// No description provided for @createReminder.
+  ///
+  /// In en, this message translates to:
+  /// **'Add reminder'**
+  String get createReminder;
+
+  /// No description provided for @reminderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get reminderTitle;
+
+  /// No description provided for @reminderWhen.
+  ///
+  /// In en, this message translates to:
+  /// **'Date and time'**
+  String get reminderWhen;
+
+  /// No description provided for @create.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get create;
 }
 
 class _AppLocalizationsDelegate
