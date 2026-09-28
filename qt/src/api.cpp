@@ -1,0 +1,139 @@
+#include "api.h"
+
+#include <QJSEngine>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+
+Api::Api(QObject *parent)
+    : QObject(parent)
+    , m_nam(new QNetworkAccessManager(this))
+{
+}
+
+QString Api::baseUrl() const { return m_baseUrl; }
+
+void Api::setBaseUrl(const QString &url)
+{
+    if (m_baseUrl == url)
+        return;
+    m_baseUrl = url;
+    emit baseUrlChanged();
+}
+
+QString Api::token() const { return m_token; }
+
+void Api::setToken(const QString &token)
+{
+    if (m_token == token)
+        return;
+    m_token = token;
+    emit tokenChanged();
+}
+
+QNetworkRequest Api::buildRequest(const QString &path) const
+{
+    const QUrl url = path.startsWith(QStringLiteral("http")) ? QUrl(path) : QUrl(m_baseUrl + path);
+    QNetworkRequest request(url);
+    request.setRawHeader("Accept", "application/json");
+    request.setRawHeader("X-Litterbox-Api", QByteArray::number(clientApi()));
+    if (!m_token.isEmpty())
+        request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+    return request;
+}
+
+void Api::trackJsonReply(int id, QNetworkReply *reply)
+{
+    m_jsonReplies.insert(id, reply);
+    connect(reply, &QNetworkReply::finished, this, [this, id, reply]() {
+        m_jsonReplies.remove(id);
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        const QString transportError = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
+        reply->deleteLater();
+        const QJSValue callback = m_callbacks.take(id);
+        auto fail = [&](const QString &message) {
+            if (callback.isCallable() && m_engine)
+                callback.call({m_engine->newErrorObject(QJSValue::GenericError, message), QJSValue(QJSValue::NullValue)});
+            emit requestFailed(id, status, message);
+        };
+        if (status < 200 || status >= 300) {
+            fail(transportError.isEmpty() ? QStringLiteral("HTTP %1: %2").arg(status).arg(QString::fromUtf8(body.left(200))) : transportError);
+            return;
+        }
+        QJsonValue data(QJsonValue::Undefined);
+        if (!body.trimmed().isEmpty()) {
+            QJsonParseError parseError{};
+            const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+            if (parseError.error != QJsonParseError::NoError) {
+                fail(QStringLiteral("invalid JSON: %1").arg(parseError.errorString()));
+                return;
+            }
+            data = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
+        }
+        if (callback.isCallable() && m_engine) {
+            const QVariantMap response{{QStringLiteral("status"), status},
+                                       {QStringLiteral("body"), data.isUndefined() ? QVariant(true) : data.toVariant()}};
+            callback.call({QJSValue(QJSValue::NullValue), m_engine->toScriptValue(response)});
+        }
+        emit requestFinished(id, data, status);
+    });
+}
+
+void Api::trackStreamReply(int id, QNetworkReply *reply)
+{
+    m_streamReplies.insert(id, reply);
+    QByteArray *buffer = new QByteArray;
+    connect(reply, &QNetworkReply::readyRead, this, [this, id, reply, buffer]() {
+        buffer->append(reply->readAll());
+        for (qsizetype pos = buffer->indexOf('\n'); pos != -1; pos = buffer->indexOf('\n')) {
+            const QString line = QString::fromUtf8(buffer->left(pos).trimmed());
+            buffer->remove(0, pos + 1);
+            emit streamLine(id, line);
+        }
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, id, reply, buffer]() {
+        m_streamReplies.remove(id);
+        const QString error = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
+        reply->deleteLater();
+        delete buffer;
+        emit streamFinished(id, error);
+    });
+}
+
+int Api::get(const QString &path, const QJSValue &callback)
+{
+    const int id = m_nextId++;
+    if (callback.isCallable()) m_callbacks.insert(id, callback);
+    trackJsonReply(id, m_nam->get(buildRequest(path)));
+    return id;
+}
+
+int Api::post(const QString &path, const QJsonObject &body, const QJSValue &callback)
+{
+    QNetworkRequest request = buildRequest(path);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    const int id = m_nextId++;
+    if (callback.isCallable()) m_callbacks.insert(id, callback);
+    trackJsonReply(id, m_nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact)));
+    return id;
+}
+
+int Api::del(const QString &path, const QJSValue &callback)
+{
+    const int id = m_nextId++;
+    if (callback.isCallable()) m_callbacks.insert(id, callback);
+    trackJsonReply(id, m_nam->deleteResource(buildRequest(path)));
+    return id;
+}
+
+int Api::stream(const QString &path)
+{
+    QNetworkRequest request = buildRequest(path);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    const int id = m_nextId++;
+    trackStreamReply(id, m_nam->get(request));
+    return id;
+}
