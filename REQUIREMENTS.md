@@ -47,8 +47,11 @@ Each requirement is **decided** or **open** and names its source.
   Connecting a Gmail account shows Google's unverified-app warning, and the
   app serves at most 100 users. A connected account keeps working without
   weekly reconnection.
-- **R19 Rich mail readable offline** (decided, owner 2026-09-27). Synced mail
+- **R19 Rich mail readable offline** (decided, owner 2026-09-28). Synced mail
   renders its full HTML and images properly, including when read offline.
+  The home server fetches remote images during sync, so mail reads offline;
+  senders' trackers can see an open at sync time, from the home server's
+  address.
 
 ## Card lifecycle
 
@@ -56,27 +59,34 @@ Each requirement is **decided** or **open** and names its source.
   until a chosen date and time. A snoozed mail card leaves the open list at
   once, and its thread leaves the Gmail Inbox. At the chosen time the server
   brings the card back to the open list on every client and moves the thread
-  back to the Gmail Inbox, within 1 minute (proposed, no source), with no
+  back to the Gmail Inbox, within 1 minute (owner accepted 2026-09-28), with no
   client running. Gmail shows this as archived and later moved to Inbox, not
   as Gmail's own Snoozed. A new incoming message in a snoozed thread brings
-  the card back early (proposed, no source).
+  the card back early (owner accepted 2026-09-28).
 - **R21 Pin** (decided, owner 2026-09-27). The owner can pin a card. Pinned
-  cards stay at the top of the open list (proposed, no source) in the order
+  cards stay at the top of the open list (owner accepted 2026-09-28) in the order
   the owner sets, on every client; that order is kept only in Litterbox.
   Pinning a mail card stars its thread in Gmail; unpinning removes the star.
 - **R22 Bundle archive skips pinned cards** (decided, owner 2026-09-27).
   Archiving a bundle archives every card in it except pinned ones. Pinned
   cards stay open, and their mail stays in the Gmail Inbox.
-- **R23 Bundles formed by Litterbox** (decided, owner 2026-09-27). Litterbox
+- **R23 Bundles formed by Litterbox** (decided, owner 2026-09-28). Litterbox
   forms bundles from the start; using tags or labels like Simplify Gmail's
-  bundles is not enough. How Litterbox forms bundles remains open.
+  bundles is not enough. Litterbox forms bundles by clustering messages from
+  all accounts (e.g. by embeddings) with a local model on the home server;
+  the model can create new topics. Gmail categories are not bundles. Every
+  card has an action "take out of this bundle" for a wrong assignment, and
+  the correction is kept: the card stays out, and similar later mail learns
+  from it. Importance is detected separately from topic: an important
+  message is not hidden inside a bundle. Bundles appear in the list
+  immediately; there is no daily or weekly schedule for forming them.
 - **R24 Mail cards close on archive elsewhere** (decided, owner 2026-09-27).
   A mail card closes by itself on every client when, in another Gmail client,
   its thread was archived (no message of it is in the Inbox any more), within
-  5 minutes (proposed, no source) while the server is online. Closing by
+  5 minutes (owner accepted 2026-09-28) while the server is online. Closing by
   itself changes nothing in Gmail. Changes that Litterbox made itself do not
   count. A new message arriving later in the Gmail Inbox opens the card again
-  (proposed, no source).
+  (owner accepted 2026-09-28).
 
 ## Offline
 
@@ -90,6 +100,11 @@ Each requirement is **decided** or **open** and names its source.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not
   break in the elevator"). Losing the network mid-use never blocks the
   interface or shows an error screen.
+- **R29 Live propagation across clients** (decided, owner 2026-09-28).
+  While online, an action on one client — archive, bundle archive, snooze,
+  pin, done, take out of a bundle, or a new card arriving — shows on every
+  other open client live, without refresh or reopen, within 2 s (owner
+  accepted 2026-09-28).
 
 ## Sources
 
@@ -122,7 +137,7 @@ Each requirement is **decided** or **open** and names its source.
 
 ## Server
 
-- **R13 Self-hosted PostgreSQL** (decided, owner 2026-09-27). The server runs
+- **R13 Self-hosted PostgreSQL** (decided, owner 2026-09-27, source confirmed 2026-09-28). The server runs
   on the owner's home server with PostgreSQL, in its own production cluster
   built from a release version with no development extensions, separate from
   the owner's development databases. The Litterbox database is dumped once a
@@ -140,7 +155,7 @@ Each requirement is **decided** or **open** and names its source.
   revoked on its own, and a revoked token is refused on its next request. A
   request without a valid token gets HTTP 401 and no card data. The public
   entry point limits the request rate per client address; limit 60 requests
-  per minute (proposed, no source).
+  per minute (owner accepted 2026-09-28).
 
 ## Project
 
@@ -151,7 +166,7 @@ Each requirement is **decided** or **open** and names its source.
   2026-09-27). The code is public. Credentials, personal data and deployment
   details of the owner's machines never enter the repository.
 - **R28 First slice: all connected Gmail accounts** (decided, owner
-  2026-09-27). The first thing built is triage of all the owner's Gmail
+  2026-09-27, source confirmed 2026-09-28). The first thing built is triage of all the owner's Gmail
   accounts (at least three) on the phone, working with no network. Archiving
   a card or a Litterbox-formed bundle archives those messages in their
   originating Gmail accounts once the phone reconnects. Bundles are formed
@@ -176,12 +191,12 @@ Each requirement is **decided** or **open** and names its source.
   after reconnect, with no error and no return to Inbox. Mail sent while the
   phone is offline appears after reconnect. With 50,000 archived cards
   seeded, an airplane-mode cold start shows the first list frame in under
-  1 s (proposed, no source). A request with another tenant's device token
+  1 s (owner accepted 2026-09-28). A request with another tenant's device token
   cannot read any `LB1-*` card belonging to the first tenant.
 
 ## Open questions
 
 - What done does for Telegram, Slack, WhatsApp/Instagram/dating apps and agent
   results; the owner does not yet know where he has not replied.
-- How Litterbox forms bundles.
-- Whether remote images are fetched at sync or on open.
+- Whether known tracking pixels are stripped before fetching (research
+  pending).
