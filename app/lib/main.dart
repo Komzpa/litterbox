@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'auth/device_auth_client.dart';
+import 'auth/enrollment_screen.dart';
 import 'l10n/app_localizations.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
@@ -13,11 +15,14 @@ const _serverUrl = String.fromEnvironment('LITTERBOX_URL');
 const buildSha = String.fromEnvironment('BUILD_SHA', defaultValue: 'unknown');
 const kClientApi = 1;
 const _apiHeaders = {'X-Litterbox-Api': '$kClientApi'};
+final _deviceTokens = SecureDeviceTokenStore();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Future.wait(['en', 'ru', 'be'].map(initializeDateFormatting));
-  runApp(LitterboxApp(api: CardsApi(_serverUrl)));
+  final token = await _deviceTokens.read();
+  final api = CardsApi(_serverUrl)..token = token;
+  runApp(LitterboxApp(api: api));
 }
 
 class LitterboxApp extends StatefulWidget {
@@ -57,7 +62,31 @@ class _LitterboxAppState extends State<LitterboxApp> {
           bindings: {const SingleActivator(LogicalKeyboardKey.keyR, control: true, shift: true): _restart},
           child: Focus(autofocus: true, child: child!),
         ),
-        home: InboxScreen(api: widget.api, onRestart: _restart),
+        home: widget.api.token == null
+            ? EnrollmentScreen(
+                client: DeviceAuthClient(server: Uri.parse(widget.api.baseUrl), tokens: _deviceTokens),
+                deviceName: Platform.localHostname,
+                platform: Platform.operatingSystem,
+                labels: const EnrollmentLabels(
+                  title: "Set up device",
+                  description: "Connect this device to Litterbox",
+                  inviteCode: "Invite code",
+                  inviteHint: "Paste or scan your invitation",
+                  oneTimeNote: "Invite codes can only be used once.",
+                  emptyInvite: "Enter an invite code",
+                  enroll: "Enroll device",
+                  scan: "Scan QR code",
+                  scannerTitle: "Scan invitation",
+                  invalidInvite: "This invitation is invalid or already used.",
+                  networkError: "Could not enroll. Check the server and try again.",
+                  scanError: "Could not access the camera.",
+                ),
+                onEnrolled: (_) async {
+                  widget.api.token = await _deviceTokens.read();
+                  if (mounted) setState(() {});
+                },
+              )
+            : InboxScreen(api: widget.api, onRestart: _restart),
       );
 }
 
@@ -105,9 +134,11 @@ class CardsApi {
   final String baseUrl;
   final http.Client client;
   CardsApi(this.baseUrl, {http.Client? client}) : client = client ?? http.Client();
+  String? token;
+  Map<String, String> get headers => {..._apiHeaders, if (token != null) "Authorization": "Bearer $token"};
 
   Future<ServerVersion> version() async {
-    final response = await client.get(Uri.parse('$baseUrl/v1/version'), headers: _apiHeaders);
+    final response = await client.get(Uri.parse('$baseUrl/v1/version'), headers: headers);
     if (response.statusCode == 404) throw OldServerException();
     if (response.statusCode != 200) throw StateError('Version request failed (${response.statusCode})');
     try {
@@ -120,26 +151,26 @@ class CardsApi {
 
   Future<http.StreamedResponse> events() {
     final request = http.Request('GET', Uri.parse('$baseUrl/v1/cards/events'));
-    request.headers.addAll(_apiHeaders);
+    request.headers.addAll(headers);
     return client.send(request);
   }
 
   Future<CardSections> fetchCards() async {
-    final response = await client.get(Uri.parse('$baseUrl/v1/cards'), headers: _apiHeaders);
+    final response = await client.get(Uri.parse('$baseUrl/v1/cards'), headers: headers);
     if (response.statusCode != 200) throw Exception('Server returned ${response.statusCode}');
     return CardSections.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<void> dismiss(String id, {String? note}) async {
     final response = await client.post(Uri.parse('$baseUrl/v1/cards/$id/dismiss'),
-        headers: {..._apiHeaders, 'content-type': 'application/json'},
+        headers: {...headers, 'content-type': 'application/json'},
         body: jsonEncode({if (note != null && note.isNotEmpty) 'note': note}));
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Dismiss failed (${response.statusCode})');
   }
 
   Future<void> saveNote(String id, String note) async {
     final response = await client.post(Uri.parse('$baseUrl/v1/cards/$id/note'),
-        headers: {..._apiHeaders, 'content-type': 'application/json'}, body: jsonEncode({'text': note}));
+        headers: {...headers, 'content-type': 'application/json'}, body: jsonEncode({'text': note}));
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Saving note failed (${response.statusCode})');
   }
 }

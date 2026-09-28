@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"github.com/Komzpa/litterbox/server/internal/cards"
 )
 
 type fakeStore struct {
@@ -44,7 +45,7 @@ func TestEveryProtectedRouteRejectsMissingAuthorization(t *testing.T) {
 	h := NewHandler(store, "")
 	mux := http.NewServeMux()
 	h.Register(mux)
-	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) { tenant, ok := cards.TenantFrom(r.Context()); if !ok || tenant != "tenant" { w.WriteHeader(500); return }; w.WriteHeader(200) })
 	protected := h.Middleware(mux)
 	for _, tc := range []struct{ method, path string }{{"POST", "/v1/invites"}, {"DELETE", "/v1/devices/a"}, {"GET", "/v1/cards"}, {"GET", "/v1/unknown"}} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
@@ -63,7 +64,7 @@ func TestInviteEnrollmentIsOneUseAndReturnsDeviceToken(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 	wrapped := h.Middleware(mux)
-	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) { tenant, ok := cards.TenantFrom(r.Context()); if !ok || tenant != "tenant" { w.WriteHeader(500); return }; w.WriteHeader(200) })
 	body := `{"invite_code":"one-use","device_name":"phone","platform":"android"}`
 	first := httptest.NewRecorder()
 	wrapped.ServeHTTP(first, httptest.NewRequest("POST", "/v1/devices/enroll", strings.NewReader(body)))
@@ -162,5 +163,34 @@ func TestDevTenantIsOptIn(t *testing.T) {
 				t.Fatalf("status=%d want %d", res.Code, tc.want)
 			}
 		})
+	}
+}
+
+func TestRateLimitAlsoAppliesToAuthenticatedRequests(t *testing.T) {
+	store := &fakeStore{tokenHash: tokenHash("device-token"), device: Device{TenantID: "tenant", DeviceID: "device"}}
+	h := NewHandler(store, "")
+	h.limiter = NewIPLimiter(1, time.Minute)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) {
+		if tenant, ok := cards.TenantFrom(r.Context()); !ok || tenant != "tenant" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	protected := h.Middleware(mux)
+	request := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/v1/cards", nil)
+		req.RemoteAddr = "203.0.113.30:1000"
+		req.Header.Set("Authorization", "Bearer device-token")
+		res := httptest.NewRecorder()
+		protected.ServeHTTP(res, req)
+		return res
+	}
+	if res := request(); res.Code != http.StatusOK {
+		t.Fatalf("first request status=%d want 200", res.Code)
+	}
+	if res := request(); res.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request status=%d want 429", res.Code)
 	}
 }

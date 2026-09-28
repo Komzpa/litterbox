@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+"github.com/Komzpa/litterbox/server/internal/cards"
 )
 
 type Device struct {
@@ -51,17 +52,23 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if !h.limiter.Allow(clientIP(r)) {
+			writeError(w, 429, "rate limit exceeded")
+			return
+		}
+		if r.URL.Path == "/v1/version" && r.Method == http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == "/v1/devices/enroll" && r.Method == http.MethodPost {
-			if !h.limiter.Allow(clientIP(r)) {
-				writeError(w, 429, "rate limit exceeded")
-				return
-			}
 			next.ServeHTTP(w, r)
 			return
 		}
 		if h.devTenant != "" {
 			d := Device{TenantID: h.devTenant, DeviceID: "development"}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, d)))
+			ctx := context.WithValue(r.Context(), contextKey{}, d)
+			ctx = cards.WithTenant(ctx, d.TenantID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 		const prefix = "Bearer "
@@ -75,7 +82,9 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			writeError(w, 401, "unauthorized")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, d)))
+		ctx := context.WithValue(r.Context(), contextKey{}, d)
+		ctx = cards.WithTenant(ctx, d.TenantID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 func (h *Handler) Register(mux *http.ServeMux) {
