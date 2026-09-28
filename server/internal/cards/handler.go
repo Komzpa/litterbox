@@ -34,6 +34,7 @@ func NewHandler(db *sql.DB, zone, noteSink string) (*Handler, error) {
 }
 func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/cards", h.List)
+	mux.HandleFunc("GET /v1/cards/notes", h.NotesSince)
 	if h.Events != nil {
 		mux.Handle("GET /v1/cards/events", h.Events)
 	}
@@ -44,6 +45,69 @@ func (h *Handler) tenant(r *http.Request) (string, bool) {
 	t, ok := r.Context().Value(tenantContextKey{}).(string)
 	return t, ok && t != ""
 }
+
+type NoteUpdate struct {
+	CardID    string    `json:"card_id"`
+	Title     string    `json:"title"`
+	Note      string    `json:"note"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NotesSince returns the latest per-card note values changed since the supplied RFC3339 timestamp.
+func (h *Handler) NotesSince(w http.ResponseWriter, r *http.Request) {
+	tenant, ok := h.tenant(r)
+	if !ok {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+	since := time.Time{}
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			http.Error(w, "invalid since", 400)
+			return
+		}
+		since = parsed
+	}
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant); err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,COALESCE(NULLIF(title,''),subject),note,note_updated_at FROM cards WHERE tenant_id=$1 AND note_updated_at > $2 AND note <> '' ORDER BY note_updated_at,id`, tenant, since)
+	if err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+	defer rows.Close()
+	updates := make([]NoteUpdate, 0)
+	for rows.Next() {
+		var item NoteUpdate
+		if err := rows.Scan(&item.CardID, &item.Title, &item.Note, &item.UpdatedAt); err != nil {
+			http.Error(w, "internal server error", 500)
+			return
+		}
+		updates = append(updates, item)
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Notes []NoteUpdate `json:"notes"`
+	}{updates})
+}
+
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	tenant, ok := h.tenant(r)
 	if !ok {
@@ -151,9 +215,9 @@ func (h *Handler) mutate(w http.ResponseWriter, r *http.Request, note string, di
 		return
 	}
 	var title string
-	query := `UPDATE cards SET note=$1 WHERE tenant_id=$2 AND id::text=$3 RETURNING COALESCE(NULLIF(title,''),subject)`
+	query := `UPDATE cards SET note=$1,note_updated_at=now() WHERE tenant_id=$2 AND id::text=$3 RETURNING COALESCE(NULLIF(title,''),subject)`
 	if dismiss {
-		query = `UPDATE cards SET note=$1,state='done' WHERE tenant_id=$2 AND id::text=$3 RETURNING COALESCE(NULLIF(title,''),subject)`
+		query = `UPDATE cards SET note=$1,note_updated_at=now(),state='done' WHERE tenant_id=$2 AND id::text=$3 RETURNING COALESCE(NULLIF(title,''),subject)`
 	}
 	if err = tx.QueryRowContext(r.Context(), query, note, tenant, r.PathValue("id")).Scan(&title); err == sql.ErrNoRows {
 		http.NotFound(w, r)
