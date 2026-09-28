@@ -10,66 +10,37 @@ class AppLocalizationsRu extends AppLocalizations {
   AppLocalizationsRu([String locale = 'ru']) : super(locale);
 
   @override
-  String get nowSection => 'Сейчас';
+  String get pinned => 'Закреплённые';
 
   @override
-  String get laterSection => 'Позже';
+  String get archiveBundle => 'Архивировать группу';
 
   @override
-  String missedCount(int count) {
-    return 'Пропущено ($count)';
-  }
+  String get pin => 'Закрепить';
 
   @override
-  String get emptyCards => 'Нет карточек';
+  String get unpin => 'Открепить';
 
   @override
-  String get retry => 'Повторить';
+  String get takeOutOfBundle => 'Убрать из группы';
 
   @override
-  String get oldServer => 'Сервер старше приложения';
+  String get snooze => 'Отложить';
 
   @override
-  String get restart => 'Перезапустить';
+  String get laterToday => 'Позже сегодня';
 
   @override
-  String get done => 'Готово';
+  String get tomorrowMorning => 'Завтра утром';
 
   @override
-  String get note => 'Заметка';
+  String get nextWeek => 'На следующей неделе';
 
   @override
-  String get noteHint => 'Что нужно сообщить генератору задач?';
+  String get customDateTime => 'Выбрать дату и время';
 
   @override
-  String get cancel => 'Отмена';
-
-  @override
-  String get save => 'Сохранить';
-
-  @override
-  String get doneWithNote => 'Готово с заметкой';
-
-  @override
-  String get loadError => 'Не удалось загрузить карточки';
-
-  @override
-  String actionError(Object error) {
-    return 'Не удалось выполнить действие: $error';
-  }
-
-  @override
-  String noteSaveError(Object error) {
-    return 'Не удалось сохранить заметку: $error';
-  }
-
-  @override
-  String outdatedApi(int client, int server) {
-    return 'Приложение устарело (API $client), серверу нужен $server';
-  }
-
-  @override
-  String aboutBuild(Object clientBuild, Object serverBuild) {
-    return 'О приложении · приложение $clientBuild, сервер $serverBuild';
+  String bundleCount(Object bundle, int count) {
+    return '$bundle ($count)';
   }
 }

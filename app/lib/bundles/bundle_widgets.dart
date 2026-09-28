@@ -133,7 +133,7 @@ class _BundleInboxState extends State<BundleInbox> {
     return Column(
       children: [
         if (pinned.isNotEmpty) ...[
-          ListTile(title: Text(AppLocalizations.of(context).pinned)),
+          ListTile(title: Text(AppLocalizations.of(context)!.pinned)),
           SizedBox(
             height: (pinned.length * 76.0).clamp(76.0, 228.0),
             child: ReorderableListView.builder(
@@ -159,7 +159,6 @@ class _BundleInboxState extends State<BundleInbox> {
       ],
     );
   }
-}
 }
 
 class _BundleSection extends StatelessWidget {
@@ -187,10 +186,10 @@ class _BundleSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ListTile(
-            title: Text(AppLocalizations.of(context).bundleCount(id, cards.length)),
+            title: Text(AppLocalizations.of(context)!.bundleCount(id, cards.length)),
             trailing: IconButton(
               key: Key('archive-bundle-$id'),
-              tooltip: AppLocalizations.of(context).archiveBundle,
+              tooltip: AppLocalizations.of(context)!.archiveBundle,
               icon: const Icon(Icons.archive_outlined),
               onPressed: onArchive,
             ),
@@ -232,7 +231,7 @@ class _CardTile extends StatelessWidget {
           children: [
             IconButton(
               key: Key('pin-${card.id}'),
-              tooltip: card.pinned ? AppLocalizations.of(context).unpin : AppLocalizations.of(context).pin,
+              tooltip: card.pinned ? AppLocalizations.of(context)!.unpin : AppLocalizations.of(context)!.pin,
               icon: Icon(card.pinned ? Icons.push_pin : Icons.push_pin_outlined),
               onPressed: () => onPin(!card.pinned),
             ),
@@ -244,7 +243,7 @@ class _CardTile extends StatelessWidget {
             if (onTakeOut != null)
               IconButton(
                 key: Key('take-out-${card.id}'),
-                tooltip: AppLocalizations.of(context).takeOutOfBundle,
+                tooltip: AppLocalizations.of(context)!.takeOutOfBundle,
                 icon: const Icon(Icons.remove_circle_outline),
                 onPressed: onTakeOut,
               ),
@@ -289,7 +288,7 @@ class SnoozePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
         key: Key('snooze-$cardId'),
-        tooltip: AppLocalizations.of(context).snooze,
+        tooltip: AppLocalizations.of(context)!.snooze,
         icon: const Icon(Icons.snooze),
         onSelected: (choice) {
           final now = DateTime.now();
@@ -306,10 +305,10 @@ class SnoozePicker extends StatelessWidget {
           }
         },
         itemBuilder: (context) => [
-          PopupMenuItem(value: 'today', child: Text(AppLocalizations.of(context).laterToday)),
-          PopupMenuItem(value: 'tomorrow', child: Text(AppLocalizations.of(context).tomorrowMorning)),
-          PopupMenuItem(value: 'week', child: Text(AppLocalizations.of(context).nextWeek)),
-          PopupMenuItem(value: 'custom', child: Text(AppLocalizations.of(context).customDateTime)),
+          PopupMenuItem(value: 'today', child: Text(AppLocalizations.of(context)!.laterToday)),
+          PopupMenuItem(value: 'tomorrow', child: Text(AppLocalizations.of(context)!.tomorrowMorning)),
+          PopupMenuItem(value: 'week', child: Text(AppLocalizations.of(context)!.nextWeek)),
+          PopupMenuItem(value: 'custom', child: Text(AppLocalizations.of(context)!.customDateTime)),
         ],
       );
 }

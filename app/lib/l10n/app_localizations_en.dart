@@ -10,66 +10,37 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get nowSection => 'Now';
+  String get pinned => 'Pinned';
 
   @override
-  String get laterSection => 'Later';
+  String get archiveBundle => 'Archive bundle';
 
   @override
-  String missedCount(int count) {
-    return 'Missed ($count)';
-  }
+  String get pin => 'Pin';
 
   @override
-  String get emptyCards => 'No cards';
+  String get unpin => 'Unpin';
 
   @override
-  String get retry => 'Retry';
+  String get takeOutOfBundle => 'Take out of bundle';
 
   @override
-  String get oldServer => 'Server is older than the app';
+  String get snooze => 'Snooze';
 
   @override
-  String get restart => 'Restart';
+  String get laterToday => 'Later today';
 
   @override
-  String get done => 'Done';
+  String get tomorrowMorning => 'Tomorrow morning';
 
   @override
-  String get note => 'Note';
+  String get nextWeek => 'Next week';
 
   @override
-  String get noteHint => 'What should the task generator know?';
+  String get customDateTime => 'Custom date/time';
 
   @override
-  String get cancel => 'Cancel';
-
-  @override
-  String get save => 'Save';
-
-  @override
-  String get doneWithNote => 'Done with note';
-
-  @override
-  String get loadError => 'Could not load cards';
-
-  @override
-  String actionError(Object error) {
-    return 'Could not complete action: $error';
-  }
-
-  @override
-  String noteSaveError(Object error) {
-    return 'Could not save note: $error';
-  }
-
-  @override
-  String outdatedApi(int client, int server) {
-    return 'App is outdated (API $client), server needs $server';
-  }
-
-  @override
-  String aboutBuild(Object clientBuild, Object serverBuild) {
-    return 'About · app $clientBuild, server $serverBuild';
+  String bundleCount(Object bundle, int count) {
+    return '$bundle ($count)';
   }
 }
