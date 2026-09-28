@@ -127,7 +127,10 @@ Each requirement is **decided** or **open** and names its source.
   card at once. Neither changes anything in the calendar. Chat cards close
   themselves when the owner replies in that chat, in the source app, after
   the card's message, for sources where the reply is visible (Telegram,
-  Slack). Reading alone does not close a card.
+  Slack). Reading alone does not close a card. For Telegram, Slack,
+  WhatsApp, Instagram, dating apps, and agent results, done only dismisses
+  the card in Litterbox on every client (decided, owner 2026-09-28);
+  nothing is sent or marked in the source.
 - **R26 Assistant output as cards** (decided, owner 2026-09-27). The owner's
   assistant turns each of these into cards through the ingest API of R12:
   research results when the research task's result is ready (readable offline
@@ -199,5 +202,4 @@ Each requirement is **decided** or **open** and names its source.
 
 ## Open questions
 
-- What done does for Telegram, Slack, WhatsApp/Instagram/dating apps and agent
-  results; the owner does not yet know where he has not replied.
+None.
