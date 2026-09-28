@@ -28,7 +28,7 @@ func Upsert(ctx context.Context, db *sql.DB, tenantID string, cards []Card) erro
 	return tx.Commit()
 }
 
-// Dismiss closes an agent card only in Litterbox; no session file is changed.
+// Dismiss closes an agent or todo card only in Litterbox; no source file is changed.
 func Dismiss(ctx context.Context, db *sql.DB, tenantID, externalID string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -38,7 +38,7 @@ func Dismiss(ctx context.Context, db *sql.DB, tenantID, externalID string) error
 	if _, err = tx.ExecContext(ctx, `SELECT set_config('litterbox.tenant_id',$1,true)`, tenantID); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND source='agent' AND external_id=$2`, tenantID, externalID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND source IN ('agent','todo') AND external_id=$2`, tenantID, externalID); err != nil {
 		return err
 	}
 	return tx.Commit()

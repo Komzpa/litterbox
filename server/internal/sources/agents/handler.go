@@ -60,3 +60,44 @@ func CardsHandler(db *sql.DB) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(map[string][]Card{"cards": cards})
 	}
 }
+
+// DismissHandler closes the tenant-owned card selected by its UUID. It resolves
+// the external ID and delegates lifecycle handling to Dismiss.
+func DismissHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tenantID, ok := r.Context().Value(tenantContextKey{}).(string)
+		if !ok || tenantID == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		tx, err := db.BeginTx(r.Context(), nil)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+		if _, err = tx.ExecContext(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenantID); err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		var externalID string
+		err = tx.QueryRowContext(r.Context(), `SELECT external_id FROM cards WHERE id::text=$1 AND tenant_id=$2 AND source IN ('agent','todo')`, r.PathValue("id"), tenantID).Scan(&externalID)
+		if err == sql.ErrNoRows {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if err = tx.Commit(); err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if err = Dismiss(r.Context(), db, tenantID, externalID); err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

@@ -73,8 +73,20 @@ func TestPostgresCardsIntegration(t *testing.T) {
 		t.Fatalf("bad tenant-scoped identity: %#v %#v", ac, bc)
 	}
 	idBefore := ac[0].ID
-	if err := Dismiss(ctx, db, a, c.ExternalID); err != nil {
-		t.Fatal(err)
+	mux := http.NewServeMux()
+	mux.Handle("POST /v1/cards/{id}/dismiss", DismissHandler(db))
+	dismiss := func(tenant, id string) int {
+		req := httptest.NewRequest(http.MethodPost, "/v1/cards/"+id+"/dismiss", nil)
+		req = req.WithContext(WithTenant(req.Context(), tenant))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		return w.Code
+	}
+	if status := dismiss(a, bc[0].ID); status != http.StatusNotFound {
+		t.Fatalf("foreign dismissal status=%d", status)
+	}
+	if status := dismiss(a, ac[0].ID); status != http.StatusNoContent {
+		t.Fatalf("dismissal status=%d", status)
 	}
 	c.Summary = "Updated synthetic result."
 	if err := Upsert(ctx, db, a, []Card{c}); err != nil {

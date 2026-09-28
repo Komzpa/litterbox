@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
+	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -27,13 +29,33 @@ func main() {
 
 	listenAddr := envOrDefault("LISTEN_ADDR", ":8080")
 	databaseURL := os.Getenv("DATABASE_URL")
+	devTenantID := os.Getenv("LITTERBOX_DEV_TENANT_ID")
 	flag.StringVar(&listenAddr, "listen", listenAddr, "HTTP listen address (or LISTEN_ADDR)")
 	flag.StringVar(&databaseURL, "database-url", databaseURL, "PostgreSQL connection URL (or DATABASE_URL)")
+	flag.StringVar(&devTenantID, "dev-tenant-id", devTenantID, "development-only tenant UUID for cards API (or LITTERBOX_DEV_TENANT_ID)")
 	flag.Parse()
-	_ = databaseURL // Connection setup is owned by the database layer.
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", httpapi.Healthz)
+	if databaseURL != "" {
+		db, err := sql.Open("pgx", databaseURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := db.Ping(); err != nil {
+			log.Fatal(err)
+		}
+		defer db.Close()
+		if devTenantID != "" {
+			devOnly := func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					next.ServeHTTP(w, r.WithContext(agents.WithTenant(r.Context(), devTenantID)))
+				})
+			}
+			mux.Handle("GET /v1/cards", devOnly(agents.CardsHandler(db)))
+			mux.Handle("POST /v1/cards/{id}/dismiss", devOnly(agents.DismissHandler(db)))
+		}
+	}
 	server := &http.Server{Addr: listenAddr, Handler: mux}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

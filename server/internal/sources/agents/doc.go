@@ -6,13 +6,12 @@
 // Run ingest-agents with -tenant/LITTERBOX_TENANT_ID and
 // -database-url/DATABASE_URL, or use -dry-run to print count and three titles.
 //
-// main.go wiring (owned by the command integrator): before flag.Parse, dispatch
-// os.Exit(RunIngestAgents(os.Args[2:], os.Stdout)) when os.Args[1] is
-// "ingest-agents". After opening the database, register
-// mux.Handle("GET /v1/cards", authenticated(agents.CardsHandler(db))). The
-// authentication middleware must validate the device token/revocation using
-// litterbox_device_by_token and call agents.WithTenant with its tenant UUID;
-// never attach tenant identity from request JSON or URL parameters.
+// The command registers GET /v1/cards and POST /v1/cards/{id}/dismiss when
+// started with a database URL and the explicit development-only
+// -dev-tenant-id/LITTERBOX_DEV_TENANT_ID setting. Production authentication
+// must validate device token/revocation using litterbox_device_by_token and
+// call WithTenant with its tenant UUID; never attach identity from request
+// JSON or URL parameters.
 //
 // OMP's stop/endTurn assistant message and Codex's final response are results
 // awaiting the user. Tool-use, interrupted, and newer user turns are excluded.
