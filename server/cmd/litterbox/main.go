@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/Komzpa/litterbox/server/internal/gmail"
+	"github.com/Komzpa/litterbox/server/internal/gmailsync"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
 	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
@@ -127,6 +129,7 @@ func main() {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					ctx := agents.WithTenant(r.Context(), devTenantID)
 					ctx = cards.WithTenant(ctx, devTenantID)
+					ctx = gmail.WithTenant(ctx, devTenantID)
 					next.ServeHTTP(w, r.WithContext(ctx))
 				})
 			}
@@ -154,6 +157,32 @@ func main() {
 				return tenant, "", ok
 			}}
 			mux.Handle("POST /v1/ops", devOnly(opsAPI))
+			if path := os.Getenv("GMAIL_OAUTH_CREDENTIALS"); path != "" {
+				credentials, err := gmail.LoadCredentials(path)
+				if err != nil { log.Fatal(err) }
+				secret := []byte(os.Getenv("GMAIL_OAUTH_STATE_SECRET"))
+				if len(secret) < 32 { log.Fatal("GMAIL_OAUTH_STATE_SECRET must be at least 32 bytes") }
+				callback := os.Getenv("GMAIL_OAUTH_CALLBACK_URL")
+				if callback == "" { log.Fatal("GMAIL_OAUTH_CALLBACK_URL required") }
+				web := &gmail.WebHandler{DB: db, Config: gmail.WebConfig{Credentials: credentials, CallbackURL: callback, StateSecret: secret}}
+				gmux := http.NewServeMux()
+				web.Routes(gmux)
+				syncDB, err := pgxpool.New(context.Background(), databaseURL)
+				if err != nil { log.Fatal(err) }
+				defer syncDB.Close()
+				syncCtx, stopSync := context.WithCancel(context.Background())
+				defer stopSync()
+				syncer := &gmailsync.Syncer{DB: syncDB, Client: gmailsync.ClientFactory(credentials.ClientID, credentials.ClientSecret, "", "", nil)}
+				gmailsync.RegisterOps(gmailsync.ClientForCard(credentials.ClientID, credentials.ClientSecret, "", "", nil))
+				go func() {
+					for syncCtx.Err() == nil {
+						if err := syncer.Run(syncCtx, func(ctx context.Context) ([]gmailsync.Account, error) { return gmailsync.LoadAccounts(ctx, syncDB) }); err != nil && syncCtx.Err() == nil { log.Printf("Gmail synchronization: %v", err) }
+						select { case <-syncCtx.Done(): return; case <-time.After(time.Minute): }
+					}
+				}()
+				for _, route := range []string{gmail.AccountsPath, gmail.AccountsPath + "/", gmail.ConnectPath} { mux.Handle(route, devOnly(gmux)) }
+				mux.Handle(gmail.OAuthCallbackPath, gmux)
+			}
 		}
 	}
 	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, mux)}

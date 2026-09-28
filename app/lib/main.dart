@@ -123,6 +123,8 @@ class CardsApi {
   final String baseUrl;
   final http.Client client;
   CardsApi(this.baseUrl, {http.Client? client}) : client = client ?? http.Client();
+  String? token;
+  Map<String, String> get headers => {..._apiHeaders, if (token != null) 'Authorization': 'Bearer $token'};
 
   Future<ServerVersion> version() async {
     final response = await client.get(Uri.parse('$baseUrl/v1/version'), headers: _apiHeaders);
@@ -171,6 +173,151 @@ class CardsApi {
         headers: {..._apiHeaders, 'content-type': 'application/json'}, body: jsonEncode({'text': note}));
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Saving note failed (${response.statusCode})');
   }
+}
+extension GmailAccountsApi on CardsApi {
+  Future<List<GmailAccount>> gmailAccounts() async {
+    final response = await client.get(Uri.parse('$baseUrl/v1/gmail/accounts'), headers: headers);
+    if (response.statusCode != 200) throw StateError('Could not load Gmail accounts (${response.statusCode})');
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((account) => GmailAccount.fromJson(account as Map<String, dynamic>)).toList();
+  }
+
+  Future<Uri> beginGmailConnect() async {
+    final response = await client.post(Uri.parse('$baseUrl/v1/gmail/connect'), headers: headers);
+    if (response.statusCode != 200) throw StateError('Could not start Gmail connection (${response.statusCode})');
+    final url = (jsonDecode(response.body) as Map<String, dynamic>)['authorization_url'] as String;
+    return Uri.parse(url);
+  }
+
+  Future<void> disconnectGmailAccount(String id) async {
+    final response = await client.delete(Uri.parse('$baseUrl/v1/gmail/accounts/$id'), headers: headers);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('Could not disconnect Gmail account (${response.statusCode})');
+    }
+  }
+}
+
+class GmailAccount {
+  final String id;
+  final String address;
+  const GmailAccount({required this.id, required this.address});
+
+  factory GmailAccount.fromJson(Map<String, dynamic> json) => GmailAccount(
+        id: json['id'] as String, address: json['address'] as String);
+}
+
+class GmailAccountsScreen extends StatefulWidget {
+  final CardsApi api;
+  const GmailAccountsScreen({super.key, required this.api});
+  @override
+  State<GmailAccountsScreen> createState() => _GmailAccountsScreenState();
+}
+
+class _GmailAccountsScreenState extends State<GmailAccountsScreen> {
+  late Future<List<GmailAccount>> _accounts;
+  bool _busy = false;
+  String? _error;
+  Uri? _authorizationUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _accounts = widget.api.gmailAccounts();
+  }
+
+  void _refresh() {
+    setState(() {
+      _error = null;
+      _accounts = widget.api.gmailAccounts();
+    });
+  }
+
+  Future<void> _connect() async {
+    setState(() { _busy = true; _error = null; _authorizationUrl = null; });
+    try {
+      final url = await widget.api.beginGmailConnect();
+      if (mounted) setState(() { _authorizationUrl = url; });
+    } catch (error) {
+      if (mounted) setState(() { _error = error.toString(); });
+    } finally {
+      if (mounted) setState(() { _busy = false; });
+    }
+  }
+
+  Future<void> _disconnect(GmailAccount account) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Disconnect Gmail account?'),
+      content: Text('${account.address} will no longer sync with Litterbox.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Disconnect')),
+      ],
+    ));
+    if (confirmed != true) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      await widget.api.disconnectGmailAccount(account.id);
+      if (mounted) _refresh();
+    } catch (error) {
+      if (mounted) setState(() { _error = error.toString(); });
+    } finally {
+      if (mounted) setState(() { _busy = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Gmail accounts'), actions: [
+      IconButton(tooltip: 'Refresh accounts', onPressed: _busy ? null : _refresh, icon: const Icon(Icons.refresh)),
+    ]),
+    body: ListView(padding: const EdgeInsets.all(16), children: [
+      FilledButton.icon(
+        onPressed: _busy ? null : _connect,
+        icon: _busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add),
+        label: const Text('Connect Gmail account'),
+      ),
+      if (_error != null) Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Semantics(liveRegion: true, child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+      ),
+      if (_authorizationUrl case final url?) Card(
+        margin: const EdgeInsets.only(top: 16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Open this link in your browser to authorize Gmail, then return and refresh.',
+                style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(height: 8),
+            SelectableText(url.toString(), semanticsLabel: 'Gmail authorization link'),
+            Align(alignment: Alignment.centerRight, child: TextButton.icon(
+              onPressed: () => Clipboard.setData(ClipboardData(text: url.toString())),
+              icon: const Icon(Icons.copy), label: const Text('Copy link'),
+            )),
+          ]),
+        ),
+      ),
+      const Padding(
+        padding: EdgeInsets.only(top: 24, bottom: 8),
+        child: Text('Connected accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+      ),
+      FutureBuilder<List<GmailAccount>>(future: _accounts, builder: (context, snapshot) {
+        if (snapshot.hasError) return const Text('Could not load Gmail accounts. Use Refresh accounts to try again.');
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(semanticsLabel: 'Loading Gmail accounts'));
+        if (snapshot.data!.isEmpty) return const Text('No Gmail accounts connected.');
+        return Column(children: snapshot.data!.map((account) => Card(
+          child: ListTile(
+            leading: const Icon(Icons.mail_outline),
+            title: Text(account.address),
+            trailing: IconButton(
+              tooltip: 'Disconnect ${account.address}',
+              onPressed: _busy ? null : () => _disconnect(account),
+              icon: const Icon(Icons.link_off),
+            ),
+          ),
+        )).toList());
+      }),
+    ]),
+  );
 }
 
 class InboxScreen extends StatefulWidget {
@@ -431,6 +578,7 @@ class _InboxScreenState extends State<InboxScreen> {
   Widget build(BuildContext context) => Scaffold(
     floatingActionButton: FloatingActionButton(onPressed: _createReminder, tooltip: AppLocalizations.of(context)!.createReminder, child: const Icon(Icons.add_alarm)),
     appBar: AppBar(title: const Text('Litterbox'), actions: [
+      IconButton(tooltip: 'Gmail accounts', onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => GmailAccountsScreen(api: widget.api))), icon: const Icon(Icons.email_outlined)),
       PopupMenuButton<String>(onSelected: (value) { if (value == 'restart') widget.onRestart(); else if(value=='journal') Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalScreen(client: HttpJournalClient(widget.api.baseUrl, client: widget.api.client)))); else if(value=='tokens') Navigator.of(context).push(MaterialPageRoute(builder: (_) => TokenSettingsScreen(client: HttpMcpTokenClient(widget.api.baseUrl, client: widget.api.client)))); }, itemBuilder: (context) => [
         const PopupMenuItem(value: 'journal', child: Text('Journal')),
         const PopupMenuItem(value: 'tokens', child: Text('MCP tokens')),

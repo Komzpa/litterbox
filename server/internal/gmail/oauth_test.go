@@ -60,6 +60,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 		w.WriteHeader(p.tokenStatus)
 		fmt.Fprint(w, p.tokenBody)
 	})
+	mux.HandleFunc("/revoke", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
 		p.profileAuth.Store(r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
