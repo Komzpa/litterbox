@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,21 +11,34 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'mail/body_repository.dart';
 import 'mail/mail_detail.dart';
+import 'db/database.dart';
+import 'store/local_store.dart';
+import 'sync/sync_client.dart';
 
 const _serverUrl = String.fromEnvironment('LITTERBOX_URL');
 const buildSha = String.fromEnvironment('BUILD_SHA', defaultValue: 'unknown');
 const kClientApi = 1;
 const _apiHeaders = {'X-Litterbox-Api': '$kClientApi'};
+final _opRandom = Random.secure();
+
+String _newOperationId() {
+  final bytes = List<int>.generate(16, (_) => _opRandom.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Future.wait(['en', 'ru', 'be'].map(initializeDateFormatting));
-  runApp(LitterboxApp(api: CardsApi(_serverUrl)));
+  runApp(LitterboxApp(api: CardsApi(_serverUrl), store: LocalCardStore(AppDatabase())));
 }
 
 class LitterboxApp extends StatefulWidget {
   final CardsApi api;
-  const LitterboxApp({super.key, required this.api});
+  final LocalCardStore? store;
+  const LitterboxApp({super.key, required this.api, this.store});
   @override
   State<LitterboxApp> createState() => _LitterboxAppState();
 }
@@ -59,7 +73,7 @@ class _LitterboxAppState extends State<LitterboxApp> {
           bindings: {const SingleActivator(LogicalKeyboardKey.keyR, control: true, shift: true): _restart},
           child: Focus(autofocus: true, child: child!),
         ),
-        home: InboxScreen(api: widget.api, onRestart: _restart),
+        home: InboxScreen(api: widget.api, store: widget.store, onRestart: _restart),
       );
 }
 
@@ -159,8 +173,9 @@ class CardsApi {
 
 class InboxScreen extends StatefulWidget {
   final CardsApi api;
+  final LocalCardStore? store;
   final VoidCallback onRestart;
-  const InboxScreen({super.key, required this.api, required this.onRestart});
+  const InboxScreen({super.key, required this.api, this.store, required this.onRestart});
   @override
   State<InboxScreen> createState() => _InboxScreenState();
 }
@@ -192,9 +207,44 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Future<CardSections> _fetchCards() async {
-    try { return await widget.api.fetchCards(); }
+    try {
+      final sections = await widget.api.fetchCards();
+      await _cacheSections(sections);
+      return sections;
+    }
     on FormatException { if (mounted) setState(() { _serverOld = true; }); rethrow; }
     on TypeError { if (mounted) setState(() { _serverOld = true; }); rethrow; }
+    catch (_) {
+      final cached = await _readCachedSections();
+      if (cached != null) return cached;
+      rethrow;
+    }
+  }
+
+  Future<void> _cacheSections(CardSections sections) async {
+    final store = widget.store;
+    if (store == null) return;
+    final cards = [...sections.now, ...sections.later, ...sections.missed].map((card) => {
+      'id': card.id, 'subject': card.title, 'sender': card.source,
+      'sort_at': card.at?.toIso8601String(), 'state': card.state, 'note': card.note,
+      'messages': [{'text': card.summary, 'timed': card.timed, 'section': sections.missed.contains(card) ? 'missed' : sections.later.contains(card) ? 'later' : 'now'}],
+    }).toList();
+    await store.replaceSnapshot({'cursor': await store.cursor(), 'cards': cards});
+  }
+
+  Future<CardSections?> _readCachedSections() async {
+    final store = widget.store;
+    if (store == null || !await store.hasSnapshot()) return null;
+    final rows = await store.database.select(store.database.cards).get();
+    final now = <InboxCard>[], later = <InboxCard>[], missed = <InboxCard>[];
+    for (final row in rows) {
+      final body = jsonDecode(row.body) as List<dynamic>;
+      final meta = body.isEmpty ? <String, dynamic>{} : Map<String, dynamic>.from(body.first as Map);
+      final card = InboxCard(id: row.id, source: row.sender, title: row.subject, summary: meta['text'] as String? ?? '', at: row.sortAt, timed: meta['timed'] as bool? ?? false, state: row.state, note: row.note);
+      if (row.state == 'done') continue;
+      switch (meta['section']) { case 'later': later.add(card); case 'missed': missed.add(card); default: now.add(card); }
+    }
+    return CardSections(now: now, later: later, missed: missed);
   }
 
   Future<void> _checkVersion() async {
@@ -221,6 +271,7 @@ class _InboxScreenState extends State<InboxScreen> {
       if (response.statusCode != 200) throw StateError('Event stream returned ${response.statusCode}');
       _retrySeconds = 1;
       _checkVersion();
+      unawaited(_synchronize().catchError((Object _) {}));
       var cardEvent = false;
       _events = response.stream.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
         if (line.startsWith('event:')) { cardEvent = line.substring(6).trim() == 'cards'; }
@@ -252,6 +303,13 @@ class _InboxScreenState extends State<InboxScreen> {
     }
   }
 
+  Future<void> _synchronize() async {
+    final store = widget.store;
+    if (store == null) return;
+    await SyncClient(Uri.parse(widget.api.baseUrl), store, widget.api.client).synchronize();
+    await _refresh();
+  }
+
   Future<void> _refresh() async {
     final cards = _fetchCards();
     if (!mounted) return;
@@ -275,7 +333,12 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Future<void> _dismiss(InboxCard card) async {
-    try { await widget.api.dismiss(card.id); await _refresh(); }
+    try {
+      final store = widget.store;
+      if (store == null) { await widget.api.dismiss(card.id); }
+      else { await store.applyDone(card.id, _newOperationId()); }
+      await _refresh();
+    }
     catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.actionError(error.toString())))); }
   }
 
@@ -314,8 +377,16 @@ class _InboxScreenState extends State<InboxScreen> {
     ));
     if (action == null) return;
     try {
-      if (action.$2) { await widget.api.dismiss(card.id, note: action.$1); }
-      else { await widget.api.saveNote(card.id, action.$1); }
+      final store = widget.store;
+      if (store == null) {
+        if (action.$2) { await widget.api.dismiss(card.id, note: action.$1); }
+        else { await widget.api.saveNote(card.id, action.$1); }
+      } else if (action.$2) {
+        await store.applyAction(_newOperationId(), card.id, 'note', {'note': action.$1});
+        await store.applyDone(card.id, _newOperationId());
+      } else {
+        await store.applyNote(card.id, _newOperationId(), action.$1);
+      }
       await _refresh();
     }
     catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.noteSaveError(error.toString())))); }

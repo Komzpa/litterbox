@@ -18,6 +18,9 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/Komzpa/litterbox/server/internal/bundles"
+	"github.com/Komzpa/litterbox/server/internal/offline"
+	"github.com/Komzpa/litterbox/server/internal/ops"
+	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -69,6 +72,11 @@ func main() {
 		defer stopWaker()
 		bundles.StartWaker(wakerCtx, wakerPool)
 		defer db.Close()
+		pool, poolErr := pgxpool.New(context.Background(), databaseURL)
+		if poolErr != nil {
+			log.Fatal(poolErr)
+		}
+		defer pool.Close()
 		if devTenantID != "" {
 			devOnly := func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +101,14 @@ func main() {
 			mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
 			mux.Handle("GET /v1/cards/{id}/body", devOnly(mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}))
 			mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
+			snapshotAPI := offline.API{DB: db, Identity: func(r *http.Request) (string, bool) { return cards.TenantFrom(r.Context()) }}
+			mux.Handle("GET /v1/snapshot", devOnly(http.HandlerFunc(snapshotAPI.Snapshot)))
+			mux.Handle("GET /v1/changes", devOnly(http.HandlerFunc(snapshotAPI.Changes)))
+			opsAPI := ops.API{DB: pool, Identity: func(ctx context.Context) (string, string, bool) {
+				tenant, ok := cards.TenantFrom(ctx)
+				return tenant, "", ok
+			}}
+			mux.Handle("POST /v1/ops", devOnly(opsAPI))
 		}
 	}
 	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, mux)}

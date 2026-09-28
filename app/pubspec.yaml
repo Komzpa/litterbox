@@ -42,8 +42,12 @@ dependencies:
   intl: ^0.20.2
   html: ^0.15.7
   url_launcher: ^6.3.0
+  drift: ^2.29.0
+  drift_flutter: ^0.2.7
 
 dev_dependencies:
+  drift_dev: ^2.29.0
+  build_runner: ^2.10.0
   flutter_test:
     sdk: flutter
 
