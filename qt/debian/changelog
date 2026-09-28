@@ -1,0 +1,5 @@
+litterbox-qt (0.1-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+
+ -- Litterbox <litterbox@example.com>  Mon, 29 Sep 2026 00:00:00 +0400

@@ -75,3 +75,8 @@ if (QMLTESTRUNNER6)
         set_tests_properties(${_test_name} PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endforeach()
 endif()
+
+# Installation for Debian packaging and general `cmake --install`.
+install(TARGETS litterbox-qt RUNTIME DESTINATION bin)
+install(FILES debian/litterbox-qt.desktop DESTINATION share/applications)
+install(FILES debian/litterbox-qt.svg DESTINATION share/icons/hicolor/scalable/apps)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Litterbox
+Comment=Personal task inbox
+Exec=litterbox-qt
+Icon=litterbox-qt
+Categories=Office;Utility;
+Terminal=false
