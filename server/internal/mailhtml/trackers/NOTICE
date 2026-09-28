@@ -1,0 +1,50 @@
+MailTrackerBlocker tracker pattern data
+Source: https://github.com/apparition47/MailTrackerBlocker
+Source commit: 7463682a39af055a488539a3d0aa7898437b33f5
+The vendored tracker names and regular-expression patterns are derived from
+Source/MTBBlockedMessage.m at that commit. Copyright (c) 2020, Aaron Lee.
+
+BSD 3-Clause License
+
+
+Copyright (c) 2020, Aaron Lee.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name MailTrackerBlocker nor the names of its contributors may be used to
+   endorse or promote products derived from this software without specific
+   prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+Litterbox usage and maintenance
+IsTracker(url string) (bool, string) matches URLs case-insensitively and returns
+the upstream vendor name (Mailchimp is named Intuit). When multiple vendors
+match, the first vendor in lexicographic order wins. No network access occurs.
+IsTinyOrHidden(attrs map[string]string) checks width/height attributes and
+inline CSS: dimensions from 0 through 2 pixels, display:none, visibility:hidden,
+and opacity:0. This heuristic can classify decorative spacer images as tiny.
+It does not compute stylesheet rules or inherited styles; callers must evaluate
+those separately when needed. Call both helpers before fetching image content.
+
+Run python3 tools/update_trackers.py from the repository root to regenerate the
+data snapshot from the pinned upstream commit. To update the source version,
+change COMMIT in that script and review the generated data and license together.
+Run cd server && go test ./internal/mailhtml/trackers/ to exercise matching.
