@@ -273,7 +273,7 @@ func (s *Syncer) Run(ctx context.Context, accounts func(context.Context) ([]Acco
 // LoadAccounts returns every active connected account; refresh tokens stay
 // tenant-scoped and are read only by the sync worker.
 func LoadAccounts(ctx context.Context, db *pgxpool.Pool) ([]Account, error) {
-	rows, err := db.Query(ctx, `SELECT tenant_id,id,refresh_token,COALESCE(history_id,'') FROM accounts WHERE status='active' ORDER BY tenant_id,id`)
+	rows, err := db.Query(ctx, `SELECT tenant_id,id,refresh_token,history_id FROM litterbox_gmail_sync_accounts()`)
 	if err != nil {
 		return nil, err
 	}

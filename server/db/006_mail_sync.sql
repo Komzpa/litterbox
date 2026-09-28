@@ -17,3 +17,15 @@ CREATE POLICY tenant_isolation ON gmail_oauth_states
     USING (tenant_id = NULLIF(current_setting('litterbox.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('litterbox.tenant_id', true), '')::uuid);
 GRANT SELECT, INSERT, UPDATE, DELETE ON gmail_oauth_states TO litterbox_app;
+
+-- The server-side sync worker must discover connected accounts without a
+-- request tenant. Ordinary app queries remain subject to tenant RLS.
+CREATE FUNCTION litterbox_gmail_sync_accounts()
+RETURNS TABLE (tenant_id uuid, id uuid, refresh_token bytea, history_id text)
+LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT a.tenant_id, a.id, a.refresh_token, COALESCE(a.history_id, '')
+    FROM public.accounts AS a WHERE a.status = 'active'
+    ORDER BY a.tenant_id, a.id;
+$$;
+REVOKE ALL ON FUNCTION litterbox_gmail_sync_accounts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION litterbox_gmail_sync_accounts() TO litterbox_app;

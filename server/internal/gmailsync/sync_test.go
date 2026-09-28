@@ -115,6 +115,24 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 	if _, e := db.Exec(ctx, "INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,$3,$4)", tenant, account, "b@example.test", []byte("refresh-for-account-b")); e != nil {
 		t.Fatal(e)
 	}
+	roleTx, e := db.Begin(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = roleTx.Exec(ctx, "SET LOCAL ROLE litterbox_app"); e != nil {
+		t.Fatal(e)
+	}
+	var workerAccount uuid.UUID
+	var workerToken []byte
+	if e = roleTx.QueryRow(ctx, "SELECT id,refresh_token FROM litterbox_gmail_sync_accounts() WHERE tenant_id=$1", tenant).Scan(&workerAccount, &workerToken); e != nil {
+		t.Fatal(e)
+	}
+	if workerAccount != account || string(workerToken) != "refresh-for-account-b" {
+		t.Fatal("worker account discovery lost tenant token")
+	}
+	if e = roleTx.Rollback(ctx); e != nil {
+		t.Fatal(e)
+	}
 	fake := &fakeGmail{inbox: true, messageCount: 1, history: "1"}
 	srv := httptest.NewServer(fake)
 	defer srv.Close()
