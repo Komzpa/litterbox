@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'l10n/app_localizations.dart';
+import 'journal/journal_screen.dart';
+import 'journal/token_settings_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
@@ -309,7 +311,9 @@ class _InboxScreenState extends State<InboxScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Litterbox'), actions: [
-      PopupMenuButton<String>(onSelected: (value) { if (value == 'restart') widget.onRestart(); }, itemBuilder: (context) => [
+      PopupMenuButton<String>(onSelected: (value) { if (value == 'restart') widget.onRestart(); else if(value=='journal') Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalScreen(client: HttpJournalClient(widget.api.baseUrl, client: widget.api.client)))); else if(value=='tokens') Navigator.of(context).push(MaterialPageRoute(builder: (_) => TokenSettingsScreen(client: HttpMcpTokenClient(widget.api.baseUrl, client: widget.api.client)))); }, itemBuilder: (context) => [
+        const PopupMenuItem(value: 'journal', child: Text('Journal')),
+        const PopupMenuItem(value: 'tokens', child: Text('MCP tokens')),
         PopupMenuItem(value: 'restart', child: Text(AppLocalizations.of(context)!.restart)),
         PopupMenuItem(enabled: false, child: Text(AppLocalizations.of(context)!.aboutBuild(buildSha, _serverBuild ?? '?'))),
       ]),

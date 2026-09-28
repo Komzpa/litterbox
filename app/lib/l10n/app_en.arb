@@ -50,5 +50,11 @@
       "clientBuild": {},
       "serverBuild": {}
     }
-  }
+  },
+  "journal": "Journal",
+  "journalEntryHint": "Write a journal entry",
+  "mcpSettings": "MCP tokens",
+  "createToken": "Create token",
+  "revokeToken": "Revoke",
+  "tokenShownOnce": "Copy this token now. It will not be shown again."
 }

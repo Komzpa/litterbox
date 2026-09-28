@@ -50,5 +50,11 @@
       "clientBuild": {},
       "serverBuild": {}
     }
-  }
+  },
+  "journal": "Журнал",
+  "journalEntryHint": "Новая запись",
+  "mcpSettings": "Токены MCP",
+  "createToken": "Создать токен",
+  "revokeToken": "Отозвать",
+  "tokenShownOnce": "Скопируйте токен сейчас. Позже он не будет показан."
 }
