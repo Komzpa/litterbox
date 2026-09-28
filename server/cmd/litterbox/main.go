@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Komzpa/litterbox/server/internal/httpapi"
 	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/Komzpa/litterbox/server/internal/httpapi"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -65,11 +65,16 @@ func main() {
 				})
 			}
 			cardHandler, err := cards.NewHandler(db, timezone, noteSink)
-			if err != nil { log.Fatal(err) }
+			if err != nil {
+				log.Fatal(err)
+			}
+			eventsCtx, stopEvents := context.WithCancel(context.Background())
+			defer stopEvents()
+			cardHandler.Events = cards.StartEvents(eventsCtx, databaseURL)
 			cardMux := http.NewServeMux()
 			cardHandler.Routes(cardMux)
-			mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){ cardMux.ServeHTTP(w,r) })))
-			mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){ cardMux.ServeHTTP(w,r) })))
+			mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
+			mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
 		}
 	}
 	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, mux)}
