@@ -14,6 +14,8 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/gmail"
 	"github.com/Komzpa/litterbox/server/internal/gmailsync"
+	"github.com/Komzpa/litterbox/server/internal/auth"
+	"github.com/jackc/pgx/v5"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
 	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
@@ -59,7 +61,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", httpapi.Healthz)
 	mux.HandleFunc("GET /v1/version", httpapi.Version(buildSHA, minClientAPI))
+	var protected http.Handler = mux
 	if databaseURL != "" {
+		pg, err := pgx.Connect(context.Background(), databaseURL)
+		if err != nil { log.Fatal(err) }
+		defer pg.Close(context.Background())
+		authHandler := auth.NewHandler(auth.NewPostgresStore(pg), devTenantID)
+		authHandler.Register(mux)
+		protected = authHandler.Middleware(mux)
 		db, err := sql.Open("pgx", databaseURL)
 		if err != nil {
 			log.Fatal(err)
@@ -185,7 +194,7 @@ func main() {
 			}
 		}
 	}
-	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, mux)}
+	server := &http.Server{Addr: listenAddr, Handler: httpapi.BuildHeader(buildSHA, httpapi.APIVersion, protected)}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

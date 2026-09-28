@@ -1,0 +1,16 @@
+[Unit]
+Description=Litterbox reverse SSH tunnel (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=litterbox
+Group=litterbox
+EnvironmentFile=/etc/litterbox/%i-tunnel.env
+ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${SSH_USER}@${SSH_HOST}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

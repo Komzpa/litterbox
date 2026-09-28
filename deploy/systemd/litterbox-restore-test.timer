@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Litterbox backup restore test
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

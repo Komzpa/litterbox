@@ -1,0 +1,11 @@
+[Unit]
+Description=Create and copy a Litterbox PostgreSQL backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=litterbox
+Group=litterbox
+EnvironmentFile=/etc/litterbox/backup.env
+ExecStart=/opt/litterbox/deploy/backup/daily-pg-dump.sh
