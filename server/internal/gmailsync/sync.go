@@ -28,8 +28,16 @@ type Syncer struct {
 func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
 	c := s.Client(a)
 	var cursor string
-	e := s.DB.QueryRow(ctx, "SELECT COALESCE(history_id,'') FROM accounts WHERE tenant_id=$1 AND id=$2", a.TenantID, a.ID).Scan(&cursor)
+	tx, e := s.beginTenant(ctx, a.TenantID)
 	if e != nil {
+		return e
+	}
+	e = tx.QueryRow(ctx, "SELECT COALESCE(history_id,'') FROM accounts WHERE tenant_id=$1 AND id=$2", a.TenantID, a.ID).Scan(&cursor)
+	if e != nil {
+		tx.Rollback(ctx)
+		return e
+	}
+	if e = tx.Commit(ctx); e != nil {
 		return e
 	}
 	if cursor == "" {
@@ -38,6 +46,12 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
 	return s.poll(ctx, a, c, cursor)
 }
 func (s *Syncer) initial(ctx context.Context, a Account, c *Client) error {
+	var profile struct {
+		HistoryID string `json:"historyId"`
+	}
+	if err := c.request(ctx, "GET", "/profile", nil, &profile); err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	page := ""
 	for {
@@ -56,7 +70,7 @@ func (s *Syncer) initial(ctx context.Context, a Account, c *Client) error {
 		}
 		page = x.NextPageToken
 	}
-	tx, e := s.DB.Begin(ctx)
+	tx, e := s.beginTenant(ctx, a.TenantID)
 	if e != nil {
 		return e
 	}
@@ -83,21 +97,20 @@ func (s *Syncer) initial(ctx context.Context, a Account, c *Client) error {
 			}
 		}
 	}
-	// Gmail thread-list results include the latest history id in thread resources.
-	// Read current history cursor from profile, so changes during initial fetch are polled next.
-	var p struct {
-		HistoryID string `json:"historyId"`
-	}
-	if e = c.request(ctx, "GET", "/profile", nil, &p); e != nil {
-		return e
-	}
-	if p.HistoryID != "" {
-		_, e = tx.Exec(ctx, "UPDATE accounts SET history_id=$1,gmail_synced_at=now() WHERE tenant_id=$2 AND id=$3", p.HistoryID, a.TenantID, a.ID)
+	if profile.HistoryID != "" {
+		_, e = tx.Exec(ctx, "UPDATE accounts SET history_id=$1,gmail_synced_at=now() WHERE tenant_id=$2 AND id=$3", profile.HistoryID, a.TenantID, a.ID)
 		if e != nil {
 			return e
 		}
 	}
-	return tx.Commit(ctx)
+	if e = tx.Commit(ctx); e != nil {
+		return e
+	}
+	// Replay changes that arrived while the initial INBOX snapshot was loading.
+	if profile.HistoryID != "" {
+		return s.poll(ctx, a, c, profile.HistoryID)
+	}
+	return nil
 }
 func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) error {
 	page := ""
@@ -148,15 +161,31 @@ func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) 
 				return e
 			}
 		} else {
-			_, e = s.DB.Exec(ctx, "UPDATE cards SET state='archived',version=version+1 WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3 AND state NOT IN ('archived','done')", a.TenantID, a.ID, id)
+			tx, e := s.beginTenant(ctx, a.TenantID)
 			if e != nil {
+				return e
+			}
+			_, e = tx.Exec(ctx, "UPDATE cards SET state='archived',version=version+1 WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3 AND state NOT IN ('archived','done')", a.TenantID, a.ID, id)
+			if e != nil {
+				tx.Rollback(ctx)
+				return e
+			}
+			if e = tx.Commit(ctx); e != nil {
 				return e
 			}
 		}
 	}
 	if newest != cursor {
-		_, e := s.DB.Exec(ctx, "UPDATE accounts SET history_id=$1,gmail_synced_at=now() WHERE tenant_id=$2 AND id=$3", newest, a.TenantID, a.ID)
-		return e
+		tx, e := s.beginTenant(ctx, a.TenantID)
+		if e != nil {
+			return e
+		}
+		_, e = tx.Exec(ctx, "UPDATE accounts SET history_id=$1,gmail_synced_at=now() WHERE tenant_id=$2 AND id=$3", newest, a.TenantID, a.ID)
+		if e != nil {
+			tx.Rollback(ctx)
+			return e
+		}
+		return tx.Commit(ctx)
 	}
 	return nil
 }
@@ -189,7 +218,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if !inbox {
 		state = "archived"
 	}
-	tx, e := s.DB.Begin(ctx)
+	tx, e := s.beginTenant(ctx, a.TenantID)
 	if e != nil {
 		return e
 	}
@@ -280,4 +309,16 @@ func ClientForCard(clientID, clientSecret, apiBase, tokenURL string, httpClient 
 		}
 		return ClientFactory(clientID, clientSecret, apiBase, tokenURL, httpClient)(a), thread, nil
 	}
+}
+
+func (s *Syncer) beginTenant(ctx context.Context, tenant uuid.UUID) (pgx.Tx, error) {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, "SELECT set_config('litterbox.tenant_id',$1,true)", tenant.String()); err != nil {
+		tx.Rollback(ctx)
+		return nil, err
+	}
+	return tx, nil
 }
