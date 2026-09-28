@@ -38,8 +38,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.5.0
   intl: ^0.20.2
+  drift: ^2.29.0
+  drift_flutter: ^0.2.7
 
 dev_dependencies:
+  drift_dev: ^2.29.0
+  build_runner: ^2.10.0
   flutter_test:
     sdk: flutter
 
