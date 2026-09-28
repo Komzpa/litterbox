@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -236,5 +238,46 @@ func (s *Syncer) Run(ctx context.Context, accounts func(context.Context) ([]Acco
 			return ctx.Err()
 		case <-tick.C:
 		}
+	}
+}
+
+// LoadAccounts returns every active connected account; refresh tokens stay
+// tenant-scoped and are read only by the sync worker.
+func LoadAccounts(ctx context.Context, db *pgxpool.Pool) ([]Account, error) {
+	rows, err := db.Query(ctx, `SELECT tenant_id,id,refresh_token,COALESCE(history_id,'') FROM accounts WHERE status='active' ORDER BY tenant_id,id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var accounts []Account
+	for rows.Next() {
+		var a Account
+		if err = rows.Scan(&a.TenantID, &a.ID, &a.RefreshToken, &a.HistoryID); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, rows.Err()
+}
+
+// ClientFactory builds a Gmail API client using the account's own durable
+// refresh token. The token exchange is lazy and cached only for that client.
+func ClientFactory(clientID, clientSecret, apiBase, tokenURL string, httpClient *http.Client) func(Account) *Client {
+	return func(a Account) *Client {
+		return &Client{HTTP: httpClient, APIBase: apiBase, TokenURL: tokenURL, ClientID: clientID, ClientSecret: clientSecret, RefreshToken: string(a.RefreshToken)}
+	}
+}
+
+// ClientForCard binds a write action to the account that owns the card's Gmail
+// thread, rather than to whichever account was connected most recently.
+func ClientForCard(clientID, clientSecret, apiBase, tokenURL string, httpClient *http.Client) func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (*Client, string, error) {
+	return func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID) (*Client, string, error) {
+		var a Account
+		var thread string
+		err := tx.QueryRow(ctx, `SELECT a.id,a.refresh_token,c.gmail_thread_id FROM cards c JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id WHERE c.tenant_id=$1 AND c.id=$2 AND c.source='mail'`, tenant, cardID).Scan(&a.ID, &a.RefreshToken, &thread)
+		if err != nil {
+			return nil, "", err
+		}
+		return ClientFactory(clientID, clientSecret, apiBase, tokenURL, httpClient)(a), thread, nil
 	}
 }
