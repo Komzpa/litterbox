@@ -52,7 +52,7 @@ func TestPostgresBundleActions(t *testing.T) {
 		}
 		return id
 	}
-	c1, c2, c3, c4 := addCard(), addCard(), addCard(), addCard()
+	c1, c2, c3, c4, c5 := addCard(), addCard(), addCard(), addCard(), addCard()
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +96,12 @@ func TestPostgresBundleActions(t *testing.T) {
 	if err = ReorderPins(ctx, tx, tenant, []uuid.UUID{c4}); err != nil {
 		t.Fatal(err)
 	}
+	if err = Assign(ctx, tx, tenant, c5, "other2@example.net", "other.net", "", "normal"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c5, b4); err != nil {
+		t.Fatal(err)
+	}
 	until := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
 	if err = Snooze(ctx, tx, tenant, c3, json.RawMessage(`{"until":"`+until+`"}`)); err != nil {
 		t.Fatal(err)
@@ -112,6 +118,12 @@ func TestPostgresBundleActions(t *testing.T) {
 	}
 	if state != "open" {
 		t.Fatalf("archive changed pinned card state to %q", state)
+	}
+	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c5).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "archived" {
+		t.Fatalf("archive left unpinned card state %q", state)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
