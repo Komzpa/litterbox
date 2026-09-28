@@ -10,6 +10,21 @@ ApplicationWindow {
     height: 800
     title: "Litterbox"
     property var cardStore: store
+    property var captureActions: ({})
+
+    function captureSnooze(cardId, localDateTimeValue) {
+        const action = captureActions[cardId]
+        if (!action) return "missing-card-action"
+        return action.captureSnooze(localDateTimeValue) ? "accepted" : "rejected"
+    }
+    function capturePinMoveUp(cardId) {
+        const action = captureActions[cardId]
+        if (!action) return "missing-card-action"
+        if (!action.pinned) return "not-pinned"
+        action.movePin(-1)
+        return store.pinnedCardIds()[0] === cardId ? "moved" : "unchanged"
+    }
+
 
     function openPage(name, properties) {
         const page = pagesDir.toString() + name + ".qml"
@@ -72,11 +87,14 @@ ApplicationWindow {
                             Button { text: "Note"; onClicked: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() } }
                             Button { text: "Done"; visible: card.source !== "mail"; onClicked: store.dismiss(cardId) }
                             CardActions {
+                                id: cardActions
                                 store: window.cardStore
                                 cardKey: cardId
                                 source: card.source || ""
                                 bundleId: card.bundle_id || ""
                                 pinnedRank: card.pinned_rank
+                                Component.onCompleted: window.captureActions[cardId] = cardActions
+                                Component.onDestruction: delete window.captureActions[cardId]
                             }
                         }
                     }

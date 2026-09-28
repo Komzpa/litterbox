@@ -24,6 +24,13 @@ Controls.ToolButton {
         snoozeDateTime.text = localDateTime(new Date(Date.now() + 3600000))
         snoozeDialog.open()
     }
+
+    function captureSnooze(localDateTimeValue) {
+        chooseSnoozeDateTime()
+        snoozeDateTime.text = localDateTimeValue
+        snoozeDialog.accept()
+        return snoozeError.length === 0
+    }
     function movePin(delta) {
         const current = Array.from(store.pinnedCardIds())
         const index = current.indexOf(cardKey)

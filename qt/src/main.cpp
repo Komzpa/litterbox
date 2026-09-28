@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QHash>
+#include <QDebug>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -13,6 +15,12 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QDateTime>
+#include <QImage>
+#include <QQuickWindow>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QJsonArray>
 #include <QUrl>
 
 int main(int argc, char *argv[])
@@ -20,6 +28,65 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Litterbox"));
     app.setOrganizationName(QStringLiteral("Litterbox"));
+    const QStringList arguments = app.arguments();
+    const bool captureScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scenario");
+    if (arguments.size() != 1 && !captureScenario) {
+        qCritical("Usage: litterbox-qt [--capture-scenario <fixture.sqlite> <output-directory>]");
+        return 2;
+    }
+    QString captureOutput;
+    QString captureDatabase;
+    if (captureScenario) {
+        captureDatabase = QFileInfo(arguments.at(2)).canonicalFilePath();
+        if (captureDatabase.isEmpty() || !QFileInfo(captureDatabase).isFile()) {
+            qCritical("Capture scenario requires an existing isolated fixture database");
+            return 2;
+        }
+        QSqlDatabase fixture = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("capture-fixture-validation"));
+        fixture.setDatabaseName(captureDatabase);
+        fixture.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+        bool isFixture = fixture.open();
+        if (isFixture) {
+            {
+                QSqlQuery cards(fixture);
+                isFixture = cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"));
+                const QStringList expectedIds{
+                    QStringLiteral("aaaa1111-1111-4111-8111-111111111111"),
+                    QStringLiteral("bbbb2222-2222-4222-8222-222222222222"),
+                    QStringLiteral("cccc3333-3333-4333-8333-333333333333")};
+                const QStringList expectedTitles{
+                    QStringLiteral("Fixture A — pinned (rank 1)"),
+                    QStringLiteral("Fixture B — pinned (rank 2)"),
+                    QStringLiteral("Fixture C — snoozable")};
+                for (int index = 0; isFixture && index < expectedIds.size(); ++index) {
+                    if (!cards.next()) { isFixture = false; break; }
+                    const QJsonObject card = QJsonDocument::fromJson(cards.value(0).toByteArray()).object();
+                    isFixture = card.value(QStringLiteral("id")).toString() == expectedIds[index] &&
+                        card.value(QStringLiteral("title")).toString() == expectedTitles[index];
+                    if (index < 2)
+                        isFixture = isFixture && card.value(QStringLiteral("pinned_rank")).toInt() == index + 1;
+                    else
+                        isFixture = isFixture && card.value(QStringLiteral("source")).toString() == QStringLiteral("reminder");
+                }
+                if (isFixture && cards.next()) isFixture = false;
+                QSqlQuery outbox(fixture);
+                isFixture = isFixture && outbox.exec(QStringLiteral("SELECT COUNT(*) FROM outbox")) && outbox.next() && outbox.value(0).toInt() == 0;
+            }
+            fixture.close();
+        }
+        fixture = QSqlDatabase();
+        QSqlDatabase::removeDatabase(QStringLiteral("capture-fixture-validation"));
+        if (!isFixture) {
+            qCritical("Capture scenario accepts only the untouched three-card R20/R21 fixture");
+            return 2;
+        }
+         captureOutput = QFileInfo(arguments.at(3)).absoluteFilePath();
+        if (captureOutput == QFileInfo(captureDatabase).absolutePath() || !QDir().mkpath(captureOutput) ||
+            !QDir(captureOutput).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
+            qCritical("Capture output directory must be empty and separate from the fixture database");
+            return 2;
+        }
+    }
 
     QSettings settings;
     Api api;
@@ -30,9 +97,9 @@ int main(int argc, char *argv[])
     CardStore store;
     CardStore::registerQml("litterbox", 1, 0);
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(dataDir);
-    if (!store.open(QDir(dataDir).filePath(QStringLiteral("cards.sqlite"))))
-        return 1;
+    if (!captureScenario && !QDir().mkpath(dataDir)) return 1;
+    const QString databasePath = captureScenario ? captureDatabase : QDir(dataDir).filePath(QStringLiteral("cards.sqlite"));
+    if (!store.open(databasePath)) return 1;
 
     QQmlApplicationEngine engine;
     api.setEngine(&engine);
@@ -125,7 +192,94 @@ int main(int argc, char *argv[])
     }
     engine.load(pageUrl);
     if (engine.rootObjects().isEmpty()) return 1;
-    store.setOnline(true);
-    openStream();
+    if (captureScenario) {
+        if (store.rowCount() != 3 || store.pendingOps() != 0 ||
+            store.pinnedCardIds() != QStringList({
+                QStringLiteral("aaaa1111-1111-4111-8111-111111111111"),
+                QStringLiteral("bbbb2222-2222-4222-8222-222222222222")})) {
+            qCritical("Capture fixture must contain the untouched R20/R21 three-card baseline");
+            return 2;
+        }
+        QTimer::singleShot(0, &app, [&] {
+            auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+            QObject *root = engine.rootObjects().constFirst();
+            if (!window) { app.exit(3); return; }
+            const auto saveFrame = [&](const QString &name) {
+                QCoreApplication::processEvents();
+                const QImage frame = window->grabWindow();
+                if (frame.isNull() || !frame.save(QDir(captureOutput).filePath(name), "PNG")) {
+                    qCritical("Unable to capture rendered window: %s", qPrintable(name));
+                    return false;
+                }
+                return true;
+            };
+            const QString cardA = QStringLiteral("aaaa1111-1111-4111-8111-111111111111");
+            const QString cardB = QStringLiteral("bbbb2222-2222-4222-8222-222222222222");
+            const QString cardC = QStringLiteral("cccc3333-3333-4333-8333-333333333333");
+            if (!saveFrame(QStringLiteral("baseline.png"))) { app.exit(4); return; }
+
+            const QString snoozeUntil = QDateTime::currentDateTime().addDays(1).toString(QStringLiteral("yyyy-MM-dd hh:mm"));
+            QVariant snoozeResult;
+            const bool snoozeInvoked = QMetaObject::invokeMethod(root, "captureSnooze", Q_RETURN_ARG(QVariant, snoozeResult),
+                Q_ARG(QVariant, QVariant(cardC)), Q_ARG(QVariant, QVariant(snoozeUntil)));
+            if (!snoozeInvoked || snoozeResult.toString() != QStringLiteral("accepted")) {
+                qCritical("Capture snooze action failed: invoked=%d result=%s rows=%d",
+                    snoozeInvoked, qPrintable(snoozeResult.toString()), store.rowCount());
+                app.exit(5);
+                return;
+            }
+            if (store.rowCount() != 2) {
+                qCritical("Capture snooze action returned accepted but left %d cards", store.rowCount());
+                app.exit(6);
+                return;
+            }
+            if (!saveFrame(QStringLiteral("snoozed.png"))) { app.exit(6); return; }
+
+            QVariant pinResult;
+            const bool pinInvoked = QMetaObject::invokeMethod(root, "capturePinMoveUp", Q_RETURN_ARG(QVariant, pinResult),
+                Q_ARG(QVariant, QVariant(cardB)));
+            if (!pinInvoked || pinResult.toString() != QStringLiteral("moved") ||
+                store.pinnedCardIds() != QStringList({cardB, cardA})) {
+                qCritical("Capture pin reorder failed: invoked=%d result=%s pins=%s",
+                    pinInvoked, qPrintable(pinResult.toString()), qPrintable(store.pinnedCardIds().join(QStringLiteral(","))));
+                app.exit(7);
+                return;
+            }
+            if (!saveFrame(QStringLiteral("reordered.png"))) { app.exit(7); return; }
+
+            QSqlDatabase proof = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("capture-proof"));
+            proof.setDatabaseName(captureDatabase);
+            proof.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+            if (!proof.open()) { app.exit(8); return; }
+            QSqlQuery cards(proof);
+            if (!cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) { app.exit(8); return; }
+            QStringList persistedCards;
+            while (cards.next()) {
+                const QJsonObject card = QJsonDocument::fromJson(cards.value(0).toByteArray()).object();
+                persistedCards.append(card.value(QStringLiteral("id")).toString());
+            }
+            if (persistedCards != QStringList({cardB, cardA})) { app.exit(8); return; }
+            QSqlQuery operations(proof);
+            if (!operations.exec(QStringLiteral("SELECT payload FROM outbox ORDER BY seq"))) { app.exit(8); return; }
+            int snoozes = 0, reorders = 0, operationCount = 0;
+            while (operations.next()) {
+                ++operationCount;
+                const QJsonObject operation = QJsonDocument::fromJson(operations.value(0).toByteArray()).object();
+                const QString type = operation.value(QStringLiteral("type")).toString();
+                if (type == QStringLiteral("snooze") && operation.value(QStringLiteral("card_id")).toString() == cardC &&
+                    !operation.value(QStringLiteral("args")).toObject().value(QStringLiteral("until")).toString().isEmpty()) ++snoozes;
+                if (type == QStringLiteral("reorder_pins") &&
+                    operation.value(QStringLiteral("args")).toObject().value(QStringLiteral("cards")).toArray() ==
+                        QJsonArray{cardB, cardA}) ++reorders;
+            }
+            if (operationCount != 2 || snoozes != 1 || reorders != 1) { app.exit(8); return; }
+            proof.close();
+            qInfo("Capture proof: baseline.png, snoozed.png, reordered.png; persisted snooze and pin order verified");
+            app.exit(0);
+        });
+    } else {
+        store.setOnline(true);
+        openStream();
+    }
     return app.exec();
 }
