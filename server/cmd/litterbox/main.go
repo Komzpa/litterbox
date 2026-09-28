@@ -103,6 +103,7 @@ func main() {
 				syncCtx, stopSync := context.WithCancel(context.Background())
 				defer stopSync()
 				syncer := &gmailsync.Syncer{DB: syncDB, Client: gmailsync.ClientFactory(credentials.ClientID, credentials.ClientSecret, "", "", nil)}
+				gmailsync.RegisterOps(gmailsync.ClientForCard(credentials.ClientID, credentials.ClientSecret, "", "", nil))
 				go func() {
 					for syncCtx.Err() == nil {
 						if err := syncer.Run(syncCtx, func(ctx context.Context) ([]gmailsync.Account, error) { return gmailsync.LoadAccounts(ctx, syncDB) }); err != nil && syncCtx.Err() == nil {
