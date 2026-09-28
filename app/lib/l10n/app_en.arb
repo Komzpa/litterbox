@@ -1,54 +1,21 @@
 {
-  "@@locale": "en",
-  "nowSection": "Now",
-  "laterSection": "Later",
-  "missedCount": "Missed ({count})",
-  "@missedCount": {
+  "pinned": "Pinned",
+  "archiveBundle": "Archive bundle",
+  "pin": "Pin",
+  "unpin": "Unpin",
+  "takeOutOfBundle": "Take out of bundle",
+  "snooze": "Snooze",
+  "laterToday": "Later today",
+  "tomorrowMorning": "Tomorrow morning",
+  "nextWeek": "Next week",
+  "customDateTime": "Custom date/time",
+  "bundleCount": "{bundle} ({count})",
+  "@bundleCount": {
     "placeholders": {
+      "bundle": {},
       "count": {
         "type": "int"
       }
-    }
-  },
-  "emptyCards": "No cards",
-  "retry": "Retry",
-  "oldServer": "Server is older than the app",
-  "restart": "Restart",
-  "done": "Done",
-  "note": "Note",
-  "noteHint": "What should the task generator know?",
-  "cancel": "Cancel",
-  "save": "Save",
-  "doneWithNote": "Done with note",
-  "loadError": "Could not load cards",
-  "actionError": "Could not complete action: {error}",
-  "@actionError": {
-    "placeholders": {
-      "error": {}
-    }
-  },
-  "noteSaveError": "Could not save note: {error}",
-  "@noteSaveError": {
-    "placeholders": {
-      "error": {}
-    }
-  },
-  "outdatedApi": "App is outdated (API {client}), server needs {server}",
-  "@outdatedApi": {
-    "placeholders": {
-      "client": {
-        "type": "int"
-      },
-      "server": {
-        "type": "int"
-      }
-    }
-  },
-  "aboutBuild": "About · app {clientBuild}, server {serverBuild}",
-  "@aboutBuild": {
-    "placeholders": {
-      "clientBuild": {},
-      "serverBuild": {}
     }
   }
 }

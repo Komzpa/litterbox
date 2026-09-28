@@ -1,54 +1,21 @@
 {
-  "@@locale": "ru",
-  "nowSection": "Сейчас",
-  "laterSection": "Позже",
-  "missedCount": "Пропущено ({count})",
-  "@missedCount": {
+  "pinned": "Закреплённые",
+  "archiveBundle": "Архивировать группу",
+  "pin": "Закрепить",
+  "unpin": "Открепить",
+  "takeOutOfBundle": "Убрать из группы",
+  "snooze": "Отложить",
+  "laterToday": "Позже сегодня",
+  "tomorrowMorning": "Завтра утром",
+  "nextWeek": "На следующей неделе",
+  "customDateTime": "Выбрать дату и время",
+  "bundleCount": "{bundle} ({count})",
+  "@bundleCount": {
     "placeholders": {
+      "bundle": {},
       "count": {
         "type": "int"
       }
-    }
-  },
-  "emptyCards": "Нет карточек",
-  "retry": "Повторить",
-  "oldServer": "Сервер старше приложения",
-  "restart": "Перезапустить",
-  "done": "Готово",
-  "note": "Заметка",
-  "noteHint": "Что нужно сообщить генератору задач?",
-  "cancel": "Отмена",
-  "save": "Сохранить",
-  "doneWithNote": "Готово с заметкой",
-  "loadError": "Не удалось загрузить карточки",
-  "actionError": "Не удалось выполнить действие: {error}",
-  "@actionError": {
-    "placeholders": {
-      "error": {}
-    }
-  },
-  "noteSaveError": "Не удалось сохранить заметку: {error}",
-  "@noteSaveError": {
-    "placeholders": {
-      "error": {}
-    }
-  },
-  "outdatedApi": "Приложение устарело (API {client}), серверу нужен {server}",
-  "@outdatedApi": {
-    "placeholders": {
-      "client": {
-        "type": "int"
-      },
-      "server": {
-        "type": "int"
-      }
-    }
-  },
-  "aboutBuild": "О приложении · приложение {clientBuild}, сервер {serverBuild}",
-  "@aboutBuild": {
-    "placeholders": {
-      "clientBuild": {},
-      "serverBuild": {}
     }
   }
 }

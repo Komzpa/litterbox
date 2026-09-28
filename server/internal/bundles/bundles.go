@@ -77,13 +77,19 @@ func Snooze(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, raw json.Raw
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return err
 	}
-	// Keep timestamp parsing in Postgres to accept RFC3339 offset forms uniformly.
 	tag, err := tx.Exec(ctx, `UPDATE cards SET state='snoozed',snooze_until=$3::timestamptz WHERE tenant_id=$1 AND id=$2 AND $3::timestamptz > now()`, tenant, card, args.Until)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return errors.New("card missing or snooze time is not in the future")
+	}
+	var source string
+	if err = tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&source); err != nil {
+		return err
+	}
+	if source == "mail" {
+		return ops.CallIfRegistered(ctx, tx, tenant, card, "gmail.snooze_label", raw)
 	}
 	return nil
 }
@@ -125,14 +131,34 @@ func ReorderPins(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, ids []uuid.UU
 
 // Pin marks a card pinned, assigning its rank after existing pins.
 func Pin(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID) error {
-	_, err := tx.Exec(ctx, `UPDATE cards SET pinned_rank=COALESCE((SELECT max(pinned_rank)+1 FROM cards WHERE tenant_id=$1),1) WHERE tenant_id=$1 AND id=$2 AND state='open'`, tenant, card)
-	return err
+	tag, err := tx.Exec(ctx, `UPDATE cards SET pinned_rank=COALESCE((SELECT max(pinned_rank)+1 FROM cards WHERE tenant_id=$1),1) WHERE tenant_id=$1 AND id=$2 AND state='open'`, tenant, card)
+	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	var source string
+	if err = tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&source); err != nil {
+		return err
+	}
+	if source == "mail" {
+		return ops.CallIfRegistered(ctx, tx, tenant, card, "gmail.star", json.RawMessage(`{"starred":true}`))
+	}
+	return nil
 }
 
 // Unpin removes a card from the pinned order.
 func Unpin(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID) error {
-	_, err := tx.Exec(ctx, `UPDATE cards SET pinned_rank=NULL WHERE tenant_id=$1 AND id=$2`, tenant, card)
-	return err
+	tag, err := tx.Exec(ctx, `UPDATE cards SET pinned_rank=NULL WHERE tenant_id=$1 AND id=$2`, tenant, card)
+	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	var source string
+	if err = tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&source); err != nil {
+		return err
+	}
+	if source == "mail" {
+		return ops.CallIfRegistered(ctx, tx, tenant, card, "gmail.star", json.RawMessage(`{"starred":false}`))
+	}
+	return nil
 }
 
 type ReorderArgs struct {
