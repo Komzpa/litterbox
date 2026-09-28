@@ -29,11 +29,10 @@ Each requirement is **decided** or **open** and names its source.
   grew slow on the phone, 2026-09-27). Opening the app shows the inbox from
   the local copy without waiting for the network; the amount of archived
   history does not slow it down.
-- **R6 Native mobile app first** (decided, owner 2026-09-27). The main
-  client is a mobile app written in Flutter, shipped for Android first.
-  Other clients come from the same Flutter code. Reminders set on the phone
-  show up on every client. On the desktop the owner uses an installed Linux
-  app.
+- **R6 Qt desktop and Android client** (decided, owner 2026-09-27). The
+  main client is a Qt/Kirigami app, shipped for Android first. The Linux
+  desktop client uses the same Qt code. Reminders set on the phone show up on
+  every client. On the desktop the owner uses an installed Linux app.
 
 ## Mail
 
