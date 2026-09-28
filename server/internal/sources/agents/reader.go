@@ -222,6 +222,194 @@ func readCodex(r io.Reader) (Card, bool, error) {
 	return card, true, nil
 }
 
+func isChildMetadata(line []byte) bool {
+	var value any
+	if json.Unmarshal(line, &value) != nil {
+		return false
+	}
+	return hasChildMarker(value)
+}
+func hasChildMarker(value any) bool {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
+			if (strings.HasPrefix(normalized, "parent") && strings.HasSuffix(normalized, "id")) || strings.Contains(normalized, "subagent") || normalized == "childsession" || normalized == "ischild" {
+				if child != nil && child != "" && child != false {
+					return true
+				}
+			}
+			if normalized == "source" || strings.Contains(normalized, "agenttype") || normalized == "role" {
+				if text, ok := child.(string); ok && (strings.EqualFold(text, "subagent") || strings.EqualFold(text, "child")) {
+					return true
+				}
+			}
+			if hasChildMarker(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if hasChildMarker(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+func isNoiseResult(summary, prompt string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(summary), " "))
+	p := strings.ToLower(prompt)
+	if strings.Contains(p, "channel") && (strings.Contains(p, "confirm") || strings.Contains(p, "exact")) && len(normalized) <= 120 {
+		return true
+	}
+	if len(normalized) <= 80 {
+		for _, ack := range []string{"channel ok", "channel confirmed", "confirmed channel", "channel confirmation", "respond with exact channel confirmation", "ack", "acknowledged", "ok", "okay"} {
+			if normalized == ack {
+				return true
+			}
+		}
+	}
+	for _, status := range []string{"still waiting", "stopped, owned by", "stopped owned by", "waiting for", "still running", "in progress", "working on it"} {
+		if strings.HasPrefix(normalized, status) {
+			return true
+		}
+	}
+	return false
+}
+func cleanSummary(text string) string {
+	text = stripXMLBlocks(text)
+	var b strings.Builder
+	inFence, inJSONBlock := false, false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "\u0060\u0060\u0060") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		if inJSONBlock {
+			if strings.ContainsAny(line, "}]") {
+				inJSONBlock = false
+			}
+			continue
+		}
+		if startsJSONBlock(line) {
+			inJSONBlock = !strings.ContainsAny(line[1:], "}]")
+			continue
+		}
+		if isJSONText(line) || (strings.Contains(line, "|") && strings.Count(line, "|") >= 2) {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(line)
+	}
+	text = b.String()
+	for {
+		start := strings.Index(text, "[")
+		if start < 0 {
+			break
+		}
+		mid := strings.Index(text[start+1:], "](")
+		if mid < 0 {
+			break
+		}
+		mid += start + 1
+		end := strings.IndexByte(text[mid+2:], ')')
+		if end < 0 {
+			break
+		}
+		end += mid + 2
+		labelStart := start
+		if start > 0 && text[start-1] == '!' {
+			labelStart--
+		}
+		text = text[:labelStart] + text[start+1:mid] + text[end+1:]
+	}
+	text = strings.NewReplacer("**", "", "__", "", "~~", "", "`", "").Replace(text)
+	return strings.Join(strings.Fields(text), " ")
+}
+func stripXMLBlocks(text string) string {
+	for {
+		start := strings.IndexByte(text, '<')
+		if start < 0 {
+			return text
+		}
+		gt := strings.IndexByte(text[start:], '>')
+		if gt < 0 {
+			return text[:start]
+		}
+		gt += start
+		tag := strings.TrimSpace(text[start+1 : gt])
+		if tag == "" || strings.HasPrefix(tag, "/") || strings.HasPrefix(tag, "!") || strings.HasPrefix(tag, "?") {
+			text = text[:start] + text[gt+1:]
+			continue
+		}
+		nameEnd := strings.IndexAny(tag, " />\t\r\n")
+		name := tag
+		if nameEnd >= 0 {
+			name = tag[:nameEnd]
+		}
+		closeAt := strings.Index(strings.ToLower(text[gt+1:]), "</"+strings.ToLower(name))
+		if closeAt >= 0 {
+			closeAt += gt + 1
+			closeEnd := strings.IndexByte(text[closeAt:], '>')
+			if closeEnd >= 0 {
+				text = text[:start] + text[closeAt+closeEnd+1:]
+				continue
+			}
+		}
+		text = text[:start] + text[gt+1:]
+	}
+}
+func startsJSONBlock(text string) bool {
+	if strings.HasPrefix(text, "{") {
+		return true
+	}
+	if len(text) < 2 || text[0] != '[' {
+		return false
+	}
+	next := text[1]
+	return next == ' ' || next == '\t' || next == '{' || next == '"' || next == ']' || next == '-' || next >= '0' && next <= '9' || next == 't' || next == 'f' || next == 'n'
+}
+
+func isJSONText(text string) bool {
+	text = strings.TrimSpace(text)
+	if len(text) == 0 {
+		return false
+	}
+	if text[0] == '{' || (text[0] == '"' && strings.Contains(text, "\":")) {
+		return true
+	}
+	return len(text) >= 2 && text[0] == '[' && text[len(text)-1] == ']' && json.Valid([]byte(text))
+}
+
+func sourceTitle(source, title, summary string) string {
+	title = cleanSummary(title)
+	if strings.HasPrefix(strings.TrimSpace(title), "{") || strings.HasPrefix(strings.TrimSpace(title), "[") {
+		title = ""
+	}
+	if strings.HasPrefix(strings.ToLower(title), strings.ToLower(source)+" ") {
+		title = strings.TrimSpace(title[len(source):])
+	}
+	if title == "" {
+		title = truncate(strings.SplitN(summary, "\n", 2)[0], 80)
+	}
+	prefix := strings.ToLower(source) + ":"
+	if !strings.HasPrefix(strings.ToLower(title), prefix) {
+		title = source + ": " + title
+	}
+	body := strings.TrimSpace(title[len(source)+1:])
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(summary)), strings.ToLower(body)) {
+		title = source + " result"
+	}
+	return truncate(title, 100)
+}
+
 func scanLines(r io.Reader, visit func([]byte)) error {
 	s := bufio.NewScanner(r)
 	s.Buffer(make([]byte, 64*1024), 16*1024*1024)

@@ -120,3 +120,85 @@ func TestCodexLegacyCompletedAndAwaitingUser(t *testing.T) {
 		t.Fatalf("bad legacy result: %#v %v", card, ok)
 	}
 }
+
+func TestAgentResultNoiseFilters(t *testing.T) {
+	cases := []struct{ name, prompt, answer string }{
+		{"ack", "", "CHANNEL OK"},
+		{"requested channel ack", "Respond with exact channel confirmation", "CHANNEL OK"},
+		{"intermediate waiting", "", "still waiting"},
+		{"owned status", "", "stopped, owned by another run"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"type":"session","id":"synthetic"}` + "\n" + `{"type":"message","message":{"role":"user","content":[{"type":"text","text":"` + tc.prompt + `"}]}}` + "\n" + `{"type":"message","message":{"role":"assistant","stopReason":"endTurn","content":[{"type":"text","text":"` + tc.answer + `"}]}}`
+			_, ok, err := readOMP(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok {
+				t.Fatal("noise result emitted")
+			}
+		})
+	}
+}
+
+func TestAgentResultCleanupAndSourceTitle(t *testing.T) {
+	raw := "Summary <citation_entries>private citation</citation_entries> keep\n| A | B |\n|---|---|\n```json\n{\"x\":1}\n```\n[visible label](https://example.invalid)"
+	got := cleanSummary(raw)
+	if got != "Summary keep visible label" {
+		t.Fatalf("cleaned summary=%q", got)
+	}
+	title := sourceTitle("Codex", "Useful headline", got)
+	if title != "Codex: Useful headline" {
+		t.Fatalf("title=%q", title)
+	}
+	if strings.EqualFold(got, title) {
+		t.Fatalf("summary duplicates title: %q", got)
+	}
+	if copied := sourceTitle("OMP", "Same headline", "Same headline with details"); copied != "OMP result" {
+		t.Fatalf("summary-prefix title was not replaced: %q", copied)
+	}
+	if cleanSummary("<rollout_ids>secret</rollout_ids>") != "" {
+		t.Fatal("XML block content survived")
+	}
+	if got := cleanSummary("**plain** and `inline`"); got != "plain and inline" {
+		t.Fatalf("markdown text=%q", got)
+	}
+	if cleanSummary(`{"private":"synthetic"}`) != "" {
+		t.Fatal("JSON content survived")
+	}
+	if cleanSummary(`{"unfinished":`) != "" {
+		t.Fatal("incomplete JSON content survived")
+	}
+	if cleanSummary("{\n  \"report\": \"synthetic\"\n}") != "" {
+		t.Fatal("multiline JSON content survived")
+	}
+	if got := sourceTitle("Codex", `{"report":"synthetic"}`, "Narrative result."); got != "Codex result" {
+		t.Fatalf("JSON title=%q", got)
+	}
+}
+
+func TestCodexChildSessionIsDropped(t *testing.T) {
+	if !hasChildMarker(map[string]any{"is_subagent": true}) {
+		t.Fatal("subagent flag was not recognized")
+	}
+	body := `{"type":"session_meta","payload":{"id":"child","parent_session_id":"parent"}}` + "\n" + `{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"final","content":[{"type":"output_text","text":"Synthetic child result."}]}}` + "\n" + `{"type":"event_msg","payload":{"type":"turn_complete"}}`
+	_, ok, err := readCodex(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("child session emitted a card")
+	}
+}
+
+func TestOMPChildSessionIsDropped(t *testing.T) {
+	body := `{"type":"session","id":"synthetic","parentSessionId":"parent"}` + "\n" + `{"type":"message","message":{"role":"assistant","stopReason":"endTurn","content":[{"type":"text","text":"Synthetic child result."}]}}`
+	_, ok, err := readOMP(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("child session emitted a card")
+	}
+}
