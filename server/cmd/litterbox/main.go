@@ -63,7 +63,7 @@ func main() {
 			log.Fatal(err)
 		}
 		defer journalPool.Close()
-		journalStore := journal.Store{DB: journalPool}
+		journalStore := journal.Store{DB: journalPool, Cards: journal.SQLCardIngest{DB: journalPool}}
 		journalStore.Register(mux)
 		journalMux := http.NewServeMux()
 		journalStore.RegisterPrivate(journalMux)

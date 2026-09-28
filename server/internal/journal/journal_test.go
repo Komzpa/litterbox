@@ -3,7 +3,6 @@ package journal
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +43,7 @@ func TestMCPPostgresScopesRevocationAndTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	s := Store{DB: pool}
+	s := Store{DB: pool, Cards: SQLCardIngest{DB: pool}}
 	mux := http.NewServeMux()
 	s.Register(mux)
 	id, token, err := s.CreateToken(context.Background(), tenant)
@@ -67,25 +66,38 @@ func TestMCPPostgresScopesRevocationAndTools(t *testing.T) {
 		if json.Unmarshal(w.Body.Bytes(), &v) != nil || v["result"] == nil {
 			t.Fatalf("tools/list response %s", w.Body.String())
 		}
+		encoded, _ := json.Marshal(v["result"])
+		if bytes.Contains(encoded, []byte("journal_append")) {
+			t.Fatalf("tools/list exposed journal_append: %s", encoded)
+		}
 	}
-	if w := call("tools/call", `{"name":"journal_append","arguments":{"body":"hello"}}`); w.Code != 200 || bytes.Contains(w.Body.Bytes(), []byte(`"error"`)) {
-		t.Fatalf("tools/call response %d %s", w.Code, w.Body.String())
+	if w := call("tools/call", `{"name":"journal_append","arguments":{"body":"forbidden"}}`); !bytes.Contains(w.Body.Bytes(), []byte("unknown tool")) {
+		t.Fatalf("append must be rejected as unknown tool: %s", w.Body.String())
 	}
-	if w := call("tools/call", `{"name":"card_create","arguments":{"title":"from MCP","summary":"created"}}`); w.Code != 200 || bytes.Contains(w.Body.Bytes(), []byte(`"error"`)) {
-		t.Fatalf("card_create response %d %s", w.Code, w.Body.String())
+	if w := call("tools/call", `{"name":"journal_read","arguments":{}}`); w.Code != 200 || bytes.Contains(w.Body.Bytes(), []byte(`"error"`)) {
+		t.Fatalf("journal_read response %d %s", w.Code, w.Body.String())
+	}
+	for _, args := range []string{
+		`{"external_id":"assistant-task-17","title":"from MCP","summary":"created"}`,
+		`{"external_id":"assistant-task-17","title":"updated by retry","summary":"updated"}`,
+	} {
+		if w := call("tools/call", `{"name":"card_create","arguments":`+args+`}`); w.Code != 200 || bytes.Contains(w.Body.Bytes(), []byte(`"error"`)) {
+			t.Fatalf("card_create response %d %s", w.Code, w.Body.String())
+		}
 	}
 	var cardCount int
-	if err := db.QueryRow(`SELECT count(*) FROM cards WHERE tenant_id=$1 AND source='mcp' AND title='from MCP'`, tenant).Scan(&cardCount); err != nil || cardCount != 1 {
-		t.Fatalf("created MCP card count=%d err=%v", cardCount, err)
+	var title, summary string
+	if err := db.QueryRow(`SELECT count(*),min(title),min(summary) FROM cards WHERE tenant_id=$1 AND source='mcp' AND external_id='assistant-task-17'`, tenant).Scan(&cardCount, &title, &summary); err != nil || cardCount != 1 || title != "updated by retry" || summary != "updated" {
+		t.Fatalf("MCP card upsert count=%d title=%q summary=%q err=%v", cardCount, title, summary, err)
 	}
-	// Replace scopes with read-only and prove append is denied while read remains available.
-	sum := sha256sum(token)
-	if _, err = db.Exec(`UPDATE mcp_tokens SET scopes=$1 WHERE token_hash=$2`, []string{"journal:read"}, sum); err != nil {
+	var scopes string
+	if err := db.QueryRow(`SELECT scopes::text FROM mcp_tokens WHERE id=$1`, id).Scan(&scopes); err != nil {
 		t.Fatal(err)
 	}
-	if w := call("tools/call", `{"name":"journal_append","arguments":{"body":"denied"}}`); !bytes.Contains(w.Body.Bytes(), []byte("scope denied")) {
-		t.Fatalf("scope enforcement: %s", w.Body.String())
+	if scopes != "{journal:read,cards:create}" {
+		t.Fatalf("unexpected MCP scopes: %s", scopes)
 	}
+
 	if err = s.RevokeToken(context.Background(), tenant, id); err != nil {
 		t.Fatal(err)
 	}
@@ -97,4 +109,3 @@ func TestMCPPostgresScopesRevocationAndTools(t *testing.T) {
 		t.Fatalf("revoked token status=%d body=%s", w.Code, w.Body.String())
 	}
 }
-func sha256sum(v string) []byte { h := sha256.Sum256([]byte(v)); return h[:] }

@@ -15,7 +15,30 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Store struct{ DB *pgxpool.Pool }
+type CardIngest interface {
+	UpsertCard(ctx context.Context, tenant, externalID, title, summary string) error
+}
+
+type Store struct {
+	DB    *pgxpool.Pool
+	Cards CardIngest
+}
+
+type SQLCardIngest struct{ DB *pgxpool.Pool }
+
+func (s SQLCardIngest) UpsertCard(ctx context.Context, tenant, externalID, title, summary string) error {
+	tx, err := (&Store{DB: s.DB}).tenantTx(ctx, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,gen_random_uuid(),NULL,NULL,'mcp',$2,$3,$4,'open') ON CONFLICT (tenant_id,source,external_id) DO UPDATE SET title=EXCLUDED.title,summary=EXCLUDED.summary`, tenant, externalID, title, summary)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 type Entry struct {
 	ID        string    `json:"id"`
 	Body      string    `json:"body"`
@@ -116,7 +139,7 @@ func (s Store) CreateToken(ctx context.Context, tenant string) (string, string, 
 	token := "lbm_" + hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(token))
 	var id string
-	err := s.DB.QueryRow(ctx, `INSERT INTO mcp_tokens(tenant_id,token_hash,scopes) VALUES($1,$2,$3) RETURNING id::text`, tenant, sum[:], []string{"journal:read", "journal:append", "cards:create"}).Scan(&id)
+	err := s.DB.QueryRow(ctx, `INSERT INTO mcp_tokens(tenant_id,token_hash,scopes) VALUES($1,$2,$3) RETURNING id::text`, tenant, sum[:], []string{"journal:read", "cards:create"}).Scan(&id)
 	return id, token, err
 }
 func (s Store) RevokeToken(ctx context.Context, tenant, id string) error {
@@ -173,7 +196,7 @@ func (s Store) mcpHandler() http.Handler {
 			return
 		}
 		if req.Method == "tools/list" {
-			reply(w, req.ID, map[string]any{"tools": []any{map[string]any{"name": "journal_read"}, map[string]any{"name": "journal_append"}, map[string]any{"name": "card_create"}}}, nil)
+			reply(w, req.ID, map[string]any{"tools": []any{map[string]any{"name": "journal_read"}, map[string]any{"name": "card_create"}}}, nil)
 			return
 		}
 		if req.Method != "tools/call" {
@@ -190,38 +213,24 @@ func (s Store) mcpHandler() http.Handler {
 				break
 			}
 			result, callErr = s.List(ctx, a.Tenant)
-		case "journal_append":
-			if !a.Scopes["journal:append"] {
-				callErr = errors.New("scope denied")
-				break
-			}
-			var in struct {
-				Body string `json:"body"`
-			}
-			callErr = json.Unmarshal(mustArgs(req.Params.Arguments), &in)
-			if callErr == nil {
-				result, callErr = s.Create(ctx, a.Tenant, in.Body)
-			}
 		case "card_create":
 			if !a.Scopes["cards:create"] {
 				callErr = errors.New("scope denied")
 				break
 			}
 			var in struct {
-				Title   string `json:"title"`
-				Summary string `json:"summary"`
+				ExternalID string `json:"external_id"`
+				Title      string `json:"title"`
+				Summary    string `json:"summary"`
 			}
 			callErr = json.Unmarshal(mustArgs(req.Params.Arguments), &in)
 			if callErr == nil {
-				var tx pgx.Tx
-				tx, callErr = s.tenantTx(ctx, a.Tenant)
-				if callErr == nil {
-					_, callErr = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,gen_random_uuid(),NULL,NULL,'mcp',gen_random_uuid()::text,$2,$3,'open')`, a.Tenant, in.Title, in.Summary)
-					if callErr == nil {
-						callErr = tx.Commit(ctx)
-					} else {
-						_ = tx.Rollback(ctx)
-					}
+				if in.ExternalID == "" {
+					callErr = errors.New("external_id is required")
+				} else if s.Cards == nil {
+					callErr = errors.New("card ingest unavailable")
+				} else {
+					callErr = s.Cards.UpsertCard(ctx, a.Tenant, in.ExternalID, in.Title, in.Summary)
 				}
 			}
 		default:
