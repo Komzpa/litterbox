@@ -146,7 +146,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,source,COALESCE(NULLIF(title,''),subject),summary,at,timed,state,note,created_at,note_order,bundle_id::text,pinned_rank FROM cards WHERE tenant_id=$1 AND state='open' ORDER BY created_at DESC`, tenant)
+	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,source,COALESCE(NULLIF(title,''),subject),summary,at,timed,state,note,created_at,note_order,bundle_id::text,pinned_rank FROM cards WHERE tenant_id=$1 AND state='open' ORDER BY CASE WHEN pinned_rank IS NOT NULL THEN 0 ELSE 1 END, pinned_rank, CASE WHEN source='manual' THEN 0 ELSE 1 END, note_order, created_at DESC`, tenant)
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return

@@ -137,10 +137,36 @@ QStringList CardStore::pinnedCardIds() const {
     for (const auto &entry : ordered) ids.append(entry.second);
     return ids;
 }
+QStringList CardStore::cardIds() const {
+    QStringList ids;
+    ids.reserve(m_cards.size());
+    for (const QVariantMap &card : m_cards) ids.append(card.value(QStringLiteral("id")).toString());
+    return ids;
+}
+bool CardStore::moveCard(const QString &cardId, int delta) {
+    QStringList ids = cardIds();
+    const int source = ids.indexOf(cardId), target = source + delta;
+    if (source < 0 || target < 0 || target >= ids.size()) return false;
+    ids.move(source, target);
+    return !reorderCards(ids).isEmpty();
+}
+QString CardStore::reorderCards(const QStringList &ids) {
+    const QStringList current = cardIds();
+    if (ids.size() != current.size() || QSet<QString>(ids.begin(), ids.end()) != QSet<QString>(current.begin(), current.end()) || ids.isEmpty()) return {};
+    QVariantList ordered;
+    for (const QString &cardId : ids) ordered.append(cardId);
+    return enqueueOp(ids.first(), QStringLiteral("reorder_cards"), {{QStringLiteral("cards"), ordered}});
+}
+bool CardStore::createCard(const QString &title, const QString &summary) {
+    const QString cleanTitle = title.trimmed();
+    if (cleanTitle.isEmpty()) return false;
+    return !enqueueOp(QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("create_card"),
+        {{QStringLiteral("title"), cleanTitle}, {QStringLiteral("summary"), summary.trimmed()}}).isEmpty();
+}
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_db.isOpen() || QUuid(cardId).isNull()) return {};
     static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
-        QStringLiteral("reorder_pins"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
+        QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QJsonObject payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
@@ -207,6 +233,27 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
                 }
             }
         }
+    } else if (type == QStringLiteral("reorder_cards")) {
+        QStringList ordered;
+        for (const QVariant &value : args.value(QStringLiteral("cards")).toList()) ordered.append(value.toString());
+        const QStringList current = cardIds();
+        if (ordered.size() != cards.size() || QSet<QString>(ordered.begin(), ordered.end()) != QSet<QString>(current.begin(), current.end())) return {};
+        QList<QVariantMap> reordered;
+        for (int i = 0; i < ordered.size(); ++i) {
+            for (QVariantMap &card : cards) if (card.value(QStringLiteral("id")).toString() == ordered[i]) {
+                card.insert(QStringLiteral("note_order"), i);
+                reordered.append(card);
+            }
+        }
+        cards = std::move(reordered);
+        changed = true;
+    } else if (type == QStringLiteral("create_card")) {
+        QVariantMap card{{QStringLiteral("id"), cardId}, {QStringLiteral("source"), QStringLiteral("manual")},
+            {QStringLiteral("title"), args.value(QStringLiteral("title"))}, {QStringLiteral("summary"), args.value(QStringLiteral("summary"))},
+            {QStringLiteral("state"), QStringLiteral("open")}, {QStringLiteral("section"), QStringLiteral("now")}};
+        if (card.value(QStringLiteral("title")).toString().trimmed().isEmpty()) return {};
+        cards.prepend(card);
+        changed = true;
     }
     if (changed) {
         std::stable_sort(cards.begin(), cards.end(), [&](const QVariantMap &left, const QVariantMap &right) {

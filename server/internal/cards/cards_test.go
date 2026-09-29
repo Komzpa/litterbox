@@ -78,6 +78,18 @@ func TestSectionPinnedFirstWithinR30Sections(t *testing.T) {
 	assertIDs(got.Later, "later-rank-1", "later-rank-2", "later-early", "later-late")
 	assertIDs(got.Missed, "missed-rank-1", "missed-rank-2", "missed-late", "missed-early")
 }
+func TestSectionManualCardsUseManualOrder(t *testing.T) {
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	cards := []Card{
+		{ID: "manual-2", Source: "manual", State: "open", order: 2},
+		{ID: "todo", Source: "todo", State: "open", order: 0},
+		{ID: "manual-1", Source: "manual", State: "open", order: 1},
+	}
+	got := Section(cards, now)
+	if len(got.Now) != 3 || got.Now[0].ID != "manual-1" || got.Now[1].ID != "manual-2" || got.Now[2].ID != "todo" {
+		t.Fatalf("manual card order = %v, want [manual-1 manual-2 todo]", cardIDs(got.Now))
+	}
+}
 
 func cardIDs(cards []Card) []string {
 	ids := make([]string, len(cards))

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -88,6 +89,54 @@ func init() {
 	})
 	Register("reorder_pins", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		return bundles.Reorder(ctx, tx, tenant, args)
+	})
+	Register("reorder_cards", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		var in struct {
+			Cards []uuid.UUID `json:"cards"`
+		}
+		if err := json.Unmarshal(args, &in); err != nil {
+			return err
+		}
+		if len(in.Cards) == 0 {
+			return fmt.Errorf("cards required")
+		}
+		seen := make(map[uuid.UUID]bool, len(in.Cards))
+		for i, id := range in.Cards {
+			if id == uuid.Nil || seen[id] {
+				return fmt.Errorf("invalid card order")
+			}
+			seen[id] = true
+			tag, err := tx.Exec(ctx, `UPDATE cards SET note_order=$3 WHERE tenant_id=$1 AND id=$2 AND state='open'`, tenant, id, i)
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() != 1 {
+				return fmt.Errorf("card not found")
+			}
+		}
+		var openCount int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM cards WHERE tenant_id=$1 AND state='open'`, tenant).Scan(&openCount); err != nil {
+			return err
+		}
+		if openCount != len(in.Cards) {
+			return fmt.Errorf("card order must include every open card")
+		}
+		return nil
+	})
+	Register("create_card", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
+		var in struct {
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		}
+		if err := json.Unmarshal(args, &in); err != nil {
+			return err
+		}
+		in.Title = strings.TrimSpace(in.Title)
+		if in.Title == "" {
+			return fmt.Errorf("title required")
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,$2,NULL,NULL,'manual',$3,$4,$5,'open')`, tenant, card, card.String(), in.Title, in.Summary)
+		return err
 	})
 	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		if err := enqueueBundleDone(ctx, tx, tenant, args); err != nil {

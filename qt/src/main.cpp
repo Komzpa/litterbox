@@ -34,9 +34,10 @@ int main(int argc, char *argv[])
     const QStringList arguments = app.arguments();
     const bool captureScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scenario");
     const bool captureScrollScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scroll-scenario");
-    const bool captureMode = captureScenario || captureScrollScenario;
+    const bool captureCardControls = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-card-controls");
+    const bool captureMode = captureScenario || captureScrollScenario || captureCardControls;
     if (arguments.size() != 1 && !captureMode) {
-        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario <fixture.sqlite> <output-directory>]");
+        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory>]");
         return 2;
     }
     QString captureOutput;
@@ -55,7 +56,11 @@ int main(int argc, char *argv[])
             {
                 QSqlQuery cards(fixture);
                 isFixture = cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"));
-                if (captureScenario) {
+                if (captureCardControls) {
+                    int count = 0;
+                    while (cards.next()) ++count;
+                    isFixture = isFixture && count >= 2;
+                } else if (captureScenario) {
                     const QStringList expectedIds{
                         QStringLiteral("aaaa1111-1111-4111-8111-111111111111"),
                         QStringLiteral("bbbb2222-2222-4222-8222-222222222222"),
@@ -69,10 +74,8 @@ int main(int argc, char *argv[])
                         const QJsonObject card = QJsonDocument::fromJson(cards.value(0).toByteArray()).object();
                         isFixture = card.value(QStringLiteral("id")).toString() == expectedIds[index] &&
                             card.value(QStringLiteral("title")).toString() == expectedTitles[index];
-                        if (index < 2)
-                            isFixture = isFixture && card.value(QStringLiteral("pinned_rank")).toInt() == index + 1;
-                        else
-                            isFixture = isFixture && card.value(QStringLiteral("source")).toString() == QStringLiteral("reminder");
+                        if (index < 2) isFixture = isFixture && card.value(QStringLiteral("pinned_rank")).toInt() == index + 1;
+                        else isFixture = isFixture && card.value(QStringLiteral("source")).toString() == QStringLiteral("reminder");
                     }
                     if (isFixture && cards.next()) isFixture = false;
                 } else {
@@ -108,7 +111,7 @@ int main(int argc, char *argv[])
     CardStore store;
     CardStore::registerQml("litterbox", 1, 0);
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (!captureScenario && !QDir().mkpath(dataDir)) return 1;
+    if (!captureMode && !QDir().mkpath(dataDir)) return 1;
     const QString databasePath = captureMode ? captureDatabase : QDir(dataDir).filePath(QStringLiteral("cards.sqlite"));
     if (!store.open(databasePath)) return 1;
 
@@ -269,12 +272,50 @@ int main(int argc, char *argv[])
             qInfo("Capture scroll/layout proof: rendered inbox scroll keys and wheels verified; at 3840x2160 card width %.0fpx, x=%.0f, actions x=%.0f inside card; fullscreen-4k.png", cardWidth, cardX, actionsX);
             app.exit(0);
         });
+    } else if (captureCardControls) {
+        if (store.pendingOps() != 0 || store.rowCount() < 2) { qCritical("Card controls fixture must start with at least two cards and empty outbox"); return 2; }
+        QTimer::singleShot(0, &app, [&] {
+            auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+            QObject *root = engine.rootObjects().constFirst();
+            const auto saveFrame = [&](const QString &name) { QCoreApplication::processEvents(); const QImage image = window->grabWindow(); return !image.isNull() && image.save(QDir(captureOutput).filePath(name), "PNG"); };
+            const QStringList initial = store.cardIds();
+            if (!window || !saveFrame(QStringLiteral("baseline.png"))) { app.exit(3); return; }
+            QVariant created;
+            if (!QMetaObject::invokeMethod(root, "captureCreateCard", Q_RETURN_ARG(QVariant, created), Q_ARG(QVariant, QVariant(QStringLiteral("Capture manual card"))), Q_ARG(QVariant, QVariant(QStringLiteral("Created in Qt capture")))) || !created.toBool()) { qCritical("Add-card dialog failed"); app.exit(4); return; }
+            if (!QMetaObject::invokeMethod(root, "captureCloseCreateDialog")) { app.exit(4); return; }
+            QEventLoop closeWait;
+            QTimer::singleShot(400, &closeWait, &QEventLoop::quit);
+            closeWait.exec();
+            if (!saveFrame(QStringLiteral("created-card.png"))) { app.exit(4); return; }
+            const QStringList afterCreate = store.cardIds();
+            if (afterCreate.size() != initial.size() + 1) { app.exit(4); return; }
+            QVariant moved;
+            if (!QMetaObject::invokeMethod(root, "captureMoveCardUp", Q_RETURN_ARG(QVariant, moved), Q_ARG(QVariant, QVariant(afterCreate.at(1)))) || !moved.toBool()) { qCritical("Reorder handle failed"); app.exit(5); return; }
+            if (!saveFrame(QStringLiteral("manual-reorder.png"))) { app.exit(5); return; }
+            QSqlDatabase proof = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("control-capture-proof"));
+            proof.setDatabaseName(captureDatabase);
+            proof.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+            if (!proof.open()) { app.exit(6); return; }
+            QSqlQuery cards(proof);
+            if (!cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) { app.exit(6); return; }
+            QStringList persisted;
+            while (cards.next()) persisted.append(QJsonDocument::fromJson(cards.value(0).toByteArray()).object().value(QStringLiteral("id")).toString());
+            QStringList expected = afterCreate;
+            expected.move(1, 0);
+            if (persisted != expected) { qCritical("Card order mismatch; expected=%s persisted=%s", qPrintable(expected.join(QStringLiteral(","))), qPrintable(persisted.join(QStringLiteral(",")))); app.exit(7); return; }
+            QSqlQuery ops(proof);
+            if (!ops.exec(QStringLiteral("SELECT payload FROM outbox ORDER BY seq"))) { app.exit(6); return; }
+            int creates = 0, reorders = 0;
+            while (ops.next()) { const QString type = QJsonDocument::fromJson(ops.value(0).toByteArray()).object().value(QStringLiteral("type")).toString(); if (type == QStringLiteral("create_card")) ++creates; if (type == QStringLiteral("reorder_cards")) ++reorders; }
+            if (creates != 1 || reorders != 1) { app.exit(7); return; }
+            proof.close();
+            qInfo("Card controls capture: Add card and = reorder rendered; local cache and outbox verified");
+            app.exit(0);
+        });
     } else if (captureScenario) {
         if (store.rowCount() != 3 || store.pendingOps() != 0 ||
-            store.pinnedCardIds() != QStringList({
-                QStringLiteral("aaaa1111-1111-4111-8111-111111111111"),
-                QStringLiteral("bbbb2222-2222-4222-8222-222222222222")})) {
-            qCritical("Capture fixture must contain the untouched R20/R21 three-card baseline");
+            store.pinnedCardIds() != QStringList({QStringLiteral("aaaa1111-1111-4111-8111-111111111111"), QStringLiteral("bbbb2222-2222-4222-8222-222222222222")})) {
+            qCritical("Capture fixture must contain the untouched three-card pin fixture");
             return 2;
         }
         QTimer::singleShot(0, &app, [&] {

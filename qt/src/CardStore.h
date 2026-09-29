@@ -36,9 +36,13 @@ public:
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool applyRemoteCards(const QVariantMap &sections);
+    Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {});
+    Q_INVOKABLE QStringList cardIds() const;
+    Q_INVOKABLE bool moveCard(const QString &cardId, int delta);
+    Q_INVOKABLE QStringList pinnedCardIds() const;
+    Q_INVOKABLE QString reorderCards(const QStringList &ids);
     Q_INVOKABLE QString enqueueOp(const QString &cardId, const QString &type,
                                   const QVariantMap &args = {});
-    Q_INVOKABLE QStringList pinnedCardIds() const;
     Q_INVOKABLE QString dismiss(const QString &cardId) { return enqueueOp(cardId, QStringLiteral("done")); }
     Q_INVOKABLE QString saveNote(const QString &cardId, const QString &note) {
         return enqueueOp(cardId, QStringLiteral("note"), {{QStringLiteral("note"), note}});

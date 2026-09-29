@@ -306,6 +306,46 @@ private slots:
         QCOMPARE(coldStart.pinnedCardIds(), QStringList({secondPin, firstPin}));
         QCOMPARE(coldStart.rowCount(), 2);
     }
+    void manualCreateAndReorderPersistAndSync() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("cache.sqlite");
+        const QString first = cardId;
+        const QString second = QStringLiteral("22222222-2222-4222-8222-222222222222");
+        const QVariantMap sections{{"now", QVariantList{QVariantMap{{"id", first}, {"title", "First"}}, QVariantMap{{"id", second}, {"title", "Second"}}}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        QString createdId;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(sections));
+            QVERIFY(!store.createCard("   ", "details"));
+            QCOMPARE(store.rowCount(), 2);
+            QVERIFY(store.createCard("  Manual task  ", "details"));
+            QCOMPARE(store.rowCount(), 3);
+            createdId = store.data(store.index(0), CardStore::CardIdRole).toString();
+            QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("title").toString(), QStringLiteral("Manual task"));
+            QVERIFY(store.moveCard(second, -1));
+            QCOMPARE(store.data(store.index(1), CardStore::CardIdRole).toString(), second);
+            QCOMPARE(store.pendingOps(), 2);
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.data(restored.index(0), CardStore::CardIdRole).toString(), createdId);
+        QCOMPARE(restored.data(restored.index(1), CardStore::CardIdRole).toString(), second);
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.received.size(), 2);
+        QCOMPARE(server.received[0].value("type").toString(), QStringLiteral("create_card"));
+        QCOMPARE(server.received[0].value("card_id").toString(), createdId);
+        QCOMPARE(server.received[0].value("args").toMap().value("title").toString(), QStringLiteral("Manual task"));
+        QCOMPARE(server.received[1].value("type").toString(), QStringLiteral("reorder_cards"));
+        const QVariantList expectedOrder{createdId, second, first};
+        QCOMPARE(server.received[1].value("args").toMap().value("cards").toList(), expectedOrder);
+    }
     void rejectionRetainsHeadAndBlocksLaterOps() {
         QTemporaryDir directory;
         OpsServer server;

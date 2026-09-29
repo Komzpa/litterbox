@@ -12,6 +12,31 @@ ApplicationWindow {
     property var cardStore: store
     property var captureActions: ({})
 
+    function captureCreateCard(title, summary) {
+        const oldCount = store.cardIds().length
+        createTitle.text = title
+        createSummary.text = summary
+        createDialog.open()
+        createDialog.accept()
+        createDialog.visible = false
+        return store.cardIds().length === oldCount + 1
+    }
+    function captureCloseCreateDialog() { createDialog.close() }
+    function captureMoveCardUp(cardId) {
+        function find(item) {
+            if (item.objectName === "reorderHandle-" + cardId) return item
+            for (const child of item.children) {
+                const found = find(child)
+                if (found) return found
+            }
+            return null
+        }
+        const handle = find(window.contentItem)
+        if (!handle) return false
+        handle.clicked()
+        return true
+    }
+    function captureCardIds() { return store.cardIds() }
     function captureSnooze(cardId, localDateTimeValue) {
         const action = captureActions[cardId]
         if (!action) return "missing-card-action"
@@ -37,6 +62,7 @@ ApplicationWindow {
             anchors.fill: parent
             Kirigami.Heading { text: "Litterbox"; level: 2; Layout.fillWidth: true }
             Label { text: store.online ? "Online" : "Offline" }
+            Button { text: qsTr("+ Add card"); onClicked: createDialog.open() }
             ToolButton { text: "Accounts"; onClicked: openPage("GmailAccountsPage") }
             ToolButton { text: "Enroll"; onClicked: openPage("EnrollmentPage") }
             ToolButton { text: "Refresh"; onClicked: store.refresh() }
@@ -138,6 +164,17 @@ ApplicationWindow {
                             Label { text: card.summary || ""; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             Label { text: card.note || ""; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             RowLayout {
+                                ToolButton {
+                                    objectName: "reorderHandle-" + cardId
+                                    text: "="
+                                    Accessible.name: qsTr("Move card earlier")
+                                    ToolTip.text: Accessible.name
+                                    onClicked: store.moveCard(cardId, -1)
+                                }
+                                DragHandler {
+                                    target: null
+                                    onActiveChanged: if (active && translation.y < -24) store.moveCard(cardId, -1)
+                                }
                                 Label { text: card.source || ""; Layout.fillWidth: true }
                                 Button { text: "Note"; onClicked: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() } }
                                 Button { text: "Done"; visible: card.source !== "mail"; onClicked: store.dismiss(cardId) }
@@ -195,5 +232,18 @@ ApplicationWindow {
             }
         }
         onAccepted: store.saveNote(cardId, noteField.text)
+    }
+    Dialog {
+        id: createDialog
+        title: qsTr("Create card")
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Save | Dialog.Cancel
+        onOpened: createTitle.forceActiveFocus()
+        contentItem: ColumnLayout {
+            TextField { id: createTitle; placeholderText: qsTr("Title"); Layout.fillWidth: true }
+            TextField { id: createSummary; placeholderText: qsTr("Details (optional)"); Layout.fillWidth: true }
+        }
+        onAccepted: if (store.createCard(createTitle.text, createSummary.text)) { createTitle.clear(); createSummary.clear() }
     }
 }
