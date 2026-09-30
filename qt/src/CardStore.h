@@ -39,6 +39,7 @@ public:
     Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {});
     Q_INVOKABLE QStringList cardIds() const;
     Q_INVOKABLE bool moveCard(const QString &cardId, int delta);
+    Q_INVOKABLE bool moveCardTo(const QString &cardId, int targetIndex);
     Q_INVOKABLE QStringList pinnedCardIds() const;
     Q_INVOKABLE QString reorderCards(const QStringList &ids);
     Q_INVOKABLE QString enqueueOp(const QString &cardId, const QString &type,

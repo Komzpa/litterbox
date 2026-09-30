@@ -3,6 +3,7 @@ package gmailsync
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -174,6 +175,20 @@ func (c *Client) GetThread(ctx context.Context, id string) (Thread, error) {
 	var x Thread
 	e := c.request(ctx, "GET", "/threads/"+url.PathEscape(id)+"?format=full", nil, &x)
 	return x, e
+}
+
+func (c *Client) GetMessageRaw(ctx context.Context, id string) ([]byte, error) {
+	var message struct {
+		Raw string `json:"raw"`
+	}
+	if err := c.request(ctx, "GET", "/messages/"+url.PathEscape(id)+"?format=raw", nil, &message); err != nil {
+		return nil, err
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(message.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("gmail raw message %s: %w", id, err)
+	}
+	return raw, nil
 }
 func (c *Client) History(ctx context.Context, id, page string) (HistoryPage, error) {
 	var x HistoryPage

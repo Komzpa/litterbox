@@ -1,3 +1,4 @@
+#include "androidupdater.h"
 #include "api.h"
 #include "CardStore.h"
 #include "timerules.h"
@@ -23,8 +24,25 @@
 #include <QJsonArray>
 #include <QUrl>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QWheelEvent>
 #include <QQuickItem>
+
+#include <memory>
+// QObject::findChild cannot see ListView delegates in Qt 6: they only exist as
+// visual children of the list's content item (probe: declared item found,
+// delegate/handle NULL). The capture therefore walks the visual tree, the same
+// walk InboxView.captureLayoutMetrics already does from the list content item.
+static QQuickItem *findVisualItem(QQuickItem *root, const QString &objectName)
+{
+    if (!root) return nullptr;
+    if (root->objectName() == objectName) return root;
+    const QList<QQuickItem *> children = root->childItems();
+    for (QQuickItem *child : children) {
+        if (QQuickItem *found = findVisualItem(child, objectName)) return found;
+    }
+    return nullptr;
+}
 
 int main(int argc, char *argv[])
 {
@@ -36,12 +54,48 @@ int main(int argc, char *argv[])
     const bool captureScrollScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scroll-scenario");
     const bool captureCardControls = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-card-controls");
     const bool captureMode = captureScenario || captureScrollScenario || captureCardControls;
-    if (arguments.size() != 1 && !captureMode) {
-        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory>]");
+    const bool testProfileMode = arguments.size() == 3 && arguments.at(1) == QStringLiteral("--test-profile");
+    if (arguments.size() != 1 && !captureMode && !testProfileMode) {
+        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory>|--test-profile <isolated-profile-directory>]");
         return 2;
     }
     QString captureOutput;
     QString captureDatabase;
+    QString testProfileDirectory;
+    QString testServerUrl;
+    QString testToken;
+    if (testProfileMode) {
+        testProfileDirectory = QFileInfo(arguments.at(2)).canonicalFilePath();
+        const QString profileConfigPath = QDir(testProfileDirectory).filePath(QStringLiteral("profile.json"));
+        QFile profileConfig(profileConfigPath);
+        if (testProfileDirectory.isEmpty() || !QFileInfo(testProfileDirectory).isDir() || !profileConfig.open(QIODevice::ReadOnly)) {
+            qCritical("Test profile requires an existing directory containing profile.json");
+            return 2;
+        }
+        const QJsonObject profile = QJsonDocument::fromJson(profileConfig.readAll()).object();
+        const QUrl serverUrl(profile.value(QStringLiteral("server_url")).toString());
+        testServerUrl = serverUrl.toString();
+        testToken = profile.value(QStringLiteral("token")).toString();
+        if ((serverUrl.scheme() != QStringLiteral("http") && serverUrl.scheme() != QStringLiteral("https")) ||
+            serverUrl.host().isEmpty() || testToken.isEmpty()) {
+            qCritical("Test profile profile.json requires an HTTP(S) server_url and non-empty token");
+            return 2;
+        }
+        const QString testDatabasePath = QDir(testProfileDirectory).filePath(QStringLiteral("cards.sqlite"));
+        const QString testSettingsPath = QDir(testProfileDirectory).filePath(QStringLiteral("settings.ini"));
+        QSettings normalSettings;
+        const QString normalDatabasePath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(QStringLiteral("cards.sqlite"));
+        const auto canonicalOrAbsolute = [](const QString &path) {
+            const QFileInfo info(path);
+            const QString canonical = info.canonicalFilePath();
+            return canonical.isEmpty() ? info.absoluteFilePath() : canonical;
+        };
+        if (canonicalOrAbsolute(testDatabasePath) == canonicalOrAbsolute(normalDatabasePath) ||
+            canonicalOrAbsolute(testSettingsPath) == canonicalOrAbsolute(normalSettings.fileName())) {
+            qCritical("Test profile storage must not overlap normal application storage");
+            return 2;
+        }
+    }
     if (captureMode) {
         captureDatabase = QFileInfo(arguments.at(2)).canonicalFilePath();
         if (captureDatabase.isEmpty() || !QFileInfo(captureDatabase).isFile()) {
@@ -57,9 +111,16 @@ int main(int argc, char *argv[])
                 QSqlQuery cards(fixture);
                 isFixture = cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"));
                 if (captureCardControls) {
-                    int count = 0;
-                    while (cards.next()) ++count;
-                    isFixture = isFixture && count >= 2;
+                    // R38 fixture: two pinned manual cards, two untimed manual
+                    // cards, one time-anchored card, and an empty outbox.
+                    QList<QJsonObject> fixtures;
+                    while (cards.next()) fixtures.append(QJsonDocument::fromJson(cards.value(0).toByteArray()).object());
+                    isFixture = isFixture && fixtures.size() == 5 &&
+                        fixtures.at(0).value(QStringLiteral("pinned_rank")).toInt() == 1 &&
+                        fixtures.at(1).value(QStringLiteral("pinned_rank")).toInt() == 2 &&
+                        fixtures.at(2).value(QStringLiteral("source")).toString() == QStringLiteral("manual") &&
+                        fixtures.at(3).value(QStringLiteral("source")).toString() == QStringLiteral("manual") &&
+                        fixtures.at(4).value(QStringLiteral("timed")).toBool();
                 } else if (captureScenario) {
                     const QStringList expectedIds{
                         QStringLiteral("aaaa1111-1111-4111-8111-111111111111"),
@@ -102,22 +163,40 @@ int main(int argc, char *argv[])
         }
     }
 
-    QSettings settings;
+    std::unique_ptr<QSettings> settings;
+    if (testProfileMode) {
+        settings = std::make_unique<QSettings>(QDir(testProfileDirectory).filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
+        settings->setValue(QStringLiteral("token"), testToken);
+        settings->sync();
+        if (settings->status() != QSettings::NoError) return 1;
+    } else {
+        settings = std::make_unique<QSettings>();
+    }
     Api api;
-    api.setBaseUrl(qEnvironmentVariable("LB_SERVER", "http://127.0.0.1:8080"));
-    api.setToken(qEnvironmentVariable("LB_TOKEN", settings.value(QStringLiteral("token")).toString()));
-    QObject::connect(&api, &Api::tokenChanged, &app, [&] { settings.setValue(QStringLiteral("token"), api.token()); });
+    api.setBaseUrl(testProfileMode ? testServerUrl : qEnvironmentVariable("LB_SERVER", "http://127.0.0.1:8080"));
+    api.setToken(testProfileMode ? testToken : qEnvironmentVariable("LB_TOKEN", settings->value(QStringLiteral("token")).toString()));
+    QObject::connect(&api, &Api::tokenChanged, &app, [&] { settings->setValue(QStringLiteral("token"), api.token()); });
+    AndroidUpdater updater;
+    updater.setBaseUrl(api.baseUrl());
+    updater.setToken(api.token());
+    updater.setPackageId(QStringLiteral("org.qtproject.example.litterbox_qt"));
+    QObject::connect(&api, &Api::baseUrlChanged, &updater, [&] { updater.setBaseUrl(api.baseUrl()); });
+    QObject::connect(&api, &Api::tokenChanged, &updater, [&] { updater.setToken(api.token()); });
+    updater.readInstalledVersionCode();
+
 
     CardStore store;
     CardStore::registerQml("litterbox", 1, 0);
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (!captureMode && !QDir().mkpath(dataDir)) return 1;
-    const QString databasePath = captureMode ? captureDatabase : QDir(dataDir).filePath(QStringLiteral("cards.sqlite"));
+    if (!captureMode && !QDir().mkpath(testProfileMode ? testProfileDirectory : dataDir)) return 1;
+    const QString databasePath = captureMode ? captureDatabase :
+        QDir(testProfileMode ? testProfileDirectory : dataDir).filePath(QStringLiteral("cards.sqlite"));
     if (!store.open(databasePath)) return 1;
 
     QQmlApplicationEngine engine;
     api.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("api"), &api);
+    engine.rootContext()->setContextProperty(QStringLiteral("updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("store"), &store);
     TimeRules timeRules;
     engine.rootContext()->setContextProperty(QStringLiteral("timeRules"), &timeRules);
@@ -273,15 +352,32 @@ int main(int argc, char *argv[])
             app.exit(0);
         });
     } else if (captureCardControls) {
-        if (store.pendingOps() != 0 || store.rowCount() < 2) { qCritical("Card controls fixture must start with at least two cards and empty outbox"); return 2; }
+        if (store.pendingOps() != 0 || store.rowCount() != 5 ||
+            store.pinnedCardIds() != QStringList({QStringLiteral("11111111-1111-4111-8111-111111111111"), QStringLiteral("22222222-2222-4222-8222-222222222222")}) ||
+            !store.data(store.index(4), CardStore::CardRole).toMap().value(QStringLiteral("timed")).toBool()) {
+            qCritical("Card controls fixture must be the R38 fixture: two pinned manual cards, two untimed manual cards and one timed card, empty outbox");
+            return 2;
+        }
         QTimer::singleShot(0, &app, [&] {
             auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
             QObject *root = engine.rootObjects().constFirst();
             const auto saveFrame = [&](const QString &name) { QCoreApplication::processEvents(); const QImage image = window->grabWindow(); return !image.isNull() && image.save(QDir(captureOutput).filePath(name), "PNG"); };
             const QStringList initial = store.cardIds();
             if (!window || !saveFrame(QStringLiteral("baseline.png"))) { app.exit(3); return; }
+            QVariant dialogOpened;
+            if (!QMetaObject::invokeMethod(root, "captureOpenCreateDialog", Q_RETURN_ARG(QVariant, dialogOpened), Q_ARG(QVariant, QVariant(QStringLiteral("Capture manual card"))), Q_ARG(QVariant, QVariant(QStringLiteral("Created in Qt capture")))) || !dialogOpened.toBool()) {
+                qCritical("Add-card dialog did not open");
+                app.exit(4);
+                return;
+            }
+            {
+                QEventLoop openWait;
+                QTimer::singleShot(400, &openWait, &QEventLoop::quit);
+                openWait.exec();
+            }
+            if (!saveFrame(QStringLiteral("create-dialog.png"))) { app.exit(4); return; }
             QVariant created;
-            if (!QMetaObject::invokeMethod(root, "captureCreateCard", Q_RETURN_ARG(QVariant, created), Q_ARG(QVariant, QVariant(QStringLiteral("Capture manual card"))), Q_ARG(QVariant, QVariant(QStringLiteral("Created in Qt capture")))) || !created.toBool()) { qCritical("Add-card dialog failed"); app.exit(4); return; }
+            if (!QMetaObject::invokeMethod(root, "captureAcceptCreateDialog", Q_RETURN_ARG(QVariant, created)) || !created.toBool()) { qCritical("Add-card dialog failed"); app.exit(4); return; }
             if (!QMetaObject::invokeMethod(root, "captureCloseCreateDialog")) { app.exit(4); return; }
             QEventLoop closeWait;
             QTimer::singleShot(400, &closeWait, &QEventLoop::quit);
@@ -289,27 +385,185 @@ int main(int argc, char *argv[])
             if (!saveFrame(QStringLiteral("created-card.png"))) { app.exit(4); return; }
             const QStringList afterCreate = store.cardIds();
             if (afterCreate.size() != initial.size() + 1) { app.exit(4); return; }
-            QVariant moved;
-            if (!QMetaObject::invokeMethod(root, "captureMoveCardUp", Q_RETURN_ARG(QVariant, moved), Q_ARG(QVariant, QVariant(afterCreate.at(1)))) || !moved.toBool()) { qCritical("Reorder handle failed"); app.exit(5); return; }
-            if (!saveFrame(QStringLiteral("manual-reorder.png"))) { app.exit(5); return; }
+            QString createdId;
+            for (const QString &id : afterCreate) if (!initial.contains(id)) createdId = id;
+            if (createdId.isEmpty()) { qCritical("Created card not found in the cache"); app.exit(4); return; }
+
+            const QString pin1 = QStringLiteral("11111111-1111-4111-8111-111111111111");
+            const QString pin2 = QStringLiteral("22222222-2222-4222-8222-222222222222");
+            const QString manualA = QStringLiteral("33333333-3333-4333-8333-333333333333");
+            const QString manualB = QStringLiteral("44444444-4444-4444-8444-444444444444");
+            const QString timedCard = QStringLiteral("55555555-5555-4555-8555-555555555555");
+
+            window->resize(560, 1200);
+            QCoreApplication::processEvents();
+
+            // Grab the rendered `=` handle with real pointer events and release
+            // it over the target card's handle.
+            auto dragHandleTo = [&](const QString &cardId, const QString &targetCardId) -> bool {
+                QQuickItem *from = findVisualItem(window->contentItem(), QStringLiteral("reorderHandle-") + cardId);
+                QQuickItem *to = findVisualItem(window->contentItem(), QStringLiteral("reorderHandle-") + targetCardId);
+                if (!from || !to) {
+                    qCritical("Rendered `=` handle missing for %s or %s", qPrintable(cardId), qPrintable(targetCardId));
+                    return false;
+                }
+                const QPointF start = from->mapToScene(QPointF(from->width() / 2, from->height() / 2));
+                const QPointF end = to->mapToScene(QPointF(to->width() / 2, to->height() / 2));
+                auto send = [&](QEvent::Type type, const QPointF &local, Qt::MouseButtons buttons) {
+                    QMouseEvent event(type, local, window->mapToGlobal(local.toPoint()), Qt::LeftButton, buttons, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &event);
+                    QCoreApplication::processEvents();
+                };
+                send(QEvent::MouseButtonPress, start, Qt::LeftButton);
+                for (int step = 1; step <= 8; ++step)
+                    send(QEvent::MouseMove, start + (end - start) * (qreal(step) / 8.0), Qt::LeftButton);
+                send(QEvent::MouseButtonRelease, end, Qt::NoButton);
+                QCoreApplication::processEvents();
+                return true;
+            };
+            // One real pointer press and release on a rendered control: used for the
+            // no-motion `=` press and for the neighbouring Note and Done controls.
+            const auto pressAndRelease = [&](const QString &itemName) -> bool {
+                QQuickItem *item = findVisualItem(window->contentItem(), itemName);
+                if (!item) {
+                    qCritical("Rendered control missing: %s", qPrintable(itemName));
+                    return false;
+                }
+                const QPointF point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+                auto send = [&](QEvent::Type type, Qt::MouseButtons buttons) {
+                    QMouseEvent event(type, point, window->mapToGlobal(point.toPoint()), Qt::LeftButton, buttons, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &event);
+                    QCoreApplication::processEvents();
+                };
+                send(QEvent::MouseButtonPress, Qt::LeftButton);
+                send(QEvent::MouseButtonRelease, Qt::NoButton);
+                QCoreApplication::processEvents();
+                return true;
+            };
+            const auto requireOrder = [&](const QStringList &want, const char *stage) {
+                if (store.cardIds() == want) return true;
+                qCritical("R38 %s order mismatch: got=%s want=%s", stage,
+                    qPrintable(store.cardIds().join(QStringLiteral(","))), qPrintable(want.join(QStringLiteral(","))));
+                return false;
+            };
+
+            if (!requireOrder(QStringList{pin1, pin2, createdId, manualA, manualB, timedCard}, "post-create")) { app.exit(5); return; }
+            if (!dragHandleTo(manualA, createdId)) { app.exit(5); return; }
+            if (!requireOrder(QStringList{pin1, pin2, manualA, createdId, manualB, timedCard}, "drag-up")) { app.exit(5); return; }
+            if (!saveFrame(QStringLiteral("drag-up.png"))) { app.exit(5); return; }
+            if (!dragHandleTo(manualA, manualB)) { app.exit(5); return; }
+            if (!requireOrder(QStringList{pin1, pin2, createdId, manualB, manualA, timedCard}, "drag-down")) { app.exit(5); return; }
+            if (!saveFrame(QStringLiteral("drag-down.png"))) { app.exit(5); return; }
+            // A pinned card dragged past the block stays inside the pinned block.
+            if (!dragHandleTo(pin1, timedCard)) { app.exit(6); return; }
+            if (!requireOrder(QStringList{pin2, pin1, createdId, manualB, manualA, timedCard}, "pinned-clamp")) { app.exit(6); return; }
+            if (!saveFrame(QStringLiteral("pinned-clamp.png"))) { app.exit(6); return; }
+            // A time-anchored card refuses the drag and nothing moves.
+            const QStringList beforeTimed = store.cardIds();
+            if (!dragHandleTo(timedCard, pin2)) { app.exit(7); return; }
+            if (!requireOrder(beforeTimed, "timed-refusal")) { app.exit(7); return; }
+
             QSqlDatabase proof = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("control-capture-proof"));
             proof.setDatabaseName(captureDatabase);
             proof.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
-            if (!proof.open()) { app.exit(6); return; }
+            if (!proof.open()) { app.exit(8); return; }
             QSqlQuery cards(proof);
-            if (!cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) { app.exit(6); return; }
+            if (!cards.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) { app.exit(8); return; }
             QStringList persisted;
             while (cards.next()) persisted.append(QJsonDocument::fromJson(cards.value(0).toByteArray()).object().value(QStringLiteral("id")).toString());
-            QStringList expected = afterCreate;
-            expected.move(1, 0);
-            if (persisted != expected) { qCritical("Card order mismatch; expected=%s persisted=%s", qPrintable(expected.join(QStringLiteral(","))), qPrintable(persisted.join(QStringLiteral(",")))); app.exit(7); return; }
-            QSqlQuery ops(proof);
-            if (!ops.exec(QStringLiteral("SELECT payload FROM outbox ORDER BY seq"))) { app.exit(6); return; }
-            int creates = 0, reorders = 0;
-            while (ops.next()) { const QString type = QJsonDocument::fromJson(ops.value(0).toByteArray()).object().value(QStringLiteral("type")).toString(); if (type == QStringLiteral("create_card")) ++creates; if (type == QStringLiteral("reorder_cards")) ++reorders; }
-            if (creates != 1 || reorders != 1) { app.exit(7); return; }
+            if (persisted != beforeTimed) {
+                qCritical("Persisted card order mismatch: got=%s want=%s", qPrintable(persisted.join(QStringLiteral(","))), qPrintable(beforeTimed.join(QStringLiteral(","))));
+                app.exit(8);
+                return;
+            }
+            const auto outboxCount = [&]() -> int {
+                QSqlQuery count(proof);
+                if (!count.exec(QStringLiteral("SELECT COUNT(*) FROM outbox")) || !count.next()) return -1;
+                return count.value(0).toInt();
+            };
+            struct OpInventory {
+                int creates = 0, reorders = 0, pinReorders = 0, done = 0, other = 0;
+                bool valid = true;
+                QJsonArray pinOrder;
+            };
+            const auto opInventory = [&]() -> OpInventory {
+                OpInventory inventory;
+                QSqlQuery ops(proof);
+                if (!ops.exec(QStringLiteral("SELECT payload FROM outbox ORDER BY seq"))) { inventory.valid = false; return inventory; }
+                while (ops.next()) {
+                    const QJsonObject op = QJsonDocument::fromJson(ops.value(0).toByteArray()).object();
+                    const QString type = op.value(QStringLiteral("type")).toString();
+                    if (type == QStringLiteral("create_card")) ++inventory.creates;
+                    else if (type == QStringLiteral("reorder_cards")) ++inventory.reorders;
+                    else if (type == QStringLiteral("reorder_pins")) { ++inventory.pinReorders; inventory.pinOrder = op.value(QStringLiteral("args")).toObject().value(QStringLiteral("cards")).toArray(); }
+                    else if (type == QStringLiteral("done")) ++inventory.done;
+                    else ++inventory.other;
+                }
+                return inventory;
+            };
+            const OpInventory afterDrags = opInventory();
+            if (!afterDrags.valid) { app.exit(8); return; }
+            if (afterDrags.creates != 1 || afterDrags.reorders != 2 || afterDrags.pinReorders != 1 || afterDrags.done != 0 || afterDrags.other != 0 || afterDrags.pinOrder != QJsonArray{pin2, pin1}) {
+                qCritical("Outbox mismatch: create=%d reorder_cards=%d reorder_pins=%d done=%d other=%d", afterDrags.creates, afterDrags.reorders, afterDrags.pinReorders, afterDrags.done, afterDrags.other);
+                app.exit(8);
+                return;
+            }
+
+            // A press on `=` released on the same row changes nothing: the order and
+            // the outbox must be exactly as they were before the press.
+            const int opsBeforeNoMotion = outboxCount();
+            if (opsBeforeNoMotion < 0) { app.exit(8); return; }
+            if (!pressAndRelease(QStringLiteral("reorderHandle-") + manualA)) { app.exit(8); return; }
+            if (!requireOrder(beforeTimed, "no-motion")) { app.exit(8); return; }
+            const int opsAfterNoMotion = outboxCount();
+            if (opsAfterNoMotion != opsBeforeNoMotion) {
+                qCritical("No-motion press changed the outbox: before=%d after=%d", opsBeforeNoMotion, opsAfterNoMotion);
+                app.exit(8);
+                return;
+            }
+            if (!saveFrame(QStringLiteral("no-motion.png"))) { app.exit(8); return; }
+
+            // The rendered controls beside the drag surface must stay usable under the
+            // same real pointer events: Note opens its dialog, Done dismisses the card.
+            if (!pressAndRelease(QStringLiteral("noteButton-") + manualB)) { app.exit(9); return; }
+            QVariant noteCardId;
+            if (!QMetaObject::invokeMethod(root, "captureNoteDialogCardId", Q_RETURN_ARG(QVariant, noteCardId)) || noteCardId.toString() != manualB) {
+                qCritical("Note control did not open its dialog for %s", qPrintable(manualB));
+                app.exit(9);
+                return;
+            }
+            if (!saveFrame(QStringLiteral("note-dialog.png"))) { app.exit(9); return; }
+            const int opsBeforeNoteClose = outboxCount();
+            if (!QMetaObject::invokeMethod(root, "captureCloseNoteDialog")) { app.exit(9); return; }
+            QEventLoop noteCloseWait;
+            QTimer::singleShot(400, &noteCloseWait, &QEventLoop::quit);
+            noteCloseWait.exec();
+            if (outboxCount() != opsBeforeNoteClose) {
+                qCritical("Closing the note dialog without saving enqueued an operation");
+                app.exit(9);
+                return;
+            }
+            if (!pressAndRelease(QStringLiteral("doneButton-") + manualB)) { app.exit(9); return; }
+            QStringList afterDone = beforeTimed;
+            afterDone.removeAll(manualB);
+            if (store.cardIds() != afterDone) {
+                qCritical("Done control did not dismiss %s: got=%s want=%s", qPrintable(manualB), qPrintable(store.cardIds().join(QStringLiteral(","))), qPrintable(afterDone.join(QStringLiteral(","))));
+                app.exit(9);
+                return;
+            }
+            if (!saveFrame(QStringLiteral("neighbors.png"))) { app.exit(9); return; }
+
+            // Final inventory: the drags and the no-motion press queue nothing new, so
+            // only the dismissal the Done control really performed is added.
+            const OpInventory finalInventory = opInventory();
+            if (!finalInventory.valid) { app.exit(9); return; }
+            if (finalInventory.creates != 1 || finalInventory.reorders != 2 || finalInventory.pinReorders != 1 || finalInventory.done != 1 || finalInventory.other != 0 || finalInventory.pinOrder != QJsonArray{pin2, pin1}) {
+                qCritical("Final outbox mismatch: create=%d reorder_cards=%d reorder_pins=%d done=%d other=%d", finalInventory.creates, finalInventory.reorders, finalInventory.pinReorders, finalInventory.done, finalInventory.other);
+                app.exit(9);
+                return;
+            }
             proof.close();
-            qInfo("Card controls capture: Add card and = reorder rendered; local cache and outbox verified");
+            qInfo("Card controls capture: rendered add-card dialog, dragged `=` up and down, pinned clamp, timed refusal, no-motion press, and the Note and Done controls; rendered captures, cache and outbox verified");
             app.exit(0);
         });
     } else if (captureScenario) {

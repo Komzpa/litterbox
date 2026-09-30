@@ -1,3 +1,15 @@
+litterbox-qt (0.1-2) unstable; urgency=medium
+
+  * Qt inbox manual card creation and `=` drag reorder (R38): the add-card
+    control opens a rendered dialog and creates an open manual card, and the
+    `=` handle grabs and drags a card to its landing row, keeping pinned cards
+    inside the pinned block and refusing a card anchored to its time. The
+    app-native capture proves the open dialog, real pointer drags up and down,
+    a no-motion press that changes nothing, and the neighbouring Note and Done
+    controls, along with the local cache and queued operations.
+
+ -- Litterbox <litterbox@example.com>  Wed, 30 Sep 2026 12:10:00 +0400
+
 litterbox-qt (0.1-1) unstable; urgency=medium
 
   * Initial Debian packaging.

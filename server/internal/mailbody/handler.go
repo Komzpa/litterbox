@@ -53,7 +53,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	clean, err := sanitize(r.Context(), raw, h.Images)
+	clean, err := Sanitize(r.Context(), raw, h.Images)
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -73,7 +73,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func sanitize(ctx context.Context, source string, fetcher *mailhtml.ImageFetcher) (string, error) {
+func Sanitize(ctx context.Context, source string, fetcher *mailhtml.ImageFetcher) (string, error) {
 	root, err := html.Parse(strings.NewReader(source))
 	if err != nil {
 		return "", err

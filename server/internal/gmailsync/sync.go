@@ -3,13 +3,18 @@ package gmailsync
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/Komzpa/litterbox/server/internal/bundles"
+	"github.com/Komzpa/litterbox/server/internal/mailbody"
+	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,6 +28,7 @@ type Account struct {
 type Syncer struct {
 	DB           *pgxpool.Pool
 	Client       func(Account) *Client
+	Images       *mailhtml.ImageFetcher
 	PollInterval time.Duration
 }
 
@@ -195,6 +201,33 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if e != nil {
 		return e
 	}
+	prepared := make([]mailhtml.Message, len(t.Messages))
+	fetcher := s.Images
+	if fetcher == nil {
+		fetcher = mailhtml.NewImageFetcher(nil, nil)
+	}
+	for i, m := range t.Messages {
+		raw, err := c.GetMessageRaw(ctx, m.ID)
+		if err != nil {
+			return err
+		}
+		parsed, err := mailhtml.Parse(raw)
+		if err != nil {
+			return err
+		}
+		if parsed.HTML != "" {
+			for cid, part := range parsed.Inline {
+				if strings.HasPrefix(part.ContentType, "image/") {
+					parsed.HTML = strings.ReplaceAll(parsed.HTML, "cid:"+cid, "data:"+part.ContentType+";base64,"+base64.StdEncoding.EncodeToString(part.Data))
+				}
+			}
+			parsed.HTML, err = mailbody.Sanitize(ctx, parsed.HTML, fetcher)
+			if err != nil {
+				return err
+			}
+		}
+		prepared[i] = *parsed
+	}
 	subject, sender := "", ""
 	var newest time.Time
 	for _, m := range t.Messages {
@@ -233,16 +266,28 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if e != nil {
 		return e
 	}
-	for _, m := range t.Messages {
+	var body strings.Builder
+	for i, m := range t.Messages {
 		labels := m.LabelIDs
-		raw := []byte(strings.Join(labels, "\x00"))
-		hash := sha256.Sum256(raw)
+		hash := sha256.Sum256([]byte(strings.Join(labels, "\x00")))
 		millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
 		received := time.UnixMilli(millis).UTC()
-		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,body_hash,received_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels`, a.TenantID, uuid.New(), cardID, m.ID, labels, hash[:], received)
+		message := prepared[i]
+		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received)
 		if e != nil {
 			return e
 		}
+		if message.HTML != "" {
+			body.WriteString(message.HTML)
+		} else {
+			body.WriteString("<pre>")
+			body.WriteString(html.EscapeString(message.Text))
+			body.WriteString("</pre>")
+		}
+	}
+	_, e = tx.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,$3) ON CONFLICT(tenant_id,card_id) DO UPDATE SET html=EXCLUDED.html,updated_at=now()`, a.TenantID, cardID, body.String())
+	if e != nil {
+		return e
 	}
 	if e = bundles.AfterIngest(ctx, tx, a.TenantID, nil); e != nil {
 		return e

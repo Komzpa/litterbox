@@ -150,6 +150,45 @@ bool CardStore::moveCard(const QString &cardId, int delta) {
     ids.move(source, target);
     return !reorderCards(ids).isEmpty();
 }
+// Absolute-position variant used by the drag handle. A pinned card moves only
+// inside the pinned block (R21, reorder_pins); a card whose position the
+// server anchors to its time (R30) is refused instead of being silently
+// snapped back after the next sync.
+bool CardStore::moveCardTo(const QString &cardId, int targetIndex) {
+    const QStringList ids = cardIds();
+    const int from = ids.indexOf(cardId);
+    if (from < 0 || targetIndex < 0 || targetIndex >= ids.size()) return false;
+    const QVariantMap card = m_cards.at(from);
+    const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+    const bool pinned = card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
+    if (pinned) {
+        QStringList pins = pinnedCardIds();
+        const int pinFrom = pins.indexOf(cardId);
+        if (pinFrom < 0) return false;
+        const int pinTarget = qBound(0, targetIndex, pins.size() - 1);
+        if (pinTarget == pinFrom) return true;
+        pins.move(pinFrom, pinTarget);
+        QVariantList ordered;
+        for (const QString &id : pins) ordered.append(id);
+        return !enqueueOp(pins.first(), QStringLiteral("reorder_pins"), {{QStringLiteral("cards"), ordered}}).isEmpty();
+    }
+    const QVariant at = card.value(QStringLiteral("at"));
+    const bool timed = card.value(QStringLiteral("timed")).toBool() ||
+        (card.contains(QStringLiteral("at")) && at.isValid() && !at.isNull() && !at.toString().isEmpty());
+    if (timed) return false;
+    const QString section = card.value(QStringLiteral("section")).toString();
+    int first = from, last = from;
+    for (int i = 0; i < m_cards.size(); ++i) {
+        if (m_cards[i].value(QStringLiteral("section")).toString() != section) continue;
+        first = qMin(first, i);
+        last = qMax(last, i);
+    }
+    const int target = qBound(first, targetIndex, last);
+    if (target == from) return true;
+    QStringList reordered = ids;
+    reordered.move(from, target);
+    return !reorderCards(reordered).isEmpty();
+}
 QString CardStore::reorderCards(const QStringList &ids) {
     const QStringList current = cardIds();
     if (ids.size() != current.size() || QSet<QString>(ids.begin(), ids.end()) != QSet<QString>(current.begin(), current.end()) || ids.isEmpty()) return {};

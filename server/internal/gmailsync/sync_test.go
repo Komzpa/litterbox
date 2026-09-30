@@ -2,6 +2,7 @@ package gmailsync
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -66,6 +67,14 @@ func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": "sender@example.test"}}}})
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "thread-1", "historyId": f.history, "messages": msgs})
+	case strings.HasPrefix(r.URL.Path, "/gmail/v1/users/me/messages/"):
+		id := strings.TrimPrefix(r.URL.Path, "/gmail/v1/users/me/messages/")
+		body := "<p>First message</p><script>unsafe()</script>"
+		if id == "m2" {
+			body = "<p>Second message</p>"
+		}
+		raw := "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n" + body
+		json.NewEncoder(w).Encode(map[string]string{"raw": base64.RawURLEncoding.EncodeToString([]byte(raw))})
 	case strings.HasSuffix(r.URL.Path, "/threads/thread-1/modify"):
 		var b struct {
 			Remove []string `json:"removeLabelIds"`
@@ -106,7 +115,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	if _, e := db.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); e != nil {
 		t.Fatal(e)
 	}
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)
@@ -193,6 +202,19 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("message count=%d", count)
+	}
+	var messageHTML, cardHTML string
+	if e := db.QueryRow(ctx, "SELECT html FROM messages WHERE card_id=$1 AND gmail_message_id='m1'", cardID).Scan(&messageHTML); e != nil {
+		t.Fatal(e)
+	}
+	if e := db.QueryRow(ctx, "SELECT html FROM card_bodies WHERE card_id=$1", cardID).Scan(&cardHTML); e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(messageHTML, "First message") || strings.Contains(messageHTML, "script") {
+		t.Fatalf("message MIME body not safely persisted: %s", messageHTML)
+	}
+	if !strings.Contains(cardHTML, "First message") || !strings.Contains(cardHTML, "Second message") || strings.Contains(cardHTML, "script") {
+		t.Fatalf("aggregate offline card body incorrect: %s", cardHTML)
 	}
 	RegisterOps(func(ctx context.Context, tx pgx.Tx, tenantID, card uuid.UUID) (*Client, string, error) {
 		var stored uuid.UUID

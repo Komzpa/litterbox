@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<!--
+  Minimal package-source overlay for the app-initiated update flow. It is a
+  byte-for-byte copy of Qt 6.7.3's default Android package template
+  ($QT/android_arm64_v8a/src/android/templates/AndroidManifest.xml) with one
+  addition: the android.permission.REQUEST_INSTALL_PACKAGES permission.
+
+  That permission is required only so Android can ask the user, at platform
+  level, whether this app may install packages ("install unknown apps").
+  It does NOT grant the permission: the user must still open the settings
+  screen the app routes them to and allow this source. Nothing here approves
+  the installer or enables silent install.
+
+  The package identity matches the installed Qt app. The provider authority uses
+  the same package plus Qt's existing .qtprovider suffix. Keep version, signing,
+  activity and FileProvider settings owned by the Android build slice.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.qtproject.example.litterbox_qt"
+    android:installLocation="auto"
+    android:versionCode="-- %%INSERT_VERSION_CODE%% --"
+    android:versionName="-- %%INSERT_VERSION_NAME%% --">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- %%INSERT_PERMISSIONS -->
+    <!-- %%INSERT_FEATURES -->
+    <supports-screens
+        android:anyDensity="true"
+        android:largeScreens="true"
+        android:normalScreens="true"
+        android:smallScreens="true" />
+    <application
+        android:name="org.qtproject.qt.android.bindings.QtApplication"
+        android:hardwareAccelerated="true"
+        android:label="-- %%INSERT_APP_NAME%% --"
+        android:requestLegacyExternalStorage="true"
+        android:allowBackup="true"
+        android:fullBackupOnly="false">
+        <activity
+            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:launchMode="singleTop"
+            android:screenOrientation="unspecified"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+          <meta-data
+                android:name="android.app.lib_name"
+                android:value="-- %%INSERT_APP_LIB_NAME%% --" />
+
+          <meta-data
+                android:name="android.app.arguments"
+                android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.qtprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/qtprovider_paths"/>
+        </provider>
+    </application>
+</manifest>

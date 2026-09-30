@@ -2,6 +2,7 @@ package gmailsync
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -53,5 +54,47 @@ func TestClientRefreshesTokenAndModifiesThread(t *testing.T) {
 	}
 	if modifications.Load() != 2 {
 		t.Fatalf("modify calls=%d", modifications.Load())
+	}
+}
+
+func TestClientRetrievesRawMessageWithBase64URLDecoding(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "expires_in": 3600})
+			return
+		}
+		if r.URL.Path != "/messages/message-a" || r.URL.Query().Get("format") != "raw" {
+			t.Errorf("unexpected raw request: %s", r.URL)
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer access" {
+			t.Errorf("missing account auth: %q", r.Header.Get("Authorization"))
+		}
+		json.NewEncoder(w).Encode(map[string]string{"raw": base64.RawURLEncoding.EncodeToString([]byte("Content-Type: text/plain\r\n\r\nbody"))})
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), APIBase: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh-for-account-b"}
+	got, err := c.GetMessageRaw(context.Background(), "message-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "Content-Type: text/plain\r\n\r\nbody" {
+		t.Fatalf("raw body = %q", got)
+	}
+}
+
+func TestClientRejectsMalformedRawMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "expires_in": 3600})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"raw": "%%%"})
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), APIBase: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh"}
+	if _, err := c.GetMessageRaw(context.Background(), "bad"); err == nil {
+		t.Fatal("malformed base64url raw message was accepted")
 	}
 }

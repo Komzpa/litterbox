@@ -7,7 +7,7 @@ import (
 )
 
 func TestSanitizeDropsTrackersAndScripts(t *testing.T) {
-	got, err := sanitize(context.Background(), `<div><p>Keep me</p><a href="https://sendgrid.net/wf/open?upn=opaque">tracked link</a><script>alert(1)</script><img src="https://mailtrack.io/pixel.gif" width="1" height="1"><img src="https://example.org/photo.jpg" width="300" height="200"></div>`, nil)
+	got, err := Sanitize(context.Background(), `<div><p>Keep me</p><a href="https://sendgrid.net/wf/open?upn=opaque">tracked link</a><script>alert(1)</script><img src="https://mailtrack.io/pixel.gif" width="1" height="1"><img src="https://example.org/photo.jpg" width="300" height="200"></div>`, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

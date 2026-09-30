@@ -17,6 +17,19 @@ createdb --maintenance-db="$RESTORE_TEST_ADMIN_URL" litterbox_restoretest
 cleanup() { dropdb --maintenance-db="$RESTORE_TEST_ADMIN_URL" --if-exists litterbox_restoretest; }
 trap cleanup EXIT
 pg_restore --no-owner --exit-on-error --dbname="$RESTORE_TEST_URL" "$latest"
+# The check must not be foldable into a constant: `CASE WHEN <immutable predicate>
+# THEN 1 ELSE 1/0 END` is folded by the planner and raises division by zero on a
+# perfectly good restore. A DO block raises only when the restored schema is
+# actually missing a required table.
+psql --no-psqlrc --set=ON_ERROR_STOP=1 "$RESTORE_TEST_URL" <<'SQL'
+DO $$
+BEGIN
+    IF to_regclass('public.tenants') IS NULL OR to_regclass('public.cards') IS NULL THEN
+        RAISE EXCEPTION 'restored database is missing required tables tenants/cards';
+    END IF;
+END
+$$;
+SQL
 psql --no-psqlrc --tuples-only --set=ON_ERROR_STOP=1 "$RESTORE_TEST_URL" \
-  --command="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL AND to_regclass('public.cards') IS NOT NULL THEN 1 ELSE 1/0 END"
+  --command="SELECT 'restored rows: cards=' || (SELECT count(*) FROM cards) || ' ops=' || (SELECT count(*) FROM ops) || ' devices=' || (SELECT count(*) FROM devices) || ' accounts=' || (SELECT count(*) FROM accounts)"
 echo "weekly restore test passed: $latest"

@@ -25,7 +25,6 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/ops"
 	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -47,6 +46,9 @@ func main() {
 	listenAddr := envOrDefault("LISTEN_ADDR", ":8080")
 	databaseURL := os.Getenv("DATABASE_URL")
 	devTenantID := os.Getenv("LITTERBOX_DEV_TENANT_ID")
+    androidAPKPath := os.Getenv("LITTERBOX_ANDROID_APK_PATH")
+    androidVersion := os.Getenv("LITTERBOX_ANDROID_VERSION")
+    androidPackage := os.Getenv("LITTERBOX_ANDROID_PACKAGE")
 	timezone := time.Local.String()
 	noteSink := os.Getenv("LITTERBOX_NOTE_SINK")
 	flag.StringVar(&listenAddr, "listen", listenAddr, "HTTP listen address (or LISTEN_ADDR)")
@@ -62,14 +64,18 @@ func main() {
 	mux.HandleFunc("GET /v1/version", httpapi.Version(buildSHA, minClientAPI))
 	var protected http.Handler = mux
 	if databaseURL != "" {
-		pg, err := pgx.Connect(context.Background(), databaseURL)
+		// HTTP auth requests run concurrently; each lookup/transaction needs its own connection.
+		pg, err := pgxpool.New(context.Background(), databaseURL)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer pg.Close(context.Background())
+		defer pg.Close()
 		authHandler := auth.NewHandler(auth.NewPostgresStore(pg), devTenantID)
 		authHandler.Register(mux)
 		protected = authHandler.Middleware(mux)
+        androidManifest, androidDownload := httpapi.AndroidUpdateHandlers(androidAPKPath, androidVersion, androidPackage)
+        mux.Handle("GET "+httpapi.AndroidUpdateManifestPath, androidManifest)
+        mux.Handle("GET "+httpapi.AndroidUpdateAPKPath, androidDownload)
 		db, err := sql.Open("pgx", databaseURL)
 		if err != nil {
 			log.Fatal(err)
@@ -172,8 +178,11 @@ func main() {
 		mux.Handle("GET /v1/snapshot", devOnly(http.HandlerFunc(snapshotAPI.Snapshot)))
 		mux.Handle("GET /v1/changes", devOnly(http.HandlerFunc(snapshotAPI.Changes)))
 		opsAPI := ops.API{DB: pool, Identity: func(ctx context.Context) (string, string, bool) {
-			tenant, ok := cards.TenantFrom(ctx)
-			return tenant, "", ok
+			device, ok := auth.DeviceFromContext(ctx)
+			if device.DeviceID == "development" {
+				return device.TenantID, "", ok
+			}
+			return device.TenantID, device.DeviceID, ok
 		}}
 		mux.Handle("POST /v1/ops", devOnly(opsAPI))
 		if path := os.Getenv("GMAIL_OAUTH_CREDENTIALS"); path != "" {

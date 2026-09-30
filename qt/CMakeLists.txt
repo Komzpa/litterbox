@@ -18,12 +18,15 @@ qt_add_executable(litterbox-qt
     src/main.cpp
     src/api.h
     src/api.cpp
+    src/androidupdater.h
+    src/androidupdater.cpp
     src/CardStore.h
     src/CardStore.cpp
     src/timerules.h
     src/timerules.cpp
 )
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
+set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
 
 
 set_source_files_properties(src/qml/CardActions.qml PROPERTIES QT_RESOURCE_ALIAS qml/CardActions.qml)
@@ -63,6 +66,11 @@ qt_add_executable(tst_api tests/tst_api.cpp src/api.h src/api.cpp)
 target_include_directories(tst_api PRIVATE src)
 target_link_libraries(tst_api PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
 add_test(NAME api COMMAND tst_api)
+qt_add_executable(tst_androidupdater tests/tst_androidupdater.cpp src/androidupdater.h src/androidupdater.cpp)
+target_include_directories(tst_androidupdater PRIVATE src)
+target_link_libraries(tst_androidupdater PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME androidupdater COMMAND tst_androidupdater)
+
 
 # Page slice QMLTestUnit specs (owned by the screens slice), run headless.
 file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")

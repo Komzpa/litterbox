@@ -1,0 +1,16 @@
+[Unit]
+Description=Litterbox production application server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=litterbox
+Group=litterbox
+EnvironmentFile=/etc/litterbox/db.env
+ExecStart=/opt/litterbox/server/litterbox -listen 127.0.0.1:8081
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
