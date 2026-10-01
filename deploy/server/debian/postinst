@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+# Post-install for litterbox-server: reload systemd so the shipped unit
+# in /lib/systemd/system is picked up. Never restarts the service here;
+# the operator restarts litterbox-server.service explicitly after install
+# (and after applying any pending operator-owned SQL migration).
+if [ "$1" = "configure" ]; then
+  systemctl daemon-reload || true
+fi

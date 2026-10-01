@@ -1,0 +1,17 @@
+Package: litterbox-server
+Version: 0.1-1
+Architecture: amd64
+Maintainer: Litterbox <litterbox@example.com>
+Depends: systemd, libc6
+Section: utils
+Priority: optional
+Description: Litterbox home application server
+ Self-hosted API server for the Litterbox personal task inbox
+ (cards, ingest, Gmail sync, reminders, journal).
+ .
+ Installs the release-built binary at
+ /opt/litterbox/server/litterbox and the systemd unit
+ litterbox-server.service. Configuration in /etc/litterbox
+ (database credentials, environment) is never bundled.
+ Operator SQL migrations ship under
+ /usr/share/litterbox-server/db for reference.
