@@ -213,11 +213,28 @@ ApplicationWindow {
                         , dropTarget: window.dragTargetIndex
                     })
                 }
+                function captureVisibleRange() {
+                    // indexAt takes content coordinates and returns -1 over
+                    // section headings, so scan inward from both viewport
+                    // edges; a blank region yields -1 at that edge, which
+                    // numeric contentY assertions cannot see.
+                    let first = -1
+                    for (let y = contentY + 8; y < contentY + height; y += 16) {
+                        first = indexAt(24, y)
+                        if (first >= 0) break
+                    }
+                    let last = -1
+                    for (let y = contentY + height - 8; y > contentY; y -= 16) {
+                        last = indexAt(24, y)
+                        if (last >= 0) break
+                    }
+                    return ({ contentY: contentY, firstVisible: first, lastVisible: last })
+                }
                 Keys.onPressed: function(event) {
                     const page = Math.max(1, height * 0.85)
                     switch (event.key) {
-                    case Qt.Key_Home: contentY = 0; break
-                    case Qt.Key_End: contentY = Math.max(0, contentHeight - height); break
+                    case Qt.Key_Home: positionViewAtBeginning(); break
+                    case Qt.Key_End: positionViewAtEnd(); break
                     case Qt.Key_PageUp: contentY = Math.max(0, contentY - page); break
                     case Qt.Key_PageDown: contentY = Math.max(0, Math.min(contentHeight - height, contentY + page)); break
                     case Qt.Key_Up: contentY = Math.max(0, contentY - 48); break

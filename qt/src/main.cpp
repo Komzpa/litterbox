@@ -15,7 +15,9 @@
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QElapsedTimer>
 #include <QTimer>
+#include <QThread>
 #include <QDateTime>
 #include <QImage>
 #include <QQuickWindow>
@@ -314,12 +316,28 @@ int main(int argc, char *argv[])
             const qreal down = key(Qt::Key_Down);
             const qreal pageDown = key(Qt::Key_PageDown);
             const qreal up = key(Qt::Key_Up);
-            const qreal end = key(Qt::Key_End);
+            key(Qt::Key_End);
+            const int lastIndex = list->property("count").toInt() - 1;
+            const QVariantMap endRange = waitVisible([&](const QVariantMap &range) { return range.value(QStringLiteral("lastVisible")).toInt() == lastIndex; });
+            const qreal end = endRange.value(QStringLiteral("contentY")).toReal();
             const qreal maximum = list->property("contentHeight").toReal() - list->property("height").toReal();
-            const qreal home = key(Qt::Key_Home);
+            // contentHeight with variable-height delegates is an estimate until
+            // every delegate has been created once, so the reachable end can sit
+            // below the numeric maximum; the authoritative check is that the
+            // last card is really rendered at the viewport's bottom edge.
+            if (endRange.value(QStringLiteral("lastVisible")).toInt() != lastIndex || endRange.value(QStringLiteral("firstVisible")).toInt() < 0) {
+                qCritical("End key did not render the last card: lastVisible=%d firstVisible=%d end=%.1f max=%.1f",
+                          endRange.value(QStringLiteral("lastVisible")).toInt(), endRange.value(QStringLiteral("firstVisible")).toInt(), end, maximum);
+                app.exit(4);
+                return;
+            }
+            key(Qt::Key_Home);
+            const QVariantMap homeRange = waitVisible([&](const QVariantMap &range) { return range.value(QStringLiteral("firstVisible")).toInt() == 0; });
+            const qreal home = homeRange.value(QStringLiteral("contentY")).toReal();
             const qreal pageUp = key(Qt::Key_PageUp);
-            if (down < 48 || up >= pageDown || pageDown <= down || end < maximum - 1 || home != 0 || pageUp != 0) {
-                qCritical("Rendered inbox key scroll assertion failed: down=%.1f up=%.1f pageDown=%.1f end=%.1f max=%.1f home=%.1f pageUp=%.1f", down, up, pageDown, end, maximum, home, pageUp);
+            if (down < 48 || up >= pageDown || pageDown <= down || homeRange.value(QStringLiteral("firstVisible")).toInt() != 0 || home > 1 || pageUp > 1) {
+                qCritical("Rendered inbox key scroll assertion failed: down=%.1f up=%.1f pageDown=%.1f home=%.1f firstVisible=%d pageUp=%.1f",
+                          down, up, pageDown, home, homeRange.value(QStringLiteral("firstVisible")).toInt(), pageUp);
                 app.exit(4);
                 return;
             }
