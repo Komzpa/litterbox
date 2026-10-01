@@ -8,6 +8,7 @@ Controls.ToolButton {
     required property var store
     required property string cardKey
     property string source: ""
+    property string sourceLabel: source
     property bool hasBody: false
     property string bundleId: ""
     property var pinnedRank: undefined
@@ -75,7 +76,7 @@ Controls.ToolButton {
         onClosed: root.forceActiveFocus()
         contentItem: ColumnLayout {
             spacing: 0
-            Controls.Label { text: root.accountName || root.source; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Controls.Label { text: root.accountName || root.sourceLabel; Layout.fillWidth: true; wrapMode: Text.Wrap }
             Controls.Button { text: root.primaryName; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.primaryAction() } }
             Controls.Button { text: root.source === "mail" ? qsTr("Open in Gmail") : qsTr("Open source"); visible: root.canOpenSource; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.openRequested() } }
             Controls.Button { text: qsTr("Read cached · stays in Litterbox"); visible: root.source === "mail" || root.hasBody; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.readCachedRequested() } }

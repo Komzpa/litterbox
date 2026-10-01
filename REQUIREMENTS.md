@@ -136,6 +136,10 @@ Each requirement is **decided** or **open** and names its source.
   and its deliverable files readable offline like any card, R9); reminders
   the assistant sets (behaving like reminders the owner sets and appearing on
   every client, R6); and proactive briefs, which today go to Telegram.
+  Persisted semantic kind (`source_kind`) travels in card, snapshot, and change
+  payloads; Qt displays assistant reminders as reminders even when their token
+  belongs to `research`. Token-bound `source`, card identity, RLS, and actions
+  remain unchanged; older cards without semantic metadata keep their source label.
   Classification must originate in the actual completion producer, not only
   consumer test metadata. Other assistant output does not become a card.
   Oracle: invoke the native completion tool with research/brief classification,

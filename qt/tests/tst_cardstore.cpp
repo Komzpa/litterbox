@@ -83,6 +83,42 @@ public:
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void reminderSemanticContract() {
+        const QString proof = qEnvironmentVariable("R26_API_PROOF");
+        QVariantMap sections;
+        if (!proof.isEmpty()) {
+            QFile file(proof);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            sections = QJsonDocument::fromJson(file.readAll()).object().toVariantMap();
+        } else {
+            sections = {{"now", QVariantList{
+                QVariantMap{{"id", "reminder"}, {"source", "research"}, {"source_kind", "reminder"}},
+                QVariantMap{{"id", "research_result"}, {"source", "research"}, {"source_kind", "research_result"}}}},
+                {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        }
+        QTemporaryDir directory;
+        const QString path = directory.filePath("semantic.sqlite");
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(sections));
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QSet<QString> seen;
+        for (int i = 0; i < restored.rowCount(); ++i) {
+            const QVariantMap card = restored.data(restored.index(i), CardStore::CardRole).toMap();
+            const QString kind = card.value("source_kind").toString();
+            QCOMPARE(card.value("source").toString(), QStringLiteral("research"));
+            QCOMPARE(restored.sourceLabel(card), kind == "reminder" ? QStringLiteral("reminder") : QStringLiteral("research"));
+            seen.insert(kind);
+        }
+        QVERIFY(seen.contains("reminder"));
+        QVERIFY(seen.contains("research_result"));
+        QCOMPARE(restored.sourceLabel({{"source", "research"}}), QStringLiteral("research"));
+        QCOMPARE(restored.sourceLabel({{"source", "reminder"}}), QStringLiteral("reminder"));
+        QCOMPARE(restored.sourceLabel({{"source", "mail"}, {"source_kind", ""}}), QStringLiteral("mail"));
+    }
     void cachedCardsSurviveRestart() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

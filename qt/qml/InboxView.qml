@@ -322,7 +322,7 @@ ApplicationWindow {
                                         Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
                                         onClicked: window.toggleBundle(card.bundle_id)
                                     }
-                                    Label { text: (card.source || "") + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font.pointSize: 9; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font.pointSize: 9; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label {
                                         text: title
                                         color: window.ink
@@ -353,6 +353,7 @@ ApplicationWindow {
                                     store: window.cardStore
                                     cardKey: cardId
                                     source: card.source || ""
+                                    sourceLabel: window.cardStore.sourceLabel(card)
                                     hasBody: !!card.has_body
                                     bundleId: card.bundle_id || ""
                                     pinnedRank: card.pinned_rank

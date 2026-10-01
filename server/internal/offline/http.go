@@ -31,7 +31,7 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := tx.QueryContext(r.Context(), `
-		SELECT c.id, c.subject, c.sender, c.state, c.sort_at, c.note, c.account_id, c.gmail_thread_id,
+		SELECT c.id, c.subject, c.sender, c.state, c.sort_at, c.note, c.account_id, c.gmail_thread_id, c.source, c.source_kind,
 		       COALESCE((
 		           SELECT jsonb_agg(jsonb_build_object(
 		               'id', m.id, 'text', m.text, 'html', m.html,
@@ -51,16 +51,19 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 
 	cards := make([]json.RawMessage, 0)
 	for rows.Next() {
-		var id, subject, sender, state, note, accountID, threadID string
+		var id, subject, sender, state, note string
+		var accountID, threadID sql.NullString
+		var source, sourceKind string
 		var sortAt any
 		var messages []byte
-		if err = rows.Scan(&id, &subject, &sender, &state, &sortAt, &note, &accountID, &threadID, &messages); err != nil {
+		if err = rows.Scan(&id, &subject, &sender, &state, &sortAt, &note, &accountID, &threadID, &source, &sourceKind, &messages); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		b, _ := json.Marshal(map[string]any{
-			"id": id, "subject": subject, "sender": sender, "state": state, "account_id": accountID, "gmail_thread_id": threadID,
+			"id": id, "subject": subject, "sender": sender, "state": state, "account_id": accountID.String, "gmail_thread_id": threadID.String,
 			"sort_at": sortAt, "note": note, "messages": json.RawMessage(messages),
+			"source": source, "source_kind": sourceKind,
 		})
 		cards = append(cards, b)
 	}

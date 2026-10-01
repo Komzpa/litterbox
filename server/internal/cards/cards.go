@@ -10,6 +10,7 @@ type Card struct {
 	BundleID   *string    `json:"bundle_id"`
 	PinnedRank *int64     `json:"pinned_rank"`
 	Source     string     `json:"source"`
+	SourceKind string     `json:"source_kind,omitempty"`
 	Title      string     `json:"title"`
 	Summary    string     `json:"summary"`
 	At         *time.Time `json:"at"`

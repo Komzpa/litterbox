@@ -36,6 +36,12 @@ public:
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool applyRemoteCards(const QVariantMap &sections);
+    // Semantic reminder label is independent of the token-bound source identity.
+    Q_INVOKABLE QString sourceLabel(const QVariantMap &card) const {
+        if (card.value(QStringLiteral("source_kind")).toString() == QStringLiteral("reminder"))
+            return QStringLiteral("reminder");
+        return card.value(QStringLiteral("source")).toString();
+    }
     Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {});
     Q_INVOKABLE QStringList cardIds() const;
     Q_INVOKABLE bool moveCard(const QString &cardId, int delta);
