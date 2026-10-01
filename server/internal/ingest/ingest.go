@@ -35,7 +35,7 @@ type Card struct {
 	Files      []File          `json:"files,omitempty"`
 }
 
-// File is one deliverable attached to a research or brief card. The bytes
+// File is one deliverable attached to a research, brief or reminder card. The bytes
 // travel base64-encoded in JSON. Only the name is producer-controlled; the
 // server sniffs the media type itself and renders the bytes as a data link
 // inside the server-built card body.
@@ -53,7 +53,7 @@ const (
 	// maxBodyBytes caps any ingest request body.
 	maxBodyBytes = 12 << 20
 	// maxPlainBodyBytes is the standing 1 MiB body budget; only the
-	// researched/brief file batch may push a request past it.
+	// research/brief/reminder file batch may push a request past it.
 	maxPlainBodyBytes = 1 << 20
 )
 
@@ -183,7 +183,7 @@ func checkedFiles(req Request, body []byte) ([]File, int) {
 	if req.Operation != "upsert" {
 		return nil, http.StatusBadRequest
 	}
-	if req.Kind != "research_result" && req.Kind != "proactive_brief" {
+	if req.Kind != "research_result" && req.Kind != "proactive_brief" && req.Kind != "reminder" {
 		return nil, http.StatusBadRequest
 	}
 	if len(req.Files) > maxIngestFiles {

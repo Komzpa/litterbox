@@ -4,7 +4,7 @@ Non-mail collectors use `POST /v1/ingest` with `Authorization: Bearer <source-to
 
 ## Result files
 
-An upsert with `kind` `research_result` or `proactive_brief` may carry an optional `files` array: `{"name":"report.pdf","media_type":"application/pdf","data":"<base64>"}`. The limits are 10 files, 8 MiB of decoded data in total, and a 12 MiB request body; requests without files keep the 1 MiB body budget. Files on any other kind, on `close`, or with more files/bytes than allowed are rejected with 400 (413 for size) and store nothing.
+An upsert with `kind` `research_result`, `proactive_brief`, or `reminder` may carry an optional `files` array: `{"name":"report.pdf","media_type":"application/pdf","data":"<base64>"}`. The limits are 10 files, 8 MiB of decoded data in total, and a 12 MiB request body; requests without files keep the 1 MiB body budget. Files on any other kind, on `close`, or with more files/bytes than allowed are rejected with 400 (413 for size) and store nothing. Reminder files use the same atomic storage, source/tenant authentication, and offline card-body contract as research and brief files.
 
 Each `name` is reduced to its base name and must then be 1-255 bytes without `/`, `\`, NUL or a leading dot. The declared `media_type` is ignored — the server sniffs the bytes — except that a `text/*` declaration stays `text/plain`. The card and its rendered body land in one transaction: the summary is stored as escaped text and each file becomes an RFC 2397 `data:<mime>;name=<pct-encoded>;base64,<b64>` link (plus an `<img>` with the same link for png, jpeg, gif and webp) inside a server-built HTML document in `card_bodies`. An upsert without `files` deletes that card's body row.
 

@@ -409,6 +409,16 @@ func TestIngestFilesAndCardBodies(t *testing.T) {
 		t.Fatalf("re-files upsert must restore the body, got %q", html)
 	}
 
+	// Reminder files use the same atomic body storage and exact byte contract.
+	reminder := strings.Replace(happy, `"res-1"`, `"reminder-files"`, 1)
+	reminder = strings.Replace(reminder, `"research_result"`, `"reminder"`, 1)
+	if got := send(reminder); got != http.StatusNoContent {
+		t.Fatalf("reminder files upsert: got %d, want 204", got)
+	}
+	if _, reminderHTML := bodyOf("reminder-files"); reminderHTML != html {
+		t.Fatalf("reminder must preserve the same full body and file bytes: %q", reminderHTML)
+	}
+
 	// Rejections leave no card and no body row.
 	bigA := strings.Repeat("a", 4<<20)
 	bigB := strings.Repeat("b", (4<<20)+1)
