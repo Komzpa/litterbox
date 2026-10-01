@@ -56,6 +56,13 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			writeError(w, 429, "rate limit exceeded")
 			return
 		}
+		// The ingest handler validates its source-scoped token and establishes
+		// tenant scope itself; device tokens must not gate this producer route.
+		if r.URL.Path == "/v1/ingest" && r.Method == http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		if r.URL.Path == "/v1/version" && r.Method == http.MethodGet {
 			next.ServeHTTP(w, r)
 			return

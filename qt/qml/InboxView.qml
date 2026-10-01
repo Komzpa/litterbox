@@ -9,11 +9,49 @@ ApplicationWindow {
     width: 520
     height: 800
     title: "Litterbox"
+    // Sol V5 owns a light content surface, independent of the host's color scheme.
+    // Set both Controls and Kirigami colors: neither may inherit dark-theme ink
+    // while the other paints the approved white cards and header.
+    readonly property color ink: "#263b3a"
+    readonly property color mutedInk: "#586d70"
+    readonly property color surface: "#ffffff"
+    readonly property color canvas: "#f3f7f6"
+    readonly property color accent: "#397d73"
+    color: canvas
+    palette.window: canvas
+    palette.windowText: ink
+    palette.base: surface
+    palette.alternateBase: canvas
+    palette.text: ink
+    palette.button: surface
+    palette.buttonText: ink
+    palette.toolTipBase: surface
+    palette.toolTipText: ink
+    palette.highlight: accent
+    palette.highlightedText: surface
+    palette.placeholderText: mutedInk
+    Kirigami.Theme.inherit: false
+    Kirigami.Theme.textColor: ink
+    Kirigami.Theme.disabledTextColor: mutedInk
+    Kirigami.Theme.backgroundColor: surface
+    Kirigami.Theme.alternateBackgroundColor: canvas
+    Kirigami.Theme.highlightColor: accent
+    Kirigami.Theme.highlightedTextColor: surface
+    Kirigami.Theme.focusColor: accent
+    Kirigami.Theme.hoverColor: accent
     property var cardStore: store
     property var captureActions: ({})
     property var cardHandles: ({})
     property string dragCardId: ""
     property int dragTargetIndex: -1
+    property real dragOffset: 0
+    property string dragFeedback: ""
+    property var expandedBundles: ({})
+    function toggleBundle(bundleId) {
+        const next = Object.assign({}, expandedBundles)
+        next[bundleId] = !next[bundleId]
+        expandedBundles = next
+    }
     property string updateStatus: ""
     property string updateVersion: ""
 
@@ -49,6 +87,12 @@ ApplicationWindow {
         noteDialog.visible = false
     }
     function captureCardIds() { return store.cardIds() }
+    function captureOpenActions(cardId) {
+        const action = captureActions[cardId]
+        if (!action) return false
+        action.clicked()
+        return true
+    }
     function captureSnooze(cardId, localDateTimeValue) {
         const action = captureActions[cardId]
         if (!action) return "missing-card-action"
@@ -70,16 +114,54 @@ ApplicationWindow {
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
 
     header: ToolBar {
-        RowLayout {
-            anchors.fill: parent
-            Kirigami.Heading { text: "Litterbox"; level: 2; Layout.fillWidth: true }
-            Label { text: store.online ? "Online" : "Offline" }
-            Label { text: window.updateStatus; visible: text.length > 0; elide: Text.ElideRight }
-            Button { text: qsTr("Check updates"); enabled: updater.supported && !updater.busy; onClicked: updater.checkForUpdates() }
-            Button { text: qsTr("+ Add card"); onClicked: createDialog.open() }
-            ToolButton { text: "Accounts"; onClicked: openPage("GmailAccountsPage") }
-            ToolButton { text: "Enroll"; onClicked: openPage("EnrollmentPage") }
-            ToolButton { text: "Refresh"; onClicked: store.refresh() }
+        padding: 16
+        background: Rectangle { color: window.surface }
+        ColumnLayout {
+            width: parent.width
+            spacing: 4
+            RowLayout {
+                Layout.fillWidth: true
+                Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: 2; Layout.fillWidth: true }
+                Button {
+                    id: addCardButton
+                    text: qsTr("+ Add card")
+                    implicitHeight: 44
+                    leftPadding: 16
+                    rightPadding: 16
+                    background: Rectangle {
+                        radius: 22
+                        color: addCardButton.down ? "#286358" : addCardButton.hovered ? "#326f65" : window.accent
+                        border.width: addCardButton.visualFocus ? 2 : 0
+                        border.color: window.ink
+                    }
+                    contentItem: Label {
+                        text: addCardButton.text
+                        color: window.surface
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font: addCardButton.font
+                    }
+                    onClicked: createDialog.open()
+                }
+                ToolButton {
+                    text: "⋮"
+                    implicitWidth: 44
+                    implicitHeight: 44
+                    Accessible.name: qsTr("Inbox commands")
+                    onClicked: headerMenu.open()
+                    Menu {
+                        id: headerMenu
+                        MenuItem { text: qsTr("Accounts"); onTriggered: openPage("GmailAccountsPage") }
+                        MenuItem { text: qsTr("Enroll device"); onTriggered: openPage("EnrollmentPage") }
+                        MenuItem { text: qsTr("Refresh"); onTriggered: store.refresh() }
+                        MenuItem { text: qsTr("Private journal"); onTriggered: openPage("JournalPage") }
+                        MenuItem { text: qsTr("Check updates"); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
+                    }
+                }
+            }
+            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font.pointSize: 9; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
+            Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
         }
     }
     Connections {
@@ -124,6 +206,11 @@ ApplicationWindow {
                         hasActions: actions !== null,
                         actionsX: actions ? actions.mapToItem(null, 0, 0).x : -1,
                         actionsWidth: actions ? actions.width : -1
+                        , moreTargetHeight: actions ? actions.height : -1
+                        , moreTargetWidth: actions ? actions.width : -1
+                        , dragActive: window.dragCardId.length > 0
+                        , dragOffset: window.dragOffset
+                        , dropTarget: window.dragTargetIndex
                     })
                 }
                 Keys.onPressed: function(event) {
@@ -149,54 +236,53 @@ ApplicationWindow {
                     }
                 }
                 model: store
-                spacing: 8
+                section.property: "section"
+                spacing: 0
                 section.delegate: Item {
                     width: ListView.view.width
                     height: sectionHeading.implicitHeight + 16
-                    Kirigami.Heading {
+                    Label {
                         id: sectionHeading
                         width: Math.min(parent.width - 32, 1200)
                         anchors.horizontalCenter: parent.horizontalCenter
-                        level: 3
-                        text: section === "pinned" ? "Pinned" : section === "now" ? "Now" : section === "later" ? "Later" : "Missed"
-                        padding: 8
+                        text: (section === "pinned" ? qsTr("Pinned") : section === "now" ? qsTr("Now") : section === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
+                        font.pointSize: 9
+                        font.bold: true
+                        font.letterSpacing: 1
+                        color: window.mutedInk
+                        padding: 12
                     }
                 }
                 delegate: Item {
                     required property var card
                     required property string cardId
                     required property string title
+                    id: cardRow
+                    HoverHandler { id: rowHover }
+                    readonly property bool lifted: window.dragCardId === cardId
+                    readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
+                    readonly property bool bundleExpanded: !!window.expandedBundles[card.bundle_id]
+                    visible: !bundled || card.bundle_leader !== false || bundleExpanded
                     width: ListView.view.width
-                    height: cardFrame.implicitHeight
+                    height: visible ? cardFrame.implicitHeight : 0
+                    z: lifted ? 10 : 0
+                    Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
                     Frame {
                         id: cardFrame
                         objectName: "inboxCard"
                         width: Math.min(parent.width - 32, 1200)
                         x: (parent.width - width) / 2
-                        ColumnLayout {
+                        y: cardRow.lifted ? window.dragOffset : 0
+                        padding: 10
+                        background: Rectangle { color: cardRow.lifted ? "#e4efed" : "#ffffff"; border.color: cardRow.lifted ? "#397d73" : "#edf0ef"; radius: cardRow.lifted ? 8 : 0 }
+                        RowLayout {
                             width: parent.width
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Label {
-                                    text: title
-                                    font.bold: true
-                                    wrapMode: Text.Wrap
-                                    Layout.fillWidth: true
-                                    TapHandler {
-                                        enabled: card.source === "mail"
-                                        onTapped: window.openPage("MailDetailPage", { api: api, cardId: cardId })
-                                    }
-                                }
-                                Label { text: window.clock(card) }
-                            }
-                            Label { text: card.summary || ""; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                            Label { text: card.note || ""; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                            RowLayout {
+                            spacing: 4
                                 Item {
                                     id: dragHandle
                                     objectName: "reorderHandle-" + cardId
-                                    implicitWidth: 32
-                                    implicitHeight: 32
+                                    implicitWidth: 44
+                                    implicitHeight: 44
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
                                     readonly property bool reorderable: pinned || !card.timed
                                     opacity: reorderable ? 1.0 : 0.4
@@ -213,7 +299,7 @@ ApplicationWindow {
                                         anchors.centerIn: parent
                                         text: "="
                                         font.bold: true
-                                        color: Kirigami.Theme.textColor
+                                        color: window.mutedInk
                                     }
                                     Accessible.name: qsTr("Drag to reorder")
                                     Accessible.description: reorderable ? qsTr("Hold and drag to a new position") : qsTr("Position is fixed by pin or time")
@@ -225,17 +311,41 @@ ApplicationWindow {
                                     // the affordance instead.
                                     HoverHandler { cursorShape: dragHandle.reorderable ? Qt.OpenHandCursor : Qt.ArrowCursor }
                                 }
-                                Label { text: card.source || ""; Layout.fillWidth: true }
-                                Button {
-                                    objectName: "noteButton-" + cardId
-                                    text: "Note"
-                                    onClicked: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    ToolButton {
+                                        visible: cardRow.bundled && card.bundle_leader === true
+                                        text: (cardRow.bundleExpanded ? "⌄ " : "› ") + (card.bundle_title || qsTr("Bundle")) + " · " + (card.bundle_member_count || "")
+                                        Layout.fillWidth: true
+                                        implicitHeight: 44
+                                        Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
+                                        onClicked: window.toggleBundle(card.bundle_id)
+                                    }
+                                    Label { text: (card.source || "") + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font.pointSize: 9; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label {
+                                        text: title
+                                        color: window.ink
+                                        font.bold: true
+                                        wrapMode: Text.Wrap
+                                        Layout.fillWidth: true
+                                        TapHandler { onTapped: cardActions.openRequested() }
+                                    }
+                                    Label { text: card.summary || ""; color: window.mutedInk; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font.pointSize: 9 }
                                 }
-                                Button {
+                                ToolButton {
                                     objectName: "doneButton-" + cardId
-                                    text: "Done"
-                                    visible: card.source !== "mail"
-                                    onClicked: store.dismiss(cardId)
+                                    text: card.source === "mail" ? "⇣" : "✓"
+                                    implicitWidth: 44
+                                    implicitHeight: 44
+                                    opacity: rowHover.hovered || activeFocus || cardActions.activeFocus ? 1 : 0
+                                    Accessible.name: cardActions.primaryName
+                                    ToolTip.text: Accessible.name
+                                    ToolTip.visible: hovered
+                                    // Hidden at rest: a touch tap on the empty rail must not archive or dismiss.
+                                    onClicked: if (opacity === 1) cardActions.primaryAction()
                                 }
                                 CardActions {
                                     id: cardActions
@@ -243,13 +353,21 @@ ApplicationWindow {
                                     store: window.cardStore
                                     cardKey: cardId
                                     source: card.source || ""
+                                    hasBody: !!card.has_body
                                     bundleId: card.bundle_id || ""
                                     pinnedRank: card.pinned_rank
+                                    cardTitle: title
+                                    accountName: card.account_name || ""
+                                    canOpenSource: !!card.source_url
+                                    onNoteRequested: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() }
+                                    onOpenRequested: {
+                                        if (card.source_url) Qt.openUrlExternally(card.source_url)
+                                    }
+                                    onReadCachedRequested: window.openPage("MailDetailPage", { store: window.cardStore, cardId: cardId })
                                     Component.onCompleted: window.captureActions[cardId] = cardActions
                                     Component.onDestruction: delete window.captureActions[cardId]
                                 }
                             }
-                        }
                     }
                     // Overlay, not a Frame child: a second declared child collapses the
                     // Frame's implicit height (probe: 87px with one child, 18px with two).
@@ -278,6 +396,35 @@ ApplicationWindow {
                 id: reorderSurface
                 objectName: "reorderSurface"
                 property string draggingId: ""
+                property real pressY: 0
+                property real pointerY: 0
+                property bool moved: false
+                function updateTarget() {
+                    const point = mapToItem(inboxList, 24, pointerY)
+                    const target = inboxList.indexAt(point.x, point.y + inboxList.contentY)
+                    const ids = store.cardIds()
+                    const handle = window.cardHandles[draggingId]
+                    if (!handle || target < 0) { window.dragTargetIndex = -1; return }
+                    const from = ids.indexOf(draggingId)
+                    if (handle.pinned) window.dragTargetIndex = Math.min(target, store.pinnedCardIds().length - 1)
+                    else {
+                        const targetHandle = window.cardHandles[ids[target]]
+                        window.dragTargetIndex = targetHandle && targetHandle.reorderable && !targetHandle.pinned ? target : from
+                    }
+                }
+                Timer {
+                    interval: 40
+                    repeat: true
+                    running: reorderSurface.moved && reorderSurface.draggingId.length > 0
+                    onTriggered: {
+                        const delta = reorderSurface.pointerY < 48 ? -12 : reorderSurface.pointerY > reorderSurface.height - 48 ? 12 : 0
+                        if (!delta) return
+                        const before = inboxList.contentY
+                        inboxList.contentY = Math.max(0, Math.min(inboxList.contentHeight - inboxList.height, before + delta))
+                        window.dragOffset += inboxList.contentY - before
+                        reorderSurface.updateTarget()
+                    }
+                }
                 // Same column as the `=` handle inside the centred card frame.
                 x: (parent.width - Math.min(parent.width - 32, 1200)) / 2
                 y: 0
@@ -293,11 +440,15 @@ ApplicationWindow {
                     const ids = Object.keys(window.cardHandles)
                     for (let i = 0; i < ids.length; ++i) {
                         const handle = window.cardHandles[ids[i]]
-                        if (!handle || !handle.reorderable)
-                            continue
+                        if (!handle) continue
                         const p = handle.mapToItem(reorderSurface, 0, 0)
                         if (mouse.x >= p.x && mouse.x <= p.x + handle.width
                                 && mouse.y >= p.y && mouse.y <= p.y + handle.height) {
+                            if (!handle.reorderable) {
+                                window.dragFeedback = qsTr("This card is fixed to its scheduled time")
+                                mouse.accepted = false
+                                return
+                            }
                             // Take the card id from the rendered handle: a recycled
                             // delegate keeps its original registry key, so the map
                             // entry can be stale.
@@ -307,7 +458,11 @@ ApplicationWindow {
                                 window.cardHandles[cardKey] = handle
                             }
                             reorderSurface.draggingId = cardKey
-                            window.dragCardId = cardKey
+                            reorderSurface.pressY = mouse.y
+                            reorderSurface.pointerY = mouse.y
+                            reorderSurface.moved = false
+                            window.dragOffset = 0
+                            window.dragFeedback = ""
                             window.dragTargetIndex = -1
                             mouse.accepted = true
                             return
@@ -327,8 +482,12 @@ ApplicationWindow {
                         mouse.accepted = false
                         return
                     }
-                    const point = reorderSurface.mapToItem(inboxList, mouse.x, mouse.y)
-                    window.dragTargetIndex = inboxList.indexAt(point.x, point.y + inboxList.contentY)
+                    pointerY = mouse.y
+                    if (!moved && Math.abs(mouse.y - pressY) < 8) return
+                    moved = true
+                    window.dragCardId = draggingId
+                    window.dragOffset = mouse.y - pressY
+                    updateTarget()
                 }
                 onReleased: function (mouse) {
                     if (reorderSurface.draggingId.length === 0) {
@@ -336,14 +495,16 @@ ApplicationWindow {
                         return
                     }
                     const cardId = reorderSurface.draggingId
-                    // Take the landing row from the release point itself, so the drop
-                    // does not depend on the last position update having been delivered.
-                    const point = reorderSurface.mapToItem(inboxList, mouse.x, mouse.y)
-                    const target = inboxList.indexAt(point.x, point.y + inboxList.contentY)
+                    pointerY = mouse.y
+                    updateTarget()
+                    const target = window.dragTargetIndex
+                    const shouldCommit = moved
                     reorderSurface.draggingId = ""
                     window.dragCardId = ""
                     window.dragTargetIndex = -1
-                    if (target >= 0)
+                    window.dragOffset = 0
+                    moved = false
+                    if (shouldCommit && target >= 0)
                         window.commitCardDrag(cardId, target)
                 }
                 // canceled() carries no event argument; a drag that was taken away is
@@ -352,6 +513,8 @@ ApplicationWindow {
                     reorderSurface.draggingId = ""
                     window.dragCardId = ""
                     window.dragTargetIndex = -1
+                    window.dragOffset = 0
+                    moved = false
                 }
             }
         }
@@ -361,6 +524,9 @@ ApplicationWindow {
         property string cardId
         title: "Card note"
         modal: true
+        width: Math.min(392, window.width - 32)
+        implicitWidth: width
+        background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
         anchors.centerIn: parent
         standardButtons: Dialog.Save | Dialog.Cancel
         onOpened: noteField.forceActiveFocus()
@@ -368,9 +534,10 @@ ApplicationWindow {
         // mobile toolbar and aborts desktop root creation. Keep multiline edit
         // semantics using QtQuick.TextEdit inside a styled, scrollable frame.
         contentItem: Frame {
-            implicitWidth: 360
+            implicitWidth: 0
             implicitHeight: 120
             padding: Kirigami.Units.smallSpacing
+            background: Rectangle { color: window.surface; border.color: "#dce5e3"; radius: 4 }
             Flickable {
                 id: noteScroll
                 anchors.fill: parent
@@ -397,6 +564,9 @@ ApplicationWindow {
         id: createDialog
         title: qsTr("Create card")
         modal: true
+        width: Math.min(392, window.width - 32)
+        implicitWidth: width
+        background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
         anchors.centerIn: parent
         standardButtons: Dialog.Save | Dialog.Cancel
         onOpened: createTitle.forceActiveFocus()
@@ -410,6 +580,9 @@ ApplicationWindow {
         id: updateDialog
         title: qsTr("Install Android update")
         modal: true
+        width: Math.min(392, window.width - 32)
+        implicitWidth: width
+        background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
         anchors.centerIn: parent
         contentItem: ColumnLayout {
             Label {

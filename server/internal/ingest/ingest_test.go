@@ -2,12 +2,16 @@ package ingest
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -301,8 +305,160 @@ func TestIngestRejectsNoiseCards(t *testing.T) {
 	}
 }
 
+func TestIngestFilesAndCardBodies(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
+	}
+	db, err := sql.Open("pgx", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	for _, p := range migrations(t, db) {
+		body, e := os.ReadFile(p)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = db.Exec(string(body)); e != nil {
+			t.Fatalf("migration %s: %v", p, e)
+		}
+	}
+	tenant := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO source_tokens(tenant_id,source,token_hash) VALUES($1,'agent',$2)`, tenant, hashToken("agent-secret")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	h := Handler{DB: db}
+	send := func(body string) int {
+		r := httptest.NewRequest(http.MethodPost, "/v1/ingest", strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer agent-secret")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	bodyOf := func(ext string) (string, string) {
+		if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {
+			t.Fatal(err)
+		}
+		var id, html string
+		err := db.QueryRow(`SELECT c.id::text,COALESCE(b.html,'') FROM cards c LEFT JOIN card_bodies b ON b.tenant_id=c.tenant_id AND b.card_id=c.id WHERE c.tenant_id=$1 AND c.source='agent' AND c.external_id=$2`, tenant, ext).Scan(&id, &html)
+		if err == sql.ErrNoRows {
+			return "", ""
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id, html
+	}
+
+	pdf := []byte("%PDF-1.4 fake report bytes")
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 13}
+	files := fmt.Sprintf(`"files":[{"name":"dir/report.pdf","media_type":"application/pdf","data":%q},{"name":"chart.png","media_type":"image/png","data":%q}]`,
+		base64.StdEncoding.EncodeToString(pdf), base64.StdEncoding.EncodeToString(png))
+
+	// Happy path: the batch is stored as one server-built body, atomically
+	// with the card, with markup escaped and data links carrying the bytes.
+	happy := `{"external_id":"res-1","kind":"research_result","title":"Report","summary":"full <b>result</b>","` + files[1:] + `}`
+	if got := send(happy); got != http.StatusNoContent {
+		t.Fatalf("files upsert: got %d, want 204", got)
+	}
+	_, html := bodyOf("res-1")
+	if !strings.Contains(html, "full &lt;b&gt;result&lt;/b&gt;") || strings.Contains(html, "<b>") {
+		t.Fatalf("summary must be escaped text: %q", html)
+	}
+	link := regexp.MustCompile(`data:([^;]+);name=([^;]*);base64,([A-Za-z0-9+/]+=*)`)
+	found := map[string]string{}
+	for _, m := range link.FindAllStringSubmatch(html, -1) {
+		found[m[2]] = m[3]
+	}
+	for name, want := range map[string][]byte{"report.pdf": pdf, "chart.png": png} {
+		b64, ok := found[name]
+		if !ok {
+			t.Fatalf("data link for %q missing in %q", name, html)
+		}
+		gotBytes, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || sha256.Sum256(gotBytes) != sha256.Sum256(want) {
+			t.Fatalf("data link for %q does not decode to the input bytes", name)
+		}
+	}
+	if !strings.Contains(html, ";name=chart.png;base64,") || !strings.Contains(html, "name=report.pdf;base64,") {
+		t.Fatalf("stored names must be reduced base names: %q", html)
+	}
+	if n := strings.Count(html, "<img "); n != 1 {
+		t.Fatalf("only the png entry should render an <img>, got %d: %q", n, html)
+	}
+
+	// Upsert without files removes the stored body.
+	if got := send(`{"external_id":"res-1","kind":"research_result","title":"Report","summary":"updated"}`); got != http.StatusNoContent {
+		t.Fatalf("files upsert: got %d, want 204", got)
+	}
+	if _, html := bodyOf("res-1"); html != "" {
+		t.Fatalf("body must be deleted by an upsert without files, got %q", html)
+	}
+	// And a later batch restores it.
+	if got := send(happy); got != http.StatusNoContent {
+		t.Fatalf("re-files upsert: got %d, want 204", got)
+	}
+	if _, html := bodyOf("res-1"); !strings.Contains(html, "name=report.pdf;base64,") {
+		t.Fatalf("re-files upsert must restore the body, got %q", html)
+	}
+
+	// Rejections leave no card and no body row.
+	bigA := strings.Repeat("a", 4<<20)
+	bigB := strings.Repeat("b", (4<<20)+1)
+	rejects := []struct {
+		name, body string
+		want       int
+	}{
+		{"traversal-only name", `{"external_id":"r-1","kind":"research_result","title":"t","summary":"s","files":[{"name":"..","data":"aGk="}]}`, http.StatusBadRequest},
+		{"dot segment after slash", `{"external_id":"r-2","kind":"research_result","title":"t","summary":"s","files":[{"name":"x/..","data":"aGk="}]}`, http.StatusBadRequest},
+		{"leading dot", `{"external_id":"r-3","kind":"research_result","title":"t","summary":"s","files":[{"name":".hidden","data":"aGk="}]}`, http.StatusBadRequest},
+		{"empty name", `{"external_id":"r-4","kind":"research_result","title":"t","summary":"s","files":[{"name":"","data":"aGk="}]}`, http.StatusBadRequest},
+		{"nul in name", `{"external_id":"r-5","kind":"research_result","title":"t","summary":"s","files":[{"name":"a\u0000b","data":"aGk="}]}`, http.StatusBadRequest},
+		{"more than ten files", `{"external_id":"r-6","kind":"research_result","title":"t","summary":"s","files":[` + strings.TrimSuffix(strings.Repeat(`{"name":"f","data":"aGk="},`, 11), ",") + `]}`, http.StatusBadRequest},
+		{"files on other kind", `{"external_id":"r-7","kind":"todo","title":"t","summary":"s","files":[{"name":"a.txt","data":"aGk="}]}`, http.StatusBadRequest},
+		{"files on close", `{"operation":"close","external_id":"r-8","files":[{"name":"a.txt","data":"aGk="}]}`, http.StatusBadRequest},
+		{"unknown field", `{"external_id":"r-9","kind":"research_result","title":"t","summary":"s","bogus":1}`, http.StatusBadRequest},
+		{"too many decoded bytes", `{"external_id":"r-10","kind":"research_result","title":"t","summary":"s","files":[{"name":"a.bin","data":"` + base64.StdEncoding.EncodeToString([]byte(bigA)) + `"},{"name":"b.bin","data":"` + base64.StdEncoding.EncodeToString([]byte(bigB)) + `"}]}`, http.StatusRequestEntityTooLarge},
+		{"body over 1 MiB without files", `{"external_id":"r-11","kind":"research_result","title":"Big","summary":"` + strings.Repeat("word ", 300000) + `"}`, http.StatusRequestEntityTooLarge},
+		{"body over 12 MiB", `{"external_id":"r-12","kind":"research_result","title":"Huge","summary":"` + strings.Repeat("word ", 2520000) + `"}`, http.StatusRequestEntityTooLarge},
+	}
+	for _, tc := range rejects {
+		if got := send(tc.body); got != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.name, got, tc.want)
+		}
+	}
+	// Every rejected external_id must have stored nothing.
+	for _, ext := range []string{"r-1", "r-2", "r-3", "r-4", "r-5", "r-6", "r-7", "r-8", "r-9", "r-10", "r-11", "r-12"} {
+		if id, html := bodyOf(ext); id != "" || html != "" {
+			t.Errorf("rejected external_id %s left card %s body %q", ext, id, html)
+		}
+	}
+
+	// A path name is reduced to its base name, never traversed.
+	if got := send(`{"external_id":"res-2","kind":"proactive_brief","title":"Brief","summary":"s","files":[{"name":"a/b.txt","data":"aGk="}]}`); got != http.StatusNoContent {
+		t.Fatalf("base-name reduction: got %d, want 204", got)
+	}
+	if _, html := bodyOf("res-2"); !strings.Contains(html, ";name=b.txt;base64,") || strings.Contains(html, ";name=a/") {
+		t.Fatalf("stored name must be the reduced base name, got %q", html)
+	}
+}
+
 func migrations(t *testing.T, db *sql.DB) []string {
 	t.Helper()
+	// Serialize shared-schema rebuilds: ingest, cards and mailbody tests all
+	// run against the one pg_virtualenv database concurrently and each drops
+	// and recreates the public schema and litterbox_app role. A session
+	// advisory lock keeps them sequential; it is released when db closes.
+	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +471,7 @@ func migrations(t *testing.T, db *sql.DB) []string {
 	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := filepath.Glob("../../db/00*.sql")
+	paths, err := filepath.Glob("../../db/0*.sql")
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("migration discovery: %v", err)
 	}

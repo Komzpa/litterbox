@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
 #include "CardStore.h"
 #include <algorithm>
+#include <QByteArray>
+#include <QDir>
+#include <QFile>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
 #include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
 #include <QUuid>
 #include <QtQml/qqml.h>
 
@@ -34,7 +40,8 @@ bool CardStore::open(const QString &path) {
     if (!m_db.open()) { emit storageError(m_db.lastError().text()); return false; }
     if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
         !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
-        !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)"))) {
+        !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
+        !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL)"))) {
         m_db.close(); return false;
     }
     reloadCache();
@@ -58,7 +65,40 @@ void CardStore::reloadCache() {
         }
         cards.append(std::move(card));
     }
+    deriveBundles(cards);
     beginResetModel(); m_cards = std::move(cards); endResetModel();
+}
+// Derive bundle_leader and bundle_member_count from the complete current open
+// snapshot. Pinned and important cards are shown standalone: they are neither
+// the leader nor counted members, so they are never concealed by a collapsed
+// bundle. The first non-exempt member (in list order) is the leader; every
+// other non-exempt member is concealed until expanded.
+void CardStore::deriveBundles(QList<QVariantMap> &cards) {
+    const auto isPinned = [](const QVariantMap &card) {
+        const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+        return card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
+    };
+    const auto isExempt = [&](const QVariantMap &card) {
+        return isPinned(card) || card.value(QStringLiteral("important")).toBool();
+    };
+    QHash<QString, int> memberCounts;
+    QHash<QString, bool> leaderAssigned;
+    for (const QVariantMap &card : cards) {
+        const QString bundle = card.value(QStringLiteral("bundle_id")).toString();
+        if (bundle.isEmpty() || isExempt(card)) continue;
+        memberCounts[bundle] = memberCounts.value(bundle) + 1;
+    }
+    for (QVariantMap &card : cards) {
+        const QString bundle = card.value(QStringLiteral("bundle_id")).toString();
+        if (bundle.isEmpty() || isExempt(card)) {
+            card.remove(QStringLiteral("bundle_leader"));
+            card.remove(QStringLiteral("bundle_member_count"));
+            continue;
+        }
+        card.insert(QStringLiteral("bundle_leader"), !leaderAssigned.value(bundle));
+        if (!leaderAssigned.value(bundle)) leaderAssigned.insert(bundle, true);
+        card.insert(QStringLiteral("bundle_member_count"), memberCounts.value(bundle));
+    }
 }
 int CardStore::pendingOps() const {
     if (!m_db.isOpen()) return 0;
@@ -120,7 +160,20 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
     if (!ok || !m_db.commit()) {
         emit storageError(q.lastError().text()); m_db.rollback(); return false;
     }
-    reloadCache(); return true;
+    reloadCache();
+    // Proactively cache mail and has_body agent bodies after a remote snapshot
+    // so first-slice offline reading is not contingent on opening each card.
+    // Mail behavior is unchanged; agent cards opt in via has_body from /v1/cards.
+    if (m_online) {
+        for (const QVariantMap &card : m_cards) {
+            const bool isMail = card.value(QStringLiteral("source")).toString() == QStringLiteral("mail");
+            if (!isMail && !card.value(QStringLiteral("has_body")).toBool()) continue;
+            const QString id = card.value(QStringLiteral("id")).toString();
+            if (cachedMailBody(id).isEmpty())
+                emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
+        }
+    }
+    return true;
 }
 QStringList CardStore::pinnedCardIds() const {
     QList<QPair<qint64, QString>> ordered;
@@ -360,6 +413,103 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     // Avoid recursion if an injected transport acknowledges synchronously.
     QTimer::singleShot(0, this, [this] { flush(); });
     refresh();
+}
+QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
+    if (!m_db.isOpen() || cardId.isEmpty()) return {};
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("SELECT html, source_url FROM mail_bodies WHERE card_id=?"));
+    q.addBindValue(cardId);
+    if (!q.exec() || !q.next()) return {};
+    QVariantMap result;
+    result.insert(QStringLiteral("html"), q.value(0).toString());
+    result.insert(QStringLiteral("source_url"), q.value(1).toString());
+    return result;
+}
+void CardStore::requestMailBody(const QString &cardId) {
+    if (!m_online || !m_db.isOpen() || cardId.isEmpty()) return;
+    // Mail cards keep their existing fetchable body; non-mail cards opt in
+    // via has_body from /v1/cards. Cards without either have no body route.
+    const QVariantMap *card = nullptr;
+    for (const QVariantMap &c : m_cards) {
+        if (c.value(QStringLiteral("id")).toString() == cardId) { card = &c; break; }
+    }
+    if (!card) return;
+    const bool isMail = card->value(QStringLiteral("source")).toString() == QStringLiteral("mail");
+    if (!isMail && !card->value(QStringLiteral("has_body")).toBool()) return;
+    emit requestMailBodyGet(cardId, QStringLiteral("/v1/cards/") + cardId + QStringLiteral("/body"));
+}
+void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &body) {
+    if (!m_db.isOpen() || cardId.isEmpty()) return;
+    const QString html = body.value(QStringLiteral("html")).toString();
+    QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
+    // Body responses omit empty source_url; SQLite requires a non-null string.
+    if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
+    // A malformed/error response must not replace a usable cached body.
+    if (html.trimmed().isEmpty()) { emit mailBodyFailed(cardId); return; }
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url) VALUES(?,?,?) "
+                             "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url"));
+    q.addBindValue(cardId);
+    q.addBindValue(html);
+    q.addBindValue(sourceUrl);
+    if (!q.exec()) { emit storageError(q.lastError().text()); return; }
+    emit mailBodyChanged(cardId);
+}
+void CardStore::reportMailBodyFailed(const QString &cardId) {
+    emit mailBodyFailed(cardId);
+}
+QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl) const {
+    if (!m_db.isOpen() || cardId.isEmpty() || dataUrl.isEmpty()) return {};
+    if (!dataUrl.startsWith(QStringLiteral("data:"))) return {};
+    if (cardId.contains(QLatin1Char('/')) || cardId.contains(QLatin1Char('\\')) ||
+        cardId.contains(QStringLiteral("..")) || cardId.contains(QChar(u'\0')) ||
+        cardId.startsWith(QLatin1Char('.'))) return {};
+    // File bytes survive restart because they live inside the mail_bodies HTML
+    // cached in SQLite. Decode only a data: URL present byte-for-byte in the
+    // exact cached body for this card; never trust a producer-supplied path.
+    const QVariantMap cached = cachedMailBody(cardId);
+    const QString html = cached.value(QStringLiteral("html")).toString();
+    if (html.isEmpty() || !html.contains(dataUrl)) return {};
+    const int comma = dataUrl.indexOf(QLatin1Char(','));
+    if (comma < 0) return {};
+    QString meta = dataUrl.left(comma);
+    const QString encodedData = dataUrl.mid(comma + 1);
+    if (encodedData.isEmpty()) return {};
+    const QString base64Marker = QStringLiteral(";base64");
+    if (!meta.endsWith(base64Marker)) return {};
+    meta.chop(base64Marker.size());
+    const QString nameMarker = QStringLiteral(";name=");
+    const int namePos = meta.indexOf(nameMarker);
+    if (namePos < 0) return {};
+    QString encodedName = meta.mid(namePos + nameMarker.size());
+    const int nextParam = encodedName.indexOf(QLatin1Char(';'));
+    if (nextParam >= 0) encodedName = encodedName.left(nextParam);
+    if (encodedName.isEmpty() || encodedName.contains(QLatin1Char('/')) ||
+        encodedName.contains(QLatin1Char('\\'))) return {};
+    // Server percent-encodes the name= parameter; decode then apply the same
+    // basename/traversal rules as ingest (reject /, \, NUL, leading dot).
+    const QString name = QUrl::fromPercentEncoding(encodedName.toUtf8());
+    if (name.isEmpty() || name.contains(QLatin1Char('/')) ||
+        name.contains(QLatin1Char('\\')) || name.contains(QChar(u'\0')) ||
+        name.startsWith(QLatin1Char('.'))) return {};
+    const QByteArray nameBytes = name.toUtf8();
+    if (nameBytes.size() < 1 || nameBytes.size() > 255) return {};
+    const QByteArray raw = encodedData.toLatin1();
+    const QByteArray bytes = QByteArray::fromBase64(raw, QByteArray::AbortOnBase64DecodingErrors);
+    if (bytes.isEmpty()) return {};
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (base.isEmpty()) return {};
+    QDir dir(base + QStringLiteral("/card-files/") + cardId);
+    if (!dir.mkpath(QStringLiteral("."))) return {};
+    const QString filePath = dir.filePath(name);
+    // Defense in depth: the cleaned single-segment name must stay inside its
+    // per-card directory even after cleaning.
+    if (QDir::cleanPath(filePath) != QDir::cleanPath(dir.absolutePath() + QLatin1Char('/') + name)) return {};
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+    if (file.write(bytes) != bytes.size()) return {};
+    file.close();
+    return QUrl::fromLocalFile(filePath).toString();
 }
 int CardStore::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : m_cards.size(); }
 QVariant CardStore::data(const QModelIndex &index, int role) const {

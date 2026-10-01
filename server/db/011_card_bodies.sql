@@ -12,3 +12,4 @@ ALTER TABLE card_bodies FORCE ROW LEVEL SECURITY;
 CREATE POLICY card_bodies_tenant_policy ON card_bodies
     USING (tenant_id = current_setting('litterbox.tenant_id', true)::uuid)
     WITH CHECK (tenant_id = current_setting('litterbox.tenant_id', true)::uuid);
+GRANT SELECT, INSERT, UPDATE, DELETE ON card_bodies TO litterbox_app;

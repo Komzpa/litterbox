@@ -8,9 +8,21 @@ Controls.ToolButton {
     required property var store
     required property string cardKey
     property string source: ""
+    property bool hasBody: false
     property string bundleId: ""
     property var pinnedRank: undefined
     property string snoozeError: ""
+    property string cardTitle: ""
+    property string accountName: ""
+    property bool canOpenSource: false
+    signal noteRequested()
+    signal openRequested()
+    signal readCachedRequested()
+    readonly property string primaryName: source === "mail" ? qsTr("Archive in Gmail%1").arg(accountName ? " · " + accountName : "") : source === "home_assistant" ? qsTr("Dismiss Home Assistant notification") : qsTr("Done · dismiss in Litterbox only")
+    function primaryAction() {
+        if (source === "mail") store.enqueueOp(cardKey, "archive", {})
+        else store.dismiss(cardKey)
+    }
     readonly property bool pinStateKnown: pinnedRank !== undefined
     readonly property bool pinned: pinStateKnown && pinnedRank !== null
 
@@ -41,88 +53,57 @@ Controls.ToolButton {
         current[target] = value
         store.enqueueOp(current[0], "reorder_pins", { cards: current })
     }
+    function moveCard(delta) { store.moveCard(cardKey, delta) }
 
     text: "⋮"
-    Accessible.name: qsTr("Card actions")
+    implicitWidth: 44
+    implicitHeight: 44
+    Accessible.name: qsTr("More actions for %1").arg(cardTitle)
     Controls.ToolTip.text: Accessible.name
-    onClicked: actionsMenu.open()
-
-    Controls.Menu {
-        id: actionsMenu
-        Controls.MenuItem {
-            text: qsTr("Archive")
-            visible: root.source === "mail"
-            onTriggered: root.store.enqueueOp(root.cardKey, "archive", {})
-        }
-        Controls.MenuItem {
-            text: root.pinned ? qsTr("Unpin") : qsTr("Pin")
-            visible: root.pinStateKnown
-            onTriggered: root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {})
-        }
-        Controls.MenuItem {
-            text: qsTr("Move pin up")
-            visible: root.pinned
-            enabled: root.store.pinnedCardIds().indexOf(root.cardKey) > 0
-            onTriggered: root.movePin(-1)
-        }
-        Controls.MenuItem {
-            text: qsTr("Move pin down")
-            visible: root.pinned
-            enabled: root.store.pinnedCardIds().indexOf(root.cardKey) >= 0 &&
-                root.store.pinnedCardIds().indexOf(root.cardKey) < root.store.pinnedCardIds().length - 1
-            onTriggered: root.movePin(1)
-        }
-        Controls.Menu {
-            title: qsTr("Snooze")
-            Controls.MenuItem {
-                text: qsTr("For one hour")
-                onTriggered: root.store.enqueueOp(root.cardKey, "snooze", {
-                    until: new Date(Date.now() + 3600000).toISOString()
-                })
-            }
-            Controls.MenuItem {
-                text: qsTr("Until tomorrow")
-                onTriggered: {
-                    const tomorrow = new Date()
-                    tomorrow.setDate(tomorrow.getDate() + 1)
-                    tomorrow.setHours(9, 0, 0, 0)
-                    root.store.enqueueOp(root.cardKey, "snooze", { until: tomorrow.toISOString() })
-                }
-            }
-            Controls.MenuItem {
-                text: qsTr("Choose date and time")
-                onTriggered: root.chooseSnoozeDateTime()
-            }
-        }
-        Controls.MenuSeparator { visible: root.bundleId.length > 0 }
-        Controls.MenuItem {
-            text: qsTr("Complete bundle")
-            visible: root.bundleId.length > 0
-            onTriggered: completeDialog.open()
-        }
-        Controls.MenuItem {
-            text: qsTr("Archive bundle")
-            visible: root.bundleId.length > 0
-            onTriggered: archiveDialog.open()
-        }
-        Controls.MenuItem {
-            text: qsTr("Take out of bundle")
-            visible: root.bundleId.length > 0
-            onTriggered: root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey })
+    Controls.ToolTip.visible: hovered
+    onClicked: actionSheet.open()
+    Controls.Dialog {
+        id: actionSheet
+        parent: Controls.Overlay.overlay
+        objectName: "cardActionSheet-" + root.cardKey
+        title: root.cardTitle
+        modal: true
+        width: Math.min(360, root.Window.window ? root.Window.window.width - 32 : 360)
+        implicitWidth: width
+        background: Rectangle { color: root.palette.base; radius: 8; border.color: root.palette.mid }
+        anchors.centerIn: parent
+        onClosed: root.forceActiveFocus()
+        contentItem: ColumnLayout {
+            spacing: 0
+            Controls.Label { text: root.accountName || root.source; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Controls.Button { text: root.primaryName; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.primaryAction() } }
+            Controls.Button { text: root.source === "mail" ? qsTr("Open in Gmail") : qsTr("Open source"); visible: root.canOpenSource; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.openRequested() } }
+            Controls.Button { text: qsTr("Read cached · stays in Litterbox"); visible: root.source === "mail" || root.hasBody; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.readCachedRequested() } }
+            Controls.Button { objectName: "noteButton-" + root.cardKey; text: qsTr("Note · instruction for this card"); Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.noteRequested() } }
+            Controls.Button { text: qsTr("Snooze · choose date and time"); Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.chooseSnoozeDateTime() } }
+            Controls.Button { text: root.pinned ? qsTr("Unpin") : qsTr("Pin"); visible: root.pinStateKnown; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {}) } }
+            Controls.Button { text: root.source === "mail" ? qsTr("Archive unpinned bundle members") : qsTr("Complete unpinned bundle members"); visible: root.bundleId.length > 0; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); if (root.source === "mail") archiveDialog.open(); else completeDialog.open() } }
+            Controls.Button { text: qsTr("Take out of bundle"); visible: root.bundleId.length > 0; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey }) } }
+            Controls.Button { text: qsTr("Close"); Layout.fillWidth: true; implicitHeight: 44; onClicked: actionSheet.close() }
         }
     }
+
     Controls.Dialog {
         id: snoozeDialog
         objectName: "snoozeDialog"
         title: qsTr("Snooze until")
         modal: true
         standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        width: Math.min(392, root.Window.window ? root.Window.window.width - 32 : 392)
+        implicitWidth: width
+        background: Rectangle { color: root.palette.base; radius: 8; border.color: root.palette.mid }
         onOpened: snoozeDateTime.forceActiveFocus()
         contentItem: ColumnLayout {
-            Controls.Label { text: qsTr("Local date and time (YYYY-MM-DD HH:MM)") }
+            Controls.Label { text: qsTr("Local date and time (YYYY-MM-DD HH:MM)"); Layout.fillWidth: true; wrapMode: Text.Wrap }
             Controls.TextField {
                 id: snoozeDateTime
                 objectName: "snoozeDateTime"
+                Layout.fillWidth: true
                 placeholderText: "YYYY-MM-DD HH:MM"
                 inputMethodHints: Qt.ImhDate | Qt.ImhTime
                 Accessible.name: qsTr("Local date and time")

@@ -8,8 +8,7 @@ import org.kde.kirigami as Kirigami
 Kirigami.ScrollablePage {
     id: root
 
-    // api.get(path, cb) calls cb(error, {status, body}).
-    property var api
+    required property var store
     property string cardId: ""
     // Set to false in tests to avoid spawning an external browser.
     property bool openLinks: true
@@ -17,35 +16,42 @@ Kirigami.ScrollablePage {
     property bool loading: false
     property string errorText: ""
     property string html: ""
-    property string threadId: ""
-    readonly property string gmailUrl: threadId ? "https://mail.google.com/mail/u/0/#all/" + threadId : ""
+    property string sourceUrl: ""
 
-    title: qsTr("Message")
+    title: root.sourceUrl !== "" ? qsTr("Message") : qsTr("Details")
 
+    function readCache() {
+        const body = store.cachedMailBody(cardId)
+        html = body.html || ""
+        sourceUrl = body.source_url || ""
+        errorText = html ? "" : qsTr("This message is not cached on this device yet.")
+    }
     function reload() {
-        loading = true
-        errorText = ""
-        html = ""
-        threadId = ""
-        api.get("/v1/cards/" + cardId + "/body", function (error, response) {
-            loading = false
-            if (error || !response || !response.body) {
-                errorText = qsTr("Could not load the message.")
-                return
-            }
-            const data = response.body
-            html = data.html || ""
-            threadId = data.threadId || ""
-        })
+        readCache()
+        loading = store.online
+        if (loading) store.requestMailBody(cardId)
+    }
+    Connections {
+        target: root.store
+        function onMailBodyChanged(cardId) {
+            if (cardId !== root.cardId) return
+            root.loading = false
+            root.readCache()
+        }
+        function onMailBodyFailed(cardId) {
+            if (cardId !== root.cardId) return
+            root.loading = false
+            if (!root.html) root.errorText = qsTr("Message unavailable. Reconnect to cache it; opening it never archives it.")
+        }
     }
 
     function openInGmail() {
-        if (gmailUrl && openLinks)
-            Qt.openUrlExternally(gmailUrl)
+        if (sourceUrl && openLinks)
+            Qt.openUrlExternally(sourceUrl)
     }
 
     Component.onCompleted: {
-        if (api && cardId !== "")
+        if (cardId !== "")
             reload()
     }
 
@@ -68,8 +74,14 @@ Kirigami.ScrollablePage {
         Kirigami.LinkButton {
             objectName: "openInGmail"
             text: qsTr("Open in Gmail")
-            visible: root.gmailUrl !== ""
+            visible: root.sourceUrl !== ""
             onClicked: root.openInGmail()
+        }
+
+        QQC2.Button {
+            text: qsTr("Back to inbox")
+            implicitHeight: 44
+            onClicked: root.StackView.view.pop()
         }
 
         QQC2.Label {
@@ -78,8 +90,22 @@ Kirigami.ScrollablePage {
             text: root.html
             textFormat: Text.RichText
             wrapMode: Text.Wrap
-            visible: !root.loading && root.errorText === ""
+            visible: root.html !== ""
             Layout.fillWidth: true
+            // Server-rendered agent bodies embed files as data: links with a
+            // name= parameter; open them from the local cached copy only.
+            // Other links keep the existing external opener behavior.
+            onLinkActivated: function(link) {
+                if (link.indexOf("data:") === 0) {
+                    var local = "";
+                    if (typeof store.openCachedFile === "function")
+                        local = store.openCachedFile(root.cardId, link);
+                    if (local && openLinks)
+                        Qt.openUrlExternally(local);
+                } else if (openLinks) {
+                    Qt.openUrlExternally(link);
+                }
+            }
         }
     }
 }

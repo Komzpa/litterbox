@@ -58,13 +58,54 @@ func TestEveryProtectedRouteRejectsMissingAuthorization(t *testing.T) {
 		})
 	}
 }
+
+func TestIngestPassesSourceTokenToHandlerWithoutDeviceIdentity(t *testing.T) {
+	h := NewHandler(&fakeStore{}, "")
+	handler := h.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := DeviceFromContext(r.Context()); ok {
+			t.Fatal("source-authenticated ingest acquired device identity")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingest", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer source-token")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("ingest status=%d want 204", res.Code)
+	}
+}
+
+func TestIngestMethodAndOtherDeviceRoutesRemainProtected(t *testing.T) {
+	h := NewHandler(&fakeStore{}, "")
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/v1/ingest"},
+		{http.MethodPost, "/v1/cards"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			handler := h.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+			res := httptest.NewRecorder()
+			handler.ServeHTTP(res, httptest.NewRequest(tc.method, tc.path, nil))
+			if res.Code != http.StatusUnauthorized {
+				t.Fatalf("status=%d want 401", res.Code)
+			}
+		})
+	}
+}
 func TestInviteEnrollmentIsOneUseAndReturnsDeviceToken(t *testing.T) {
 	store := &fakeStore{inviteHash: tokenHash("one-use")}
 	h := NewHandler(store, "")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	wrapped := h.Middleware(mux)
-	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) { tenant, ok := cards.TenantFrom(r.Context()); if !ok || tenant != "tenant" { w.WriteHeader(500); return }; w.WriteHeader(200) })
+	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) {
+		tenant, ok := cards.TenantFrom(r.Context())
+		if !ok || tenant != "tenant" {
+			w.WriteHeader(500)
+			return
+		}
+		w.WriteHeader(200)
+	})
 	body := `{"invite_code":"one-use","device_name":"phone","platform":"android"}`
 	first := httptest.NewRecorder()
 	wrapped.ServeHTTP(first, httptest.NewRequest("POST", "/v1/devices/enroll", strings.NewReader(body)))

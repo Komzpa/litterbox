@@ -369,6 +369,107 @@ private slots:
         QCOMPARE(server.received[1].value("op_id").toString(),first);
         QCOMPARE(server.received[2].value("type").toString(),QStringLiteral("unpin"));
     }
+    void hasBodyAgentCardPrefetchesAndSurvivesRestart() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("cache.sqlite"));
+        const QString agentId = QStringLiteral("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        const QString manualId = QStringLiteral("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        const QString mailId = QStringLiteral("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+        const QVariantMap agent{{QStringLiteral("id"), agentId}, {QStringLiteral("title"), QStringLiteral("Research")},
+            {QStringLiteral("source"), QStringLiteral("agent")}, {QStringLiteral("has_body"), true}};
+        const QVariantMap manual{{QStringLiteral("id"), manualId}, {QStringLiteral("title"), QStringLiteral("Plain")},
+            {QStringLiteral("source"), QStringLiteral("manual")}};
+        const QVariantMap mail{{QStringLiteral("id"), mailId}, {QStringLiteral("title"), QStringLiteral("Mail")},
+            {QStringLiteral("source"), QStringLiteral("mail")}};
+        const QVariantMap sections{{QStringLiteral("now"), QVariantList{agent, manual, mail}},
+            {QStringLiteral("later"), QVariantList{}}, {QStringLiteral("missed"), QVariantList{}}};
+        const QString bodyHtml = QStringLiteral("<pre>full result</pre>");
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            store.setOnline(true);
+            QSignalSpy prefetch(&store, &CardStore::requestMailBodyGet);
+            QVERIFY(store.applyRemoteCards(sections));
+            QCOMPARE(prefetch.size(), 2);
+            QSet<QString> ids;
+            for (const QVariantList &args : prefetch) ids.insert(args.first().toString());
+            QVERIFY(ids.contains(agentId));
+            QVERIFY(ids.contains(mailId));
+            QVERIFY(!ids.contains(manualId));
+            // Plain cards without has_body have no fetchable body.
+            store.requestMailBody(manualId);
+            QCOMPARE(prefetch.size(), 2);
+            store.requestMailBody(agentId);
+            QCOMPARE(prefetch.size(), 3);
+            store.applyRemoteMailBody(agentId, {{QStringLiteral("html"), bodyHtml}});
+            QCOMPARE(store.cachedMailBody(agentId).value(QStringLiteral("html")).toString(), bodyHtml);
+            QCOMPARE(store.cachedMailBody(agentId).value(QStringLiteral("source_url")).toString(), QStringLiteral(""));
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QVERIFY(!restored.online());
+        QCOMPARE(restored.cachedMailBody(agentId).value(QStringLiteral("html")).toString(), bodyHtml);
+        QCOMPARE(restored.cachedMailBody(agentId).value(QStringLiteral("source_url")).toString(), QStringLiteral(""));
+        QVERIFY(restored.cachedMailBody(manualId).isEmpty());
+    }
+    void openCachedFileWritesBytesAndRejectsUnsafe() {
+        QStandardPaths::setTestModeEnabled(true);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("cache.sqlite"));
+        const QString agentId = QStringLiteral("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+        const QString namelessId = QStringLiteral("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
+        const QString traversalId = QStringLiteral("ffffffff-ffff-4fff-8fff-ffffffffffff");
+        const QString hiddenId = QStringLiteral("99999999-9999-4999-8999-999999999999");
+        const QVariantMap sections{{QStringLiteral("now"), QVariantList{
+                QVariantMap{{QStringLiteral("id"), agentId}, {QStringLiteral("title"), QStringLiteral("Research")},
+                    {QStringLiteral("source"), QStringLiteral("agent")}, {QStringLiteral("has_body"), true}},
+                QVariantMap{{QStringLiteral("id"), namelessId}, {QStringLiteral("title"), QStringLiteral("Nameless")},
+                    {QStringLiteral("source"), QStringLiteral("agent")}, {QStringLiteral("has_body"), true}},
+                QVariantMap{{QStringLiteral("id"), traversalId}, {QStringLiteral("title"), QStringLiteral("Traversal")},
+                    {QStringLiteral("source"), QStringLiteral("agent")}, {QStringLiteral("has_body"), true}},
+                QVariantMap{{QStringLiteral("id"), hiddenId}, {QStringLiteral("title"), QStringLiteral("Hidden")},
+                    {QStringLiteral("source"), QStringLiteral("agent")}, {QStringLiteral("has_body"), true}}}},
+            {QStringLiteral("later"), QVariantList{}}, {QStringLiteral("missed"), QVariantList{}}};
+        CardStore store;
+        QVERIFY(store.open(path));
+        QVERIFY(store.applyRemoteCards(sections));
+        const QByteArray original = QByteArray("useful-report-bytes offline");
+        const QString b64 = QString::fromLatin1(original.toBase64());
+        const QString goodUrl = QStringLiteral("data:application/pdf;name=report.pdf;base64,") + b64;
+        const QString goodHtml = QStringLiteral("<pre>full summary</pre><a href='") + goodUrl + QStringLiteral("'>report.pdf</a>");
+        store.applyRemoteMailBody(agentId, {{QStringLiteral("html"), goodHtml}});
+        const QString localUrl = store.openCachedFile(agentId, goodUrl);
+        QVERIFY(!localUrl.isEmpty());
+        const QString localPath = QUrl(localUrl).toLocalFile();
+        QVERIFY(!localPath.isEmpty());
+        QVERIFY(localPath.contains(agentId));
+        QVERIFY(localPath.endsWith(QStringLiteral("report.pdf")));
+        QFile file(localPath);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), original);
+        file.close();
+        // A data: URL that is not part of this card's cached HTML is rejected.
+        const QString otherUrl = QStringLiteral("data:application/pdf;name=other.pdf;base64,") + b64;
+        QCOMPARE(store.openCachedFile(agentId, otherUrl), QString());
+        QCOMPARE(store.openCachedFile(agentId, QStringLiteral("https://example.test/x")), QString());
+        QCOMPARE(store.openCachedFile(QStringLiteral("00000000-0000-4000-8000-000000000000"), goodUrl), QString());
+        // A cached link without a name= parameter carries no safe filename.
+        const QString namelessUrl = QStringLiteral("data:application/pdf;base64,") + b64;
+        store.applyRemoteMailBody(namelessId, {{QStringLiteral("html"), namelessUrl}});
+        QCOMPARE(store.cachedMailBody(namelessId).value(QStringLiteral("html")).toString(), namelessUrl);
+        QCOMPARE(store.openCachedFile(namelessId, namelessUrl), QString());
+        // Traversal and dotfile names are rejected even when cached verbatim.
+        const QString traversalUrl = QStringLiteral("data:application/pdf;name=%2E%2E%2Fevil.pdf;base64,") + b64;
+        store.applyRemoteMailBody(traversalId, {{QStringLiteral("html"), traversalUrl}});
+        QCOMPARE(store.cachedMailBody(traversalId).value(QStringLiteral("html")).toString(), traversalUrl);
+        QCOMPARE(store.openCachedFile(traversalId, traversalUrl), QString());
+        const QString hiddenUrl = QStringLiteral("data:application/pdf;name=.hidden;base64,") + b64;
+        store.applyRemoteMailBody(hiddenId, {{QStringLiteral("html"), hiddenUrl}});
+        QCOMPARE(store.cachedMailBody(hiddenId).value(QStringLiteral("html")).toString(), hiddenUrl);
+        QCOMPARE(store.openCachedFile(hiddenId, hiddenUrl), QString());
+    }
 };
 QTEST_MAIN(CardStoreTest)
 #include "tst_cardstore.moc"

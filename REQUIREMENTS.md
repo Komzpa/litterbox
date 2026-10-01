@@ -130,12 +130,19 @@ Each requirement is **decided** or **open** and names its source.
   WhatsApp, Instagram, dating apps, and agent results, done only dismisses
   the card in Litterbox on every client (decided, owner 2026-09-28);
   nothing is sent or marked in the source.
-- **R26 Assistant output as cards** (decided, owner 2026-09-27). The owner's
+- **R26 Assistant output as cards** (decided, owner 2026-09-27; clarified 2026-10-01 after source QA found an unreachable classifier and lost deliverables). The owner's
   assistant turns each of these into cards through the ingest API of R12:
-  research results when the research task's result is ready (readable offline
-  like any card, R9); reminders the assistant sets (behaving like reminders
-  the owner sets and appearing on every client, R6); and proactive briefs,
-  which today go to Telegram. Other assistant output does not become a card.
+  research results when the research task's result is ready (the full result
+  and its deliverable files readable offline like any card, R9); reminders
+  the assistant sets (behaving like reminders the owner sets and appearing on
+  every client, R6); and proactive briefs, which today go to Telegram.
+  Classification must originate in the actual completion producer, not only
+  consumer test metadata. Other assistant output does not become a card.
+  Oracle: invoke the native completion tool with research/brief classification,
+  observe persisted completion through the notifier and ingest receipt, and
+  verify full content and file bytes remain accessible offline with no ordinary
+  Telegram duplicate. Preserving Telegram for files while receiver storage is
+  unavailable prevents loss but does not satisfy this requirement.
 - **R27 Telegram after cards** (decided, owner 2026-09-27). Once an assistant
   output arrives as a Litterbox card (R26), the assistant no longer sends it
   to Telegram. Telegram keeps urgent messages and approval requests only.

@@ -16,6 +16,20 @@ type Card struct {
 	Timed      bool       `json:"timed"`
 	State      string     `json:"state"`
 	Note       string     `json:"note"`
+	// Display-origin metadata. AccountName is the tenant-scoped account
+	// address; BundleTitle is the tenant-scoped bundle title. SourceURL is
+	// only populated for an established source destination (none yet), so it
+	// stays empty rather than fabricating a Gmail browser index.
+	AccountName string `json:"account_name,omitempty"`
+	BundleTitle string `json:"bundle_title,omitempty"`
+	SourceURL   string `json:"source_url,omitempty"`
+	// Important marks a thread that carries Gmail's IMPORTANT label; the
+	// client renders it standalone, never concealed inside a bundle.
+	Important bool `json:"important,omitempty"`
+	// HasBody reports that card_bodies holds a rendered document for this
+	// card (a Gmail mail body or a server-built file document); the client
+	// prefetches it through GET /v1/cards/{id}/body for offline reads.
+	HasBody bool `json:"has_body"`
 	// internal ordering metadata, excluded from the API
 	createdAt time.Time
 	order     int

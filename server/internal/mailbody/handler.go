@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -42,10 +43,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	var source, account, threadID string
+	var source string
+	var account, threadID, address sql.NullString
 	var raw string
-	err = tx.QueryRowContext(r.Context(), `SELECT c.source,c.account_id::text,c.gmail_thread_id,b.html FROM cards c JOIN card_bodies b ON b.tenant_id=c.tenant_id AND b.card_id=c.id WHERE c.tenant_id=$1 AND c.id=$2`, tenantID, cardID).Scan(&source, &account, &threadID, &raw)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && source != "mail") {
+	err = tx.QueryRowContext(r.Context(), `SELECT c.source,c.account_id::text,c.gmail_thread_id,a.address,b.html FROM cards c JOIN card_bodies b ON b.tenant_id=c.tenant_id AND b.card_id=c.id LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id WHERE c.tenant_id=$1 AND c.id=$2`, tenantID, cardID).Scan(&source, &account, &threadID, &address, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
 	}
@@ -53,10 +55,18 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	clean, err := Sanitize(r.Context(), raw, h.Images)
-	if err != nil {
-		http.Error(w, "internal server error", 500)
-		return
+	// Mail bodies keep the Sanitize pipeline and the account-aware Gmail URL.
+	// Any other source is a server-built document: serve it exactly as stored,
+	// with no account, thread or external destination.
+	var clean string
+	if source == "mail" {
+		clean, err = Sanitize(r.Context(), raw, h.Images)
+		if err != nil {
+			http.Error(w, "internal server error", 500)
+			return
+		}
+	} else {
+		clean = raw
 	}
 	if err := tx.Commit(); err != nil {
 		http.Error(w, "internal server error", 500)
@@ -68,9 +78,23 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		HTML      string `json:"html"`
 		ThreadID  string `json:"threadId"`
 		AccountID string `json:"accountId"`
-	}{clean, threadID, account}); err != nil {
+		// SourceURL is the authoritative account-aware external destination:
+		// the tenant's stored account address selects the session via
+		// authuser, never an account UUID or a guessed /u/0 browser index.
+		SourceURL string `json:"source_url,omitempty"`
+	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String)}); err != nil {
 		return
 	}
+}
+
+// gmailSourceURL builds the account-aware Gmail thread permalink from the
+// authoritative stored account address and Gmail thread id. It returns ""
+// when either input is missing instead of fabricating a destination.
+func gmailSourceURL(address, threadID string) string {
+	if address == "" || threadID == "" {
+		return ""
+	}
+	return "https://mail.google.com/mail/?authuser=" + url.QueryEscape(address) + "#all/" + url.PathEscape(threadID)
 }
 
 func Sanitize(ctx context.Context, source string, fetcher *mailhtml.ImageFetcher) (string, error) {

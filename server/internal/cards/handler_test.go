@@ -28,6 +28,11 @@ func TestPostgresNotePersistence(t *testing.T) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
+	// Serialize shared-schema rebuilds across concurrently-run test packages
+	// sharing one pg_virtualenv database (released when db closes).
+	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +45,7 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "015_card_note_updated.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "011_card_bodies.sql", "015_card_note_updated.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {
 			t.Fatal(err)
@@ -244,5 +249,98 @@ func TestPostgresNotePersistence(t *testing.T) {
 	want := "- [ ] Fix generated task — invalid: not actionable\n- [ ] Fix generated task — invalid: do not repeat\n"
 	if string(data) != want {
 		t.Fatalf("feedback=%q want=%q", data, want)
+	}
+}
+
+func TestImportantCardSurfacesImportance(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
+	}
+	db, err := sql.Open("pgx", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	// Serialize shared-schema rebuilds across concurrently-run test packages
+	// sharing one pg_virtualenv database (released when db closes).
+	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "011_card_bodies.sql", "015_card_note_updated.sql"} {
+		body, err := os.ReadFile(filepath.Join("../../db", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(string(body)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	tenant := "11111111-1111-4111-8111-111111111111"
+	account := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	importantCard := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	ordinaryCard := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES ($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'user@example.com',decode('00','hex'))`, tenant, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject) VALUES($1,$2,$3,'thread-important','Important thread'),($1,$4,$3,'thread-ordinary','Ordinary thread')`, tenant, importantCard, account, ordinaryCard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m1',ARRAY['IMPORTANT','CATEGORY_PERSONAL'],decode('00','hex'),now()),($1,gen_random_uuid(),$3,'m2',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),now())`, tenant, importantCard, ordinaryCard); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(db, "Asia/Tbilisi", filepath.Join(t.TempDir(), "feedback.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	handler.Routes(mux)
+	req := httptest.NewRequest("GET", "/v1/cards?now=2026-09-28T15:00:00%2B04:00", nil)
+	req = req.WithContext(WithTenant(req.Context(), tenant))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET: %d %s", w.Code, w.Body.String())
+	}
+	var data Sections
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Card{}
+	for _, c := range data.Now {
+		byID[c.ID] = c
+	}
+	for _, c := range data.Later {
+		byID[c.ID] = c
+	}
+	for _, c := range data.Missed {
+		byID[c.ID] = c
+	}
+	if c, ok := byID[importantCard]; !ok || !c.Important {
+		t.Fatalf("IMPORTANT-labeled card must surface Important=true, got %+v", c)
+	}
+	if c, ok := byID[ordinaryCard]; !ok || c.Important {
+		t.Fatalf("ordinary card must surface Important=false, got %+v", c)
 	}
 }
