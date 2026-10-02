@@ -56,6 +56,36 @@ QNetworkRequest Api::buildRequest(const QString &path) const
     return request;
 }
 
+namespace {
+// QJSEngine::toScriptValue(QVariantList) produces a value that stringifies
+// like an array but fails Array.isArray, so convert explicitly. newArray /
+// newObject always yield genuine JS values.
+QJSValue jsonToJs(QJSEngine *engine, const QJsonValue &value)
+{
+    if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        QJSValue result = engine->newArray(array.size());
+        for (qsizetype i = 0; i < array.size(); ++i)
+            result.setProperty(i, jsonToJs(engine, array.at(i)));
+        return result;
+    }
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        QJSValue result = engine->newObject();
+        for (auto it = object.begin(); it != object.end(); ++it)
+            result.setProperty(it.key(), jsonToJs(engine, it.value()));
+        return result;
+    }
+    if (value.isString())
+        return QJSValue(value.toString());
+    if (value.isBool())
+        return QJSValue(value.toBool());
+    if (value.isDouble())
+        return QJSValue(value.toDouble());
+    return QJSValue(QJSValue::NullValue);
+}
+} // namespace
+
 void Api::trackJsonReply(int id, QNetworkReply *reply)
 {
     m_jsonReplies.insert(id, reply);
@@ -86,9 +116,11 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
             data = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
         }
         if (callback.isCallable() && m_engine) {
-            const QVariantMap response{{QStringLiteral("status"), status},
-                                       {QStringLiteral("body"), data.isUndefined() ? QVariant(true) : data.toVariant()}};
-            callback.call({QJSValue(QJSValue::NullValue), m_engine->toScriptValue(response)});
+            QJSValue response = m_engine->newObject();
+            response.setProperty(QStringLiteral("status"), status);
+            response.setProperty(QStringLiteral("body"),
+                                 data.isUndefined() ? QJSValue(true) : jsonToJs(m_engine, data));
+            callback.call({QJSValue(QJSValue::NullValue), response});
         }
         emit requestFinished(id, data, status);
     });

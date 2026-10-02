@@ -70,6 +70,45 @@ private slots:
         QCOMPARE(failed.constLast().at(1).toInt(), 401);
         QVERIFY(!engine.globalObject().property("lastError").toString().isEmpty());
     }
+    void topLevelArrayBodyIsJsArray() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            QTcpSocket *socket = server.nextPendingConnection();
+            auto *buffer = new QByteArray;
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                buffer->append(socket->readAll());
+                if (buffer->indexOf("\r\n\r\n") < 0) return;
+                const bool empty = buffer->contains("/empty");
+                const QByteArray payload = empty ? "[]" : "[{\"id\":\"x\",\"address\":\"a@b.c\"}]";
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                    + QByteArray::number(payload.size()) + "\r\nConnection: close\r\n\r\n" + payload);
+                socket->disconnectFromHost();
+                delete buffer;
+            });
+        });
+        Api api;
+        QJSEngine engine;
+        api.setEngine(&engine);
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        engine.evaluate("var lastError = null; var lastResponse = null;");
+        const QJSValue callback = engine.evaluate("(function(error,response) { lastError = error ? error.message : null; lastResponse = response; })");
+        QVERIFY(callback.isCallable());
+
+        api.get(QStringLiteral("/v1/gmail/accounts"), callback);
+        QTRY_VERIFY(!engine.globalObject().property("lastResponse").isNull());
+        QVERIFY(engine.globalObject().property("lastError").isNull());
+        QCOMPARE(engine.globalObject().property("lastResponse").property("status").toInt(), 200);
+        QVERIFY2(engine.evaluate("Array.isArray(lastResponse.body)").toBool(), "top-level object array must be a JS Array");
+        QCOMPARE(engine.evaluate("lastResponse.body.length").toInt(), 1);
+        QCOMPARE(engine.evaluate("lastResponse.body[0].address").toString(), QString("a@b.c"));
+
+        engine.evaluate("lastResponse = null; lastError = null;");
+        api.get(QStringLiteral("/empty"), callback);
+        QTRY_VERIFY(!engine.globalObject().property("lastResponse").isNull());
+        QVERIFY2(engine.evaluate("Array.isArray(lastResponse.body)").toBool(), "empty list must still be a JS Array");
+        QCOMPARE(engine.evaluate("lastResponse.body.length").toInt(), 0);
+    }
 };
 QTEST_MAIN(ApiTest)
 #include "tst_api.moc"
