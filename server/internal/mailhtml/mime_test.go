@@ -15,6 +15,8 @@ import (
 
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 // fixtureDir regenerates the R28 acceptance fixtures with the repository's
@@ -143,6 +145,9 @@ func TestParseCharsets(t *testing.T) {
 		{"windows-1251 QP", "windows-1251", charmap.Windows1251, "quoted-printable", "Синхронизация почты"},
 		{"koi8-r base64", "koi8-r", charmap.KOI8R, "base64", "Привет, мир!"},
 		{"iso-8859-1 QP", "iso-8859-1", charmap.ISO8859_1, "quoted-printable", "Grüße, señor - déjà vu"},
+		{"windows-1252 QP", "windows-1252", charmap.Windows1252, "quoted-printable", "Café – naïve"},
+		{"gb2312 base64", "gb2312", simplifiedchinese.GB18030, "base64", "你好，世界"},
+		{"big5 base64", "big5", traditionalchinese.Big5, "base64", "你好，世界"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,6 +167,25 @@ func TestParseCharsets(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseUnknownCharsetStaysValidUTF8(t *testing.T) {
+	// An exotic label with raw 8-bit bytes must degrade to valid UTF-8 with
+	// replacement characters instead of failing the database insert.
+	raw := "Subject: x\r\nContent-Type: text/plain; charset=\"x-exotic\"\r\n\r\nprice 5\x9610\r\n"
+	m, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if strings.ToValidUTF8(m.Text, "") != m.Text {
+		t.Fatalf("text is not valid UTF-8: %q", m.Text)
+	}
+	if strings.ContainsRune(m.Text, '\x96') {
+		t.Fatalf("raw byte leaked into text: %q", m.Text)
+	}
+	if !strings.Contains(m.Text, "price 5") {
+		t.Fatalf("message content lost: %q", m.Text)
 	}
 }
 

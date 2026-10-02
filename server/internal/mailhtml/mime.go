@@ -16,6 +16,8 @@ import (
 
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 // Part is one non-body MIME part: an inline resource or an attachment.
@@ -164,30 +166,38 @@ func transferReader(h textproto.MIMEHeader, r io.Reader, multipartPart bool) io.
 }
 
 // decodeCharset converts a text body to UTF-8. Charsets without a decoder
-// pass through unchanged so an exotic label never loses the message.
+// keep their bytes but are forced to valid UTF-8, so an exotic label never
+// loses the message and never poisons a text column with invalid UTF-8.
 func decodeCharset(raw []byte, charset string) string {
 	enc := charsetEncoding(charset)
 	if enc == nil {
-		return string(raw)
+		return strings.ToValidUTF8(string(raw), "�")
 	}
 	decoded, err := enc.NewDecoder().Bytes(raw)
 	if err != nil {
-		return string(raw)
+		return strings.ToValidUTF8(string(raw), "�")
 	}
 	return string(decoded)
 }
 
 // charsetEncoding maps the charset labels Litterbox must read (utf-8,
-// windows-1251, koi8-r, iso-8859-1) onto decoders. utf-8 and us-ascii need
-// none; unknown labels return nil for pass-through.
+// windows-1251, windows-1252, koi8-r, iso-8859-1, gb2312, big5) onto
+// decoders. utf-8 and us-ascii need none; unknown labels return nil for
+// pass-through.
 func charsetEncoding(charset string) encoding.Encoding {
 	switch strings.ToLower(strings.Trim(strings.TrimSpace(charset), `"`)) {
 	case "windows-1251":
 		return charmap.Windows1251
+	case "windows-1252", "cp1252", "x-cp1252":
+		return charmap.Windows1252
 	case "koi8-r", "koi8r":
 		return charmap.KOI8R
 	case "iso-8859-1", "latin1", "latin-1":
 		return charmap.ISO8859_1
+	case "gb2312", "gb-2312", "gbk", "gb18030":
+		return simplifiedchinese.GB18030
+	case "big5", "big-5", "cp950":
+		return traditionalchinese.Big5
 	default:
 		return nil
 	}
@@ -213,9 +223,9 @@ func decodeHeader(s string) string {
 	}}
 	decoded, err := decoder.DecodeHeader(s)
 	if err != nil {
-		return s
+		return strings.ToValidUTF8(s, "�")
 	}
-	return decoded
+	return strings.ToValidUTF8(decoded, "�")
 }
 
 func firstOf(values ...string) string {

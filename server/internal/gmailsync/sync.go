@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -306,10 +307,15 @@ func (s *Syncer) Run(ctx context.Context, accounts func(context.Context) ([]Acco
 		if e != nil {
 			return e
 		}
+		var failed []error
 		for _, a := range as {
 			if e = s.SyncAccount(ctx, a); e != nil {
-				return fmt.Errorf("sync account %s: %w", a.ID, e)
+				// One account's failure must not starve the others.
+				failed = append(failed, fmt.Errorf("sync account %s: %w", a.ID, e))
 			}
+		}
+		if len(failed) > 0 {
+			return errors.Join(failed...)
 		}
 		select {
 		case <-ctx.Done():

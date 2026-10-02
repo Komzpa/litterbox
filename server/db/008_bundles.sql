@@ -12,3 +12,8 @@ CREATE TABLE IF NOT EXISTS bundle_exclusions (
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant_id, sender_key, bundle_key)
 );
+ALTER TABLE bundle_exclusions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON bundle_exclusions
+    USING (tenant_id = NULLIF(current_setting('litterbox.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('litterbox.tenant_id', true), '')::uuid);
+GRANT SELECT, INSERT, UPDATE, DELETE ON bundle_exclusions TO litterbox_app;

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestClientRefreshesTokenAndModifiesThread(t *testing.T) {
@@ -71,7 +72,9 @@ func TestClientRetrievesRawMessageWithBase64URLDecoding(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer access" {
 			t.Errorf("missing account auth: %q", r.Header.Get("Authorization"))
 		}
-		json.NewEncoder(w).Encode(map[string]string{"raw": base64.RawURLEncoding.EncodeToString([]byte("Content-Type: text/plain\r\n\r\nbody"))})
+		// Gmail returns raw base64url with '=' padding (verified against the
+		// live API), so the fixture encodes with the padded alphabet.
+		json.NewEncoder(w).Encode(map[string]string{"raw": base64.URLEncoding.EncodeToString([]byte("Content-Type: text/plain\r\n\r\nbody"))})
 	}))
 	defer srv.Close()
 	c := &Client{HTTP: srv.Client(), APIBase: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh-for-account-b"}
@@ -81,6 +84,97 @@ func TestClientRetrievesRawMessageWithBase64URLDecoding(t *testing.T) {
 	}
 	if string(got) != "Content-Type: text/plain\r\n\r\nbody" {
 		t.Fatalf("raw body = %q", got)
+	}
+}
+
+func TestClientRetriesThrottledRequestsWithBackoff(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "expires_in": 3600})
+			return
+		}
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "Quota exceeded", "errors": []any{map[string]string{"reason": "rateLimitExceeded"}}}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"raw": base64.URLEncoding.EncodeToString([]byte("Content-Type: text/plain\r\n\r\nbody"))})
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), APIBase: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", RetryDelay: time.Millisecond}
+	got, err := c.GetMessageRaw(context.Background(), "message-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "Content-Type: text/plain\r\n\r\nbody" {
+		t.Fatalf("raw body = %q", got)
+	}
+	if n := calls.Load(); n != 3 {
+		t.Fatalf("api calls = %d, want 3", n)
+	}
+}
+
+func TestClientRetriesTransientServerErrors(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "expires_in": 3600})
+			return
+		}
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error": {"message": "Internal error encountered."}}`))
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"raw": base64.URLEncoding.EncodeToString([]byte("Content-Type: text/plain\r\n\r\nbody"))})
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), APIBase: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", RetryDelay: time.Millisecond}
+	got, err := c.GetMessageRaw(context.Background(), "message-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "Content-Type: text/plain\r\n\r\nbody" {
+		t.Fatalf("raw body = %q", got)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("api calls = %d, want 2", n)
+	}
+}
+
+func TestClientRetriesTransportErrors(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "expires_in": 3600})
+			return
+		}
+		if calls.Add(1) == 1 {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("server cannot hijack")
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Fatal(err)
+			}
+			conn.Close() // drop the connection mid-request
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"raw": base64.URLEncoding.EncodeToString([]byte("Content-Type: text/plain\r\n\r\nbody"))})
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), APIBase: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret", RefreshToken: "refresh", RetryDelay: time.Millisecond}
+	got, err := c.GetMessageRaw(context.Background(), "message-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "Content-Type: text/plain\r\n\r\nbody" {
+		t.Fatalf("raw body = %q", got)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("api calls = %d, want 2", n)
 	}
 }
 

@@ -19,6 +19,7 @@ const gmailAPI = "https://gmail.googleapis.com/gmail/v1/users/me"
 type Client struct {
 	HTTP                                                    *http.Client
 	APIBase, TokenURL, ClientID, ClientSecret, RefreshToken string
+	RetryDelay                                              time.Duration // backoff base for throttled requests; 0 means 5s
 	mu                                                      sync.Mutex
 	accessToken                                             string
 	tokenExpiry                                             time.Time
@@ -70,28 +71,56 @@ func (c *Client) token(ctx context.Context) (string, error) {
 	return t.AccessToken, nil
 }
 func (c *Client) request(ctx context.Context, method, path string, body any, out any) error {
+	var payload []byte
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		payload = b
+	}
+	delay := c.RetryDelay
+	if delay <= 0 {
+		delay = 5 * time.Second
+	}
+	for attempt := 0; ; attempt++ {
+		retry, err := c.try(ctx, method, path, payload, out)
+		if !retry || attempt >= 5 {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		if delay < time.Minute {
+			delay *= 2
+		}
+	}
+}
+
+// try performs one API call. It reports retry when Gmail asked us to slow
+// down (per-minute quota, transient overload) so request can back off
+// instead of failing the whole sync pass over a throttled burst.
+func (c *Client) try(ctx context.Context, method, path string, payload []byte, out any) (retry bool, err error) {
 	tok, e := c.token(ctx)
 	if e != nil {
-		return e
+		return false, e
 	}
 	base := c.APIBase
 	if base == "" {
 		base = gmailAPI
 	}
 	var r io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		r = bytes.NewReader(b)
+	if payload != nil {
+		r = bytes.NewReader(payload)
 	}
 	req, e := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, r)
 	if e != nil {
-		return e
+		return false, e
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
-	if body != nil {
+	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	h := c.HTTP
@@ -100,17 +129,30 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 	}
 	res, e := h.Do(req)
 	if e != nil {
-		return e
+		// Transient transport failures (connection resets, read timeouts)
+		// are worth retrying; a done context is not.
+		return ctx.Err() == nil, e
 	}
 	defer res.Body.Close()
 	if res.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-		return fmt.Errorf("gmail API %s %s: %s: %s", method, path, res.Status, b)
+		err := fmt.Errorf("gmail API %s %s: %s: %s", method, path, res.Status, b)
+		switch {
+		case res.StatusCode >= 500:
+			// Gmail serves transient 5xx (observed: 500 Internal error on a
+			// message raw fetch that succeeds seconds later); retry them.
+			return true, err
+		case res.StatusCode == http.StatusTooManyRequests:
+			return true, err
+		case res.StatusCode == http.StatusForbidden && bytes.Contains(b, []byte("rateLimitExceeded")):
+			return true, err
+		}
+		return false, err
 	}
 	if out != nil {
-		return json.NewDecoder(res.Body).Decode(out)
+		return false, json.NewDecoder(res.Body).Decode(out)
 	}
-	return nil
+	return false, nil
 }
 
 type ThreadRef struct {
@@ -184,7 +226,9 @@ func (c *Client) GetMessageRaw(ctx context.Context, id string) ([]byte, error) {
 	if err := c.request(ctx, "GET", "/messages/"+url.PathEscape(id)+"?format=raw", nil, &message); err != nil {
 		return nil, err
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(message.Raw)
+	// Gmail pads its base64url raw payloads with '='; RawURLEncoding
+	// rejects padding, so normalize before decoding.
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(message.Raw, "="))
 	if err != nil {
 		return nil, fmt.Errorf("gmail raw message %s: %w", id, err)
 	}
