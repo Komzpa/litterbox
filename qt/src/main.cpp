@@ -313,6 +313,27 @@ int main(int argc, char *argv[])
             };
             key(Qt::Key_Home);
             if (list->property("contentHeight").toReal() <= list->property("height").toReal()) { qCritical("Scroll fixture does not overflow viewport"); app.exit(4); return; }
+            // Home/End navigate via positionViewAtBeginning/End, which settle
+            // over layout passes; numeric contentY alone cannot distinguish a
+            // rendered card from a blank region, so the bounds assertions read
+            // which card index is actually visible at the viewport edges.
+            auto visibleRange = [&]() {
+                QVariant value;
+                if (!QMetaObject::invokeMethod(list, "captureVisibleRange", Q_RETURN_ARG(QVariant, value))) return QVariantMap{};
+                return value.toMap();
+            };
+            auto waitVisible = [&](auto predicate) {
+                QElapsedTimer timer;
+                timer.start();
+                QVariantMap range;
+                while (timer.elapsed() < 3000) {
+                    QCoreApplication::processEvents();
+                    range = visibleRange();
+                    if (predicate(range)) break;
+                    QThread::msleep(50);
+                }
+                return range;
+            };
             const qreal down = key(Qt::Key_Down);
             const qreal pageDown = key(Qt::Key_PageDown);
             const qreal up = key(Qt::Key_Up);

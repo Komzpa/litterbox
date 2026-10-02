@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
@@ -539,6 +540,11 @@ ApplicationWindow {
     }
     Dialog {
         id: noteDialog
+        Material.theme: Material.Light
+        Material.background: window.surface
+        Material.foreground: window.ink
+        Material.accent: window.accent
+        Material.primary: window.accent
         property string cardId
         title: "Card note"
         modal: true
@@ -580,6 +586,11 @@ ApplicationWindow {
     }
     Dialog {
         id: createDialog
+        Material.theme: Material.Light
+        Material.background: window.surface
+        Material.foreground: window.ink
+        Material.accent: window.accent
+        Material.primary: window.accent
         title: qsTr("Create card")
         modal: true
         width: Math.min(392, window.width - 32)
