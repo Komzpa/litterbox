@@ -209,12 +209,12 @@ int main(int argc, char *argv[])
         QDir(testProfileMode ? testProfileDirectory : dataDir).filePath(QStringLiteral("cards.sqlite"));
     if (!store.open(databasePath)) return 1;
 
+    TimeRules timeRules;
     QQmlApplicationEngine engine;
     api.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("api"), &api);
     engine.rootContext()->setContextProperty(QStringLiteral("updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("store"), &store);
-    TimeRules timeRules;
     engine.rootContext()->setContextProperty(QStringLiteral("timeRules"), &timeRules);
 
     // Preserve the existing v1 note/done routes. Other queued actions use
