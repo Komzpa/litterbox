@@ -81,6 +81,17 @@ Controls.ToolButton {
         modal: true
         width: Math.min(360, root.Window.window ? root.Window.window.width - 2 * Kirigami.Units.largeSpacing : 360)
         implicitWidth: width
+        // Explicit title: the style-provided header label follows the host
+        // theme (invisible white on our white surface under Breeze and
+        // dark-Material), so pin ink directly.
+        header: Controls.Label {
+            text: root.cardTitle
+            color: root.actionInk
+            font.pointSize: Kirigami.Theme.defaultFont.pointSize + 4
+            font.weight: Font.DemiBold
+            padding: Kirigami.Units.largeSpacing
+            wrapMode: Text.Wrap
+        }
         // No StandardButton labels: Qt localizes them per system locale while
         // the app is English. Explicit footer buttons keep the text stable and
         // an explicit light background keeps the KDE style from painting a dark
@@ -93,15 +104,25 @@ Controls.ToolButton {
                     id: sheetCloseButton
                     objectName: "actionSheetClose-" + root.cardKey
                     text: qsTr("Close")
-                    icon.name: "dialog-close"
-                    icon.width: Kirigami.Units.iconSizes.small
-                    icon.height: Kirigami.Units.iconSizes.small
-                    icon.color: root.actionInk
                     implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                    Material.foreground: root.actionInk
-                    palette.button: root.actionSurface
-                    palette.buttonText: root.actionInk
+                    // Explicit content: the Breeze and dark-Material styles
+                    // resolve the default button label from the host theme
+                    // (white on our white footer), so pin ink directly with
+                    // plain color bindings no style can override.
+                    contentItem: RowLayout {
+                        spacing: Kirigami.Units.smallSpacing
+                        Kirigami.Icon {
+                            source: "dialog-close"
+                            color: root.actionInk
+                            implicitWidth: Kirigami.Units.iconSizes.small
+                            implicitHeight: Kirigami.Units.iconSizes.small
+                        }
+                        Controls.Label {
+                            text: sheetCloseButton.text
+                            color: root.actionInk
+                        }
+                    }
                     background: Rectangle {
                         radius: Kirigami.Units.cornerRadius
                         color: sheetCloseButton.down ? "#e8eeed" : sheetCloseButton.hovered ? "#eef3f2" : root.actionSurface
