@@ -19,7 +19,13 @@ ApplicationWindow {
     readonly property color surface: "#ffffff"
     readonly property color canvas: "#f3f7f6"
     readonly property color accent: "#397d73"
+    readonly property real edgeSpacing: Math.max(18, Kirigami.Units.largeSpacing)
     color: canvas
+    Material.theme: Material.Light
+    Material.background: canvas
+    Material.foreground: ink
+    Material.accent: accent
+    Material.primary: accent
     palette.window: canvas
     palette.windowText: ink
     palette.base: surface
@@ -131,54 +137,60 @@ ApplicationWindow {
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
 
     header: ToolBar {
-        padding: 16
+        padding: window.edgeSpacing
         background: Rectangle { color: window.surface }
         ColumnLayout {
-            width: parent.width
-            spacing: 4
+            width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 0
             RowLayout {
+                spacing: Kirigami.Units.mediumSpacing
                 Layout.fillWidth: true
                 Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: 2; Layout.fillWidth: true }
                 Button {
                     id: addCardButton
                     objectName: "addCardButton"
-                    text: qsTr("+ Add card")
-                    implicitHeight: 44
-                    leftPadding: 16
-                    rightPadding: 16
+                    text: qsTr("Add card")
+                    icon.name: "list-add"
+                    icon.width: Kirigami.Units.iconSizes.small
+                    icon.height: Kirigami.Units.iconSizes.small
+                    icon.color: window.surface
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    leftPadding: Kirigami.Units.largeSpacing
+                    rightPadding: Kirigami.Units.largeSpacing
+                    Material.foreground: window.surface
+                    palette.buttonText: window.surface
                     background: Rectangle {
-                        radius: 22
+                        radius: Kirigami.Units.cornerRadius
                         color: addCardButton.down ? "#286358" : addCardButton.hovered ? "#326f65" : window.accent
                         border.width: addCardButton.visualFocus ? 2 : 0
                         border.color: window.ink
-                    }
-                    contentItem: Label {
-                        text: addCardButton.text
-                        color: window.surface
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        font: addCardButton.font
                     }
                     onClicked: createDialog.open()
                     TapHandler { onTapped: createDialog.open() }
                 }
                 ToolButton {
-                    text: "⋮"
-                    implicitWidth: 44
-                    implicitHeight: 44
+                    icon.name: "application-menu"
+                    icon.width: Kirigami.Units.iconSizes.smallMedium
+                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                    text: qsTr("Inbox commands")
+                    display: AbstractButton.IconOnly
+                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: qsTr("Inbox commands")
+                    ToolTip.text: Accessible.name
                     onClicked: headerMenu.open()
                     Menu {
                         id: headerMenu
-                        MenuItem { text: qsTr("Accounts"); onTriggered: openPage("GmailAccountsPage") }
-                        MenuItem { text: qsTr("Enroll device"); onTriggered: openPage("EnrollmentPage") }
-                        MenuItem { text: qsTr("Refresh"); onTriggered: store.refresh() }
-                        MenuItem { text: qsTr("Private journal"); onTriggered: openPage("JournalPage") }
-                        MenuItem { text: qsTr("Check updates"); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
+                        MenuItem { text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
+                        MenuItem { text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
+                        MenuItem { text: qsTr("Refresh"); icon.name: "view-refresh"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: store.refresh() }
+                        MenuItem { text: qsTr("Private journal"); icon.name: "journal-new"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("JournalPage") }
+                        MenuItem { text: qsTr("Check updates"); icon.name: "system-software-update"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                     }
                 }
             }
-            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font.pointSize: 9; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.smallFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
             Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
             Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
         }
@@ -278,20 +290,20 @@ ApplicationWindow {
                 }
                 model: store
                 section.property: "section"
-                spacing: 0
+                spacing: window.edgeSpacing
                 section.delegate: Item {
                     width: ListView.view.width
-                    height: sectionHeading.implicitHeight + 16
+                    height: sectionHeading.implicitHeight + window.edgeSpacing
                     Label {
                         id: sectionHeading
-                        width: Math.min(parent.width - 32, 1200)
+                        width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: (section === "pinned" ? qsTr("Pinned") : section === "now" ? qsTr("Now") : section === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
-                        font.pointSize: 9
-                        font.bold: true
-                        font.letterSpacing: 1
+                        font.family: Kirigami.Theme.smallFont.family
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        font.weight: Font.DemiBold
                         color: window.mutedInk
-                        padding: 12
+                        padding: 0
                     }
                 }
                 delegate: Item {
@@ -311,19 +323,19 @@ ApplicationWindow {
                     Frame {
                         id: cardFrame
                         objectName: "inboxCard"
-                        width: Math.min(parent.width - 32, 1200)
+                        width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
                         x: (parent.width - width) / 2
                         y: cardRow.lifted ? window.dragOffset : 0
-                        padding: 10
-                        background: Rectangle { color: cardRow.lifted ? "#e4efed" : "#ffffff"; border.color: cardRow.lifted ? "#397d73" : "#edf0ef"; radius: cardRow.lifted ? 8 : 0 }
+                        padding: window.edgeSpacing
+                        background: Rectangle { color: cardRow.lifted ? "#e4efed" : "#ffffff"; border.color: cardRow.lifted ? window.accent : "#edf0ef"; radius: Kirigami.Units.cornerRadius }
                         RowLayout {
                             width: parent.width
-                            spacing: 4
+                            spacing: Kirigami.Units.smallSpacing
                                 Item {
                                     id: dragHandle
                                     objectName: "reorderHandle-" + cardId
-                                    implicitWidth: 44
-                                    implicitHeight: 44
+                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
                                     readonly property bool reorderable: pinned || !card.timed
                                     opacity: reorderable ? 1.0 : 0.4
@@ -339,8 +351,9 @@ ApplicationWindow {
                                     Label {
                                         anchors.centerIn: parent
                                         text: "="
-                                        font.bold: true
-                                        color: window.mutedInk
+                                        font.pointSize: Kirigami.Theme.defaultFont.pointSize + 2
+                                        font.weight: Font.DemiBold
+                                        color: window.ink
                                     }
                                     Accessible.name: qsTr("Drag to reorder")
                                     Accessible.description: reorderable ? qsTr("Hold and drag to a new position") : qsTr("Position is fixed by pin or time")
@@ -354,33 +367,39 @@ ApplicationWindow {
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    spacing: Kirigami.Units.smallSpacing
                                     ToolButton {
                                         visible: cardRow.bundled && card.bundle_leader === true
                                         text: (cardRow.bundleExpanded ? "⌄ " : "› ") + (card.bundle_title || qsTr("Bundle")) + " · " + (card.bundle_member_count || "")
                                         Layout.fillWidth: true
-                                        implicitHeight: 44
+                                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                         Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
                                         onClicked: window.toggleBundle(card.bundle_id)
                                     }
-                                    Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font.pointSize: 9; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font: Kirigami.Theme.smallFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label {
                                         text: title
                                         color: window.ink
-                                        font.bold: true
+                                        font.pointSize: Kirigami.Theme.defaultFont.pointSize + 2
+                                        font.weight: Font.DemiBold
                                         wrapMode: Text.Wrap
                                         Layout.fillWidth: true
                                         TapHandler { onTapped: cardActions.openRequested() }
                                     }
-                                    Label { text: card.summary || ""; color: window.mutedInk; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label { text: card.summary || ""; color: window.mutedInk; visible: text.length > 0; font: Kirigami.Theme.defaultFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font.pointSize: 9 }
+                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.smallFont }
                                 }
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
-                                    text: card.source === "mail" ? "⇣" : "✓"
-                                    implicitWidth: 44
-                                    implicitHeight: 44
+                                    text: card.source === "mail" ? qsTr("Archive") : qsTr("Done")
+                                    icon.name: card.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
+                                    icon.width: Kirigami.Units.iconSizes.smallMedium
+                                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                                    icon.color: window.ink
+                                    display: AbstractButton.IconOnly
+                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     opacity: 1
                                     Accessible.name: cardActions.primaryName
                                     ToolTip.text: Accessible.name
