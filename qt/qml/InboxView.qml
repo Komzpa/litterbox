@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
-import "../src/qml" as Components
+import litterbox 1.0 as Litterbox
 
 ApplicationWindow {
     id: window
@@ -385,7 +385,7 @@ ApplicationWindow {
                                     ToolTip.visible: hovered
                                     onClicked: cardActions.primaryAction()
                                 }
-                                Components.CardActions {
+                                Litterbox.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
                                     store: window.cardStore

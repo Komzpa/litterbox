@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../qml" as App
+import litterbox 1.0 as App
 
 TestCase {
     name: "TouchDefects"

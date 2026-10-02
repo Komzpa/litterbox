@@ -1,0 +1,3 @@
+module litterbox
+InboxView 1.0 ../../../qml/InboxView.qml
+CardActions 1.0 ../../../src/qml/CardActions.qml
