@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Material
 import QtTest
 import litterbox 1.0 as App
 
@@ -81,6 +82,7 @@ TestCase {
         const sheet = findChild(moreActions, "cardActionSheet-card-1")
         verify(sheet)
         tryVerify(function() { return sheet.visible && sheet.contentItem !== null })
+        sheet.Material.theme = Material.Dark
         verify(Qt.colorEqual(sheet.contentItem.palette.window, "#ffffff"))
         verify(Qt.colorEqual(sheet.contentItem.palette.base, "#ffffff"))
 
