@@ -21,6 +21,7 @@
 #include <QDateTime>
 #include <QImage>
 #include <QQuickWindow>
+#include <QSize>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QJsonArray>
@@ -54,12 +55,25 @@ int main(int argc, char *argv[])
     const QStringList arguments = app.arguments();
     const bool captureScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scenario");
     const bool captureScrollScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scroll-scenario");
-    const bool captureCardControls = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-card-controls");
+    const bool captureCardControls = (arguments.size() == 4 ||
+        (arguments.size() == 7 && arguments.at(4) == QStringLiteral("--capture-viewport"))) &&
+        arguments.at(1) == QStringLiteral("--capture-card-controls");
     const bool captureMode = captureScenario || captureScrollScenario || captureCardControls;
     const bool testProfileMode = arguments.size() == 3 && arguments.at(1) == QStringLiteral("--test-profile");
     if (arguments.size() != 1 && !captureMode && !testProfileMode) {
-        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory>|--test-profile <isolated-profile-directory>]");
+        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory> [--capture-viewport <width> <height>]|--test-profile <isolated-profile-directory>]");
         return 2;
+    }
+    QSize captureViewport;
+    if (captureCardControls && arguments.size() == 7) {
+        bool widthOk = false, heightOk = false;
+        const int width = arguments.at(5).toInt(&widthOk);
+        const int height = arguments.at(6).toInt(&heightOk);
+        if (!widthOk || !heightOk || width <= 0 || height <= 0) {
+            qCritical("Capture viewport requires positive integer width and height");
+            return 2;
+        }
+        captureViewport = QSize(width, height);
     }
     QString captureOutput;
     QString captureDatabase;
@@ -402,7 +416,9 @@ int main(int argc, char *argv[])
             QObject *root = engine.rootObjects().constFirst();
             const auto saveFrame = [&](const QString &name) { QCoreApplication::processEvents(); const QImage image = window->grabWindow(); return !image.isNull() && image.save(QDir(captureOutput).filePath(name), "PNG"); };
             const QStringList initial = store.cardIds();
-            if (!window || !saveFrame(QStringLiteral("baseline.png"))) { app.exit(3); return; }
+            if (!window) { app.exit(3); return; }
+            if (captureViewport.isValid()) window->resize(captureViewport);
+            if (!saveFrame(QStringLiteral("baseline.png"))) { app.exit(3); return; }
             QVariant dialogOpened;
             if (!QMetaObject::invokeMethod(root, "captureOpenCreateDialog", Q_RETURN_ARG(QVariant, dialogOpened), Q_ARG(QVariant, QVariant(QStringLiteral("Capture manual card"))), Q_ARG(QVariant, QVariant(QStringLiteral("Created in Qt capture")))) || !dialogOpened.toBool()) {
                 qCritical("Add-card dialog did not open");
@@ -564,12 +580,33 @@ int main(int argc, char *argv[])
 
             // The rendered controls beside the drag surface must stay usable under the
             // same real pointer events: Note opens its dialog, Done dismisses the card.
+            // Keep the tall drag-proof viewport above, then restore the requested
+            // dialog viewport before opening the lazy action sheet and Note.
+            if (captureViewport.isValid()) window->resize(captureViewport);
+            QCoreApplication::processEvents();
+            QVariant actionsOpened;
+            if (!QMetaObject::invokeMethod(root, "captureOpenActions", Q_RETURN_ARG(QVariant, actionsOpened),
+                    Q_ARG(QVariant, QVariant(manualB))) || !actionsOpened.toBool()) {
+                qCritical("Card action sheet did not open for %s", qPrintable(manualB));
+                app.exit(9);
+                return;
+            }
+            {
+                QEventLoop actionsOpenWait;
+                QTimer::singleShot(400, &actionsOpenWait, &QEventLoop::quit);
+                actionsOpenWait.exec();
+            }
             if (!pressAndRelease(QStringLiteral("noteButton-") + manualB)) { app.exit(9); return; }
             QVariant noteCardId;
             if (!QMetaObject::invokeMethod(root, "captureNoteDialogCardId", Q_RETURN_ARG(QVariant, noteCardId)) || noteCardId.toString() != manualB) {
                 qCritical("Note control did not open its dialog for %s", qPrintable(manualB));
                 app.exit(9);
                 return;
+            }
+            {
+                QEventLoop noteOpenWait;
+                QTimer::singleShot(400, &noteOpenWait, &QEventLoop::quit);
+                noteOpenWait.exec();
             }
             if (!saveFrame(QStringLiteral("note-dialog.png"))) { app.exit(9); return; }
             const int opsBeforeNoteClose = outboxCount();
@@ -582,6 +619,9 @@ int main(int argc, char *argv[])
                 app.exit(9);
                 return;
             }
+            // Done remains a pointer proof in the original tall scenario viewport.
+            if (captureViewport.isValid()) window->resize(560, 1200);
+            QCoreApplication::processEvents();
             if (!pressAndRelease(QStringLiteral("doneButton-") + manualB)) { app.exit(9); return; }
             QStringList afterDone = beforeTimed;
             afterDone.removeAll(manualB);
