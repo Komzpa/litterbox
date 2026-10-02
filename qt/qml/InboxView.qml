@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import "../src/qml" as Components
 
 ApplicationWindow {
     id: window
@@ -40,6 +41,10 @@ ApplicationWindow {
     Kirigami.Theme.highlightedTextColor: surface
     Kirigami.Theme.focusColor: accent
     Kirigami.Theme.hoverColor: accent
+    required property var api
+    required property var updater
+    required property var store
+    required property var timeRules
     property var cardStore: store
     property var captureActions: ({})
     property var cardHandles: ({})
@@ -107,10 +112,15 @@ ApplicationWindow {
         return store.pinnedCardIds()[0] === cardId ? "moved" : "unchanged"
     }
     onClosing: function(close) {
-        if (stack.depth > 1) {
+        if (Qt.platform.os === "android" && stack.depth > 1) {
             stack.pop()
             close.accepted = false
         }
+    }
+    function handleBack() {
+        if (stack.depth <= 1) return false
+        stack.pop()
+        return true
     }
     function openPage(name, properties) {
         const page = pagesDir.toString() + name + ".qml"
@@ -191,10 +201,7 @@ ApplicationWindow {
         anchors.fill: parent
         focus: true
         Keys.onBackPressed: function(event) {
-            if (depth > 1) {
-                pop()
-                event.accepted = true
-            }
+            if (window.handleBack()) event.accepted = true
         }
         initialItem: Item {
             ListView {
@@ -378,7 +385,7 @@ ApplicationWindow {
                                     ToolTip.visible: hovered
                                     onClicked: cardActions.primaryAction()
                                 }
-                                CardActions {
+                                Components.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
                                     store: window.cardStore

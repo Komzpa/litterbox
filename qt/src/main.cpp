@@ -328,6 +328,12 @@ int main(int argc, char *argv[])
         const QString path = QDir(pages).filePath(name);
         if (QFileInfo::exists(path)) { pageUrl = QUrl::fromLocalFile(path); break; }
     }
+    engine.setInitialProperties({
+        {QStringLiteral("api"), QVariant::fromValue(static_cast<QObject *>(&api))},
+        {QStringLiteral("updater"), QVariant::fromValue(static_cast<QObject *>(&updater))},
+        {QStringLiteral("store"), QVariant::fromValue(static_cast<QObject *>(&store))},
+        {QStringLiteral("timeRules"), QVariant::fromValue(static_cast<QObject *>(&timeRules))}
+    });
     engine.load(pageUrl);
     if (engine.rootObjects().isEmpty()) return 1;
     if (captureScrollScenario) {

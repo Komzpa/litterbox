@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import litterbox 1.0 as App
+import "../qml" as App
 
 TestCase {
     name: "TouchDefects"
@@ -41,7 +41,7 @@ TestCase {
 
     function init() {
         store.clear()
-        store.append({cardId: "card-1", title: "Touch card", card: {
+        store.append({cardId: "card-1", title: "Touch card", section: "now", card: {
             id: "card-1", title: "Touch card", source: "manual", section: "now",
             has_body: false, pinned_rank: null, bundle_id: "", important: false,
             timed: false, note: "", summary: "", account_name: ""
@@ -49,28 +49,40 @@ TestCase {
     }
 
     function createInbox() {
-        return createTemporaryObject(inboxComponent, this, {
+        const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules
         })
+        inbox.show()
+        return inbox
     }
+
+    SignalSpy { id: dialogOpened; signalName: "opened" }
 
     function test_doneActionIsVisibleWithoutHover() {
         const inbox = createInbox()
         verify(inbox)
-        const done = findChild(inbox, "doneButton-card-1")
+        const list = findChild(inbox, "inboxList")
+        verify(list)
+        list.forceLayout()
+        compare(list.count, 1)
+        const row = list.itemAtIndex(0)
+        verify(row)
+        const done = findChild(row, "doneButton-card-1")
         verify(done)
         compare(done.opacity, 1)
     }
-
-    function test_addCardOpensWithPointerTap() {
+    function test_addCardOpensOnceWithPointerTap() {
         const inbox = createInbox()
         verify(inbox)
         const button = findChild(inbox, "addCardButton")
-        verify(button)
-        mouseClick(button)
         const dialog = findChild(inbox, "createDialog")
+        verify(button)
         verify(dialog)
+        dialogOpened.target = dialog
+        dialogOpened.clear()
+        mouseClick(button)
         tryCompare(dialog, "visible", true)
+        tryCompare(dialogOpened, "count", 1)
     }
 
     function test_backPopsEnrollmentPageToInbox() {
@@ -80,7 +92,7 @@ TestCase {
         verify(stack)
         stack.push(pushedPage)
         tryCompare(stack, "depth", 2)
-        keyClick(stack, Qt.Key_Back)
+        verify(inbox.handleBack())
         tryCompare(stack, "depth", 1)
     }
 }
