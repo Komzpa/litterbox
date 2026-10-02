@@ -32,6 +32,8 @@ LITTERBOX_ANDROID_VERSION=4
 LITTERBOX_ANDROID_PACKAGE=org.qtproject.example.litterbox_qt
 ```
 
+Before publishing a signed APK, record its SHA-256 and prove R42 on that exact file: enroll through the normal UI, with no `LB_SERVER` and no pre-enrolled test profile, and reach Online against the intended deployed server route. A launch-only or disposable-server-only receipt does not pass this gate.
+
 Install each immutable release at a fixed, service-readable path and restart the server to select it. If any value is absent, the file cannot be read, or its size is empty or exceeds the bound, both endpoints fail closed with `503 Service Unavailable`. The server never accepts a request-provided file path. Keep APKs private; do not place signing keys or credentials in this configuration or repository.
 
 The client offers only a strictly newer `versionCode`, requires the manifest package to match the running app, and downloads only the fixed same-origin APK route. It verifies SHA-256 over the complete downloaded APK before showing Install/Later. Before publishing a release, confirm the APK's badging has the same package ID and versionCode configured above and that its signing certificate matches the installed release lineage. Android refuses same-package upgrades signed by a different certificate. In particular, a custom Qt Android manifest must retain the full application ID (here `org.qtproject.example.litterbox_qt`); copying the default template's shorter `org.qtproject.example` value produces a different app, even if `adb install -r` reports success. Keep the FileProvider authority derived from the full application ID (`${applicationId}.qtprovider`).
