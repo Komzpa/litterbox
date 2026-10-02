@@ -25,4 +25,9 @@ mv -- "$tmp_file" "$file"
 # Keep fourteen daily dumps on both the local and dedicated remote directories.
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'litterbox-*.dump' -mtime +13 -delete
 rsync --archive --protect-args "$file" "$BACKUP_SECONDARY/"
-ssh -o BatchMode=yes -o ServerAliveInterval=30 "$remote_user@$remote_host" find "$remote_dir" -maxdepth 1 -type f -name 'litterbox-*.dump' -mtime +13 -delete
+# The whole remote command is one quoted string: passing find's arguments
+# unquoted lets the remote shell glob 'litterbox-*.dump' in the login
+# directory, and with two or more dumps present find then fails with
+# "paths must precede expression" and the cleanup never runs. remote_dir is
+# validated above against a charset without quotes, so this is safe.
+ssh -o BatchMode=yes -o ServerAliveInterval=30 "$remote_user@$remote_host" "find '$remote_dir' -maxdepth 1 -type f -name 'litterbox-*.dump' -mtime +13 -delete"
