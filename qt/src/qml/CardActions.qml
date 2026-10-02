@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls as Controls
+import QtQuick.Controls.Material
+import org.kde.kirigami.dialogs as KirigamiDialogs
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
@@ -16,6 +18,10 @@ Controls.ToolButton {
     property string cardTitle: ""
     property string accountName: ""
     property bool canOpenSource: false
+    readonly property color actionInk: "#263b3a"
+    readonly property color actionSurface: "#ffffff"
+    readonly property color actionCanvas: "#f3f7f6"
+    readonly property color actionAccent: "#397d73"
     signal noteRequested()
     signal openRequested()
     signal readCachedRequested()
@@ -56,37 +62,105 @@ Controls.ToolButton {
     }
     function moveCard(delta) { store.moveCard(cardKey, delta) }
 
-    text: "⋮"
-    implicitWidth: 44
-    implicitHeight: 44
+    text: qsTr("More actions")
+    icon.name: "overflow-menu"
+    icon.width: Kirigami.Units.iconSizes.smallMedium
+    icon.height: Kirigami.Units.iconSizes.smallMedium
+    icon.color: actionInk
+    display: Controls.AbstractButton.IconOnly
+    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
     Accessible.name: qsTr("More actions for %1").arg(cardTitle)
     Controls.ToolTip.text: Accessible.name
     Controls.ToolTip.visible: hovered
     onClicked: actionSheet.open()
-    Controls.Dialog {
+    KirigamiDialogs.MenuDialog {
         id: actionSheet
         parent: Controls.Overlay.overlay
         objectName: "cardActionSheet-" + root.cardKey
         title: root.cardTitle
         modal: true
-        width: Math.min(360, root.Window.window ? root.Window.window.width - 32 : 360)
+        width: Math.min(360, root.Window.window ? root.Window.window.width - 2 * Kirigami.Units.largeSpacing : 360)
         implicitWidth: width
-        background: Rectangle { color: root.palette.base; radius: 8; border.color: root.palette.mid }
+        standardButtons: Controls.Dialog.Close
+        Material.theme: Material.Light
+        Material.background: root.actionSurface
+        Material.foreground: root.actionInk
+        Material.accent: root.actionAccent
+        Material.primary: root.actionAccent
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.textColor: root.actionInk
+        Kirigami.Theme.backgroundColor: root.actionSurface
+        Kirigami.Theme.alternateBackgroundColor: root.actionCanvas
+        Kirigami.Theme.highlightColor: root.actionAccent
+        Kirigami.Theme.focusColor: root.actionAccent
+        palette.window: root.actionSurface
+        palette.windowText: root.actionInk
+        palette.base: root.actionSurface
+        palette.text: root.actionInk
+        palette.button: root.actionSurface
+        palette.buttonText: root.actionInk
+        palette.highlight: root.actionAccent
+        palette.highlightedText: root.actionSurface
+        background: Rectangle { color: root.actionSurface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
         anchors.centerIn: parent
         onClosed: root.forceActiveFocus()
-        contentItem: ColumnLayout {
-            spacing: 0
-            Controls.Label { text: root.accountName || root.sourceLabel; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Controls.Button { text: root.primaryName; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.primaryAction() } }
-            Controls.Button { text: root.source === "mail" ? qsTr("Open in Gmail") : qsTr("Open source"); visible: root.canOpenSource; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.openRequested() } }
-            Controls.Button { text: qsTr("Read cached · stays in Litterbox"); visible: root.source === "mail" || root.hasBody; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.readCachedRequested() } }
-            Controls.Button { objectName: "noteButton-" + root.cardKey; text: qsTr("Note · instruction for this card"); Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.noteRequested() } }
-            Controls.Button { text: qsTr("Snooze · choose date and time"); Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.chooseSnoozeDateTime() } }
-            Controls.Button { text: root.pinned ? qsTr("Unpin") : qsTr("Pin"); visible: root.pinStateKnown; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {}) } }
-            Controls.Button { text: root.source === "mail" ? qsTr("Archive unpinned bundle members") : qsTr("Complete unpinned bundle members"); visible: root.bundleId.length > 0; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); if (root.source === "mail") archiveDialog.open(); else completeDialog.open() } }
-            Controls.Button { text: qsTr("Take out of bundle"); visible: root.bundleId.length > 0; Layout.fillWidth: true; implicitHeight: 44; onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey }) } }
-            Controls.Button { text: qsTr("Close"); Layout.fillWidth: true; implicitHeight: 44; onClicked: actionSheet.close() }
-        }
+        actions: [
+            Kirigami.Action {
+                text: root.primaryName
+                icon.name: root.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
+                tooltip: root.primaryName
+                onTriggered: { actionSheet.close(); root.primaryAction() }
+            },
+            Kirigami.Action {
+                text: root.source === "mail" ? qsTr("Open in Gmail") : qsTr("Open source")
+                icon.name: "document-open"
+                tooltip: text
+                visible: root.canOpenSource
+                onTriggered: { actionSheet.close(); root.openRequested() }
+            },
+            Kirigami.Action {
+                text: qsTr("Read cached · stays in Litterbox")
+                icon.name: "document-preview"
+                tooltip: text
+                visible: root.source === "mail" || root.hasBody
+                onTriggered: { actionSheet.close(); root.readCachedRequested() }
+            },
+            Kirigami.Action {
+                objectName: "noteButton-" + root.cardKey
+                text: qsTr("Note · instruction for this card")
+                icon.name: "document-edit"
+                tooltip: text
+                onTriggered: { actionSheet.close(); root.noteRequested() }
+            },
+            Kirigami.Action {
+                text: qsTr("Snooze · choose date and time")
+                icon.name: "appointment-new"
+                tooltip: text
+                onTriggered: { actionSheet.close(); root.chooseSnoozeDateTime() }
+            },
+            Kirigami.Action {
+                text: root.pinned ? qsTr("Unpin") : qsTr("Pin")
+                icon.name: "pin"
+                tooltip: text
+                visible: root.pinStateKnown
+                onTriggered: { actionSheet.close(); root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {}) }
+            },
+            Kirigami.Action {
+                text: root.source === "mail" ? qsTr("Archive unpinned bundle members") : qsTr("Complete unpinned bundle members")
+                icon.name: root.source === "mail" ? "mail-mark-read-symbolic" : "folder"
+                tooltip: text
+                visible: root.bundleId.length > 0
+                onTriggered: { actionSheet.close(); if (root.source === "mail") archiveDialog.open(); else completeDialog.open() }
+            },
+            Kirigami.Action {
+                text: qsTr("Take out of bundle")
+                icon.name: "list-remove"
+                tooltip: text
+                visible: root.bundleId.length > 0
+                onTriggered: { actionSheet.close(); root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey }) }
+            }
+        ]
     }
 
     Controls.Dialog {
