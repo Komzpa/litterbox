@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Controls.Material
-import org.kde.kirigami.dialogs as KirigamiDialogs
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
@@ -74,7 +73,7 @@ Controls.ToolButton {
     Controls.ToolTip.text: Accessible.name
     Controls.ToolTip.visible: hovered
     onClicked: actionSheet.open()
-    KirigamiDialogs.MenuDialog {
+    Controls.Dialog {
         id: actionSheet
         parent: Controls.Overlay.overlay
         objectName: "cardActionSheet-" + root.cardKey
@@ -134,82 +133,140 @@ Controls.ToolButton {
         palette.highlightedText: root.actionSurface
         background: Rectangle { color: root.actionSurface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
         anchors.centerIn: parent
-        // Kirigami's internal ScrollView pins Platform.Theme.inherit:false and
-        // colorSet:View, so the system dark scheme paints the action list
-        // (#141618) regardless of the palette set on this dialog. Pin the light
-        // theme on the content pane itself; the action delegates inherit it.
-        Component.onCompleted: {
-            const sv = actionSheet.contentItem
-            sv.Kirigami.Theme.inherit = false
-            sv.Kirigami.Theme.backgroundColor = root.actionSurface
-            sv.Kirigami.Theme.alternateBackgroundColor = root.actionCanvas
-            sv.Kirigami.Theme.textColor = root.actionInk
-            sv.Kirigami.Theme.highlightColor = root.actionAccent
-            sv.Kirigami.Theme.focusColor = root.actionAccent
-            sv.palette.window = root.actionSurface
-            sv.palette.base = root.actionSurface
-            sv.palette.text = root.actionInk
-            sv.palette.windowText = root.actionInk
-            sv.palette.button = root.actionSurface
-            sv.palette.buttonText = root.actionInk
-        }
         onClosed: root.forceActiveFocus()
-        actions: [
-            Kirigami.Action {
+        // Explicit row delegates instead of MenuDialog actions: the dialog's
+        // built-in action rows are 36px tall and cannot be resized, while
+        // touch targets must be at least 48x48. ItemDelegate rows carry the
+        // same English text, icons, visibility and handlers as the old
+        // actions; Done/Note/Snooze/Pin semantics are unchanged.
+        contentItem: ColumnLayout {
+            spacing: 0
+            Controls.ItemDelegate {
+                objectName: "actionRow-primary-" + root.cardKey
                 text: root.primaryName
                 icon.name: root.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
-                tooltip: root.primaryName
-                onTriggered: { actionSheet.close(); root.primaryAction() }
-            },
-            Kirigami.Action {
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
+                onClicked: { actionSheet.close(); root.primaryAction() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-open-" + root.cardKey
                 text: root.source === "mail" ? qsTr("Open in Gmail") : qsTr("Open source")
                 icon.name: "document-open"
-                tooltip: text
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
                 visible: root.canOpenSource
-                onTriggered: { actionSheet.close(); root.openRequested() }
-            },
-            Kirigami.Action {
+                onClicked: { actionSheet.close(); root.openRequested() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-cached-" + root.cardKey
                 text: qsTr("Read cached · stays in Litterbox")
                 icon.name: "document-preview"
-                tooltip: text
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
                 visible: root.source === "mail" || root.hasBody
-                onTriggered: { actionSheet.close(); root.readCachedRequested() }
-            },
-            Kirigami.Action {
-                objectName: "noteButton-" + root.cardKey
+                onClicked: { actionSheet.close(); root.readCachedRequested() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-note-" + root.cardKey
                 text: qsTr("Note · instruction for this card")
                 icon.name: "document-edit"
-                tooltip: text
-                onTriggered: { actionSheet.close(); root.noteRequested() }
-            },
-            Kirigami.Action {
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
+                onClicked: { actionSheet.close(); root.noteRequested() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-snooze-" + root.cardKey
                 text: qsTr("Snooze · choose date and time")
                 icon.name: "appointment-new"
-                tooltip: text
-                onTriggered: { actionSheet.close(); root.chooseSnoozeDateTime() }
-            },
-            Kirigami.Action {
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
+                onClicked: { actionSheet.close(); root.chooseSnoozeDateTime() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-pin-" + root.cardKey
                 text: root.pinned ? qsTr("Unpin") : qsTr("Pin")
                 icon.name: "pin"
-                tooltip: text
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
                 visible: root.pinStateKnown
-                onTriggered: { actionSheet.close(); root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {}) }
-            },
-            Kirigami.Action {
+                onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {}) }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-bundle-" + root.cardKey
                 text: root.source === "mail" ? qsTr("Archive unpinned bundle members") : qsTr("Complete unpinned bundle members")
                 icon.name: root.source === "mail" ? "mail-mark-read-symbolic" : "folder"
-                tooltip: text
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
                 visible: root.bundleId.length > 0
-                onTriggered: { actionSheet.close(); if (root.source === "mail") archiveDialog.open(); else completeDialog.open() }
-            },
-            Kirigami.Action {
+                onClicked: { actionSheet.close(); if (root.source === "mail") archiveDialog.open(); else completeDialog.open() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-takeout-" + root.cardKey
                 text: qsTr("Take out of bundle")
                 icon.name: "list-remove"
-                tooltip: text
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                Accessible.name: text
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
                 visible: root.bundleId.length > 0
-                onTriggered: { actionSheet.close(); root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey }) }
+                onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey }) }
             }
-        ]
+        }
     }
 
     Controls.Dialog {

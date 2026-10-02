@@ -378,8 +378,8 @@ ApplicationWindow {
                                         // below it; the ›/⌄ prefix keeps the toggle visible
                                         // at rest. Bundle title/count info is kept.
                                         color: bundleHover.containsMouse || activeFocus ? window.accent : window.mutedInk
-                                        font: Kirigami.Theme.smallFont
-                                        font.underline: activeFocus
+                                        font.family: Kirigami.Theme.smallFont.family
+                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
                                         wrapMode: Text.Wrap
                                         verticalAlignment: Text.AlignVCenter
                                         Layout.fillWidth: true
