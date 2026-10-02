@@ -593,7 +593,43 @@ ApplicationWindow {
         implicitWidth: width
         background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
         anchors.centerIn: parent
-        standardButtons: Dialog.Save | Dialog.Cancel
+        // Explicit English buttons: StandardButton labels follow the system
+        // locale (be_BY shows Belarusian) while the app is English, and the
+        // style paints them from the host color scheme. Explicit light
+        // backgrounds keep them legible in every theme.
+        footer: DialogButtonBox {
+            background: Rectangle { color: window.surface }
+            Button {
+                id: noteSaveButton
+                objectName: "noteSaveButton"
+                text: qsTr("Save")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: window.surface
+                palette.buttonText: window.ink
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: noteSaveButton.down ? "#e8eeed" : noteSaveButton.hovered ? "#eef3f2" : window.surface
+                    border.width: noteSaveButton.visualFocus ? 2 : 1
+                    border.color: noteSaveButton.visualFocus ? window.ink : "#dce5e3"
+                }
+                onClicked: noteDialog.accept()
+            }
+            Button {
+                id: noteCancelButton
+                objectName: "noteCancelButton"
+                text: qsTr("Cancel")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: window.surface
+                palette.buttonText: window.ink
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: noteCancelButton.down ? "#e8eeed" : noteCancelButton.hovered ? "#eef3f2" : window.surface
+                    border.width: noteCancelButton.visualFocus ? 2 : 1
+                    border.color: noteCancelButton.visualFocus ? window.ink : "#dce5e3"
+                }
+                onClicked: noteDialog.reject()
+            }
+        }
         onOpened: noteField.forceActiveFocus()
         // KDE Breeze TextArea assigns its TextArea target to a TextInput-only
         // mobile toolbar and aborts desktop root creation. Keep multiline edit
@@ -639,7 +675,41 @@ ApplicationWindow {
         implicitWidth: width
         background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
         anchors.centerIn: parent
-        standardButtons: Dialog.Save | Dialog.Cancel
+        // Explicit English buttons (see noteDialog): no locale-dependent
+        // StandardButton labels, explicit light background in any style.
+        footer: DialogButtonBox {
+            background: Rectangle { color: window.surface }
+            Button {
+                id: createSaveButton
+                objectName: "createSaveButton"
+                text: qsTr("Create")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: window.surface
+                palette.buttonText: window.ink
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: createSaveButton.down ? "#e8eeed" : createSaveButton.hovered ? "#eef3f2" : window.surface
+                    border.width: createSaveButton.visualFocus ? 2 : 1
+                    border.color: createSaveButton.visualFocus ? window.ink : "#dce5e3"
+                }
+                onClicked: createDialog.accept()
+            }
+            Button {
+                id: createCancelButton
+                objectName: "createCancelButton"
+                text: qsTr("Cancel")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: window.surface
+                palette.buttonText: window.ink
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: createCancelButton.down ? "#e8eeed" : createCancelButton.hovered ? "#eef3f2" : window.surface
+                    border.width: createCancelButton.visualFocus ? 2 : 1
+                    border.color: createCancelButton.visualFocus ? window.ink : "#dce5e3"
+                }
+                onClicked: createDialog.reject()
+            }
+        }
         onOpened: createTitle.forceActiveFocus()
         contentItem: ColumnLayout {
             TextField { id: createTitle; placeholderText: qsTr("Title"); Layout.fillWidth: true }

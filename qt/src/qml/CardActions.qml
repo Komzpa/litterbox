@@ -82,7 +82,28 @@ Controls.ToolButton {
         modal: true
         width: Math.min(360, root.Window.window ? root.Window.window.width - 2 * Kirigami.Units.largeSpacing : 360)
         implicitWidth: width
-        standardButtons: Controls.Dialog.Close
+        // No StandardButton labels: Qt localizes them per system locale while
+        // the app is English. Explicit footer buttons keep the text stable and
+        // an explicit light background keeps the KDE style from painting a dark
+        // slab from the host color scheme.
+        footer: Controls.DialogButtonBox {
+            background: Rectangle { color: root.actionSurface }
+            Controls.Button {
+                id: sheetCloseButton
+                objectName: "actionSheetClose-" + root.cardKey
+                text: qsTr("Close")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: sheetCloseButton.down ? "#e8eeed" : sheetCloseButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: sheetCloseButton.visualFocus ? 2 : 1
+                    border.color: sheetCloseButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: actionSheet.close()
+            }
+        }
         Material.theme: Material.Light
         Material.background: root.actionSurface
         Material.foreground: root.actionInk
@@ -104,6 +125,25 @@ Controls.ToolButton {
         palette.highlightedText: root.actionSurface
         background: Rectangle { color: root.actionSurface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
         anchors.centerIn: parent
+        // Kirigami's internal ScrollView pins Platform.Theme.inherit:false and
+        // colorSet:View, so the system dark scheme paints the action list
+        // (#141618) regardless of the palette set on this dialog. Pin the light
+        // theme on the content pane itself; the action delegates inherit it.
+        Component.onCompleted: {
+            const sv = actionSheet.contentItem
+            sv.Kirigami.Theme.inherit = false
+            sv.Kirigami.Theme.backgroundColor = root.actionSurface
+            sv.Kirigami.Theme.alternateBackgroundColor = root.actionCanvas
+            sv.Kirigami.Theme.textColor = root.actionInk
+            sv.Kirigami.Theme.highlightColor = root.actionAccent
+            sv.Kirigami.Theme.focusColor = root.actionAccent
+            sv.palette.window = root.actionSurface
+            sv.palette.base = root.actionSurface
+            sv.palette.text = root.actionInk
+            sv.palette.windowText = root.actionInk
+            sv.palette.button = root.actionSurface
+            sv.palette.buttonText = root.actionInk
+        }
         onClosed: root.forceActiveFocus()
         actions: [
             Kirigami.Action {
@@ -168,7 +208,41 @@ Controls.ToolButton {
         objectName: "snoozeDialog"
         title: qsTr("Snooze until")
         modal: true
-        standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        // Explicit English buttons: StandardButton labels follow the system
+        // locale while the app is English. accept()/reject() semantics unchanged.
+        footer: Controls.DialogButtonBox {
+            background: Rectangle { color: root.actionSurface }
+            Controls.Button {
+                id: snoozeOkButton
+                objectName: "snoozeOkButton"
+                text: qsTr("OK")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: snoozeOkButton.down ? "#e8eeed" : snoozeOkButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: snoozeOkButton.visualFocus ? 2 : 1
+                    border.color: snoozeOkButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: snoozeDialog.accept()
+            }
+            Controls.Button {
+                id: snoozeCancelButton
+                objectName: "snoozeCancelButton"
+                text: qsTr("Cancel")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: snoozeCancelButton.down ? "#e8eeed" : snoozeCancelButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: snoozeCancelButton.visualFocus ? 2 : 1
+                    border.color: snoozeCancelButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: snoozeDialog.reject()
+            }
+        }
         Material.theme: Material.Light
         Material.background: root.actionSurface
         Material.foreground: root.actionInk
@@ -223,7 +297,40 @@ Controls.ToolButton {
         objectName: "completeDialog"
         title: qsTr("Complete all unpinned cards in this bundle?")
         modal: true
-        standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        // Explicit English buttons (see snoozeDialog).
+        footer: Controls.DialogButtonBox {
+            background: Rectangle { color: root.actionSurface }
+            Controls.Button {
+                id: completeOkButton
+                objectName: "completeOkButton"
+                text: qsTr("OK")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: completeOkButton.down ? "#e8eeed" : completeOkButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: completeOkButton.visualFocus ? 2 : 1
+                    border.color: completeOkButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: completeDialog.accept()
+            }
+            Controls.Button {
+                id: completeCancelButton
+                objectName: "completeCancelButton"
+                text: qsTr("Cancel")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: completeCancelButton.down ? "#e8eeed" : completeCancelButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: completeCancelButton.visualFocus ? 2 : 1
+                    border.color: completeCancelButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: completeDialog.reject()
+            }
+        }
         Material.theme: Material.Light
         Material.background: root.actionSurface
         Material.foreground: root.actionInk
@@ -245,7 +352,40 @@ Controls.ToolButton {
         objectName: "archiveDialog"
         title: qsTr("Archive all unpinned cards in this bundle?")
         modal: true
-        standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        // Explicit English buttons (see snoozeDialog).
+        footer: Controls.DialogButtonBox {
+            background: Rectangle { color: root.actionSurface }
+            Controls.Button {
+                id: archiveOkButton
+                objectName: "archiveOkButton"
+                text: qsTr("OK")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: archiveOkButton.down ? "#e8eeed" : archiveOkButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: archiveOkButton.visualFocus ? 2 : 1
+                    border.color: archiveOkButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: archiveDialog.accept()
+            }
+            Controls.Button {
+                id: archiveCancelButton
+                objectName: "archiveCancelButton"
+                text: qsTr("Cancel")
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: archiveCancelButton.down ? "#e8eeed" : archiveCancelButton.hovered ? "#eef3f2" : root.actionSurface
+                    border.width: archiveCancelButton.visualFocus ? 2 : 1
+                    border.color: archiveCancelButton.visualFocus ? root.actionInk : "#dce5e3"
+                }
+                onClicked: archiveDialog.reject()
+            }
+        }
         Material.theme: Material.Light
         Material.background: root.actionSurface
         Material.foreground: root.actionInk
