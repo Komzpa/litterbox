@@ -175,7 +175,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 onClicked: { actionSheet.close(); root.primaryAction() }
@@ -193,7 +193,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 visible: root.canOpenSource
@@ -212,7 +212,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 visible: root.source === "mail" || root.hasBody
@@ -231,7 +231,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 onClicked: { actionSheet.close(); root.noteRequested() }
@@ -249,7 +249,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 onClicked: { actionSheet.close(); root.chooseSnoozeDateTime() }
@@ -267,7 +267,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 visible: root.pinStateKnown
@@ -286,7 +286,7 @@ Controls.ToolButton {
                 palette.text: root.actionInk
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 visible: root.bundleId.length > 0
@@ -306,7 +306,7 @@ Controls.ToolButton {
                 palette.buttonText: root.actionInk
                 background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height }; Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.visible: hovered
                 visible: root.bundleId.length > 0
                 onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, "take_out", { card: root.cardKey }) }
