@@ -14,6 +14,59 @@ BUILD_DIR=${BUILD_DIR:-"$APP_ROOT/build/android-arm64"}
 KEYSTORE=${KEYSTORE:-"$HOME/.local/share/litterbox/android-debug.keystore"}
 DEVICE=${ANDROID_SERIAL:-R5CX80MZ1SN}
 ADB=${ADB:-adb}
+check_qml_apk_imports() {
+    local build_dir=$1 apk=$2
+    python3 - "$build_dir" "$apk" <<'PY'
+import glob
+import re
+import subprocess
+import sys
+
+build_dir, apk = sys.argv[1:]
+records = []
+for path in glob.glob(f"{build_dir}/.qt/qml_imports/*_conf.cmake"):
+    if path.endswith("/tst_api_conf.cmake"):
+        continue  # Test-only imports are not packaged into the application APK.
+    text = open(path, encoding="utf-8").read()
+    records.extend((path, fields) for fields in re.findall(r'qml_import_scanner_import_\d+ "([^"]+)"', text))
+if not records:
+    raise SystemExit(f"QML import check failed: no *_conf.cmake import records under {build_dir}/.qt/qml_imports")
+
+allowed_unresolved = {"QML", "QtQuick.Controls.Windows", "QtQuick.Controls.macOS", "QtQuick.Controls.iOS", "org.kde.breeze"}
+apk_paths = subprocess.check_output(["unzip", "-Z1", apk], text=True).splitlines()
+errors = []
+for path, record in records:
+    get = lambda key: re.search(rf"(?:^|;){key};([^;]*);", record)
+    value = lambda key: (match.group(1) if (match := get(key)) else "")
+    if value("TYPE") != "module":
+        continue
+    name = value("NAME") or "<unnamed>"
+    plugin = value("PLUGIN")
+    if not value("PATH") or not plugin:
+        if name not in allowed_unresolved:
+            errors.append(f"{name}: module record has no PATH or PLUGIN ({path})")
+        continue
+    plugin_stem = plugin.removeprefix("qml_")
+    expected = re.compile(rf"^lib/[^/]+/libqml_.*{re.escape(plugin_stem)}.*\.so$")
+    if not any(expected.match(member) for member in apk_paths):
+        errors.append(f"{name}: PLUGIN {plugin} has no matching lib/<abi>/libqml_*{plugin_stem}*.so in {apk}")
+if errors:
+    print("QML import check failed:", file=sys.stderr)
+    print("\n".join(f"  {error}" for error in errors), file=sys.stderr)
+    raise SystemExit(1)
+print(f"QML import check passed: {len(records)} import records checked in {apk}")
+PY
+}
+
+if [[ ${1:-} == --check-qml-apk ]]; then
+    [[ $# == 3 ]] || { echo "Usage: $0 --check-qml-apk BUILD_DIR APK" >&2; exit 2; }
+    check_qml_apk_imports "$2" "$3"
+    exit
+fi
+
+GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -XX:ActiveProcessorCount=2"
+export GRADLE_OPTS
+BUILD_JOBS=${BUILD_JOBS:-4}
 
 for tool in cmake "$ADB" python3; do
     command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }
@@ -44,7 +97,7 @@ export JAVA_HOME=${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}
     -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
     -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
     -DANDROID_PLATFORM="android-$ANDROID_API"
-cmake --build "$BUILD_DIR" --target litterbox-qt_make_apk --parallel "${BUILD_JOBS:-4}"
+cmake --build "$BUILD_DIR" --target litterbox-qt_make_apk --parallel "$BUILD_JOBS"
 
 APK=${APK:-"$BUILD_DIR/android-build/build/outputs/apk/release/android-build-release-unsigned.apk"}
 test -f "$APK" || { echo "Expected APK was not produced: $APK" >&2; exit 1; }
