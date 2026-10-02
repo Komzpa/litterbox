@@ -47,6 +47,12 @@ static QQuickItem *findVisualItem(QQuickItem *root, const QString &objectName)
     return nullptr;
 }
 
+#ifndef LB_DEFAULT_SERVER_URL
+// Compile-time fallback only; the real value comes from the CMake cache
+// variable LB_DEFAULT_SERVER_URL. Never localhost: Android has no LB_SERVER
+// and would otherwise talk to itself.
+#define LB_DEFAULT_SERVER_URL ""
+#endif
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
@@ -189,9 +195,17 @@ int main(int argc, char *argv[])
         settings = std::make_unique<QSettings>();
     }
     Api api;
-    api.setBaseUrl(testProfileMode ? testServerUrl : qEnvironmentVariable("LB_SERVER", "http://127.0.0.1:8080"));
+    // Server URL precedence: test profile > LB_SERVER env (when set and
+    // non-empty) > QSettings server_url saved at enrollment > compiled
+    // LB_DEFAULT_SERVER_URL default. Android has no LB_SERVER, so the
+    // compiled default is what the phone uses until enrollment saves one.
+    const QString compiledDefaultServerUrl = QStringLiteral(LB_DEFAULT_SERVER_URL);
+    api.setBaseUrl(Api::resolveBaseUrl(testProfileMode, testServerUrl,
+        qEnvironmentVariable("LB_SERVER"),
+        settings->value(QStringLiteral("server_url")).toString(), compiledDefaultServerUrl));
     api.setToken(testProfileMode ? testToken : qEnvironmentVariable("LB_TOKEN", settings->value(QStringLiteral("token")).toString()));
     QObject::connect(&api, &Api::tokenChanged, &app, [&] { settings->setValue(QStringLiteral("token"), api.token()); });
+    QObject::connect(&api, &Api::baseUrlChanged, &app, [&] { settings->setValue(QStringLiteral("server_url"), api.baseUrl()); });
     AndroidUpdater updater;
     updater.setBaseUrl(api.baseUrl());
     updater.setToken(api.token());
@@ -208,6 +222,12 @@ int main(int argc, char *argv[])
     const QString databasePath = captureMode ? captureDatabase :
         QDir(testProfileMode ? testProfileDirectory : dataDir).filePath(QStringLiteral("cards.sqlite"));
     if (!store.open(databasePath)) return 1;
+    // Enrollment delivers its token through tokenChanged (the QML page sets
+    // api.token on success and the connection above persists it). Use the
+    // fresh token at once so the app goes online without a restart.
+    QObject::connect(&api, &Api::tokenChanged, &app, [&] {
+        if (!api.token().isEmpty()) { store.setOnline(true); store.refresh(); }
+    });
 
     TimeRules timeRules;
     QQmlApplicationEngine engine;
@@ -291,10 +311,19 @@ int main(int argc, char *argv[])
     });
 
     // Pages are owned by the QML slice; load their entrypoint if present.
-    const QString pages = qEnvironmentVariable("LB_PAGES", QStringLiteral(LB_SOURCE_PAGES_DIR));
-    engine.rootContext()->setContextProperty(QStringLiteral("pagesDir"), QUrl::fromLocalFile(pages + QStringLiteral("/")));
+#ifdef Q_OS_ANDROID
+    // The desktop LB_SOURCE_PAGES_DIR path does not exist on device; the
+    // same page files are embedded as raw qrc resources by CMake (lb_pages).
+    const QString defaultPagesDir = QStringLiteral("qrc:/qt/qml/litterbox/qml/pages");
+#else
+    const QString defaultPagesDir = QStringLiteral(LB_SOURCE_PAGES_DIR);
+#endif
+    const QString pages = qEnvironmentVariable("LB_PAGES", defaultPagesDir);
+    const bool qrcPages = pages.startsWith(QStringLiteral("qrc:/"));
+    engine.rootContext()->setContextProperty(QStringLiteral("pagesDir"),
+        qrcPages ? QUrl(pages + QStringLiteral("/")) : QUrl::fromLocalFile(pages + QStringLiteral("/")));
     QUrl pageUrl(QStringLiteral("qrc:/qt/qml/litterbox/qml/InboxView.qml"));
-    for (const QString &name : {QStringLiteral("Main.qml"), QStringLiteral("main.qml"),
+    if (!qrcPages) for (const QString &name : {QStringLiteral("Main.qml"), QStringLiteral("main.qml"),
                                 QStringLiteral("Inbox.qml"), QStringLiteral("inbox.qml")}) {
         const QString path = QDir(pages).filePath(name);
         if (QFileInfo::exists(path)) { pageUrl = QUrl::fromLocalFile(path); break; }

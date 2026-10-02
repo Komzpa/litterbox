@@ -27,6 +27,28 @@ qt_add_executable(litterbox-qt
 )
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
+# Compiled-in default server URL. Android has no LB_SERVER environment, so
+# the phone uses this until enrollment saves a server_url to QSettings.
+# R17: the repo default stays empty (a LAN address is a deployment detail);
+# release builds pass the real URL with -DLB_DEFAULT_SERVER_URL=<url>.
+set(LB_DEFAULT_SERVER_URL "" CACHE STRING "Compiled-in default Litterbox server URL")
+target_compile_definitions(litterbox-qt PRIVATE LB_DEFAULT_SERVER_URL="${LB_DEFAULT_SERVER_URL}")
+
+# Page content under qt/pages is owned by the QML slice; the shell only loads
+# it when present. Embed the same files as raw resources as well: on Android
+# the compile-time LB_SOURCE_PAGES_DIR path does not exist, so the app falls
+# back to this qrc prefix there. Raw resources, not QML_FILES, so page code
+# stays owned by its slice (no type registration or lint of it here).
+qt_add_resources(litterbox-qt "lb_pages"
+    PREFIX "/qt/qml/litterbox/qml"
+    FILES
+        pages/EnrollmentPage.qml
+        pages/GmailAccountsPage.qml
+        pages/JournalPage.qml
+        pages/McpTokensPage.qml
+        pages/MailDetailPage.qml
+        pages/ReminderDialog.qml
+)
 
 
 set_source_files_properties(src/qml/CardActions.qml PROPERTIES QT_RESOURCE_ALIAS qml/CardActions.qml)
@@ -80,6 +102,10 @@ add_test(NAME api COMMAND tst_api)
 qt_add_executable(tst_androidupdater tests/tst_androidupdater.cpp src/androidupdater.h src/androidupdater.cpp)
 target_include_directories(tst_androidupdater PRIVATE src)
 target_link_libraries(tst_androidupdater PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+qt_add_executable(tst_serverurl tests/tst_serverurl.cpp src/api.h src/api.cpp)
+target_include_directories(tst_serverurl PRIVATE src)
+target_link_libraries(tst_serverurl PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
+add_test(NAME serverurl COMMAND tst_serverurl)
 add_test(NAME androidupdater COMMAND tst_androidupdater)
 
 

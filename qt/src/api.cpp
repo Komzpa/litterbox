@@ -22,6 +22,18 @@ void Api::setBaseUrl(const QString &url)
     m_baseUrl = url;
     emit baseUrlChanged();
 }
+QString Api::resolveBaseUrl(bool testProfileMode, const QString &testServerUrl,
+                             const QString &envUrl, const QString &settingsUrl,
+                             const QString &compiledDefault)
+{
+    if (testProfileMode)
+        return testServerUrl;
+    if (!envUrl.isEmpty())
+        return envUrl;
+    if (!settingsUrl.isEmpty())
+        return settingsUrl;
+    return compiledDefault;
+}
 
 QString Api::token() const { return m_token; }
 

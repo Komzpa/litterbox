@@ -1,0 +1,11 @@
+[Unit]
+Description=Litterbox LAN TCP proxy socket
+After=network-online.target
+Wants=network-online.target
+
+[Socket]
+ListenStream=192.168.100.74:8081
+Accept=no
+
+[Install]
+WantedBy=sockets.target

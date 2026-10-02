@@ -172,6 +172,7 @@ Each requirement is **decided** or **open** and names its source.
   request without a valid token gets HTTP 401 and no card data. The public
   entry point limits the request rate per client address; limit 60 requests
   per minute (owner accepted 2026-09-28).
+- **R42 Android server configuration** (decided, owner 2026-10-02; the v6 build always showed "Offline · changes saved on this device" because Android has no LB_SERVER and the app defaulted to its own localhost with no way to change it). The installed Android build reaches its configured server with no environment variables: the server base URL resolves test profile > LB_SERVER env > saved `server_url` > compiled LB_DEFAULT_SERVER_URL default, and the compiled default is never 127.0.0.1. Per R17 the repository default stays empty; each release build passes its real URL with -DLB_DEFAULT_SERVER_URL=<url>. The enrollment screen shows an editable Server field prefilled with the current URL; enrolling saves the server URL and the device token to QSettings and takes the app online without a restart or hand-copied token. No clause above contradicts this. Oracle: the Qt serverurl precedence test plus the enrollment QML test; install the signed release APK with no LB_SERVER set and enroll it against a disposable server.
 
 ## Project
 

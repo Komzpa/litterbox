@@ -25,7 +25,7 @@ import sys
 build_dir, apk = sys.argv[1:]
 records = []
 for path in glob.glob(f"{build_dir}/.qt/qml_imports/*_conf.cmake"):
-    if path.endswith("/tst_api_conf.cmake"):
+    if re.search(r"/tst_[^/]*_conf\.cmake$", path):
         continue  # Test-only imports are not packaged into the application APK.
     text = open(path, encoding="utf-8").read()
     records.extend((path, fields) for fields in re.findall(r'qml_import_scanner_import_\d+ "([^"]+)"', text))

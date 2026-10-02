@@ -24,13 +24,20 @@ Kirigami.ScrollablePage {
 
     function enroll() {
         errorText = ""
+        const server = serverField.text.trim()
         const invite = inviteField.text.trim()
         const name = deviceNameField.text.trim()
         if (invite === "" || name === "") {
             errorText = qsTr("Invite code and device name are required.")
             return false
         }
-        busy = true
+        if (server === "") {
+            errorText = qsTr("Server URL is required.")
+            return false
+        }
+        // Persisted to QSettings server_url by the baseUrlChanged connection
+        // in main.cpp; the next launch reuses it without environment variables.
+        api.baseUrl = server
         api.post("/v1/devices/enroll", {
             invite_code: invite,
             device_name: name,
@@ -55,9 +62,20 @@ Kirigami.ScrollablePage {
         width: parent.width
 
         QQC2.TextField {
+            id: serverField
+            objectName: "serverField"
+            Kirigami.FormData.label: qsTr("Server:")
+            text: api && api.baseUrl ? api.baseUrl : ""
+            Layout.fillWidth: true
+            // A committed "http" suggestion would silently corrupt the URL.
+            inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
+        }
+        QQC2.TextField {
             id: inviteField
             objectName: "inviteField"
             Kirigami.FormData.label: qsTr("Invite code:")
+            // Invite codes are exact secrets: never autocorrect or uppercase them.
+            inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
             Layout.fillWidth: true
         }
         QQC2.TextField {

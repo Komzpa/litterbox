@@ -32,6 +32,12 @@ public:
     QString token() const;
     void setToken(const QString &token);
     int clientApi() const { return 1; }
+    // Server URL precedence: test-profile URL, then LB_SERVER env (when set
+    // and non-empty), then the QSettings server_url saved at enrollment,
+    // then the compiled LB_DEFAULT_SERVER_URL default (never 127.0.0.1).
+    static QString resolveBaseUrl(bool testProfileMode, const QString &testServerUrl,
+                                  const QString &envUrl, const QString &settingsUrl,
+                                  const QString &compiledDefault);
 
     Q_INVOKABLE int get(const QString &path, const QJSValue &callback = QJSValue());
     Q_INVOKABLE int post(const QString &path, const QJsonObject &body = QJsonObject(),
