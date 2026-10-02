@@ -434,8 +434,13 @@ void AndroidUpdater::installDownloadedUpdate()
                             "(Landroid/net/Uri;Ljava/lang/String;)Landroid/content/Intent;",
                             uri.object(),
                             QJniObject::fromString("application/vnd.android.package-archive").object());
-    intent.callMethod<void>("addFlags", "(I)V", jint(0x00000001)); // FLAG_GRANT_READ_URI_PERMISSION
-    intent.callMethod<void>("addFlags", "(I)V", jint(0x10000000)); // FLAG_ACTIVITY_NEW_TASK
+    // Intent.addFlags(int) returns Intent; a (I)V callMethod lookup throws
+    // NoSuchMethodError and silently skips both flags (installer then dies on
+    // the missing NEW_TASK/URI grant).
+    intent.callObjectMethod("addFlags", "(I)Landroid/content/Intent;",
+                            jint(0x00000001)); // FLAG_GRANT_READ_URI_PERMISSION
+    intent.callObjectMethod("addFlags", "(I)Landroid/content/Intent;",
+                            jint(0x10000000)); // FLAG_ACTIVITY_NEW_TASK
     context.callMethod<void>("startActivity", "(Landroid/content/Intent;)V", intent.object());
 #else
     emit errorOccurred(QStringLiteral("in-app install is only supported on Android"));
