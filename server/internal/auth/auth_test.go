@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/Komzpa/litterbox/server/internal/gmail"
 )
 
 type fakeStore struct {
@@ -92,6 +93,37 @@ func TestIngestMethodAndOtherDeviceRoutesRemainProtected(t *testing.T) {
 		})
 	}
 }
+func TestGmailOAuthCallbackIsExemptButOtherGmailRoutesStayProtected(t *testing.T) {
+	h := NewHandler(&fakeStore{}, "")
+	web := &gmail.WebHandler{Config: gmail.WebConfig{StateSecret: []byte("12345678901234567890123456789012")}}
+	mux := http.NewServeMux()
+	web.Routes(mux)
+	protected := h.Middleware(mux)
+
+	t.Run("GET /v1/gmail/oauth/callback with bogus state", func(t *testing.T) {
+		res := httptest.NewRecorder()
+		protected.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/gmail/oauth/callback?state=bogus", nil))
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("status=%d body=%q want 400", res.Code, res.Body.String())
+		}
+		if !strings.Contains(res.Body.String(), "invalid OAuth state") {
+			t.Fatalf("body=%q want invalid OAuth state", res.Body.String())
+		}
+	})
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/v1/gmail/accounts"},
+		{http.MethodPost, "/v1/gmail/connect"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			res := httptest.NewRecorder()
+			protected.ServeHTTP(res, httptest.NewRequest(tc.method, tc.path, nil))
+			if res.Code != http.StatusUnauthorized {
+				t.Fatalf("status=%d want 401", res.Code)
+			}
+		})
+	}
+}
+
 func TestInviteEnrollmentIsOneUseAndReturnsDeviceToken(t *testing.T) {
 	store := &fakeStore{inviteHash: tokenHash("one-use")}
 	h := NewHandler(store, "")

@@ -36,13 +36,13 @@ Kirigami.ScrollablePage {
     function connectAccount() {
         errorText = ""
         api.post("/v1/gmail/connect", {}, function (error, response) {
-            if (error || !response || !response.body || !response.body.url) {
+            if (error || !response || !response.body || !response.body.authorization_url) {
                 errorText = qsTr("Could not start the Gmail connection.")
                 return
             }
-            lastConnectUrl = response.body.url
+            lastConnectUrl = response.body.authorization_url
             if (root.openLinks)
-                Qt.openUrlExternally(response.body.url)
+                Qt.openUrlExternally(response.body.authorization_url)
         })
     }
 

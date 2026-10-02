@@ -71,6 +71,14 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// The Gmail OAuth callback is a browser redirect from Google: it cannot
+		// carry a device token. It authenticates with its single-use HMAC-signed
+		// state, which carries the tenant; every other gmail route stays
+		// device-authenticated.
+		if r.URL.Path == "/v1/gmail/oauth/callback" && r.Method == http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if h.devTenant != "" {
 			d := Device{TenantID: h.devTenant, DeviceID: "development"}
 			ctx := context.WithValue(r.Context(), contextKey{}, d)
