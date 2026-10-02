@@ -371,7 +371,13 @@ ApplicationWindow {
                                     ToolButton {
                                         visible: cardRow.bundled && card.bundle_leader === true
                                         text: (cardRow.bundleExpanded ? "⌄ " : "› ") + (card.bundle_title || qsTr("Bundle")) + " · " + (card.bundle_member_count || "")
-                                        Layout.fillWidth: true
+                                        // Hug the text column: a full-width ToolButton centers
+                                        // its text, which floated the bundle toggle above the
+                                        // card as a detached centered line. Left-aligned with
+                                        // no left padding it reads as card metadata, like the
+                                        // source line below it.
+                                        Layout.alignment: Qt.AlignLeft
+                                        leftPadding: 0
                                         implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                         Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
                                         onClicked: window.toggleBundle(card.bundle_id)

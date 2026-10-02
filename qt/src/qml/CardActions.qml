@@ -92,7 +92,18 @@ Controls.ToolButton {
                 id: sheetCloseButton
                 objectName: "actionSheetClose-" + root.cardKey
                 text: qsTr("Close")
+                // A Button in a DialogButtonBox without buttonRole stays
+                // InvalidRole: the box positions it but never lays out its
+                // label, so only an empty box was painted. RejectRole makes
+                // it a managed dismiss button with a visible label.
+                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.RejectRole
+                icon.name: "dialog-close"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+                icon.color: root.actionInk
+                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
                 palette.button: root.actionSurface
                 palette.buttonText: root.actionInk
                 background: Rectangle {
