@@ -1,3 +1,11 @@
+litterbox-qt (0.1-6) unstable; urgency=medium
+
+  * UI fixes: centered column layout, named icons bundled as a qrc Breeze
+    theme (also drawn on Android), light action sheet with 48 px rows and a
+    Close button, and English button labels.
+
+ -- Litterbox <litterbox@example.com>  Sat, 03 Oct 2026 00:20:00 +0400
+
 litterbox-qt (0.1-5) unstable; urgency=medium
 
   * Fix Gmail account list: convert top-level JSON arrays to genuine JS
