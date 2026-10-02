@@ -40,6 +40,17 @@ qt_add_qml_module(litterbox-qt
 )
 
 set(LB_KIRIGAMI_QML_IMPORT_PATH "" CACHE PATH "Kirigami QML import root for Android deployment")
+if(NOT LB_KIRIGAMI_QML_IMPORT_PATH AND KF6Kirigami_DIR)
+    # Android builds install Kirigami into a standalone prefix whose QML tree
+    # sits outside Qt's own import path. Without it the QML import scanner
+    # leaves org.kde.kirigami unresolved (no PATH/PLUGIN) and the APK omits
+    # the Kirigami QML plugin. Derive the root from the Kirigami package
+    # location unless the caller passes -DLB_KIRIGAMI_QML_IMPORT_PATH.
+    get_filename_component(_lb_kirigami_qml_root "${KF6Kirigami_DIR}/../../qml" ABSOLUTE)
+    if(EXISTS "${_lb_kirigami_qml_root}/org/kde/kirigami/qmldir")
+        set(LB_KIRIGAMI_QML_IMPORT_PATH "${_lb_kirigami_qml_root}")
+    endif()
+endif()
 if(LB_KIRIGAMI_QML_IMPORT_PATH)
     set_property(TARGET litterbox-qt PROPERTY QT_QML_IMPORT_PATH "${LB_KIRIGAMI_QML_IMPORT_PATH}")
 endif()
