@@ -65,17 +65,27 @@ TestCase {
         return 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
     }
 
-    function effectiveIconColor(control) {
-        const configuredColor = control.icon.color
-        if (configuredColor !== undefined && configuredColor.a > 0) return configuredColor
+    function actionTextColor(control) {
+        const pending = [control.contentItem]
+        while (pending.length > 0) {
+            const item = pending.shift()
+            if (item.color !== undefined && item.text !== undefined &&
+                    String(item.text).length > 0) return item.color
+            for (const child of item.children || []) pending.push(child)
+        }
+        return control.contentItem.color !== undefined
+            ? control.contentItem.color : control.palette.text
+    }
+
+    function actionIcon(control) {
         const pending = [control.contentItem]
         while (pending.length > 0) {
             const item = pending.shift()
             if (item.source !== undefined && item.color !== undefined &&
-                    String(item.source).length > 0) return item.color
+                    String(item.source).length > 0) return item
             for (const child of item.children || []) pending.push(child)
         }
-        return configuredColor
+        return control.icon
     }
 
     function test_realInboxActionsAreNamedAndLargeAndSheetPaletteIsLight() {
@@ -124,16 +134,19 @@ TestCase {
             const fillLuminance = relativeLuminance(fill)
             verify(fillLuminance > 0.8,
                    "action row background is not light: " + name + " luminance=" + fillLuminance + " color=" + fill)
-            const textColor = control.palette.text
+            const textColor = actionTextColor(control)
             const textLuminance = relativeLuminance(textColor)
             verify(textLuminance < 0.4,
                    "action row text is not dark: " + name + " luminance=" + textLuminance + " color=" + textColor)
-            const iconColor = effectiveIconColor(control)
+            const icon = actionIcon(control)
+            const iconColor = icon.color
             verify(iconColor !== undefined && iconColor.a > 0,
                    "action row icon has no visible color: " + name + " color=" + iconColor)
             const iconLuminance = relativeLuminance(iconColor)
             verify(iconLuminance < 0.4,
                    "action row icon is not dark: " + name + " luminance=" + iconLuminance + " color=" + iconColor)
+            if (icon.isMask !== undefined)
+                verify(icon.isMask, "action row icon tint is not applied: " + name)
             verify(String(control.icon.name || "").length > 0 || String(control.text || "").trim().length > 0)
             verify(control.width >= 48 && control.height >= 48,
                    "action row target below 48px: " + name + " " + control.width + "x" + control.height)
