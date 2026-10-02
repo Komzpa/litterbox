@@ -3,10 +3,39 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import QtQuick.Controls.Material
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
     id: root
+    readonly property color ink: "#263b3a"
+    readonly property color mutedInk: "#586d70"
+    readonly property color surface: "#ffffff"
+    readonly property color canvas: "#f3f7f6"
+    readonly property color accent: "#397d73"
+    Kirigami.Theme.inherit: false
+    Kirigami.Theme.textColor: ink
+    Kirigami.Theme.disabledTextColor: mutedInk
+    Kirigami.Theme.backgroundColor: canvas
+    Kirigami.Theme.alternateBackgroundColor: surface
+    Kirigami.Theme.highlightColor: accent
+    Kirigami.Theme.focusColor: accent
+    Kirigami.Theme.hoverColor: accent
+    Material.theme: Material.Light
+    Material.background: surface
+    Material.foreground: ink
+    Material.accent: accent
+    Material.primary: accent
+    palette.window: canvas
+    palette.windowText: ink
+    palette.base: surface
+    palette.text: ink
+    palette.button: surface
+    palette.buttonText: ink
+    palette.highlight: accent
+    palette.highlightedText: surface
+    padding: Math.max(18, Kirigami.Units.largeSpacing)
+    background: Rectangle { color: canvas }
 
     // api.post(path, body, cb) calls cb(error, {status, body}).
     property var api
@@ -66,7 +95,8 @@ Kirigami.ScrollablePage {
 
     Kirigami.FormLayout {
         visible: root.token === ""
-        width: parent.width
+        width: Math.min(parent.width, 1200)
+        anchors.horizontalCenter: parent.horizontalCenter
 
         QQC2.TextField {
             id: serverField
@@ -112,13 +142,15 @@ Kirigami.ScrollablePage {
             objectName: "enrollButton"
             text: root.busy ? qsTr("Enrolling…") : qsTr("Enroll")
             enabled: !root.busy
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             onClicked: root.enroll()
         }
     }
 
     ColumnLayout {
         visible: root.token !== ""
-        width: parent.width
+        width: Math.min(parent.width, 1200)
+        anchors.horizontalCenter: parent.horizontalCenter
         spacing: Kirigami.Units.smallSpacing
 
         QQC2.Label {

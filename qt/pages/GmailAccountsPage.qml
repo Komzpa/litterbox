@@ -3,10 +3,39 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import QtQuick.Controls.Material
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
     id: root
+    readonly property color ink: "#263b3a"
+    readonly property color mutedInk: "#586d70"
+    readonly property color surface: "#ffffff"
+    readonly property color canvas: "#f3f7f6"
+    readonly property color accent: "#397d73"
+    Kirigami.Theme.inherit: false
+    Kirigami.Theme.textColor: ink
+    Kirigami.Theme.disabledTextColor: mutedInk
+    Kirigami.Theme.backgroundColor: canvas
+    Kirigami.Theme.alternateBackgroundColor: surface
+    Kirigami.Theme.highlightColor: accent
+    Kirigami.Theme.focusColor: accent
+    Kirigami.Theme.hoverColor: accent
+    Material.theme: Material.Light
+    Material.background: surface
+    Material.foreground: ink
+    Material.accent: accent
+    Material.primary: accent
+    palette.window: canvas
+    palette.windowText: ink
+    palette.base: surface
+    palette.text: ink
+    palette.button: surface
+    palette.buttonText: ink
+    palette.highlight: accent
+    palette.highlightedText: surface
+    padding: Kirigami.Units.largeSpacing
+    background: Rectangle { color: canvas }
 
     // Contract: { get(path, cb), post(path, body, cb), del(path, cb) }.
     // Set openLinks to false in tests to avoid spawning a browser.
@@ -62,11 +91,29 @@ Kirigami.ScrollablePage {
     }
 
     ColumnLayout {
-        width: root.width
+        width: Math.min(parent.width, 1200)
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Kirigami.Units.largeSpacing
 
         QQC2.Button {
+            id: connectButton
             objectName: "connectButton"
             text: qsTr("Connect account…")
+            icon.name: "mail-receive"
+            icon.width: Kirigami.Units.iconSizes.small
+            icon.height: Kirigami.Units.iconSizes.small
+            icon.color: root.surface
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+            leftPadding: Kirigami.Units.largeSpacing
+            rightPadding: Kirigami.Units.largeSpacing
+            Material.foreground: root.surface
+            palette.buttonText: root.surface
+            background: Rectangle {
+                radius: Kirigami.Units.cornerRadius
+                color: connectButton.down ? "#286358" : connectButton.hovered ? "#326f65" : root.accent
+                border.width: connectButton.visualFocus ? 2 : 0
+                border.color: root.ink
+            }
             onClicked: root.connectAccount()
         }
 
@@ -95,6 +142,7 @@ Kirigami.ScrollablePage {
 
             delegate: QQC2.ItemDelegate {
                 width: list.width
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 contentItem: RowLayout {
                     spacing: Kirigami.Units.smallSpacing
                     QQC2.Label {
@@ -105,6 +153,7 @@ Kirigami.ScrollablePage {
                     QQC2.Button {
                         objectName: "disconnectButton"
                         text: qsTr("Disconnect")
+                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                         onClicked: root.disconnect(modelData.id)
                     }
                 }
