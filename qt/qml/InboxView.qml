@@ -368,19 +368,29 @@ ApplicationWindow {
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
-                                    ToolButton {
+                                    Label {
                                         visible: cardRow.bundled && card.bundle_leader === true
                                         text: (cardRow.bundleExpanded ? "⌄ " : "› ") + (card.bundle_title || qsTr("Bundle")) + " · " + (card.bundle_member_count || "")
-                                        // Hug the text column: a full-width ToolButton centers
-                                        // its text, which floated the bundle toggle above the
-                                        // card as a detached centered line. Left-aligned with
-                                        // no left padding it reads as card metadata, like the
-                                        // source line below it.
-                                        Layout.alignment: Qt.AlignLeft
-                                        leftPadding: 0
-                                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                        // A full-width ToolButton centers its text, which
+                                        // floated this bundle toggle above the mail card as
+                                        // a detached centered line. A plain label aligns
+                                        // with the card's text column like the source line
+                                        // below it; the ›/⌄ prefix keeps the toggle visible
+                                        // at rest. Bundle title/count info is kept.
+                                        color: bundleHover.containsMouse || activeFocus ? window.accent : window.mutedInk
+                                        font: Kirigami.Theme.smallFont
+                                        font.underline: activeFocus
+                                        wrapMode: Text.Wrap
+                                        verticalAlignment: Text.AlignVCenter
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Math.max(48, implicitHeight)
+                                        Accessible.role: Accessible.Button
                                         Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
-                                        onClicked: window.toggleBundle(card.bundle_id)
+                                        activeFocusOnTab: true
+                                        HoverHandler { id: bundleHover }
+                                        TapHandler { onTapped: window.toggleBundle(card.bundle_id) }
+                                        Keys.onSpacePressed: window.toggleBundle(card.bundle_id)
+                                        Keys.onReturnPressed: window.toggleBundle(card.bundle_id)
                                     }
                                     Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font: Kirigami.Theme.smallFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label {

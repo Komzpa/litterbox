@@ -86,33 +86,31 @@ Controls.ToolButton {
         // the app is English. Explicit footer buttons keep the text stable and
         // an explicit light background keeps the KDE style from painting a dark
         // slab from the host color scheme.
-        footer: Controls.DialogButtonBox {
+        footer: Controls.Pane {
             background: Rectangle { color: root.actionSurface }
-            Controls.Button {
-                id: sheetCloseButton
-                objectName: "actionSheetClose-" + root.cardKey
-                text: qsTr("Close")
-                // A Button in a DialogButtonBox without buttonRole stays
-                // InvalidRole: the box positions it but never lays out its
-                // label, so only an empty box was painted. RejectRole makes
-                // it a managed dismiss button with a visible label.
-                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.RejectRole
-                icon.name: "dialog-close"
-                icon.width: Kirigami.Units.iconSizes.small
-                icon.height: Kirigami.Units.iconSizes.small
-                icon.color: root.actionInk
-                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                Material.foreground: root.actionInk
-                palette.button: root.actionSurface
-                palette.buttonText: root.actionInk
-                background: Rectangle {
-                    radius: Kirigami.Units.cornerRadius
-                    color: sheetCloseButton.down ? "#e8eeed" : sheetCloseButton.hovered ? "#eef3f2" : root.actionSurface
-                    border.width: sheetCloseButton.visualFocus ? 2 : 1
-                    border.color: sheetCloseButton.visualFocus ? root.actionInk : "#dce5e3"
+            contentItem: RowLayout {
+                Item { Layout.fillWidth: true }
+                Controls.Button {
+                    id: sheetCloseButton
+                    objectName: "actionSheetClose-" + root.cardKey
+                    text: qsTr("Close")
+                    icon.name: "dialog-close"
+                    icon.width: Kirigami.Units.iconSizes.small
+                    icon.height: Kirigami.Units.iconSizes.small
+                    icon.color: root.actionInk
+                    implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    Material.foreground: root.actionInk
+                    palette.button: root.actionSurface
+                    palette.buttonText: root.actionInk
+                    background: Rectangle {
+                        radius: Kirigami.Units.cornerRadius
+                        color: sheetCloseButton.down ? "#e8eeed" : sheetCloseButton.hovered ? "#eef3f2" : root.actionSurface
+                        border.width: sheetCloseButton.visualFocus ? 2 : 1
+                        border.color: sheetCloseButton.visualFocus ? root.actionInk : "#dce5e3"
+                    }
+                    onClicked: actionSheet.close()
                 }
-                onClicked: actionSheet.close()
             }
         }
         Material.theme: Material.Light
