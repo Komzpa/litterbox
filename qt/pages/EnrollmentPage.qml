@@ -95,7 +95,8 @@ Kirigami.ScrollablePage {
 
     Kirigami.FormLayout {
         visible: root.token === ""
-        width: parent.width
+        width: Math.min(parent.width, 1200)
+        anchors.horizontalCenter: parent.horizontalCenter
 
         QQC2.TextField {
             id: serverField
@@ -141,13 +142,15 @@ Kirigami.ScrollablePage {
             objectName: "enrollButton"
             text: root.busy ? qsTr("Enrolling…") : qsTr("Enroll")
             enabled: !root.busy
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             onClicked: root.enroll()
         }
     }
 
     ColumnLayout {
         visible: root.token !== ""
-        width: parent.width
+        width: Math.min(parent.width, 1200)
+        anchors.horizontalCenter: parent.horizontalCenter
         spacing: Kirigami.Units.smallSpacing
 
         QQC2.Label {

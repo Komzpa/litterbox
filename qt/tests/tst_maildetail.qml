@@ -6,29 +6,50 @@ TestCase {
     name: "MailDetailPage"
     width: 500
     height: 500
+
+    QtObject {
+        id: storeStub
+        property var cached: ({})
+        property bool online: false
+        property var requested: []
+        signal mailBodyChanged(string cardId)
+        signal mailBodyFailed(string cardId)
+        function cachedMailBody(cardId) { return cached[cardId] || {} }
+        function requestMailBody(cardId) { requested.push(cardId) }
+    }
+
     Component { id: pageComponent; Pages.MailDetailPage {} }
 
-    function test_loadAndGmailLink() {
-        var called = ""
-        var api = { get: function (path, cb) {
-            called = path
-            cb(null, {status: 200, body: {html: "<p>Hello <b>world</b></p>", threadId: "thread-123", accountId: "account-1"}})
-        }}
-        var page = createTemporaryObject(pageComponent, this, {api: api, cardId: "card-7", openLinks: false})
+    function init() {
+        visible = true
+        storeStub.cached = ({})
+        storeStub.online = true
+        storeStub.requested = []
+    }
+
+    function test_loadsCachedBodyAndGmailLink() {
+        storeStub.cached = {
+            "card-7": { html: "<p>Hello <b>world</b></p>", source_url: "https://mail.google.com/mail/u/0/#all/thread-123" }
+        }
+        var page = createTemporaryObject(pageComponent, this, {
+            store: storeStub, cardId: "card-7", openLinks: false
+        })
         verify(page)
-        compare(called, "/v1/cards/card-7/body")
+        compare(storeStub.requested, ["card-7"])
         compare(page.html, "<p>Hello <b>world</b></p>")
-        compare(page.gmailUrl, "https://mail.google.com/mail/u/0/#all/thread-123")
+        compare(page.sourceUrl, "https://mail.google.com/mail/u/0/#all/thread-123")
         compare(page.errorText, "")
-        compare(findChild(page, "openInGmail").text, qsTr("Open in Gmail"))
+        verify(findChild(page, "openInGmail").visible)
     }
 
     function test_errorDoesNotExposeStaleBody() {
-        var api = { get: function (path, cb) { cb(new Error("not found"), {status: 404, body: null}) } }
-        var page = createTemporaryObject(pageComponent, this, {api: api, cardId: "card-8"})
+        storeStub.online = false
+        var page = createTemporaryObject(pageComponent, this, {
+            store: storeStub, cardId: "card-8", openLinks: false
+        })
         verify(page)
         compare(page.html, "")
-        compare(page.gmailUrl, "")
+        compare(page.sourceUrl, "")
         verify(page.errorText.length > 0)
     }
 }

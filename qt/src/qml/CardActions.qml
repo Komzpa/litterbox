@@ -169,9 +169,22 @@ Controls.ToolButton {
         title: qsTr("Snooze until")
         modal: true
         standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        Material.theme: Material.Light
+        Material.background: root.actionSurface
+        Material.foreground: root.actionInk
+        Material.accent: root.actionAccent
+        Material.primary: root.actionAccent
+        palette.window: root.actionSurface
+        palette.windowText: root.actionInk
+        palette.base: root.actionSurface
+        palette.text: root.actionInk
+        palette.button: root.actionSurface
+        palette.buttonText: root.actionInk
+        palette.highlight: root.actionAccent
+        palette.highlightedText: root.actionSurface
         width: Math.min(392, root.Window.window ? root.Window.window.width - 32 : 392)
         implicitWidth: width
-        background: Rectangle { color: root.palette.base; radius: 8; border.color: root.palette.mid }
+        background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
         onOpened: snoozeDateTime.forceActiveFocus()
         contentItem: ColumnLayout {
             Controls.Label { text: qsTr("Local date and time (YYYY-MM-DD HH:MM)"); Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -211,6 +224,20 @@ Controls.ToolButton {
         title: qsTr("Complete all unpinned cards in this bundle?")
         modal: true
         standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        Material.theme: Material.Light
+        Material.background: root.actionSurface
+        Material.foreground: root.actionInk
+        Material.accent: root.actionAccent
+        Material.primary: root.actionAccent
+        palette.window: root.actionSurface
+        palette.windowText: root.actionInk
+        palette.base: root.actionSurface
+        palette.text: root.actionInk
+        palette.button: root.actionSurface
+        palette.buttonText: root.actionInk
+        palette.highlight: root.actionAccent
+        palette.highlightedText: root.actionSurface
+        background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
         onAccepted: root.store.enqueueOp(root.cardKey, "bundle_done", { bundle_id: root.bundleId })
     }
     Controls.Dialog {
@@ -219,6 +246,20 @@ Controls.ToolButton {
         title: qsTr("Archive all unpinned cards in this bundle?")
         modal: true
         standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
+        Material.theme: Material.Light
+        Material.background: root.actionSurface
+        Material.foreground: root.actionInk
+        Material.accent: root.actionAccent
+        Material.primary: root.actionAccent
+        palette.window: root.actionSurface
+        palette.windowText: root.actionInk
+        palette.base: root.actionSurface
+        palette.text: root.actionInk
+        palette.button: root.actionSurface
+        palette.buttonText: root.actionInk
+        palette.highlight: root.actionAccent
+        palette.highlightedText: root.actionSurface
+        background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
         onAccepted: root.store.enqueueOp(root.cardKey, "bundle_archive", { bundle_id: root.bundleId })
     }
 }

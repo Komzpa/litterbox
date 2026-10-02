@@ -4,10 +4,39 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import QtQuick.Controls.Material
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
     id: root
+    readonly property color ink: "#263b3a"
+    readonly property color mutedInk: "#586d70"
+    readonly property color surface: "#ffffff"
+    readonly property color canvas: "#f3f7f6"
+    readonly property color accent: "#397d73"
+    Kirigami.Theme.inherit: false
+    Kirigami.Theme.textColor: ink
+    Kirigami.Theme.disabledTextColor: mutedInk
+    Kirigami.Theme.backgroundColor: canvas
+    Kirigami.Theme.alternateBackgroundColor: surface
+    Kirigami.Theme.highlightColor: accent
+    Kirigami.Theme.focusColor: accent
+    Kirigami.Theme.hoverColor: accent
+    Material.theme: Material.Light
+    Material.background: surface
+    Material.foreground: ink
+    Material.accent: accent
+    Material.primary: accent
+    palette.window: canvas
+    palette.windowText: ink
+    palette.base: surface
+    palette.text: ink
+    palette.button: surface
+    palette.buttonText: ink
+    palette.highlight: accent
+    palette.highlightedText: surface
+    padding: Math.max(18, Kirigami.Units.largeSpacing)
+    background: Rectangle { color: canvas }
 
     // Contract: callbacks receive (error, {status, body}).
     property var api
@@ -51,7 +80,8 @@ Kirigami.ScrollablePage {
     }
 
     ColumnLayout {
-        width: root.width
+        width: Math.min(parent.width, 1200)
+        anchors.horizontalCenter: parent.horizontalCenter
 
         QQC2.Label {
             text: qsTr("MCP tokens let external tools read your journal and create cards.")
@@ -62,6 +92,7 @@ Kirigami.ScrollablePage {
         QQC2.Button {
             objectName: "createButton"
             text: qsTr("Create token")
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             onClicked: root.createToken()
         }
 
@@ -105,6 +136,7 @@ Kirigami.ScrollablePage {
                         objectName: "hideButton"
                         text: qsTr("Hide")
                         visible: modelData.shown
+                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                         onClicked: root.hideToken(modelData.id)
                     }
                 }
@@ -112,6 +144,7 @@ Kirigami.ScrollablePage {
                 QQC2.Button {
                     objectName: "revokeButton"
                     text: qsTr("Revoke")
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     onClicked: root.revokeToken(modelData.id)
                 }
             }
