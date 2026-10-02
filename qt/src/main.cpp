@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QHash>
 #include <QDebug>
 #include <QJsonDocument>
@@ -58,6 +59,17 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Litterbox"));
     app.setOrganizationName(QStringLiteral("Litterbox"));
+    // Bundled Breeze subset for named icons. Android ships no system Breeze
+    // theme, so the APK carries the SVGs it needs as a qrc icon theme named
+    // "litterbox" (qt/icons/litterbox, LGPL-3.0-or-later, see LICENSE.breeze).
+    // Desktop keeps its system theme and falls back to the same bundle, so
+    // both render the same glyphs.
+    QIcon::setThemeSearchPaths(QIcon::themeSearchPaths() << QStringLiteral(":/icons"));
+    QIcon::setFallbackSearchPaths(QIcon::fallbackSearchPaths() << QStringLiteral(":/icons"));
+    QIcon::setFallbackThemeName(QStringLiteral("litterbox"));
+#ifdef Q_OS_ANDROID
+    QIcon::setThemeName(QStringLiteral("litterbox"));
+#endif
     const QStringList arguments = app.arguments();
     const bool captureScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scenario");
     const bool captureScrollScenario = arguments.size() == 4 && arguments.at(1) == QStringLiteral("--capture-scroll-scenario");
