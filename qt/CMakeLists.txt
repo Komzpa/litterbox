@@ -7,7 +7,7 @@ project(litterbox-qt VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Test QuickControls2)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Test QuickControls2 Svg)
 find_package(KF6Kirigami CONFIG REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -50,6 +50,16 @@ qt_add_resources(litterbox-qt "lb_pages"
         pages/ReminderDialog.qml
 )
 
+# Bundled Breeze subset for named icons (desktop and Android). Android has no
+# system Breeze theme, so the APK ships the SVGs it needs as a qrc icon theme
+# named "litterbox" (see icons/litterbox/README and LICENSE.breeze).
+file(GLOB_RECURSE _lb_icon_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPENDS "icons/litterbox/*")
+qt_add_resources(litterbox-qt "lb_icons"
+    PREFIX "/"
+    FILES ${_lb_icon_files}
+)
+
+
 
 set_source_files_properties(src/qml/CardActions.qml PROPERTIES QT_RESOURCE_ALIAS qml/CardActions.qml)
 
@@ -84,6 +94,7 @@ target_link_libraries(litterbox-qt PRIVATE
     Qt6::Network
     Qt6::Sql
     Qt6::QuickControls2
+    Qt6::Svg
     KF6::Kirigami
 )
 

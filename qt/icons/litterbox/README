@@ -1,0 +1,11 @@
+Bundled Breeze subset for Litterbox named icons.
+
+Source: /usr/share/icons/breeze (Debian package breeze-icon-theme).
+License: see LICENSE.breeze (Debian copyright format; upstream LGPL-3.0-or-later).
+
+Included named icons (all sizes present under this theme):
+actions: list-add, application-menu, dialog-ok, mail-mark-read-symbolic,
+  overflow-menu, document-open, document-preview, document-edit,
+  appointment-new, pin, list-remove, mail-receive, view-refresh, journal-new
+places: user-identity, folder
+status: system-software-update
