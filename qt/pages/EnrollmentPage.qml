@@ -45,7 +45,14 @@ Kirigami.ScrollablePage {
         }, function (error, response) {
             busy = false
             if (error || !response || !response.body || !response.body.token) {
-                errorText = qsTr("Invite is used, expired, or invalid.")
+                const status = response && response.status ? response.status : 0
+                if (status === 0) {
+                    errorText = qsTr("Can't reach the server at %1. Check the address and that you're on the home Wi-Fi.").arg(server)
+                } else if (status === 410 || status === 404 || status === 400) {
+                    errorText = qsTr("Invite is used, expired, or invalid.")
+                } else {
+                    errorText = qsTr("Server error %1.").arg(status)
+                }
                 return
             }
             token = response.body.token

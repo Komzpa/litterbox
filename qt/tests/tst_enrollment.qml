@@ -51,12 +51,22 @@ TestCase {
     }
 
     function test_invalidInviteShowsError() {
-        var api = { post: function (path, body, cb) { cb(new Error("invalid invite"), {status: 410, body: null}) } }
+        var api = { baseUrl: "http://server:8081", post: function (path, body, cb) { cb(new Error("invalid invite"), {status: 410, body: null}) } }
         var page = createTemporaryObject(pageComponent, this, {api: api})
         findChild(page, "inviteField").text = "bad"
         findChild(page, "deviceNameField").text = "device"
         page.enroll()
         compare(page.token, "")
-        verify(page.errorText.length > 0)
+        compare(page.errorText, "Invite is used, expired, or invalid.")
+    }
+
+    function test_networkErrorShowsServerAddress() {
+        var api = { baseUrl: "", post: function (path, body, cb) { cb(new Error("connection refused"), null) } }
+        var page = createTemporaryObject(pageComponent, this, {api: api})
+        findChild(page, "serverField").text = "http://wrong-address:8081"
+        findChild(page, "inviteField").text = "invite-code"
+        findChild(page, "deviceNameField").text = "device"
+        page.enroll()
+        compare(page.errorText, "Can't reach the server at http://wrong-address:8081. Check the address and that you're on the home Wi-Fi.")
     }
 }
