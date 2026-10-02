@@ -15,6 +15,7 @@ import (
 )
 
 const gmailAPI = "https://gmail.googleapis.com/gmail/v1/users/me"
+var defaultGmailHTTPClient = &http.Client{Timeout: 90 * time.Second}
 
 type Client struct {
 	HTTP                                                    *http.Client
@@ -48,7 +49,7 @@ func (c *Client) token(ctx context.Context) (string, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	h := c.HTTP
 	if h == nil {
-		h = http.DefaultClient
+		h = defaultGmailHTTPClient
 	}
 	res, e := h.Do(req)
 	if e != nil {
@@ -125,7 +126,7 @@ func (c *Client) try(ctx context.Context, method, path string, payload []byte, o
 	}
 	h := c.HTTP
 	if h == nil {
-		h = http.DefaultClient
+		h = defaultGmailHTTPClient
 	}
 	res, e := h.Do(req)
 	if e != nil {

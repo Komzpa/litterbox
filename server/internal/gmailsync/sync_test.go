@@ -25,6 +25,8 @@ type fakeGmail struct {
 	history         string
 	refreshes       atomic.Int32
 	modifiedAccount string
+	resumePageToken string
+	requestedPages  []string
 }
 
 func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,8 +41,12 @@ func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case r.URL.Path == "/gmail/v1/users/me/threads":
+		page := r.URL.Query().Get("pageToken")
+		f.requestedPages = append(f.requestedPages, page)
 		threads := []any{}
-		if f.inbox {
+		if f.resumePageToken != "" && page == f.resumePageToken {
+			threads = append(threads, map[string]string{"id": "thread-1"})
+		} else if f.inbox {
 			threads = append(threads, map[string]string{"id": "thread-1"})
 		}
 		json.NewEncoder(w).Encode(map[string]any{"threads": threads})
@@ -115,7 +121,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	if _, e := db.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); e != nil {
 		t.Fatal(e)
 	}
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)
@@ -249,4 +255,41 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 		t.Fatal("OAuth refresh token was not exchanged")
 	}
 	_ = time.Second
+}
+func TestInitialSyncResumesFromPersistedPage(t *testing.T) {
+	db := testPool(t)
+	ctx := context.Background()
+	tenant, account := uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, "INSERT INTO tenants(id) VALUES($1)", tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, "INSERT INTO accounts(tenant_id,id,address,refresh_token,gmail_initial_sync,gmail_initial_page_token,gmail_initial_history_id) VALUES($1,$2,$3,$4,true,'page-2','1')", tenant, account, "resume@example.test", []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeGmail{history: "1", resumePageToken: "page-2", inbox: true}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+	s := &Syncer{DB: db, Client: func(Account) *Client {
+		return &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret"}
+	}}
+	if err := s.SyncAccount(ctx, Account{TenantID: tenant, ID: account}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.requestedPages) != 1 || fake.requestedPages[0] != "page-2" {
+		t.Fatalf("initial sync pages=%q, want only saved page-2", fake.requestedPages)
+	}
+	var cursor string
+	var started bool
+	if err := db.QueryRow(ctx, "SELECT COALESCE(history_id,''),gmail_initial_sync FROM accounts WHERE tenant_id=$1 AND id=$2", tenant, account).Scan(&cursor, &started); err != nil {
+		t.Fatal(err)
+	}
+	if cursor != "1" || started {
+		t.Fatalf("initial sync state cursor=%q started=%t", cursor, started)
+	}
+}
+func TestClientFactoryUsesBoundedDefaultHTTPClient(t *testing.T) {
+	client := ClientFactory("id", "secret", "", "", nil)(Account{})
+	if client.HTTP == nil || client.HTTP.Timeout <= 0 {
+		t.Fatalf("default Gmail client timeout=%v", client.HTTP)
+	}
 }

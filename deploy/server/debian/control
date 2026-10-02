@@ -1,5 +1,5 @@
 Package: litterbox-server
-Version: 0.1-1
+Version: 0.1-9
 Architecture: amd64
 Maintainer: Litterbox <litterbox@example.com>
 Depends: systemd, libc6

@@ -35,12 +35,13 @@ type Syncer struct {
 
 func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
 	c := s.Client(a)
-	var cursor string
+	var cursor, pageToken, initialHistory string
+	var initialStarted bool
 	tx, e := s.beginTenant(ctx, a.TenantID)
 	if e != nil {
 		return e
 	}
-	e = tx.QueryRow(ctx, "SELECT COALESCE(history_id,'') FROM accounts WHERE tenant_id=$1 AND id=$2", a.TenantID, a.ID).Scan(&cursor)
+	e = tx.QueryRow(ctx, "SELECT COALESCE(history_id,''), gmail_initial_sync, COALESCE(gmail_initial_page_token,''), COALESCE(gmail_initial_history_id,'') FROM accounts WHERE tenant_id=$1 AND id=$2", a.TenantID, a.ID).Scan(&cursor, &initialStarted, &pageToken, &initialHistory)
 	if e != nil {
 		tx.Rollback(ctx)
 		return e
@@ -49,29 +50,60 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
 		return e
 	}
 	if cursor == "" {
-		return s.initial(ctx, a, c)
+		return s.initial(ctx, a, c, initialStarted, pageToken, initialHistory)
 	}
 	return s.poll(ctx, a, c, cursor)
 }
-func (s *Syncer) initial(ctx context.Context, a Account, c *Client) error {
-	var profile struct {
-		HistoryID string `json:"historyId"`
+func (s *Syncer) initial(ctx context.Context, a Account, c *Client, started bool, page, history string) error {
+	if !started {
+		var profile struct {
+			HistoryID string `json:"historyId"`
+		}
+		if err := c.request(ctx, "GET", "/profile", nil, &profile); err != nil {
+			return err
+		}
+		tx, e := s.beginTenant(ctx, a.TenantID)
+		if e != nil {
+			return e
+		}
+		defer tx.Rollback(ctx)
+		if _, e = tx.Exec(ctx, "DELETE FROM gmail_initial_sync_threads WHERE tenant_id=$1 AND account_id=$2", a.TenantID, a.ID); e != nil {
+			return e
+		}
+		if _, e = tx.Exec(ctx, "UPDATE accounts SET gmail_initial_sync=true,gmail_initial_page_token='',gmail_initial_history_id=$1 WHERE tenant_id=$2 AND id=$3", profile.HistoryID, a.TenantID, a.ID); e != nil {
+			return e
+		}
+		if e = tx.Commit(ctx); e != nil {
+			return e
+		}
+		history = profile.HistoryID
 	}
-	if err := c.request(ctx, "GET", "/profile", nil, &profile); err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	page := ""
 	for {
 		x, e := c.ListInbox(ctx, page)
 		if e != nil {
 			return e
 		}
-		for _, t := range x.Threads {
-			seen[t.ID] = true
-			if e = s.saveThread(ctx, a, c, t.ID, true); e != nil {
+		for _, thread := range x.Threads {
+			if e = s.saveThread(ctx, a, c, thread.ID, true); e != nil {
 				return e
 			}
+		}
+		tx, e := s.beginTenant(ctx, a.TenantID)
+		if e != nil {
+			return e
+		}
+		for _, thread := range x.Threads {
+			if _, e = tx.Exec(ctx, "INSERT INTO gmail_initial_sync_threads(tenant_id,account_id,thread_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", a.TenantID, a.ID, thread.ID); e != nil {
+				tx.Rollback(ctx)
+				return e
+			}
+		}
+		if _, e = tx.Exec(ctx, "UPDATE accounts SET gmail_initial_page_token=$1 WHERE tenant_id=$2 AND id=$3", x.NextPageToken, a.TenantID, a.ID); e != nil {
+			tx.Rollback(ctx)
+			return e
+		}
+		if e = tx.Commit(ctx); e != nil {
+			return e
 		}
 		if x.NextPageToken == "" {
 			break
@@ -83,43 +115,25 @@ func (s *Syncer) initial(ctx context.Context, a Account, c *Client) error {
 		return e
 	}
 	defer tx.Rollback(ctx)
-	rows, e := tx.Query(ctx, "SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND state <> 'done'", a.TenantID, a.ID)
-	if e != nil {
+	if _, e = tx.Exec(ctx, "UPDATE cards c SET state='archived',version=version+1 WHERE c.tenant_id=$1 AND c.account_id=$2 AND c.state <> 'done' AND NOT EXISTS (SELECT 1 FROM gmail_initial_sync_threads seen WHERE seen.tenant_id=c.tenant_id AND seen.account_id=c.account_id AND seen.thread_id=c.gmail_thread_id)", a.TenantID, a.ID); e != nil {
 		return e
 	}
-	var old []string
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return e
-		}
-		old = append(old, id)
+	if _, e = tx.Exec(ctx, "UPDATE accounts SET history_id=NULLIF($1,''),gmail_synced_at=now(),gmail_initial_sync=false,gmail_initial_page_token=NULL,gmail_initial_history_id=NULL WHERE tenant_id=$2 AND id=$3", history, a.TenantID, a.ID); e != nil {
+		return e
 	}
-	rows.Close()
-	for _, id := range old {
-		if !seen[id] {
-			_, e = tx.Exec(ctx, "UPDATE cards SET state='archived',version=version+1 WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3 AND state NOT IN ('archived','done')", a.TenantID, a.ID, id)
-			if e != nil {
-				return e
-			}
-		}
-	}
-	if profile.HistoryID != "" {
-		_, e = tx.Exec(ctx, "UPDATE accounts SET history_id=$1,gmail_synced_at=now() WHERE tenant_id=$2 AND id=$3", profile.HistoryID, a.TenantID, a.ID)
-		if e != nil {
-			return e
-		}
+	if _, e = tx.Exec(ctx, "DELETE FROM gmail_initial_sync_threads WHERE tenant_id=$1 AND account_id=$2", a.TenantID, a.ID); e != nil {
+		return e
 	}
 	if e = tx.Commit(ctx); e != nil {
 		return e
 	}
 	// Replay changes that arrived while the initial INBOX snapshot was loading.
-	if profile.HistoryID != "" {
-		return s.poll(ctx, a, c, profile.HistoryID)
+	if history != "" {
+		return s.poll(ctx, a, c, history)
 	}
 	return nil
 }
+
 func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) error {
 	page := ""
 	ids := map[string]bool{}
@@ -347,6 +361,9 @@ func LoadAccounts(ctx context.Context, db *pgxpool.Pool) ([]Account, error) {
 // ClientFactory builds a Gmail API client using the account's own durable
 // refresh token. The token exchange is lazy and cached only for that client.
 func ClientFactory(clientID, clientSecret, apiBase, tokenURL string, httpClient *http.Client) func(Account) *Client {
+	if httpClient == nil {
+		httpClient = defaultGmailHTTPClient
+	}
 	return func(a Account) *Client {
 		return &Client{HTTP: httpClient, APIBase: apiBase, TokenURL: tokenURL, ClientID: clientID, ClientSecret: clientSecret, RefreshToken: string(a.RefreshToken)}
 	}
