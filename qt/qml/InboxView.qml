@@ -115,6 +115,8 @@ ApplicationWindow {
         if (Qt.platform.os === "android" && stack.depth > 1) {
             stack.pop()
             close.accepted = false
+        } else {
+            close.accepted = true
         }
     }
     function handleBack() {
