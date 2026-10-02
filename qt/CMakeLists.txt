@@ -111,6 +111,7 @@ add_test(NAME androidupdater COMMAND tst_androidupdater)
 
 # Page slice QMLTestUnit specs (owned by the screens slice), run headless.
 file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")
+list(REMOVE_ITEM _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml")
 find_program(QMLTESTRUNNER6 NAMES qmltestrunner PATHS "/usr/lib/qt6/bin" NO_DEFAULT_PATH)
 if (QMLTESTRUNNER6)
     foreach (_test ${_lb_page_tests})
@@ -119,6 +120,10 @@ if (QMLTESTRUNNER6)
                  COMMAND ${QMLTESTRUNNER6} -input ${_test} -platform offscreen)
         set_tests_properties(${_test_name} PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endforeach()
+    add_test(NAME tst_touchdefects
+             COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml
+                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
+    set_tests_properties(tst_touchdefects PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 # Install desktop executables to bin and Android module libraries to lib.

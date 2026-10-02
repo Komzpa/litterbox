@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import litterbox 1.0 as Litterbox
 
 ApplicationWindow {
     id: window
@@ -40,6 +41,10 @@ ApplicationWindow {
     Kirigami.Theme.highlightedTextColor: surface
     Kirigami.Theme.focusColor: accent
     Kirigami.Theme.hoverColor: accent
+    required property var api
+    required property var updater
+    required property var store
+    required property var timeRules
     property var cardStore: store
     property var captureActions: ({})
     property var cardHandles: ({})
@@ -106,8 +111,19 @@ ApplicationWindow {
         action.movePin(-1)
         return store.pinnedCardIds()[0] === cardId ? "moved" : "unchanged"
     }
-
-
+    onClosing: function(close) {
+        if (Qt.platform.os === "android" && stack.depth > 1) {
+            stack.pop()
+            close.accepted = false
+        } else {
+            close.accepted = true
+        }
+    }
+    function handleBack() {
+        if (stack.depth <= 1) return false
+        stack.pop()
+        return true
+    }
     function openPage(name, properties) {
         const page = pagesDir.toString() + name + ".qml"
         stack.push(page, properties || { api: api })
@@ -125,6 +141,7 @@ ApplicationWindow {
                 Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: 2; Layout.fillWidth: true }
                 Button {
                     id: addCardButton
+                    objectName: "addCardButton"
                     text: qsTr("+ Add card")
                     implicitHeight: 44
                     leftPadding: 16
@@ -143,6 +160,7 @@ ApplicationWindow {
                         font: addCardButton.font
                     }
                     onClicked: createDialog.open()
+                    TapHandler { onTapped: createDialog.open() }
                 }
                 ToolButton {
                     text: "⋮"
@@ -181,7 +199,12 @@ ApplicationWindow {
     }
     StackView {
         id: stack
+        objectName: "pageStack"
         anchors.fill: parent
+        focus: true
+        Keys.onBackPressed: function(event) {
+            if (window.handleBack()) event.accepted = true
+        }
         initialItem: Item {
             ListView {
                 id: inboxList
@@ -358,14 +381,13 @@ ApplicationWindow {
                                     text: card.source === "mail" ? "⇣" : "✓"
                                     implicitWidth: 44
                                     implicitHeight: 44
-                                    opacity: rowHover.hovered || activeFocus || cardActions.activeFocus ? 1 : 0
+                                    opacity: 1
                                     Accessible.name: cardActions.primaryName
                                     ToolTip.text: Accessible.name
                                     ToolTip.visible: hovered
-                                    // Hidden at rest: a touch tap on the empty rail must not archive or dismiss.
-                                    onClicked: if (opacity === 1) cardActions.primaryAction()
+                                    onClicked: cardActions.primaryAction()
                                 }
-                                CardActions {
+                                Litterbox.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
                                     store: window.cardStore
@@ -586,6 +608,7 @@ ApplicationWindow {
     }
     Dialog {
         id: createDialog
+        objectName: "createDialog"
         Material.theme: Material.Light
         Material.background: window.surface
         Material.foreground: window.ink
