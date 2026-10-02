@@ -172,6 +172,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -187,6 +190,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -203,6 +209,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -219,6 +228,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -234,6 +246,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -249,6 +264,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -265,6 +283,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
@@ -281,6 +302,9 @@ Controls.ToolButton {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
                 Accessible.name: text
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
