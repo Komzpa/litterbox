@@ -1,3 +1,10 @@
+litterbox-qt (0.1-14) unstable; urgency=medium
+
+  * Add bundle summaries, Gmail-style sender titles, archive with Undo, and
+    readable mail rendering on NVIDIA.
+
+ -- Litterbox <litterbox@example.com>  Sat, 03 Oct 2026 21:40:00 +0400
+
 litterbox-qt (0.1-13) unstable; urgency=medium
 
   * Archive bundles immediately and provide an inline 8-second Undo bar.
