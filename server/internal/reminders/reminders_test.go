@@ -9,18 +9,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-var reminderDBOnce sync.Once
-var reminderDBError error
-var reminderDBHandle *sql.DB
 var tenantCounter atomic.Uint64
 
 func reminderDB(t *testing.T) (*sql.DB, string) {
@@ -28,50 +25,27 @@ func reminderDB(t *testing.T) (*sql.DB, string) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("set CARD_TEST_POSTGRES=1 under pg_virtualenv")
 	}
-	reminderDBOnce.Do(func() {
-		dsn := os.Getenv("DATABASE_URL")
-		reminderDBHandle, reminderDBError = sql.Open("pgx", dsn)
-		if reminderDBError != nil {
-			return
-		}
-		reminderDBHandle.SetMaxOpenConns(1)
-		reminderDBError = reminderDBHandle.Ping()
-		if reminderDBError != nil {
-			return
-		}
-		if _, reminderDBError = reminderDBHandle.Exec(`DROP SCHEMA public CASCADE`); reminderDBError != nil {
-			return
-		}
-		if _, reminderDBError = reminderDBHandle.Exec(`DROP ROLE IF EXISTS litterbox_app`); reminderDBError != nil {
-			return
-		}
-		if _, reminderDBError = reminderDBHandle.Exec(`CREATE SCHEMA public`); reminderDBError != nil {
-			return
-		}
-		if _, reminderDBError = reminderDBHandle.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); reminderDBError != nil {
-			return
-		}
-		for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/004_card_time_note.sql", "../../db/005_card_notify.sql", "../../db/013_reminders.sql"} {
-			b, err := os.ReadFile(path)
-			if err != nil {
-				reminderDBError = err
-				return
-			}
-			if _, err = reminderDBHandle.Exec(string(b)); err != nil {
-				reminderDBError = fmt.Errorf("migration %s: %w", path, err)
-				return
-			}
-		}
-	})
-	if reminderDBError != nil {
-		t.Fatal(reminderDBError)
-	}
-	tenant := fmt.Sprintf("a0000000-0000-4000-8000-%012d", tenantCounter.Add(1))
-	if _, err := reminderDBHandle.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { reminderDBHandle.Exec(`DELETE FROM tenants WHERE id=$1`, tenant) })
-	return reminderDBHandle, tenant
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/004_card_time_note.sql", "../../db/005_card_notify.sql", "../../db/013_reminders.sql"} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(tdb.Migration(string(b))); err != nil {
+			t.Fatalf("migration %s: %v", path, err)
+		}
+	}
+	tenant := fmt.Sprintf("a0000000-0000-4000-8000-%012d", tenantCounter.Add(1))
+	if _, err := db.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	return db, tenant
 }
 
 func TestDueReminderAppearsAndRecurringDoneSchedulesNext(t *testing.T) {

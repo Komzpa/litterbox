@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"database/sql"
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -19,30 +20,19 @@ func TestMCPPostgresScopesRevocationAndTools(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "012_journal.sql"} {
 		b, e := os.ReadFile(filepath.Join("../../db", name))
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(string(b)); e != nil {
+		if _, e = db.Exec(tdb.Migration(string(b))); e != nil {
 			t.Fatalf("%s: %v", name, e)
 		}
 	}
@@ -50,7 +40,7 @@ func TestMCPPostgresScopesRevocationAndTools(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := pgxpool.New(context.Background(), "")
+	pool, err := pgxpool.New(context.Background(), tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}

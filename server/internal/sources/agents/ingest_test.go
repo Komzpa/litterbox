@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -17,30 +18,19 @@ func TestPostgresCardsIntegration(t *testing.T) {
 	if os.Getenv("AGENT_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with AGENT_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
 	for _, path := range []string{"../../../db/001_mail.sql", "../../../db/002_security.sql", "../../../db/003_agent_cards.sql"} {
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec(string(body)); err != nil {
+		if _, err = db.Exec(tdb.Migration(string(body))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -49,7 +39,7 @@ func TestPostgresCardsIntegration(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES ($1),($2)`, a, b); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec("SET ROLE " + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	c := Card{Source: "agent", ExternalID: "omp:fixture", Title: "Fixture result", Summary: "Synthetic result.", SortAt: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC), State: "open"}
@@ -61,7 +51,7 @@ func TestPostgresCardsIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err := db.Exec("SET ROLE " + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	list := func(tenant string) []Card {
@@ -119,7 +109,7 @@ func TestPostgresCardsIntegration(t *testing.T) {
 	if list(b)[0].State != "open" {
 		t.Fatal("dismiss crossed tenants")
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec("SET ROLE " + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, a); err != nil {

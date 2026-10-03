@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -17,30 +18,19 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 	if os.Getenv("BUNDLE_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with BUNDLE_TEST_POSTGRES=1")
 	}
+	tdb := testdb.Setup(t)
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "")
+	conn, err := pgx.Connect(ctx, tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, `DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Exec(ctx, `DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Exec(ctx, `CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
 	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql"} {
 		b, e := os.ReadFile(path)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = conn.Exec(ctx, string(b)); e != nil {
+		if _, e = conn.Exec(ctx, tdb.Migration(string(b))); e != nil {
 			t.Fatalf("migration %s: %v", path, e)
 		}
 	}
