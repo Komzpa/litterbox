@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QVariantMap>
+#include <QThreadPool>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -26,6 +27,7 @@ class Api : public QObject
     Q_PROPERTY(int clientApi READ clientApi CONSTANT)
 public:
     explicit Api(QObject *parent = nullptr);
+    ~Api() override;
 
     QString baseUrl() const;
     void setBaseUrl(const QString &url);
@@ -69,4 +71,5 @@ private:
     QHash<int, QJSValue> m_callbacks;
     QHash<int, QPointer<QNetworkReply>> m_jsonReplies;
     QHash<int, QPointer<QNetworkReply>> m_streamReplies;
+    QThreadPool m_jsonPool;
 };
