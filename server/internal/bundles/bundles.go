@@ -105,12 +105,6 @@ func WakeThread(ctx context.Context, tx pgx.Tx, tenant, account uuid.UUID, threa
 	return err
 }
 
-// ArchiveBundle archives all open bundle cards except pinned cards atomically.
-func ArchiveBundle(ctx context.Context, tx pgx.Tx, tenant, bundle uuid.UUID) error {
-	_, err := tx.Exec(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, bundle)
-	return err
-}
-
 // CompleteBundle marks open, unpinned bundle cards done while leaving pinned cards open.
 func CompleteBundle(ctx context.Context, tx pgx.Tx, tenant, bundle uuid.UUID) error {
 	_, err := tx.Exec(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, bundle)
@@ -205,14 +199,6 @@ func TakeOutOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json
 
 type ArchiveArgs struct {
 	Bundle uuid.UUID `json:"bundle_id"`
-}
-
-func ArchiveOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {
-	var args ArchiveArgs
-	if err := json.Unmarshal(raw, &args); err != nil {
-		return err
-	}
-	return ArchiveBundle(ctx, tx, tenant, args.Bundle)
 }
 
 func CompleteOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {

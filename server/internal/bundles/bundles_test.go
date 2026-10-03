@@ -121,22 +121,7 @@ func TestPostgresBundleActions(t *testing.T) {
 	if _, err = tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c3, b4); err != nil {
 		t.Fatal(err)
 	}
-	if err = ArchiveBundle(ctx, tx, tenant, b4); err != nil {
-		t.Fatal(err)
-	}
 	var state string
-	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c4).Scan(&state); err != nil {
-		t.Fatal(err)
-	}
-	if state != "open" {
-		t.Fatalf("archive changed pinned card state to %q", state)
-	}
-	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c5).Scan(&state); err != nil {
-		t.Fatal(err)
-	}
-	if state != "archived" {
-		t.Fatalf("archive left unpinned card state %q", state)
-	}
 	if _, err = tx.Exec(ctx, `UPDATE cards SET snooze_until=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c3, time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}

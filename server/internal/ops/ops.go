@@ -156,10 +156,18 @@ func init() {
 		return err
 	})
 	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
-		if err := enqueueBundleDone(ctx, tx, tenant, args); err != nil {
+		ids, err := bundleOpenUnpinnedIDs(ctx, tx, tenant, args)
+		if err != nil {
 			return err
 		}
-		return bundles.ArchiveOperation(ctx, tx, tenant, args)
+		// Reroute through the per-card archive op so every member leaves
+		// Gmail's INBOX exactly like a single-card archive.
+		for _, id := range ids {
+			if err := CallIfRegistered(ctx, tx, tenant, id, "archive", args); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	Register("bundle_done", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		if err := enqueueBundleDone(ctx, tx, tenant, args); err != nil {
@@ -173,26 +181,30 @@ func init() {
 	bundles.SetOperationHook(CallIfRegistered)
 }
 
-func enqueueBundleDone(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {
+// bundleOpenUnpinnedIDs lists the open, unpinned members of the target bundle.
+func bundleOpenUnpinnedIDs(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) ([]uuid.UUID, error) {
 	var args bundles.ArchiveArgs
 	if err := json.Unmarshal(raw, &args); err != nil {
-		return err
+		return nil, err
 	}
 	rows, err := tx.Query(ctx, `SELECT id FROM cards WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, args.Bundle)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer rows.Close()
 	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
+			return nil, err
 		}
 		ids = append(ids, id)
 	}
-	err = rows.Err()
-	rows.Close()
+	return ids, rows.Err()
+}
+
+func enqueueBundleDone(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {
+	ids, err := bundleOpenUnpinnedIDs(ctx, tx, tenant, raw)
 	if err != nil {
 		return err
 	}

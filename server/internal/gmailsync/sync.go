@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+ 	"log"
  	"net/http"
  	"net/mail"
  	"strconv"
@@ -32,6 +33,9 @@ type Syncer struct {
 	Client       func(Account) *Client
 	Images       *mailhtml.ImageFetcher
 	PollInterval time.Duration
+	// Build identifies the server build in sync error log lines so new and
+	// old errors can be told apart with one grep.
+	Build string
 }
 
 func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
@@ -67,6 +71,10 @@ func senderDisplayName(header string) string {
  	return address.Name
 }
 
+// senderBackfillBatch caps thread metadata fetches per sync pass so a large
+// legacy backlog cannot monopolize a sync cycle.
+const senderBackfillBatch = 50
+
 // Backfill names for existing cards once. NULL distinguishes old records from
 // a parsed bare address, whose sender_name is intentionally the empty string.
 func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) error {
@@ -74,7 +82,7 @@ func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) 
  	if err != nil {
  		return err
  	}
- 	rows, err := tx.Query(ctx, `SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND source='mail' AND sender_name IS NULL ORDER BY sort_at,id`, a.TenantID, a.ID)
+ 	rows, err := tx.Query(ctx, `SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND source='mail' AND sender_name IS NULL ORDER BY sort_at,id LIMIT $3`, a.TenantID, a.ID, senderBackfillBatch)
  	if err != nil {
  		tx.Rollback(ctx)
  		return err
@@ -99,12 +107,21 @@ func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) 
  		return err
  	}
 
- 	names := make(map[string]string, len(threads))
- 	for _, threadID := range threads {
- 		thread, fetchErr := c.GetThreadMetadata(ctx, threadID)
- 		if fetchErr != nil {
- 			return fetchErr
- 		}
+	names := make(map[string]string, len(threads))
+	for _, threadID := range threads {
+		thread, fetchErr := c.GetThreadMetadata(ctx, threadID)
+		if fetchErr != nil {
+			if isNotFound(fetchErr) {
+				// The thread is gone from Gmail. The empty name marks the row
+				// done so it is not re-fetched every sync cycle.
+				names[threadID] = ""
+				continue
+			}
+			// A transient fetch error must not abort the account's sync; the
+			// row stays NULL and is retried on a later pass.
+			log.Printf("sender-name backfill: build=%s thread=%s: %v", s.Build, threadID, fetchErr)
+			continue
+		}
  		from := ""
  		for _, message := range thread.Messages {
  			for _, header := range message.Payload.Headers {
@@ -124,12 +141,18 @@ func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) 
  		return err
  	}
  	defer tx.Rollback(ctx)
- 	for threadID, name := range names {
- 		if _, err = tx.Exec(ctx, `UPDATE cards SET sender_name=$1 WHERE tenant_id=$2 AND account_id=$3 AND gmail_thread_id=$4 AND sender_name IS NULL`, name, a.TenantID, a.ID, threadID); err != nil {
- 			return err
- 		}
- 	}
- 	return tx.Commit(ctx)
+	for threadID, name := range names {
+		if _, err = tx.Exec(ctx, `UPDATE cards SET sender_name=$1 WHERE tenant_id=$2 AND account_id=$3 AND gmail_thread_id=$4 AND sender_name IS NULL`, name, a.TenantID, a.ID, threadID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// isNotFound reports whether err says the Gmail thread no longer exists.
+func isNotFound(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && (e.StatusCode == http.StatusNotFound || e.StatusCode == http.StatusGone)
 }
 func (s *Syncer) initial(ctx context.Context, a Account, c *Client, started bool, page, history string) error {
 	if !started {

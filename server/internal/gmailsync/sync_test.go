@@ -1,14 +1,17 @@
 package gmailsync
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -225,7 +228,7 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 	if !strings.Contains(cardHTML, "First message") || !strings.Contains(cardHTML, "Second message") || strings.Contains(cardHTML, "script") {
 		t.Fatalf("aggregate offline card body incorrect: %s", cardHTML)
 	}
-	RegisterOps(func(ctx context.Context, tx pgx.Tx, tenantID, card uuid.UUID) (*Client, string, error) {
+	useTestOps(func(ctx context.Context, tx pgx.Tx, tenantID, card uuid.UUID) (*Client, string, error) {
 		var stored uuid.UUID
 		var thread string
 		if e := tx.QueryRow(ctx, "SELECT account_id,gmail_thread_id FROM cards WHERE tenant_id=$1 AND id=$2", tenantID, card).Scan(&stored, &thread); e != nil {
@@ -332,4 +335,172 @@ func TestBackfillSenderNameFromGmailMetadata(t *testing.T) {
 	var got string
 	if err := db.QueryRow(ctx, `SELECT sender_name FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&got); err != nil { t.Fatal(err) }
 	if got != "LinkedIn" { t.Fatalf("backfilled sender_name=%q, want LinkedIn", got) }
+}
+
+func TestSyncSurvivesDeletedThreadDuringSenderBackfill(t *testing.T) {
+	db := testPool(t)
+	ctx := context.Background()
+	tenant, account, gone, flaky := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	// history_id='1' sends SyncAccount down the poll path once backfill returns.
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token,history_id) VALUES($1,$2,'legacy@example.test',$3,'1')`, tenant, account, []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'gone-thread','Old mail','x@example.test')`, tenant, gone, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'flaky-thread','Old mail','y@example.test')`, tenant, flaky, account); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	fetches := map[string]int{}
+	historyCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/threads/gone-thread"):
+			fetches["gone-thread"]++
+			http.NotFound(w, r) // deleted in Gmail
+		case strings.HasSuffix(r.URL.Path, "/threads/flaky-thread"):
+			fetches["flaky-thread"]++
+			http.Error(w, "boom", http.StatusInternalServerError) // transient
+		case strings.HasSuffix(r.URL.Path, "/history"):
+			historyCalls++
+			json.NewEncoder(w).Encode(map[string]any{"history": []any{}, "historyId": "1"})
+		default:
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	s := &Syncer{DB: db, Client: func(Account) *Client {
+		return &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret", RetryDelay: time.Millisecond}
+	}}
+	a := Account{TenantID: tenant, ID: account}
+	if err := s.SyncAccount(ctx, a); err != nil {
+		t.Fatalf("sync aborted on deleted thread: %v", err)
+	}
+	mu.Lock()
+	if historyCalls == 0 {
+		mu.Unlock()
+		t.Fatal("sync did not poll: sender backfill aborted the account before poll")
+	}
+	goneFetches := fetches["gone-thread"]
+	mu.Unlock()
+	if goneFetches != 1 {
+		t.Fatalf("deleted thread fetched %d times in one sync, want 1", goneFetches)
+	}
+	var goneName string
+	if err := db.QueryRow(ctx, `SELECT COALESCE(sender_name,'<null>') FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, gone).Scan(&goneName); err != nil {
+		t.Fatal(err)
+	}
+	if goneName != "" {
+		t.Fatalf("deleted thread sender_name = %q, want empty mark so it is not retried", goneName)
+	}
+	var flakyPending bool
+	if err := db.QueryRow(ctx, `SELECT sender_name IS NULL FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, flaky).Scan(&flakyPending); err != nil {
+		t.Fatal(err)
+	}
+	if !flakyPending {
+		t.Fatal("transiently failing thread must stay pending for a later retry")
+	}
+	if err := s.SyncAccount(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if fetches["gone-thread"] != 1 {
+		t.Fatalf("deleted thread fetched %d times across two syncs, want 1 (marked, never retried)", fetches["gone-thread"])
+	}
+}
+
+func TestBackfillCapsBatchPerSync(t *testing.T) {
+	db := testPool(t)
+	ctx := context.Background()
+	tenant, account := uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'cap@example.test',$3)`, tenant, account, []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	total := senderBackfillBatch + 1
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) SELECT $1, md5(g::text||'cap')::uuid, $2, 'live-'||g, 'S', 'x@example.test' FROM generate_series(1,$3) g`, tenant, account, total); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	fetches := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
+			return
+		}
+		mu.Lock()
+		fetches[strings.TrimPrefix(r.URL.Path, "/gmail/v1/users/me/threads/")]++
+		mu.Unlock()
+		json.NewEncoder(w).Encode(map[string]any{"messages": []any{map[string]any{"payload": map[string]any{"headers": []any{map[string]string{"name": "From", "value": "Name <a@b.test>"}}}}}})
+	}))
+	defer srv.Close()
+	client := &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret"}
+	s := &Syncer{DB: db}
+	a := Account{TenantID: tenant, ID: account}
+	if err := s.backfillSenderNames(ctx, a, client); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	first := len(fetches)
+	mu.Unlock()
+	if first != senderBackfillBatch {
+		t.Fatalf("first backfill fetched %d threads, want batch cap %d", first, senderBackfillBatch)
+	}
+	if err := s.backfillSenderNames(ctx, a, client); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(fetches) != total {
+		t.Fatalf("after two backfills fetched %d threads, want %d (cap per sync, backlog drains)", len(fetches), total)
+	}
+}
+
+func TestSyncErrorLogsCarryBuildField(t *testing.T) {
+	db := testPool(t)
+	ctx := context.Background()
+	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'logs@example.test',$3)`, tenant, account, []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'flaky-thread','S','x@example.test')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
+			return
+		}
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	s := &Syncer{DB: db, Build: "testbuild", Client: func(Account) *Client {
+		return &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret", RetryDelay: time.Millisecond}
+	}}
+	if err := s.backfillSenderNames(ctx, Account{TenantID: tenant, ID: account}, s.Client(Account{})); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "build=testbuild") {
+		t.Fatalf("sync error log line missing build field: %q", buf.String())
+	}
 }
