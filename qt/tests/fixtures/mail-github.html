@@ -1,0 +1,159 @@
+<html><head></head><body><div style="display: flex; flex-wrap: wrap; white-space: pre-wrap; align-items: center;"><img height="20" width="20" style="border-radius:50%; margin-right: 4px;" decoding="async" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDBAQFBAUJBQUJFA0LDRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgAFAAUAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+MtOk1Pxl4hv9Bt7saYkMhRrvMjyAbsDGXxzg816rqPwFvvB3hNPENnq8usQQ3UCXUF2gZ41aRV3o/XhiMg8YJ6YrgdL8Kr4c1TVNRuWuE+2SPOrNGAUOSwQYY56nsOlfS/hLUNMvPhfc6pdLcy3UunRwFbpABLIrAAg/dJyQTznjPSvk6tZxq8sfh9D7GhhoTwvtX8Xe+39fieTzSbXwBmiotQl8u4IABGKK6dTyDyXxL421TX9d/sy4dEsN7qYYl25wDgk9c8etfQ/h/T10z9mbUNbE09zqLQBUluZC/lAzqp2DoOPz70UVFfa59JhIQVenG2jcf0PBZfFGo3Lb5J8t0yFAooorg559z6Ovg8Mqskqcd+yP//Z"/><strong>df7cb</strong> created an issue <a href="https://example.test/fixture">(postgis/h3-pg#206)</a></div>
+<p dir="auto">The h3-pg Debian package has been patched to properly link against a packaged version of libh3:</p>
+<p dir="auto"><a href="https://example.test/fixture" rel="nofollow">https://example.test/fixture</a><br/>
+<a href="https://example.test/fixture" rel="nofollow">https://example.test/fixture</a></p>
+<p dir="auto">So far, that worked.</p>
+<p dir="auto">The new h3-pg version 4.5.0 seems to require a lot of internal h3 headers beyond <code class="notranslate">h3api.h</code> though:</p>
+<pre class="notranslate"><code class="notranslate">[ 49%] Linking C shared module h3.so
+cd /home/myon/projects/postgresql/h3-pg/h3-pg/build-18/h3 &amp;&amp; /usr/bin/cmake -E cmake_link_script CMakeFiles/postgresql_h3.dir/link.txt --verbose=1
+/usr/lib/ccache/cc -fPIC -g -O2 -Werror=implicit-function-declaration -ffile-prefix-map=/home/myon/projects/postgresql/h3-pg/h3-pg=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -Wdate-time -D_FORTIFY_SOURCE=2 -flto=auto -fno-fat-lto-objects -shared -Wl,-z,relro -Wl,--dependency-file=CMakeFiles/postgresql_h3.dir/link.d  -o h3.so CMakeFiles/postgresql_h3.dir/src/binding/edge.c.o CMakeFiles/postgresql_h3.dir/src/binding/hierarchy.c.o CMakeFiles/postgresql_h3.dir/src/binding/indexing.c.o CMakeFiles/postgresql_h3.dir/src/binding/inspection.c.o CMakeFiles/postgresql_h3.dir/src/binding/miscellaneous.c.o CMakeFiles/postgresql_h3.dir/src/binding/regions.c.o CMakeFiles/postgresql_h3.dir/src/binding/traversal.c.o CMakeFiles/postgresql_h3.dir/src/binding/vertex.c.o CMakeFiles/postgresql_h3.dir/src/algos.c.o CMakeFiles/postgresql_h3.dir/src/deprecated.c.o CMakeFiles/postgresql_h3.dir/src/extension.c.o CMakeFiles/postgresql_h3.dir/src/guc.c.o CMakeFiles/postgresql_h3.dir/src/init.c.o CMakeFiles/postgresql_h3.dir/src/opclass_btree.c.o CMakeFiles/postgresql_h3.dir/src/opclass_gist.c.o CMakeFiles/postgresql_h3.dir/src/opclass_hash.c.o CMakeFiles/postgresql_h3.dir/src/opclass_spgist.c.o CMakeFiles/postgresql_h3.dir/src/operators.c.o CMakeFiles/postgresql_h3.dir/src/srf.c.o CMakeFiles/postgresql_h3.dir/src/type.c.o ../include/CMakeFiles/postgresql_h3_shared.dir/error.c.o  /usr/lib/x86_64-linux-gnu/libpq.so -lh3 /usr/lib/x86_64-linux-gnu/libpq.so
+/home/myon/projects/postgresql/h3-pg/h3-pg/h3_postgis/src/wkb_regions.c:25:10: fatal error: linkedGeo.h: Datei oder Verzeichnis nicht gefunden
+   25 | #include &lt;linkedGeo.h&gt;
+      |          ^~~~~~~~~~~~~
+compilation terminated.
+In file included from /home/myon/projects/postgresql/h3-pg/h3-pg/h3_postgis/src/wkb_vertex_graph.c:24:
+/home/myon/projects/postgresql/h3-pg/h3-pg/h3_postgis/src/wkb_vertex_graph.h:21:10: fatal error: latLng.h: Datei oder Verzeichnis nicht gefunden
+   21 | #include &lt;latLng.h&gt;
+      |          ^~~~~~~~~~
+compilation terminated.
+</code></pre>
+<p dir="auto">I can make the libh3.deb package contain these files, but then I still have to do a lot of patching to fix the paths to the header files.</p>
+<p dir="auto">Is there any chance to have this use case officially supported?</p>
+
+<p style="font-size:small;-webkit-text-size-adjust:none;color:#666;">—<br/>Reply to this email directly, <a href="https://example.test/fixture">view it on GitHub</a>, or <a href="https://example.test/fixture">unsubscribe</a>.<br/>Triage notifications, keep track of coding agent tasks and review pull requests on the go with GitHub Mobile for <a href="https://example.test/fixture">iOS</a> and <a href="https://example.test/fixture">Android</a>. Download it today!
+<br/>You are receiving this because you are subscribed to this thread.<span style="color: transparent; font-size: 0; display: none; visibility: hidden; overflow: hidden; opacity: 0; width: 0; height: 0; max-width: 0; max-height: 0; mso-hide: all">Message ID: <span>&lt;postgis/h3-pg/issues/206</span><span>@</span><span>github</span><span>.</span><span>com&gt;</span></span></p>
+
+
+<div style="display: flex; flex-wrap: wrap; white-space: pre-wrap; align-items: center;"><img height="20" width="20" style="border-radius:50%; margin-right: 4px;" decoding="async" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDBAQFBAUJBQUJFA0LDRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgAFAAUAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+MtOk1Pxl4hv9Bt7saYkMhRrvMjyAbsDGXxzg816rqPwFvvB3hNPENnq8usQQ3UCXUF2gZ41aRV3o/XhiMg8YJ6YrgdL8Kr4c1TVNRuWuE+2SPOrNGAUOSwQYY56nsOlfS/hLUNMvPhfc6pdLcy3UunRwFbpABLIrAAg/dJyQTznjPSvk6tZxq8sfh9D7GhhoTwvtX8Xe+39fieTzSbXwBmiotQl8u4IABGKK6dTyDyXxL421TX9d/sy4dEsN7qYYl25wDgk9c8etfQ/h/T10z9mbUNbE09zqLQBUluZC/lAzqp2DoOPz70UVFfa59JhIQVenG2jcf0PBZfFGo3Lb5J8t0yFAooorg559z6Ovg8Mqskqcd+yP//Z"/><strong>df7cb</strong> left a comment <a href="https://example.test/fixture">(postgis/h3-pg#206)</a></div>
+<p dir="auto">Fwiw I just tried shoveling all h3 .h files into libh3-dev and making h3-pg use <code class="notranslate">-I/usr/include/h3</code> so we don&#39;t need that <code class="notranslate">h3/</code> prefix in all <code class="notranslate">#include &lt;xx.h&gt;</code> calls. The patch for that is this:</p>
+<pre class="notranslate"><code class="notranslate">Index: h3-pg/CMakeLists.txt
+===================================================================
+--- h3-pg.orig/CMakeLists.txt   2026-06-17 16:43:55.926341376 +0200
++++ h3-pg/CMakeLists.txt        2026-06-17 16:52:28.265284010 +0200
+@@ -59,9 +59,6 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_N
+   include(CTest)
+ endif()
+ 
+-# Include core library
+-add_subdirectory(cmake/h3)
+-
+ # Include extensions and their shared code
+ add_subdirectory(include)
+ add_subdirectory(h3)
+Index: h3-pg/h3/CMakeLists.txt
+===================================================================
+--- h3-pg.orig/h3/CMakeLists.txt        2026-06-17 16:43:55.926341376 +0200
++++ h3-pg/h3/CMakeLists.txt     2026-06-17 16:51:31.402853600 +0200
+@@ -93,6 +93,7 @@ configure_file(src/config.h.in src/confi
+ target_include_directories(postgresql_h3 PRIVATE
+   ${CMAKE_CURRENT_BINARY_DIR}/src
+   src
++  /usr/include/h3
+ )
+ 
+ # link
+Index: h3-pg/h3_postgis/CMakeLists.txt
+===================================================================
+--- h3-pg.orig/h3_postgis/CMakeLists.txt        2026-06-08 03:55:17.000000000 +0200
++++ h3-pg/h3_postgis/CMakeLists.txt     2026-06-17 16:50:51.992554510 +0200
+@@ -46,7 +46,7 @@ PostgreSQL_add_extension(postgresql_h3_p
+ 
+ # link
+ target_link_libraries(postgresql_h3_postgis PRIVATE postgresql_h3_shared h3)
+-target_include_directories(postgresql_h3_postgis PRIVATE ${H3_INTERNAL_INCLUDE_DIR})
++target_include_directories(postgresql_h3_postgis PRIVATE /usr/include/h3)
+ 
+ # Emit PostgreSQL JIT bitcode only after all include/link settings are final.
+ PostgreSQL_add_extension_bitcode(postgresql_h3_postgis h3_postgis ${PROJECT_NAME})
+Index: h3-pg/include/CMakeLists.txt
+===================================================================
+--- h3-pg.orig/include/CMakeLists.txt   2026-06-08 03:55:17.000000000 +0200
++++ h3-pg/include/CMakeLists.txt        2026-06-17 16:50:30.670392418 +0200
+@@ -6,6 +6,6 @@ target_link_libraries(postgresql_h3_shar
+ )
+ target_include_directories(postgresql_h3_shared
+   INTERFACE ./
+-  PRIVATE ${H3_INCLUDE_DIR}
++  PRIVATE /usr/include/h3
+ )
+ set_target_properties(postgresql_h3_shared PROPERTIES POSITION_INDEPENDENT_CODE True)
+</code></pre>
+<p dir="auto">After that, it still explodes:</p>
+<pre class="notranslate"><code class="notranslate">In file included from /home/myon/projects/postgresql/h3-pg/h3-pg/h3/src/algos.c:24:
+/home/myon/projects/postgresql/h3-pg/h3-pg/h3/src/upstream_macros.h:31:5: error: redeclaration of enumerator ‘CENTER_DIGIT’
+   31 |     CENTER_DIGIT = 0,
+      |     ^~~~~~~~~~~~
+In file included from /usr/include/h3/algos.h:24,
+                 from /home/myon/projects/postgresql/h3-pg/h3-pg/h3/src/algos.c:23:
+/usr/include/h3/coordijk.h:71:5: note: previous definition of ‘CENTER_DIGIT’ with type ‘enum &lt;anonymous&gt;’
+   71 |     CENTER_DIGIT = 0,
+      |     ^~~~~~~~~~~~
+
+
+In file included from /home/myon/projects/postgresql/h3-pg/h3-pg/h3/src/operators.c:21:
+/home/myon/projects/postgresql/h3-pg/h3-pg/h3/src/operators.c: In function ‘h3index_overlaps’:
+/home/myon/projects/postgresql/h3-pg/h3-pg/h3/src/operators.c:152:24: error: implicit declaration of function ‘containment’ [-Wimplicit-function-declaration]
+  152 |         PG_RETURN_BOOL(containment(a, b) != 0);
+      |                        ^~~~~~~~~~~
+
+... and a few dozen similar messages.
+</code></pre>
+
+<p style="font-size:small;-webkit-text-size-adjust:none;color:#666;">—<br/>Reply to this email directly, <a href="https://example.test/fixture">view it on GitHub</a>, or <a href="https://example.test/fixture">unsubscribe</a>.<br/>Triage notifications, keep track of coding agent tasks and review pull requests on the go with GitHub Mobile for <a href="https://example.test/fixture">iOS</a> and <a href="https://example.test/fixture">Android</a>. Download it today!
+<br/>You are receiving this because you commented.<span style="color: transparent; font-size: 0; display: none; visibility: hidden; overflow: hidden; opacity: 0; width: 0; height: 0; max-width: 0; max-height: 0; mso-hide: all">Message ID: <span>&lt;postgis/h3-pg/issues/206/4731883480</span><span>@</span><span>github</span><span>.</span><span>com&gt;</span></span></p>
+
+
+<div style="display: flex; flex-wrap: wrap; white-space: pre-wrap; align-items: center;"><img height="20" width="20" style="border-radius:50%; margin-right: 4px;" decoding="async" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDBAQFBAUJBQUJFA0LDRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgAFAAUAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+MtOk1Pxl4hv9Bt7saYkMhRrvMjyAbsDGXxzg816rqPwFvvB3hNPENnq8usQQ3UCXUF2gZ41aRV3o/XhiMg8YJ6YrgdL8Kr4c1TVNRuWuE+2SPOrNGAUOSwQYY56nsOlfS/hLUNMvPhfc6pdLcy3UunRwFbpABLIrAAg/dJyQTznjPSvk6tZxq8sfh9D7GhhoTwvtX8Xe+39fieTzSbXwBmiotQl8u4IABGKK6dTyDyXxL421TX9d/sy4dEsN7qYYl25wDgk9c8etfQ/h/T10z9mbUNbE09zqLQBUluZC/lAzqp2DoOPz70UVFfa59JhIQVenG2jcf0PBZfFGo3Lb5J8t0yFAooorg559z6Ovg8Mqskqcd+yP//Z"/><strong>df7cb</strong> left a comment <a href="https://example.test/fixture">(postgis/h3-pg#206)</a></div>
+<p dir="auto">About the performance, did anyone measure how much difference LTO makes practically?</p>
+
+<p style="font-size:small;-webkit-text-size-adjust:none;color:#666;">—<br/>Reply to this email directly, <a href="https://example.test/fixture">view it on GitHub</a>, or <a href="https://example.test/fixture">unsubscribe</a>.<br/>Triage notifications, keep track of coding agent tasks and review pull requests on the go with GitHub Mobile for <a href="https://example.test/fixture">iOS</a> and <a href="https://example.test/fixture">Android</a>. Download it today!
+<br/>You are receiving this because you commented.<span style="color: transparent; font-size: 0; display: none; visibility: hidden; overflow: hidden; opacity: 0; width: 0; height: 0; max-width: 0; max-height: 0; mso-hide: all">Message ID: <span>&lt;postgis/h3-pg/issues/206/4731915655</span><span>@</span><span>github</span><span>.</span><span>com&gt;</span></span></p>
+
+
+<div style="display: flex; flex-wrap: wrap; white-space: pre-wrap; align-items: center;"><img height="20" width="20" style="border-radius:50%; margin-right: 4px;" decoding="async" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDBAQFBAUJBQUJFA0LDRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgAFAAUAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+MtOk1Pxl4hv9Bt7saYkMhRrvMjyAbsDGXxzg816rqPwFvvB3hNPENnq8usQQ3UCXUF2gZ41aRV3o/XhiMg8YJ6YrgdL8Kr4c1TVNRuWuE+2SPOrNGAUOSwQYY56nsOlfS/hLUNMvPhfc6pdLcy3UunRwFbpABLIrAAg/dJyQTznjPSvk6tZxq8sfh9D7GhhoTwvtX8Xe+39fieTzSbXwBmiotQl8u4IABGKK6dTyDyXxL421TX9d/sy4dEsN7qYYl25wDgk9c8etfQ/h/T10z9mbUNbE09zqLQBUluZC/lAzqp2DoOPz70UVFfa59JhIQVenG2jcf0PBZfFGo3Lb5J8t0yFAooorg559z6Ovg8Mqskqcd+yP//Z"/><strong>df7cb</strong> left a comment <a href="https://example.test/fixture">(postgis/h3-pg#206)</a></div>
+<p dir="auto">I mean if it&#39;s totally not feasible or really makes sense to vendor-optimize it, then so be it and we can use the bundled version... 🙄</p>
+
+<p style="font-size:small;-webkit-text-size-adjust:none;color:#666;">—<br/>Reply to this email directly, <a href="https://example.test/fixture">view it on GitHub</a>, or <a href="https://example.test/fixture">unsubscribe</a>.<br/>Triage notifications, keep track of coding agent tasks and review pull requests on the go with GitHub Mobile for <a href="https://example.test/fixture">iOS</a> and <a href="https://example.test/fixture">Android</a>. Download it today!
+<br/>You are receiving this because you commented.<span style="color: transparent; font-size: 0; display: none; visibility: hidden; overflow: hidden; opacity: 0; width: 0; height: 0; max-width: 0; max-height: 0; mso-hide: all">Message ID: <span>&lt;postgis/h3-pg/issues/206/4731946107</span><span>@</span><span>github</span><span>.</span><span>com&gt;</span></span></p>
+
+
+<div style="display: flex; flex-wrap: wrap; white-space: pre-wrap; align-items: center;"><img height="20" width="20" style="border-radius:50%; margin-right: 4px;" decoding="async" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2NjIpLCBxdWFsaXR5ID0gOTAK/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQwEDBAQFBAUJBQUJFA0LDRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgAFAAUAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+MtOk1Pxl4hv9Bt7saYkMhRrvMjyAbsDGXxzg816rqPwFvvB3hNPENnq8usQQ3UCXUF2gZ41aRV3o/XhiMg8YJ6YrgdL8Kr4c1TVNRuWuE+2SPOrNGAUOSwQYY56nsOlfS/hLUNMvPhfc6pdLcy3UunRwFbpABLIrAAg/dJyQTznjPSvk6tZxq8sfh9D7GhhoTwvtX8Xe+39fieTzSbXwBmiotQl8u4IABGKK6dTyDyXxL421TX9d/sy4dEsN7qYYl25wDgk9c8etfQ/h/T10z9mbUNbE09zqLQBUluZC/lAzqp2DoOPz70UVFfa59JhIQVenG2jcf0PBZfFGo3Lb5J8t0yFAooorg559z6Ovg8Mqskqcd+yP//Z"/><strong>df7cb</strong> left a comment <a href="https://example.test/fixture">(postgis/h3-pg#206)</a></div>
+<p dir="auto">Building with the vendored h3 results in the message that the lib isn&#39;t vendored but needs to be downloaded first:</p>
+<pre class="notranslate"><code class="notranslate">### PostgreSQL 18 run ###
++ dh_auto_configure -B build-18 -- -DPostgreSQL_CONFIG=/usr/lib/postgresql/18/bin/pg_config
+        cd build-18 &amp;&amp; DEB_PYTHON_INSTALL_LAYOUT=deb PKG_CONFIG=/usr/bin/pkg-config cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON -DFETCHCONTENT_FULLY_DISCONNECTED=ON -DCMAKE_INSTALL_RUNSTATEDIR=/run -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=ON &#34;-GUnix Makefiles&#34; -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/x86_64-linux-gnu -DPostgreSQL_CONFIG=/usr/lib/postgresql/18/bin/pg_config ..
+...
+
+CMake Warning at /usr/share/cmake-4.3/Modules/FetchContent.cmake:2124 (message):
+  FETCHCONTENT_FULLY_DISCONNECTED is set to true, which requires the source
+  directory for dependency h3 to already be populated.  This generally means
+  it must not be set to true the first time CMake is run in a build
+  directory.  The following source directory should already be populated, but
+  it doesn&#39;t exist:
+
+    /home/myon/projects/postgresql/h3-pg/h3-pg/build-18/_deps/h3-src
+
+  Policy CMP0170 controls enforcement of this requirement.
+Call Stack (most recent call first):
+  /usr/share/cmake-4.3/Modules/FetchContent.cmake:2399 (__FetchContent_Populate)
+  cmake/h3/CMakeLists.txt:18 (FetchContent_MakeAvailable)
+
+
+CMake Error at cmake/h3/CMakeLists.txt:20 (set_target_properties):
+  set_target_properties Can not find target to add properties to: h3
+
+
+CMake Error at cmake/h3/CMakeLists.txt:26 (target_compile_options):
+  Cannot specify compile options for target &#34;h3&#34; which is not built by this
+  project.
+
+
+-- Configuring incomplete, errors occurred!
+</code></pre>
+<p dir="auto">We would need a tarball that contains the full source to be compiled.</p>
+
+<p style="font-size:small;-webkit-text-size-adjust:none;color:#666;">—<br/>Reply to this email directly, <a href="https://example.test/fixture">view it on GitHub</a>, or <a href="https://example.test/fixture">unsubscribe</a>.<br/>Triage notifications, keep track of coding agent tasks and review pull requests on the go with GitHub Mobile for <a href="https://example.test/fixture">iOS</a> and <a href="https://example.test/fixture">Android</a>. Download it today!
+<br/>You are receiving this because you commented.<span style="color: transparent; font-size: 0; display: none; visibility: hidden; overflow: hidden; opacity: 0; width: 0; height: 0; max-width: 0; max-height: 0; mso-hide: all">Message ID: <span>&lt;postgis/h3-pg/issues/206/4732490117</span><span>@</span><span>github</span><span>.</span><span>com&gt;</span></span></p>
+
+
+</body></html>

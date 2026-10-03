@@ -2,6 +2,10 @@
 #include "api.h"
 #include "CardStore.h"
 #include "timerules.h"
+#ifndef Q_OS_ANDROID
+#include "maildocumentprofile.h"
+#include <QtWebEngineQuick>
+#endif
 
 #include <QDir>
 #include <QFileInfo>
@@ -56,6 +60,12 @@ static QQuickItem *findVisualItem(QQuickItem *root, const QString &objectName)
 #endif
 int main(int argc, char *argv[])
 {
+#ifndef Q_OS_ANDROID
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+    MailDocumentProfile::registerScheme();
+    QtWebEngineQuick::initialize();
+    qmlRegisterType<MailDocumentProfile>("Litterbox.Mail", 1, 0, "MailDocumentProfile");
+#endif
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Litterbox"));
     app.setOrganizationName(QStringLiteral("Litterbox"));

@@ -9,6 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Test QuickControls2 Svg)
 find_package(KF6Kirigami CONFIG REQUIRED)
+if(NOT ANDROID)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS WebEngineQuick)
+endif()
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -25,6 +28,10 @@ qt_add_executable(litterbox-qt
     src/timerules.h
     src/timerules.cpp
 )
+if(NOT ANDROID)
+    target_sources(litterbox-qt PRIVATE src/maildocumentprofile.h src/maildocumentprofile.cpp)
+    target_link_libraries(litterbox-qt PRIVATE Qt6::WebEngineQuick)
+endif()
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
 # Compiled-in default server URL. Android has no LB_SERVER environment, so
@@ -46,8 +53,14 @@ qt_add_resources(litterbox-qt "lb_pages"
         pages/GmailAccountsPage.qml
         pages/McpTokensPage.qml
         pages/MailDetailPage.qml
+        pages/MailActionButton.qml
+        pages/MailBodyAndroid.qml
         pages/ReminderDialog.qml
 )
+if(NOT ANDROID)
+    qt_add_resources(litterbox-qt "lb_mail_desktop"
+        PREFIX "/qt/qml/litterbox/qml" FILES pages/MailBodyDesktop.qml)
+endif()
 
 # Bundled Breeze subset for named icons (desktop and Android). Android has no
 # system Breeze theme, so the APK ships the SVGs it needs as a qrc icon theme
@@ -124,7 +137,8 @@ file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")
 list(REMOVE_ITEM _lb_page_tests
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_maildetail.qml")
 find_program(QMLTESTRUNNER6 NAMES qmltestrunner PATHS "/usr/lib/qt6/bin" NO_DEFAULT_PATH)
 if (QMLTESTRUNNER6)
     foreach (_test ${_lb_page_tests})
@@ -145,6 +159,22 @@ if (QMLTESTRUNNER6)
              COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
                      -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
     set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
+# The mail body renders in QtWebEngine on desktop, which must be initialized
+# before the GUI application exists; qmltestrunner cannot do that.
+if(NOT ANDROID)
+    find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+    qt_add_executable(tst_maildetail tests/maildetail_runner.cpp src/maildocumentprofile.h src/maildocumentprofile.cpp)
+    target_include_directories(tst_maildetail PRIVATE src)
+    target_compile_definitions(tst_maildetail PRIVATE LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    target_link_libraries(tst_maildetail PRIVATE Qt6::Quick Qt6::QuickTest Qt6::WebEngineQuick)
+    add_test(NAME tst_maildetail
+             COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_maildetail.qml)
+    set_tests_properties(tst_maildetail PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                         # The installed Plasma session resolves controls through
+                         # org.kde.desktop; the default Basic style hides the dark
+                         # button fill reported on the 0.1-7 build.
+                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 endif()
 
 # Install desktop executables to bin and Android module libraries to lib.
