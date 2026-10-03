@@ -131,10 +131,24 @@ ApplicationWindow {
         return true
     }
     property real inboxScrollPosition: 0
+    property var mailDetailPage: null
     function openPage(name, properties) {
         if (stack.depth === 1) inboxScrollPosition = inboxList.contentY
         const page = pagesDir.toString() + name + ".qml"
-        stack.push(page, properties || { api: api })
+        if (name === "MailDetailPage") {
+            const values = Object.assign({store: window.cardStore, cardTitle: "", accountName: "", openLinks: true}, properties || {})
+            if (!mailDetailPage) {
+                // An existing item is not owned/destroyed by StackView on pop.
+                const component = Qt.createComponent(page)
+                mailDetailPage = component.createObject(stack, values)
+            } else {
+                for (const key of Object.keys(values)) mailDetailPage[key] = values[key]
+                mailDetailPage.reload()
+            }
+            stack.push(mailDetailPage)
+        } else {
+            stack.push(page, properties || { api: api })
+        }
     }
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
 
@@ -215,10 +229,16 @@ ApplicationWindow {
         objectName: "pageStack"
         anchors.fill: parent
         focus: true
+        // Sliding the inbox moves its ListView viewport out of the window,
+        // causing whole rows of Controls to be destroyed and recreated.
+        pushExit: null
+        popEnter: null
         Keys.onBackPressed: function(event) {
             if (window.handleBack()) event.accepted = true
         }
         initialItem: Item {
+            StackView.visible: true
+            enabled: StackView.status === StackView.Active
             StackView.onActivated: {
                 inboxList.forceLayout()
                 inboxList.contentY = window.inboxScrollPosition

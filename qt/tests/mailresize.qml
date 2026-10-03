@@ -63,7 +63,70 @@ TestCase {
     function reportPhase(label) {
         const blocked = mailFixtures.stopHeartbeat()
         console.log("ACTION_RESULT", label, blocked.toFixed(3), JSON.stringify(mailFixtures.heartbeatBlocks()))
+        return blocked
     }
+    function test_mailOpenClose() {
+        const rows = [
+            {tag: "google", fixture: "google", index: 0},
+            {tag: "nyt", fixture: "nyt", index: 1},
+            {tag: "linkedin", fixture: "linkedin", index: 2},
+            {tag: "mid-list", fixture: "google", index: 50}
+        ]
+        for (const row of rows)
+            store.applyRemoteMailBody(cardId(row.index), {html: mailFixtures.read(row.fixture)})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 1000, height: 879, title: "Mail open/close"
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        const stack = findChild(inbox, "pageStack")
+        const originalIds = store.cardIds()
+        const failures = []
+        wait(300)
+        function cycle(row, label, cold, screenshot) {
+            list.positionViewAtIndex(row.index, ListView.Beginning)
+            wait(200)
+            const before = list.contentY
+            const preview = findChild(list.itemAtIndex(row.index), "openCard-" + cardId(row.index))
+            verify(preview)
+            mailFixtures.startHeartbeat()
+            mouseClick(preview, preview.width / 2, preview.height / 2)
+            tryCompare(stack, "depth", 2)
+            tryCompare(stack, "busy", false)
+            compare(stack.currentItem.cardId, cardId(row.index))
+            compare(stack.currentItem.cardTitle, "Message " + row.index)
+            compare(stack.currentItem.html, mailFixtures.read(row.fixture), "The selected message replaces the previous body")
+            let body = null
+            tryVerify(function() { body = findChild(stack.currentItem, "body"); return body !== null }, 5000)
+            tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
+            wait(200)
+            const opened = reportPhase("open-" + label)
+            if (!cold && opened >= 100) failures.push("open-" + label + " " + opened.toFixed(3) + " ms")
+            if (screenshot) {
+                inbox.title = "Mail resize " + row.tag
+                wait(100)
+                console.log("RESIZE_SCREENSHOT", row.tag)
+                wait(100)
+            }
+            mailFixtures.startHeartbeat()
+            mouseClick(findChild(stack.currentItem, "backToInbox"))
+            tryCompare(stack, "depth", 1)
+            tryCompare(stack, "busy", false)
+            wait(200)
+            const closed = reportPhase("close-" + label)
+            if (closed >= 50) failures.push("close-" + label + " " + closed.toFixed(3) + " ms")
+            compare(list.contentY, before, "Closing restores the same scroll position")
+            compare(list.itemAtIndex(row.index).cardId, cardId(row.index))
+            compare(store.cardIds(), originalIds, "Opening/closing must not archive or reorder mail")
+        }
+        cycle(rows[0], "cold-google", true, false)
+        for (let run = 1; run <= 3; ++run)
+            for (const row of rows) cycle(row, row.tag + "-" + run, false, run === 1)
+        inbox.close()
+        verify(failures.length === 0, failures.join("; "))
+    }
+
     function test_zBroaderInteractions() {
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,

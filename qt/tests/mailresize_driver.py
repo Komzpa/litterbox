@@ -57,7 +57,18 @@ def screenshot(fixture):
     subprocess.run(["convert", str(raw), str(png)], check=True)
     raw.unlink()
 
+def record_host_state(phase):
+    memory = {key: int(value.split()[0]) for key, value in
+              (line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())}
+    line = (f"HOST_STATE {phase} loadAverage={os.getloadavg()} "
+            f"swapUsedMiB={(memory['SwapTotal'] - memory['SwapFree']) / 1024:.1f} "
+            f"memAvailableMiB={memory['MemAvailable'] / 1024:.1f}\n")
+    print(line, end="", flush=True)
+    log.write(line)
+    log.flush()
+
 with (args.output / "run.log").open("w") as log:
+    record_host_state("start")
     process = subprocess.Popen([args.runner, "-input", str(here / "mailresize.qml"),
                                 "-import", str(args.imports or here / "qml-imports"), *args.test], env=env,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -77,6 +88,7 @@ with (args.output / "run.log").open("w") as log:
     status = process.wait()
     for thread in threads:
         thread.join()
+    record_host_state("end")
 print("RUNNER_EXIT", status)
 if thread_errors:
     raise RuntimeError("; ".join(thread_errors))
