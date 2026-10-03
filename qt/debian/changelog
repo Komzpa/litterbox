@@ -1,3 +1,12 @@
+litterbox-qt (0.1-9) unstable; urgency=medium
+
+  * Add Archive and message actions to the open-mail header, retain one reader,
+    and preserve inbox scroll position across reader open/close.
+  * Restart installed desktop clients after dpkg replaces the binary, keeping
+    window geometry and local state.
+
+ -- Litterbox <litterbox@example.com>  Sat, 03 Oct 2026 16:44:26 +0400
+
 litterbox-qt (0.1-8) unstable; urgency=medium
 
   * Render desktop email bodies in a sandboxed QtWebEngine view.
