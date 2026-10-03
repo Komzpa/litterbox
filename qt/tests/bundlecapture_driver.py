@@ -36,7 +36,7 @@ cancel_receipts = []
 source_sha = hashlib.sha256(args.cache.read_bytes()).hexdigest()
 statuses = []
 with (args.output / "run.log").open("w") as log:
-    for width in (1440, 598):
+    for width in (520, 598, 1440):
         process = subprocess.Popen([args.runner, "-input", str(Path(__file__).with_name("bundlecapture.qml")),
                                     "-import", str(args.imports)],
                                    env=dict(env, LB_BUNDLE_WIDTH=str(width)), stdout=subprocess.PIPE,
@@ -88,6 +88,6 @@ source_unchanged = hashlib.sha256(args.cache.read_bytes()).hexdigest() == source
     "source_cache_sha256": source_sha, "source_cache_unchanged": source_unchanged,
     "runner_statuses": statuses}, indent=2) + "\n")
 print("RUNNER_EXITS", json.dumps(statuses))
-if not source_unchanged or len(cancel_receipts) != 2:
+if not source_unchanged or len(cancel_receipts) != 3:
     raise SystemExit("Incomplete Cancel proof or modified frozen source")
 raise SystemExit(max(status["exit_status"] for status in statuses))

@@ -500,7 +500,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: Kirigami.Units.smallSpacing
                                             Kirigami.Icon { source: bundleToggle.icon.name; color: window.ink; isMask: true; implicitWidth: Kirigami.Units.iconSizes.smallMedium; implicitHeight: implicitWidth }
-                                            Label { text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth }
                                             Rectangle {
                                                 implicitWidth: countLabel.implicitWidth + 16
                                                 implicitHeight: countLabel.implicitHeight + 8
@@ -511,16 +511,8 @@ ApplicationWindow {
                                             Item { Layout.fillWidth: true }
                                         }
                                         Label {
+                                            objectName: "bundleAccountLabel-" + cardId
                                             text: bundleToggle.text + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
-                                            color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
-                                            Layout.fillWidth: true
-                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
-                                            elide: Text.ElideRight
-                                        }
-                                        Label {
-                                            text: qsTr("Latest: %1").arg(title)
-                                            visible: !cardRow.bundleExpanded
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
@@ -551,8 +543,15 @@ ApplicationWindow {
                                     text: qsTr("Archive bundle")
                                     icon.name: "mail-mark-read-symbolic"
                                     icon.color: window.ink
+                                    display: window.width < 640 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                                    Layout.minimumWidth: 48
+                                    Layout.preferredWidth: window.width < 640 ? 48 : -1
+                                    Layout.maximumWidth: window.width < 640 ? 48 : -1
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Accessible.name: qsTr("Archive bundle")
                                     Accessible.description: qsTr("Archives all %1 unpinned emails; pinned cards stay open").arg(cardRow.bundleSummary.unpinned)
+                                    ToolTip.text: Accessible.name
+                                    ToolTip.visible: hovered
                                     onClicked: cardActions.archiveBundle()
                                 }
                                 ToolButton {

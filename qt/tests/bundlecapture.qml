@@ -57,7 +57,7 @@ TestCase {
         return result
     }
     function test_matrix_data() {
-        return [{tag: "1440", width: 1440, height: 1000}, {tag: "598", width: 598, height: 1200}]
+        return [{tag: "520", width: 520, height: 900}, {tag: "598", width: 598, height: 1200}, {tag: "1440", width: 1440, height: 1000}]
             .filter(viewport => viewport.width === bundleProofWidth)
     }
     function test_matrix(data) {
@@ -88,7 +88,7 @@ TestCase {
         console.log("BUNDLE_CONTRACT", JSON.stringify({width: data.width, title: toggle.text,
             archiveVisible: !!archive && archive.visible, sourceIds: ids}))
         capture(inbox, "collapsed-" + data.width)
-        input(toggle, "chevron-click", 12)
+        input(toggle, "chevron-click", toggle.width / 2)
         if (archive) tryCompare(inbox.expandedBundles, leader.bundle_id, true)
         tryVerify(function() { list.forceLayout(); return rows(list, ids).filter(row => row.visible).length === 8 }, 15000)
         list.forceLayout()
@@ -104,12 +104,12 @@ TestCase {
         if (!archive) {
             // The negative control records the old surface even when its pointer
             // path fails; do not abort before collecting the neighboring view.
-            input(toggle, "chevron-collapse", 12)
+            mouseClick(toggle, toggle.width / 2, toggle.height / 2)
             mixed(inbox, list, data.width)
             inbox.close()
             return
         }
-        input(toggle, "chevron-collapse", 12)
+        mouseClick(toggle, toggle.width / 2, toggle.height / 2)
         tryCompare(inbox.expandedBundles, leader.bundle_id, false)
         list.forceLayout()
         input(toggle, "title-click", Math.min(toggle.width - 12, 100))
@@ -117,6 +117,7 @@ TestCase {
         console.log("BUNDLE_TITLE_CLICK", JSON.stringify({width: data.width, expanded: true, focused: toggle.activeFocus}))
         input(toggle, "Return")
         tryCompare(inbox.expandedBundles, leader.bundle_id, false)
+        toggle.forceActiveFocus()
         input(toggle, "space")
         tryCompare(inbox.expandedBundles, leader.bundle_id, true)
         input(toggle, "Return")

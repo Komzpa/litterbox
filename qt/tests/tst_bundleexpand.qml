@@ -55,7 +55,7 @@ TestCase {
         inbox.close()
     }
     function test_nonAdjacentMembersExpandUnderLeader_data() {
-        return [{tag: "1440", width: 1440}, {tag: "598", width: 598}]
+        return [{tag: "1440", width: 1440, height: 1000}, {tag: "598", width: 598, height: 1200}, {tag: "520", width: 520, height: 900}]
     }
     function test_nonAdjacentMembersExpandUnderLeader(data) {
         let ids
@@ -78,7 +78,7 @@ TestCase {
         const sourceIds = store.cardIds()
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,
-            width: data.width, height: 1000, title: "Bundle proof " + data.width
+            width: data.width, height: data.height, title: "Bundle proof " + data.width
         })
         verify(inbox)
         const list = findChild(inbox, "inboxList")
@@ -98,6 +98,15 @@ TestCase {
         const archive = findChild(list.itemAtIndex(leader.index), "archiveBundle-" + leaderId)
         verify(archive && archive.visible)
         const collapsedRows = snapshot(list, sourceIds)
+        if (data.width <= 598) {
+            const titleLabel = findChild(list.itemAtIndex(leader.index), "bundleTitleLabel-" + leaderId)
+            const accountLabel = findChild(list.itemAtIndex(leader.index), "bundleAccountLabel-" + leaderId)
+            verify(titleLabel && !titleLabel.truncated, "Bundle title must not be elided at 520 or 598 px")
+            verify(accountLabel && !accountLabel.truncated, "Bundle account must not be elided at 520 or 598 px")
+            compare(archive.width, 48, "Narrow archive action must retain a 48 px hit target")
+            verify(archive.height >= 48)
+            compare(archive.Accessible.name, "Archive bundle")
+        }
         const settledLeader = collapsedRows.find(row => row.id === leaderId)
         const nextVisible = collapsedRows.find(row => row.visible && row.index > settledLeader.index)
         verify(nextVisible)
