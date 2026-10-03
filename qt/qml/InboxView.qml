@@ -130,7 +130,9 @@ ApplicationWindow {
         stack.pop()
         return true
     }
+    property real inboxScrollPosition: 0
     function openPage(name, properties) {
+        if (stack.depth === 1) inboxScrollPosition = inboxList.contentY
         const page = pagesDir.toString() + name + ".qml"
         stack.push(page, properties || { api: api })
     }
@@ -217,6 +219,11 @@ ApplicationWindow {
             if (window.handleBack()) event.accepted = true
         }
         initialItem: Item {
+            StackView.onActivated: {
+                inboxList.forceLayout()
+                inboxList.contentY = window.inboxScrollPosition
+                inboxList.forceActiveFocus()
+            }
             ListView {
                 id: inboxList
                 objectName: "inboxList"
@@ -357,6 +364,20 @@ ApplicationWindow {
                                     HoverHandler { cursorShape: dragHandle.reorderable ? Qt.OpenHandCursor : Qt.ArrowCursor }
                                 }
                                 ColumnLayout {
+                                    id: cardText
+                                    objectName: "openCard-" + cardId
+                                    function openCard() {
+                                        if (card.source === "mail" || card.has_body) cardActions.readCachedRequested()
+                                        else cardActions.openRequested()
+                                    }
+                                    activeFocusOnTab: card.source === "mail" || !!card.has_body || !!card.source_url
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: qsTr("Open %1").arg(title)
+                                    Keys.onReturnPressed: openCard()
+                                    Keys.onSpacePressed: openCard()
+                                    TapHandler { onTapped: cardText.openCard() }
+                                    HoverHandler { cursorShape: cardText.activeFocusOnTab ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                    Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
                                     ToolButton {
@@ -403,7 +424,6 @@ ApplicationWindow {
                                         level: 4
                                         wrapMode: Text.Wrap
                                         Layout.fillWidth: true
-                                        TapHandler { onTapped: cardActions.openRequested() }
                                     }
                                     Label { text: card.summary || ""; color: window.mutedInk; visible: text.length > 0; font: Kirigami.Theme.defaultFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
@@ -442,7 +462,7 @@ ApplicationWindow {
                                     onOpenRequested: {
                                         if (card.source_url) Qt.openUrlExternally(card.source_url)
                                     }
-                                    onReadCachedRequested: window.openPage("MailDetailPage", { store: window.cardStore, cardId: cardId })
+                                    onReadCachedRequested: window.openPage("MailDetailPage", { store: window.cardStore, cardId: cardId, cardTitle: title, accountName: card.account_name || "" })
                                     Component.onCompleted: window.captureActions[cardId] = cardActions
                                     Component.onDestruction: delete window.captureActions[cardId]
                                 }

@@ -253,6 +253,11 @@ int main(int argc, char *argv[])
     // the server operation API, which acknowledges durable outbox entries.
     QSet<int> cardsRequests;
     QHash<int, QString> operationRequests;
+    QHash<int, QString> mailBodyRequests;
+    QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
+        [&](const QString &cardId, const QString &path) {
+            mailBodyRequests.insert(api.get(path), cardId);
+        });
     QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path) {
         cardsRequests.insert(api.get(path));
     });
@@ -280,6 +285,10 @@ int main(int argc, char *argv[])
         });
     QObject::connect(&api, &Api::requestFinished, &app,
         [&](int id, const QJsonValue &data, int status) {
+            if (mailBodyRequests.contains(id)) {
+                store.applyRemoteMailBody(mailBodyRequests.take(id), data.toObject().toVariantMap());
+                return;
+            }
             if (cardsRequests.remove(id)) {
                 store.applyRemoteCards(data.toObject().toVariantMap());
                 return;
@@ -293,6 +302,7 @@ int main(int argc, char *argv[])
     QObject::connect(&api, &Api::requestFailed, &app,
         [&](int id, int status, const QString &) {
             cardsRequests.remove(id);
+            if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id));
             if (operationRequests.contains(id)) store.reportPostResult(operationRequests.take(id), status, {});
             if (status == 0) store.setOnline(false);
         });
