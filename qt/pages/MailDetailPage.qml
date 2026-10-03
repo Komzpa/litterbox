@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Mail message detail: sanitized HTML body plus an "Open in Gmail" link.
+// Read the server-sanitized document with Qt rich text, not a script-capable browser.
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
@@ -39,6 +39,8 @@ Kirigami.ScrollablePage {
 
     required property var store
     property string cardId: ""
+    property string cardTitle: ""
+    property string accountName: ""
     // Set to false in tests to avoid spawning an external browser.
     property bool openLinks: true
 
@@ -84,56 +86,103 @@ Kirigami.ScrollablePage {
             reload()
     }
 
-    ColumnLayout {
-        width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+    Item {
+        implicitHeight: messageColumn.implicitHeight
+        ColumnLayout {
+            id: messageColumn
+            width: Math.min(parent.width, 1200)
+            anchors.horizontalCenter: parent.horizontalCenter
 
-        QQC2.BusyIndicator {
-            visible: root.loading
-            Layout.alignment: Qt.AlignHCenter
-        }
+            spacing: Kirigami.Units.largeSpacing
 
-        QQC2.Label {
-            visible: root.errorText !== ""
-            text: root.errorText
-            color: Kirigami.Theme.negativeTextColor
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
-        }
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.Button {
+                    objectName: "backToInbox"
+                    text: qsTr("Back to inbox")
+                    icon.name: "go-previous"
+                    icon.color: root.ink
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    onClicked: root.QQC2.StackView.view.pop()
+                }
+                Item { Layout.fillWidth: true }
+                QQC2.Button {
+                    objectName: "openInGmail"
+                    text: qsTr("Open in Gmail")
+                    icon.name: "document-open"
+                    icon.color: root.ink
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    visible: root.sourceUrl !== ""
+                    onClicked: root.openInGmail()
+                }
+            }
 
-        Kirigami.LinkButton {
-            objectName: "openInGmail"
-            text: qsTr("Open in Gmail")
-            visible: root.sourceUrl !== ""
-            onClicked: root.openInGmail()
-        }
+            Kirigami.Heading {
+                text: root.cardTitle || root.title
+                textFormat: Text.PlainText
+                color: root.ink
+                level: 2
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            QQC2.Label {
+                text: root.accountName
+                textFormat: Text.PlainText
+                color: root.mutedInk
+                visible: text !== ""
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            QQC2.BusyIndicator {
+                visible: root.loading
+                running: root.loading
+                Layout.alignment: Qt.AlignHCenter
+            }
 
-        QQC2.Button {
-            text: qsTr("Back to inbox")
-            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-            onClicked: root.StackView.view.pop()
-        }
+            QQC2.Label {
+                visible: root.errorText !== "" && !root.loading
+                text: root.errorText
+                color: Kirigami.Theme.negativeTextColor
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
 
-        QQC2.Label {
-            id: bodyLabel
-            objectName: "body"
-            text: root.html
-            textFormat: Text.RichText
-            wrapMode: Text.Wrap
-            visible: root.html !== ""
-            Layout.fillWidth: true
-            // Server-rendered agent bodies embed files as data: links with a
-            // name= parameter; open them from the local cached copy only.
-            // Other links keep the existing external opener behavior.
-            onLinkActivated: function(link) {
-                if (link.indexOf("data:") === 0) {
-                    var local = "";
-                    if (typeof store.openCachedFile === "function")
-                        local = store.openCachedFile(root.cardId, link);
-                    if (local && openLinks)
-                        Qt.openUrlExternally(local);
-                } else if (openLinks) {
-                    Qt.openUrlExternally(link);
+            QQC2.Frame {
+                objectName: "messageDocument"
+                visible: root.html !== ""
+                padding: Math.max(18, Kirigami.Units.largeSpacing)
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
+                background: Rectangle { color: root.surface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
+                contentItem: TextEdit {
+                    id: bodyLabel
+                    objectName: "body"
+                    // Preserve plain-text spacing without horizontal overflow.
+                    text: "<style>pre { white-space: pre-wrap; }</style>" + root.html
+                    textFormat: TextEdit.RichText
+                    wrapMode: TextEdit.Wrap
+                    readOnly: true
+                    selectByMouse: true
+                    color: root.ink
+                    selectionColor: root.accent
+                    selectedTextColor: root.surface
+                    font: Kirigami.Theme.defaultFont
+                    // The endpoint removes active content and embeds fetched images as
+                    // data: URLs. Qt rich text has no JavaScript execution engine.
+                    // Agent file links are opened only after validating the cached file;
+                    // external links require a user click and an allowed URL scheme.
+                    onLinkActivated: function(link) {
+                        if (link.indexOf("data:") === 0) {
+                            var local = "";
+                            if (typeof store.openCachedFile === "function")
+                                local = store.openCachedFile(root.cardId, link);
+                            if (local && openLinks)
+                                Qt.openUrlExternally(local);
+                        } else if (openLinks && /^(https?:|mailto:)/i.test(link)) {
+                            Qt.openUrlExternally(link);
+                        }
+                    }
                 }
             }
         }

@@ -22,6 +22,28 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+## Reading mail on desktop
+
+Click a mail card's text or preview to read the message inside Litterbox.
+**Back to inbox** returns to the saved list position; opening never archives
+the message. Bodies load asynchronously through `GET /v1/cards/{id}/body` and
+remain available in the device's existing offline cache.
+
+The detail page uses Qt rich text, not a JavaScript-capable web browser. The
+existing server sanitizer removes scripts, event handlers, active embeds and
+tracking pixels; permitted remote images are fetched by the server with its
+existing SSRF protections and embedded as data URLs, never loaded directly by
+the desktop. Plain-text messages retain line breaks and spacing while long
+lines wrap. Only explicitly clicked HTTP(S)/mailto links open externally.
+
+Focused UI regression checks:
+
+```sh
+/usr/lib/qt6/bin/qmltestrunner -input qt/tests/tst_mailopen.qml -import qt/tests/qml-imports -platform offscreen
+/usr/lib/qt6/bin/qmltestrunner -input qt/tests/tst_maildetail.qml -platform offscreen
+```
+
+
 ## Gmail account connection
 
 Configure a Google **web** OAuth client with its exact authorized redirect URI at
