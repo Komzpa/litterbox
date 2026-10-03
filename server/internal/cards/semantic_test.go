@@ -36,6 +36,8 @@ func TestPersistedReminderSemanticContract(t *testing.T) {
   w := httptest.NewRecorder(); producer.ServeHTTP(w, req)
   if w.Code != http.StatusNoContent { t.Fatalf("ingest %s: %d %s", kind, w.Code, w.Body.String()) }
  }
+ if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil { t.Fatal(err) }
+ if _, err = db.Exec(`UPDATE cards SET sender_name='LinkedIn' WHERE tenant_id=$1`, tenant); err != nil { t.Fatal(err) }
  handler := Handler{DB: db, Location: time.UTC}
  api := offline.API{DB: db, Identity: func(r *http.Request)(string,bool){ return TenantFrom(r.Context()) }}
  read := func(owner string, path string, serve http.HandlerFunc) map[string]any {
@@ -54,9 +56,19 @@ func TestPersistedReminderSemanticContract(t *testing.T) {
   }
   if !seen["reminder"] || !seen["research_result"] { t.Fatalf("lost persisted semantic kind: %v", rows) }
  }
+ assertSenderNames := func(rows []any, changes bool) {
+  for _, row := range rows {
+   card := row.(map[string]any)
+   if changes { card = card["value"].(map[string]any) }
+   if card["sender_name"] != "LinkedIn" { t.Fatalf("sender_name missing from feed card: %v", card) }
+  }
+ }
  assertKinds(read(tenant, "/v1/cards", handler.List)["now"].([]any), false)
  assertKinds(read(tenant, "/v1/snapshot", api.Snapshot)["cards"].([]any), false)
  assertKinds(read(tenant, "/v1/changes?since=0", api.Changes)["changes"].([]any), true)
+ assertSenderNames(read(tenant, "/v1/cards", handler.List)["now"].([]any), false)
+ assertSenderNames(read(tenant, "/v1/snapshot", api.Snapshot)["cards"].([]any), false)
+ assertSenderNames(read(tenant, "/v1/changes?since=2", api.Changes)["changes"].([]any), true)
  for _, item := range []struct{path, key string; serve http.HandlerFunc}{{"/v1/cards","now",handler.List},{"/v1/snapshot","cards",api.Snapshot},{"/v1/changes?since=0","changes",api.Changes}} {
   if rows := read(other,item.path,item.serve)[item.key].([]any); len(rows) != 0 { t.Fatalf("foreign payload leaked: %v", rows) }
  }

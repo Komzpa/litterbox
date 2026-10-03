@@ -24,6 +24,7 @@ type Card struct {
 	AccountName string `json:"account_name,omitempty"`
 	BundleTitle string `json:"bundle_title,omitempty"`
 	SourceURL   string `json:"source_url,omitempty"`
+ SenderName string `json:"sender_name"`
 	// Important marks a thread that carries Gmail's IMPORTANT label; the
 	// client renders it standalone, never concealed inside a bundle.
 	Important bool `json:"important,omitempty"`

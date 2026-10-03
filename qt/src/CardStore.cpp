@@ -57,10 +57,17 @@ bool CardStore::open(const QString &path) {
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL)"))) return;
+        QSqlQuery columns(m_db);
+        if (!columns.exec(QStringLiteral("PRAGMA table_info(cards)"))) return;
+        bool hasSenderName = false;
+        while (columns.next())
+            if (columns.value(1).toString() == QStringLiteral("sender_name")) hasSenderName = true;
+        if (!hasSenderName && !execute(QStringLiteral("ALTER TABLE cards ADD COLUMN sender_name TEXT NOT NULL DEFAULT ''"))) return;
         QSqlQuery q(m_db);
-        if (!q.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) return;
+        if (!q.exec(QStringLiteral("SELECT payload,sender_name FROM cards ORDER BY position"))) return;
         while (q.next()) {
             QVariantMap card = QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap();
+            card.insert(QStringLiteral("sender_name"), q.value(1).toString());
             const QVariant rank = card.value(QStringLiteral("pinned_rank"));
             if (rank.isValid() && !rank.isNull() && card.value(QStringLiteral("section")).toString() != QStringLiteral("pinned")) {
                 card.insert(QStringLiteral("section_before_pin"), card.value(QStringLiteral("section")));
@@ -124,6 +131,8 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
     const auto stored = [](QVariantMap card) {
         card.remove(QStringLiteral("bundle_leader"));
         card.remove(QStringLiteral("bundle_member_count"));
+        if (!card.contains(QStringLiteral("sender_name")))
+            card.insert(QStringLiteral("sender_name"), QStringLiteral(""));
         return card;
     };
     QHash<QString, QVariantMap> old;
@@ -149,11 +158,11 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
         const QString id = card.value(QStringLiteral("id")).toString();
         if (!reordered && old.value(id) == card) continue;
         if (!q.prepare(reordered ?
-                QStringLiteral("INSERT INTO cards(id,position,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position,payload=excluded.payload") :
-                QStringLiteral("UPDATE cards SET position=position,payload=? WHERE id=?"))) return false;
+                QStringLiteral("INSERT INTO cards(id,position,payload,sender_name) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position,payload=excluded.payload,sender_name=excluded.sender_name") :
+                QStringLiteral("UPDATE cards SET position=position,payload=?,sender_name=? WHERE id=?"))) return false;
         const QString payload = QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(card)).toJson(QJsonDocument::Compact));
-        if (reordered) { q.addBindValue(id); q.addBindValue(row); q.addBindValue(payload); }
-        else { q.addBindValue(payload); q.addBindValue(id); }
+        if (reordered) { q.addBindValue(id); q.addBindValue(row); q.addBindValue(payload); q.addBindValue(card.value(QStringLiteral("sender_name")).toString()); }
+        else { q.addBindValue(payload); q.addBindValue(card.value(QStringLiteral("sender_name")).toString()); q.addBindValue(id); }
         if (!q.exec()) return false;
     }
     return true;
@@ -704,9 +713,10 @@ QVariant CardStore::data(const QModelIndex &index, int role) const {
     case CardIdRole: return card.value(QStringLiteral("id"));
     case TitleRole: return card.value(QStringLiteral("title"));
     case SectionRole: return card.value(QStringLiteral("section"));
+    case SenderNameRole: return card.value(QStringLiteral("sender_name"));
     default: return {};
     }
 }
 QHash<int,QByteArray> CardStore::roleNames() const {
-    return {{CardRole,"card"},{CardIdRole,"cardId"},{TitleRole,"title"},{SectionRole,"section"}};
+    return {{CardRole,"card"},{CardIdRole,"cardId"},{TitleRole,"title"},{SectionRole,"section"},{SenderNameRole,"sender_name"}};
 }
