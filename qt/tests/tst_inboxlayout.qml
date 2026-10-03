@@ -53,7 +53,7 @@ TestCase {
         const leader = list.itemAtIndex(0)
         const next = list.itemAtIndex(4)
         const frame = findChild(leader, "inboxCard")
-        const gap = next.y - leader.y - frame.height
+        const gap = next.y - leader.y - frame.y - frame.height
         verify(gap >= 0 && gap <= inbox.edgeSpacing + 1,
                "collapsed bundle left a hole of " + gap + "px between visible cards")
 
@@ -65,12 +65,12 @@ TestCase {
             const row = list.itemAtIndex(i)
             const following = list.itemAtIndex(i + 1)
             const rowFrame = findChild(row, "inboxCard")
-            const expandedGap = following.y - row.y - rowFrame.height
+            const expandedGap = following.y - row.y - rowFrame.y - rowFrame.height
             verify(expandedGap >= 0 && expandedGap <= inbox.edgeSpacing + 1,
                    "expanded bundle spacing differs at row " + i + ": " + expandedGap)
         }
         mouseClick(toggle)
         tryVerify(function() { list.forceLayout(); return !list.itemAtIndex(1).visible })
-        compare(next.y - leader.y - frame.height, gap)
+        compare(next.y - leader.y - frame.y - frame.height, gap)
     }
 }

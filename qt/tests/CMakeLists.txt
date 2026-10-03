@@ -25,3 +25,14 @@ if(NOT ANDROID)
                               LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(tst_mailresize PRIVATE Qt6::QuickTest Qt6::WebEngineQuick Qt6::Sql KF6::Kirigami)
 endif()
+
+# Real CardStore consumer proof; optionally load a copied desktop cache.
+find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+add_executable(tst_bundleexpand bundle_runner.cpp ../src/CardStore.cpp ../src/CardStore.h)
+target_include_directories(tst_bundleexpand PRIVATE ../src)
+target_link_libraries(tst_bundleexpand PRIVATE Qt6::QuickTest Qt6::Sql KF6::Kirigami)
+add_test(NAME bundleexpand COMMAND tst_bundleexpand
+    -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_bundleexpand.qml
+    -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
+set_tests_properties(bundleexpand PROPERTIES ENVIRONMENT
+    "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")

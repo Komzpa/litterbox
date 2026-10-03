@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml.Models
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -59,10 +60,13 @@ ApplicationWindow {
     property real dragOffset: 0
     property string dragFeedback: ""
     property var expandedBundles: ({})
+    property var bundleSections: ({})
+    property var sectionStarts: ({})
     function toggleBundle(bundleId) {
         const next = Object.assign({}, expandedBundles)
         next[bundleId] = !next[bundleId]
         expandedBundles = next
+        bundleModel.groupBundles()
     }
     property string updateStatus: ""
     property string updateVersion: ""
@@ -70,11 +74,11 @@ ApplicationWindow {
 
     // Drop the dragged card at the row the reorder handle was released over.
     function commitCardDrag(cardId, targetIndex) {
-        return targetIndex >= 0 && store.moveCardTo(cardId, targetIndex)
+        const sourceIndex = store.cardIds().indexOf(cardIdAt(targetIndex))
+        return sourceIndex >= 0 && store.moveCardTo(cardId, sourceIndex)
     }
     function cardIdAt(row) {
-        const ids = store.cardIds()
-        return row >= 0 && row < ids.length ? ids[row] : ""
+        return row >= 0 && row < bundleModel.items.count ? bundleModel.items.get(row).model.cardId : ""
     }
 
     // The card-controls capture opens the real dialog, records a frame while it is
@@ -314,45 +318,98 @@ ApplicationWindow {
                         event.accepted = true
                     }
                 }
-                model: store
-                section.property: "section"
+                model: bundleModel
                 // Hidden bundle members must contribute neither height nor spacing.
                 spacing: 0
-                section.delegate: Item {
-                    width: ListView.view.width
-                    height: sectionHeading.implicitHeight + 2 * window.edgeSpacing
-                    Label {
-                        id: sectionHeading
-                        width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.top: parent.top
-                        anchors.topMargin: window.edgeSpacing
-                        text: (section === "pinned" ? qsTr("Pinned") : section === "now" ? qsTr("Now") : section === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
-                        font: Kirigami.Theme.defaultFont
-                        color: window.mutedInk
-                        padding: 0
+                DelegateModel {
+                    id: bundleModel
+                    model: store
+                    // Reorder delegates, never the cache or server's card order.
+                    // CardStore remains the owner of leadership and exemptions.
+                    function groupBundles() {
+                        const entries = []
+                        const members = {}
+                        const sections = {}
+                        for (let i = 0; i < items.count; ++i) entries.push(items.get(i))
+                        entries.sort((a, b) => a.model.index - b.model.index)
+                        for (const entry of entries) {
+                            const card = entry.model.card
+                            if (card.bundle_leader === true) sections[card.bundle_id] = card.section
+                            else if (card.bundle_leader === false) {
+                                if (!members[card.bundle_id]) members[card.bundle_id] = []
+                                members[card.bundle_id].push(entry)
+                            }
+                        }
+                        const ordered = []
+                        for (const entry of entries) {
+                            const card = entry.model.card
+                            if (card.bundle_leader === false && window.expandedBundles[card.bundle_id]) continue
+                            ordered.push(entry)
+                            if (card.bundle_leader === true && window.expandedBundles[card.bundle_id])
+                                ordered.push(...(members[card.bundle_id] || []))
+                        }
+                        window.bundleSections = sections
+                        const headings = {}
+                        let previousSection = ""
+                        for (const entry of ordered) {
+                            const card = entry.model.card
+                            if (card.bundle_leader === false && !window.expandedBundles[card.bundle_id]) continue
+                            const section = card.bundle_leader !== undefined ? sections[card.bundle_id] : card.section
+                            headings[entry.model.cardId] = section !== previousSection
+                            previousSection = section
+                        }
+                        window.sectionStarts = headings
+                        for (let i = 0; i < ordered.length; ++i)
+                            if (ordered[i].itemsIndex !== i) items.move(ordered[i].itemsIndex, i)
                     }
-                }
+                    Component.onCompleted: groupBundles()
+                    onCountChanged: Qt.callLater(groupBundles)
+                    Connections {
+                        target: store
+                        ignoreUnknownSignals: true
+                        function onDataChanged() { Qt.callLater(bundleModel.groupBundles) }
+                        function onRowsMoved() { Qt.callLater(bundleModel.groupBundles) }
+                        function onModelReset() { Qt.callLater(bundleModel.groupBundles) }
+                    }
                 delegate: Item {
                     required property var card
                     required property string cardId
                     required property string title
                     id: cardRow
+                    readonly property string displaySection: card.bundle_leader !== undefined
+                        ? (window.bundleSections[card.bundle_id] || card.section) : card.section
                     HoverHandler { id: rowHover }
                     readonly property bool lifted: window.dragCardId === cardId
                     readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
                     readonly property bool bundleExpanded: !!window.expandedBundles[card.bundle_id]
                     visible: !bundled || card.bundle_leader !== false || bundleExpanded
                     width: ListView.view.width
-                    height: visible ? cardFrame.implicitHeight + window.edgeSpacing : 0
+                    height: visible ? sectionHeader.height + cardFrame.implicitHeight + window.edgeSpacing : 0
                     z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
+                    Item {
+                        id: sectionHeader
+                        width: parent.width
+                        height: window.sectionStarts[cardId] ? sectionHeading.implicitHeight + 2 * window.edgeSpacing : 0
+                        visible: height > 0
+                        Label {
+                            id: sectionHeading
+                            width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: window.edgeSpacing
+                            text: (cardRow.displaySection === "pinned" ? qsTr("Pinned") : cardRow.displaySection === "now" ? qsTr("Now") : cardRow.displaySection === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
+                            font: Kirigami.Theme.defaultFont
+                            color: window.mutedInk
+                            padding: 0
+                        }
+                    }
                     Frame {
                         id: cardFrame
                         objectName: "inboxCard"
                         width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
                         x: (parent.width - width) / 2
-                        y: cardRow.lifted ? window.dragOffset : 0
+                        y: sectionHeader.height + (cardRow.lifted ? window.dragOffset : 0)
                         padding: window.edgeSpacing
                         background: Rectangle { color: cardRow.lifted ? "#e4efed" : "#ffffff"; border.color: cardRow.lifted ? window.accent : "#edf0ef"; radius: Kirigami.Units.cornerRadius }
                         contentItem: RowLayout {
@@ -508,6 +565,7 @@ ApplicationWindow {
                         z: 1
                     }
                 }
+                }
             }
 
             // The accepting surface for the reorder drag. It must be as tall as the drag
@@ -528,7 +586,8 @@ ApplicationWindow {
                 function updateTarget() {
                     const point = mapToItem(inboxList, 24, pointerY)
                     const target = inboxList.indexAt(point.x, point.y + inboxList.contentY)
-                    const ids = store.cardIds()
+                    const ids = []
+                    for (let i = 0; i < inboxList.count; ++i) ids.push(window.cardIdAt(i))
                     const handle = window.cardHandles[draggingId]
                     if (!handle || target < 0) { window.dragTargetIndex = -1; return }
                     const from = ids.indexOf(draggingId)
@@ -566,7 +625,7 @@ ApplicationWindow {
                     const ids = Object.keys(window.cardHandles)
                     for (let i = 0; i < ids.length; ++i) {
                         const handle = window.cardHandles[ids[i]]
-                        if (!handle) continue
+                        if (!handle || !handle.visible) continue
                         const p = handle.mapToItem(reorderSurface, 0, 0)
                         if (mouse.x >= p.x && mouse.x <= p.x + handle.width
                                 && mouse.y >= p.y && mouse.y <= p.y + handle.height) {

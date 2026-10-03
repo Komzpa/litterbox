@@ -142,6 +142,7 @@ file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")
 list(REMOVE_ITEM _lb_page_tests
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_bundleexpand.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_maildetail.qml")
 find_program(QMLTESTRUNNER6 NAMES qmltestrunner PATHS "/usr/lib/qt6/bin" NO_DEFAULT_PATH)
