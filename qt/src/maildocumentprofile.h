@@ -9,7 +9,8 @@ class MailDocumentProfile : public QQuickWebEngineProfile
 public:
     explicit MailDocumentProfile(QObject *parent = nullptr);
     Q_INVOKABLE QUrl documentUrl(const QString &html);
-    static void registerScheme();
+    // Initialize before constructing QGuiApplication, in the app and its runners.
+    static void initialize();
 
 private:
     class DocumentHandler;

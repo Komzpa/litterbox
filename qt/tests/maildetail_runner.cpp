@@ -12,6 +12,7 @@
 #include <QVariantList>
 #include <QtQuickTest/quicktest.h>
 #include <QtWebEngineQuick>
+#include <time.h>
 
 class MailFixtures : public QObject
 {
@@ -84,10 +85,7 @@ private:
 
 int main(int argc, char **argv)
 {
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    MailDocumentProfile::registerScheme();
-    QtWebEngineQuick::initialize();
-    qmlRegisterType<MailDocumentProfile>("Litterbox.Mail", 1, 0, "MailDocumentProfile");
+    MailDocumentProfile::initialize();
     MailTestSetup setup;
     return quick_test_main_with_setup(argc, argv, "maildetail", nullptr, &setup);
 }

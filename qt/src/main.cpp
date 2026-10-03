@@ -5,7 +5,6 @@
 #ifndef Q_OS_ANDROID
 #include "maildocumentprofile.h"
 #include "updatewatcher.h"
-#include <QtWebEngineQuick>
 #endif
 
 #include <QDir>
@@ -62,10 +61,7 @@ static QQuickItem *findVisualItem(QQuickItem *root, const QString &objectName)
 int main(int argc, char *argv[])
 {
 #ifndef Q_OS_ANDROID
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    MailDocumentProfile::registerScheme();
-    QtWebEngineQuick::initialize();
-    qmlRegisterType<MailDocumentProfile>("Litterbox.Mail", 1, 0, "MailDocumentProfile");
+    MailDocumentProfile::initialize();
 #endif
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Litterbox"));

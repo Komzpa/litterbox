@@ -1,6 +1,9 @@
 #include "maildocumentprofile.h"
 
 #include <QBuffer>
+#include <QCoreApplication>
+#include <QQmlEngine>
+#include <QtWebEngineQuick>
 #include <QQuickWebEngineDownloadRequest>
 #include <QWebEngineUrlRequestInfo>
 #include <QWebEngineUrlRequestInterceptor>
@@ -45,12 +48,21 @@ public:
     }
 };
 
-void MailDocumentProfile::registerScheme()
+void MailDocumentProfile::initialize()
 {
+#ifdef Q_OS_LINUX
+    // Qt's NVIDIA Vulkan-to-OpenGL texture import can paint mail solid black.
+    // Rasterize the HTML only; Qt Quick still presents through the hardware GPU.
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS",
+            qgetenv("QTWEBENGINE_CHROMIUM_FLAGS") + QByteArrayLiteral(" --disable-gpu"));
+#endif
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QWebEngineUrlScheme scheme(QByteArrayLiteral("litterbox-mail"));
     scheme.setSyntax(QWebEngineUrlScheme::Syntax::Host);
     scheme.setFlags(QWebEngineUrlScheme::SecureScheme | QWebEngineUrlScheme::LocalScheme);
     QWebEngineUrlScheme::registerScheme(scheme);
+    QtWebEngineQuick::initialize();
+    qmlRegisterType<MailDocumentProfile>("Litterbox.Mail", 1, 0, "MailDocumentProfile");
 }
 
 MailDocumentProfile::MailDocumentProfile(QObject *parent)
