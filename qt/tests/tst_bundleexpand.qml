@@ -55,7 +55,7 @@ TestCase {
         inbox.close()
     }
     function test_nonAdjacentMembersExpandUnderLeader_data() {
-        return [{tag: "1440", width: 1440}, {tag: "1280", width: 1280}]
+        return [{tag: "1440", width: 1440}, {tag: "598", width: 598}]
     }
     function test_nonAdjacentMembersExpandUnderLeader(data) {
         let ids
@@ -67,7 +67,7 @@ TestCase {
             bundle = leader.bundle_id
             ids = bundleCachedCards.filter(card => card.bundle_id === bundle && card.bundle_leader !== undefined).map(card => card.id)
         } else {
-            bundle = "linkedin"
+            bundle = "sender:messages-noreply@linkedin.com"
             ids = ["leader", "member-now", "member-later"]
             verify(store.applyRemoteCards({now: [card("leader", bundle, "now"), card("unrelated", "", "now"),
                 card("member-now", bundle, "now"), card("important", bundle, "now", {important: true}),
@@ -95,6 +95,11 @@ TestCase {
         const toggle = findChild(list.itemAtIndex(leader.index), "bundleToggle-" + leaderId)
         verify(toggle)
         verify(toggle.width >= 48 && toggle.height >= 48)
+        compare(toggle.text, "linkedin.com", "The summary must show a sender-domain fallback, never its internal key")
+        const archive = findChild(list.itemAtIndex(leader.index), "archiveBundle-" + leaderId)
+        verify(archive && archive.visible)
+        compare(archive.text, "Archive bundle")
+        const collapsedPositions = snapshot(list, ids).map(row => ({id: row.id, y: row.y, height: row.height}))
         compare(toggle.icon.name, "arrow-right")
         mouseClick(toggle, 12, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, true)
@@ -117,6 +122,8 @@ TestCase {
         tryCompare(inbox.expandedBundles, bundle, false)
         tryVerify(function() { list.forceLayout(); return snapshot(list, ids).filter(row => row.visible).length === 1 })
         compare(toggle.icon.name, "arrow-right")
+        compare(snapshot(list, ids).map(row => ({id: row.id, y: row.y, height: row.height})), collapsedPositions,
+            "Collapse must restore the same zero-spacing layout")
         if (!bundleCacheLoaded) {
             const exempt = snapshot(list, ["important", "pinned"])
             compare(exempt.filter(row => row.visible).length, 2, "Exempt cards remain standalone")

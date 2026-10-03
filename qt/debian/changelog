@@ -1,3 +1,11 @@
+litterbox-qt (0.1-11) unstable; urgency=medium
+
+  * Present bundles as clickable sender-domain/topic summaries with count chips,
+    collapsed previews, contiguous members and visible confirmed bundle archive.
+  * Preserve pinned/important exemptions and per-message archive and take-out.
+
+ -- Litterbox <litterbox@example.com>  Sat, 03 Oct 2026 18:19:00 +0400
+
 litterbox-qt (0.1-10) unstable; urgency=medium
 
   * Keep expanded bundle members adjacent to their leader in the inbox.

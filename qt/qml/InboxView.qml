@@ -62,11 +62,21 @@ ApplicationWindow {
     property var expandedBundles: ({})
     property var bundleSections: ({})
     property var sectionStarts: ({})
+    property var bundleSummaries: ({})
+    property var bundleOpeners: ({})
+    function bundleTitle(card) {
+        const title = card.bundle_title || ""
+        if (!title.startsWith("sender:")) return title || qsTr("Bundle")
+        const sender = title.slice(7)
+        const domain = sender.slice(sender.lastIndexOf("@") + 1).replace(/[<>]/g, "")
+        return domain || qsTr("Bundle")
+    }
     function toggleBundle(bundleId) {
         const next = Object.assign({}, expandedBundles)
         next[bundleId] = !next[bundleId]
         expandedBundles = next
         bundleModel.groupBundles()
+        if (!next[bundleId] && bundleOpeners[bundleId]) bundleOpeners[bundleId].forceActiveFocus()
     }
     property string updateStatus: ""
     property string updateVersion: ""
@@ -330,10 +340,20 @@ ApplicationWindow {
                         const entries = []
                         const members = {}
                         const sections = {}
+                        const summaries = {}
                         for (let i = 0; i < items.count; ++i) entries.push(items.get(i))
                         entries.sort((a, b) => a.model.index - b.model.index)
                         for (const entry of entries) {
                             const card = entry.model.card
+                            if (card.bundle_id) {
+                                const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], important: 0, unpinned: 0, lastId: ""})
+                                if (card.account_name && summary.accounts.indexOf(card.account_name) < 0) summary.accounts.push(card.account_name)
+                                if (card.pinned_rank == null && card.section !== "pinned") {
+                                    ++summary.unpinned
+                                    if (card.important) ++summary.important
+                                }
+                                if (card.bundle_leader !== undefined) summary.lastId = entry.model.cardId
+                            }
                             if (card.bundle_leader === true) sections[card.bundle_id] = card.section
                             else if (card.bundle_leader === false) {
                                 if (!members[card.bundle_id]) members[card.bundle_id] = []
@@ -349,6 +369,7 @@ ApplicationWindow {
                                 ordered.push(...(members[card.bundle_id] || []))
                         }
                         window.bundleSections = sections
+                        window.bundleSummaries = summaries
                         const headings = {}
                         let previousSection = ""
                         for (const entry of ordered) {
@@ -382,9 +403,20 @@ ApplicationWindow {
                     readonly property bool lifted: window.dragCardId === cardId
                     readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
                     readonly property bool bundleExpanded: !!window.expandedBundles[card.bundle_id]
+                    readonly property bool bundleLeader: bundled && card.bundle_leader === true
+                    readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], important: 0, unpinned: 0, lastId: cardId}
+                    readonly property bool lastMember: bundleSummary.lastId === cardId
+                    Keys.onLeftPressed: function(event) {
+                        if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
+                        else event.accepted = false
+                    }
+                    Keys.onEscapePressed: function(event) {
+                        if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
+                        else event.accepted = false
+                    }
                     visible: !bundled || card.bundle_leader !== false || bundleExpanded
                     width: ListView.view.width
-                    height: visible ? sectionHeader.height + cardFrame.implicitHeight + window.edgeSpacing : 0
+                    height: visible ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.edgeSpacing) : 0
                     z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
                     Item {
@@ -411,12 +443,131 @@ ApplicationWindow {
                         x: (parent.width - width) / 2
                         y: sectionHeader.height + (cardRow.lifted ? window.dragOffset : 0)
                         padding: window.edgeSpacing
-                        background: Rectangle { color: cardRow.lifted ? "#e4efed" : "#ffffff"; border.color: cardRow.lifted ? window.accent : "#edf0ef"; radius: Kirigami.Units.cornerRadius }
-                        contentItem: RowLayout {
-                            spacing: Kirigami.Units.smallSpacing
+                        background: Rectangle {
+                            color: cardRow.lifted ? "#e4efed" : window.surface
+                            border.color: cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
+                            radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
+                            Rectangle {
+                                x: window.edgeSpacing
+                                y: window.edgeSpacing
+                                width: 3
+                                height: parent.height - 2 * window.edgeSpacing
+                                color: "#cbded8"
+                                visible: cardRow.bundled && cardRow.bundleExpanded && !cardRow.bundleLeader
+                            }
+                        }
+                        contentItem: ColumnLayout {
+                            spacing: 0
+                            RowLayout {
+                                visible: cardRow.bundleLeader
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+                                Button {
+                                    id: bundleToggle
+                                    objectName: "bundleToggle-" + cardId
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 48
+                                    implicitHeight: Math.max(48, contentItem.implicitHeight + 12)
+                                    padding: 6
+                                    focusPolicy: Qt.StrongFocus
+                                    text: window.bundleTitle(card)
+                                    icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
+                                    Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1, %2 emails") : qsTr("Expand %1, %2 emails")).arg(text).arg(card.bundle_member_count || 0)
+                                    background: Rectangle {
+                                        color: bundleToggle.down ? "#e7f1ee" : "transparent"
+                                        radius: Kirigami.Units.cornerRadius
+                                        border.width: bundleToggle.visualFocus ? 2 : 0
+                                        border.color: window.accent
+                                    }
+                                    contentItem: ColumnLayout {
+                                        spacing: Kirigami.Units.smallSpacing
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Kirigami.Units.smallSpacing
+                                            Kirigami.Icon { source: bundleToggle.icon.name; color: window.ink; isMask: true; implicitWidth: Kirigami.Units.iconSizes.smallMedium; implicitHeight: implicitWidth }
+                                            Label { text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth }
+                                            Rectangle {
+                                                implicitWidth: countLabel.implicitWidth + 16
+                                                implicitHeight: countLabel.implicitHeight + 8
+                                                radius: Kirigami.Units.cornerRadius
+                                                color: "#e7f1ee"
+                                                Label { id: countLabel; anchors.centerIn: parent; text: qsTr("%1 emails").arg(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                        }
+                                        Label {
+                                            text: bundleToggle.text + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            Layout.fillWidth: true
+                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                                            elide: Text.ElideRight
+                                        }
+                                        Label {
+                                            text: qsTr("Latest: %1").arg(title)
+                                            visible: !cardRow.bundleExpanded
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            Layout.fillWidth: true
+                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                                            wrapMode: Text.Wrap
+                                        }
+                                        Label {
+                                            text: qsTr("%1 important stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
+                                            visible: cardRow.bundleSummary.important > 0
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.Wrap
+                                        }
+                                    }
+                                    onClicked: window.toggleBundle(card.bundle_id)
+                                    Keys.onReturnPressed: clicked()
+                                    Keys.onEnterPressed: clicked()
+                                    Keys.onRightPressed: { if (!cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
+                                    Keys.onLeftPressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
+                                    Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
+                                    Component.onCompleted: { if (cardRow.bundleLeader) window.bundleOpeners[card.bundle_id] = bundleToggle }
+                                    Component.onDestruction: { if (window.bundleOpeners[card.bundle_id] === bundleToggle) delete window.bundleOpeners[card.bundle_id] }
+                                }
+                                Button {
+                                    objectName: "archiveBundle-" + cardId
+                                    text: qsTr("Archive bundle")
+                                    icon.name: "mail-mark-read-symbolic"
+                                    icon.color: window.ink
+                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Accessible.description: qsTr("Archives all %1 unpinned emails; pinned cards stay open").arg(cardRow.bundleSummary.unpinned)
+                                    onClicked: cardActions.archiveBundle()
+                                }
+                                ToolButton {
+                                    objectName: "bundleOptions-" + cardId
+                                    text: qsTr("Bundle details")
+                                    icon.name: "overflow-menu"
+                                    icon.color: window.ink
+                                    display: AbstractButton.IconOnly
+                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Accessible.name: text
+                                    ToolTip.text: text
+                                    ToolTip.visible: hovered
+                                    onClicked: bundleDetails.open()
+                                    Menu {
+                                        id: bundleDetails
+                                        MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false }
+                                        MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false }
+                                    }
+                                }
+                            }
+                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#e0e9e6"; visible: cardRow.bundleLeader && cardRow.bundleExpanded }
+                            RowLayout {
+                                visible: !cardRow.bundleLeader || cardRow.bundleExpanded
+                                Layout.fillWidth: true
+                                Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
+                                spacing: Kirigami.Units.smallSpacing
                                 ToolButton {
                                     id: dragHandle
                                     objectName: "reorderHandle-" + cardId
+                                    visible: !cardRow.bundled
                                     implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
@@ -457,44 +608,14 @@ ApplicationWindow {
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
-                                    ToolButton {
-                                        id: bundleToggle
-                                        objectName: "bundleToggle-" + cardId
-                                        visible: cardRow.bundled && card.bundle_leader === true
-                                        text: card.bundle_title || qsTr("Bundle")
-                                        icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
-                                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                        leftPadding: 0
-                                        rightPadding: 0
+                                    Label {
+                                        text: cardRow.bundled ? (card.account_name || "") : window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : "")
+                                        visible: !cardRow.bundled || (!!card.account_name && (cardRow.bundleSummary.accounts.length > 1 || card.account_name !== cardRow.bundleSummary.accounts[0]))
+                                        color: window.mutedInk
+                                        font: Kirigami.Theme.defaultFont
+                                        wrapMode: Text.Wrap
                                         Layout.fillWidth: true
-                                        contentItem: RowLayout {
-                                            spacing: Kirigami.Units.smallSpacing
-                                            Kirigami.Icon {
-                                                source: bundleToggle.icon.name
-                                                color: window.ink
-                                                isMask: true
-                                                implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                                                implicitHeight: implicitWidth
-                                            }
-                                            Label {
-                                                text: bundleToggle.text
-                                                color: window.mutedInk
-                                                font: Kirigami.Theme.defaultFont
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
-                                                Layout.maximumWidth: implicitWidth
-                                            }
-                                            Label {
-                                                text: "· " + (card.bundle_member_count || "")
-                                                color: window.mutedInk
-                                                font: Kirigami.Theme.defaultFont
-                                            }
-                                            Item { Layout.fillWidth: true }
-                                        }
-                                        Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
-                                        onClicked: window.toggleBundle(card.bundle_id)
                                     }
-                                    Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font: Kirigami.Theme.defaultFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Kirigami.Heading {
                                         text: title
                                         color: window.ink
@@ -532,6 +653,7 @@ ApplicationWindow {
                                     hasBody: !!card.has_body
                                     bundleId: card.bundle_id || ""
                                     pinnedRank: card.pinned_rank
+                                    showBundleArchive: !cardRow.bundled
                                     cardTitle: title
                                     accountName: card.account_name || ""
                                     canOpenSource: !!card.source_url
@@ -552,6 +674,7 @@ ApplicationWindow {
                                     Component.onDestruction: delete window.captureActions[cardId]
                                 }
                             }
+                        }
                     }
                     // Keep overlays outside the Frame so its height follows only its content.
                     Rectangle {

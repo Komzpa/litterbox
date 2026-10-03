@@ -12,6 +12,8 @@ Controls.ToolButton {
     property string sourceLabel: source
     property bool hasBody: false
     property string bundleId: ""
+    property bool showBundleArchive: true
+    function archiveBundle() { archiveDialog.open() }
     property var pinnedRank: undefined
     property string snoozeError: ""
     property string cardTitle: ""
@@ -293,8 +295,8 @@ Controls.ToolButton {
                 contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; isMask: true; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
-                visible: root.bundleId.length > 0
-                onClicked: { actionSheet.close(); if (root.source === "mail") archiveDialog.open(); else completeDialog.open() }
+                visible: root.bundleId.length > 0 && root.showBundleArchive
+                onClicked: { actionSheet.close(); if (root.source === "mail") root.archiveBundle(); else completeDialog.open() }
             }
             Controls.ItemDelegate {
                 objectName: "actionRow-takeout-" + root.cardKey
@@ -465,6 +467,7 @@ Controls.ToolButton {
     }
     Controls.Dialog {
         id: archiveDialog
+        parent: Controls.Overlay.overlay
         objectName: "archiveDialog"
         title: qsTr("Archive all unpinned cards in this bundle?")
         modal: true
