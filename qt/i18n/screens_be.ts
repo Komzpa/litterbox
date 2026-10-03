@@ -103,39 +103,6 @@
     </message>
 </context>
 <context>
-    <name>JournalPage</name>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="13"/>
-        <source>Journal</source>
-        <translation>Дзённік</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="21"/>
-        <source>Could not load the journal.</source>
-        <translation>Не ўдалося загрузіць дзённік.</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="35"/>
-        <source>Could not save the entry.</source>
-        <translation>Не ўдалося захаваць запіс.</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="54"/>
-        <source>Write an entry…</source>
-        <translation>Напішыце запіс…</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="65"/>
-        <source>Add</source>
-        <translation>Дадаць</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="104"/>
-        <source>No entries yet.</source>
-        <translation>Пакуль няма запісаў.</translation>
-    </message>
-</context>
-<context>
     <name>MailDetailPage</name>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="23"/>

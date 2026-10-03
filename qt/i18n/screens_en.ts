@@ -103,39 +103,6 @@
     </message>
 </context>
 <context>
-    <name>JournalPage</name>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="13"/>
-        <source>Journal</source>
-        <translation>Journal</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="21"/>
-        <source>Could not load the journal.</source>
-        <translation>Could not load the journal.</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="35"/>
-        <source>Could not save the entry.</source>
-        <translation>Could not save the entry.</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="54"/>
-        <source>Write an entry…</source>
-        <translation>Write an entry…</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="65"/>
-        <source>Add</source>
-        <translation>Add</translation>
-    </message>
-    <message>
-        <location filename="../pages/JournalPage.qml" line="104"/>
-        <source>No entries yet.</source>
-        <translation>No entries yet.</translation>
-    </message>
-</context>
-<context>
     <name>MailDetailPage</name>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="23"/>
