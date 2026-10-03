@@ -5,6 +5,8 @@
 #include <QSqlDatabase>
 #include <QStringList>
 #include <QVariantMap>
+#include <QThread>
+#include <QSet>
 #include <functional>
 
 namespace cardstore {
@@ -16,9 +18,9 @@ public:
 };
 }
 
-// Cache-first QML model. The bridge sends requestPost/requestCards through
-// the shell's authenticated api. Every action is committed to SQLite before
-// transmission. Failed operations remain queued, including rejected 4xx ops.
+// Cache-first QML model. SQLite belongs to the storage worker; QML sees
+// optimistic row-level changes. Operations transmit only after durable commit.
+// Failures undo their changed rows without resetting unrelated cards.
 class CardStore : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(bool online READ online WRITE setOnline NOTIFY onlineChanged)
@@ -90,14 +92,27 @@ signals:
     void storageError(const QString &message);
     void flushFinished();
 private:
-    void reloadCache();
+    void replaceCards(QList<QVariantMap> cards);
+    void persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after,
+                      const QVariantMap &op = {});
+    bool writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after);
+    void undoOp(const QString &opId);
     void flushNext();
     bool execute(const QString &sql);
     void deriveBundles(QList<QVariantMap> &cards);
     QString m_connection;
     QSqlDatabase m_db;
     QList<QVariantMap> m_cards;
+    QThread m_storageThread;
+    QObject *m_storage = nullptr;
+    bool m_open = false;
+    QList<QVariantMap> m_outbox;
+    QSet<QString> m_durableOps;
+    struct Mutation { QList<QVariantMap> before, after; };
+    QHash<QString, Mutation> m_mutations;
+    QHash<QString, QVariantMap> m_mailBodies;
     bool m_online = false;
     QString m_inFlight;
+    QString m_failedOp;
     cardstore::OpTransport *m_transport = nullptr;
 };

@@ -17,6 +17,7 @@
 #include <QTime>
 #include <QUrl>
 #include <QUuid>
+#include <QSqlQuery>
 
 static const QString cardId = QStringLiteral("11111111-1111-4111-8111-111111111111");
 
@@ -83,6 +84,96 @@ public:
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void archiveKeepsModelIndexes() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("archive.sqlite")));
+        QVariantList cards;
+        for (int i = 0; i < 1500; ++i)
+            cards.append(QVariantMap{{"id", QUuid::createUuid().toString(QUuid::WithoutBraces)},
+                {"title", QStringLiteral("Mail %1").arg(i)}, {"source", "mail"}, {"state", "open"}});
+        QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QSignalSpy reset(&store, &QAbstractItemModel::modelReset);
+        QSignalSpy removed(&store, &QAbstractItemModel::rowsRemoved);
+        const QPersistentModelIndex untouched(store.index(749));
+        const QString id = store.data(store.index(750), CardStore::CardIdRole).toString();
+        QElapsedTimer timer;
+        timer.start();
+        QVERIFY(!store.enqueueOp(id, "archive").isEmpty());
+        qInfo("archive GUI call: %.3f ms; model resets: %lld", timer.nsecsElapsed() / 1000000.0, reset.size());
+        QCOMPARE(reset.size(), 0);
+        QCOMPARE(removed.size(), 1);
+        QVERIFY(untouched.isValid());
+        QCOMPARE(untouched.row(), 749);
+        QCOMPARE(store.rowCount(), 1499);
+        // Neighbouring negative control: an invalid action cannot remove a row.
+        QVERIFY(store.enqueueOp("not-a-uuid", "archive").isEmpty());
+        QCOMPARE(removed.size(), 1);
+        QCOMPARE(store.rowCount(), 1499);
+    }
+    void archiveDoesNotWaitForDatabaseLock() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("locked.sqlite");
+        {
+            CardStore seed;
+            QVERIFY(seed.open(path));
+            QVERIFY(seed.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Mail"}}}},
+                {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        const QString connection = QUuid::createUuid().toString();
+        auto lock = QSqlDatabase::addDatabase("QSQLITE", connection);
+        lock.setDatabaseName(path);
+        QVERIFY(lock.open());
+        bool heartbeat = false;
+        {
+            QSqlQuery query(lock);
+            QVERIFY(query.exec("BEGIN EXCLUSIVE"));
+            QTimer::singleShot(0, &store, [&] { heartbeat = true; });
+            QElapsedTimer timer;
+            timer.start();
+            QVERIFY(!store.enqueueOp(cardId, "archive").isEmpty());
+            qInfo("archive while SQLite locked: %.3f ms", timer.nsecsElapsed() / 1000000.0);
+            // The GUI remains able to dispatch events while the writer waits.
+            QTRY_VERIFY(heartbeat);
+            QCOMPARE(store.rowCount(), 0);
+            QVERIFY(query.exec("COMMIT"));
+        }
+        lock.close();
+        lock = QSqlDatabase();
+        QSqlDatabase::removeDatabase(connection);
+    }
+    void archiveFailureRestoresRowWithoutReset() {
+        QTemporaryDir directory;
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.reject = 422;
+        HttpTransport transport(server.serverPort());
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("rejected.sqlite")));
+        const QString neighbor = QStringLiteral("22222222-2222-4222-8222-222222222222");
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"title", "Archive me"}},
+            QVariantMap{{"id", neighbor}, {"title", "Untouched"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QSignalSpy reset(&store, &QAbstractItemModel::modelReset);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        const QPersistentModelIndex untouched(store.index(1));
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QVERIFY(!store.enqueueOp(cardId, "archive").isEmpty());
+        QVERIFY(!store.saveNote(neighbor, "Keep this later edit").isEmpty());
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(store.rowCount(), 2);
+        QCOMPARE(store.data(store.index(0), CardStore::CardIdRole).toString(), cardId);
+        QCOMPARE(store.data(store.index(1), CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Keep this later edit"));
+        QVERIFY(untouched.isValid());
+        QCOMPARE(untouched.row(), 1);
+        QCOMPARE(reset.size(), 0);
+        QTest::qWait(40);
+        QCOMPARE(server.received.size(), 1);
+    }
     void reminderSemanticContract() {
         const QString proof = qEnvironmentVariable("R26_API_PROOF");
         QVariantMap sections;

@@ -18,11 +18,21 @@
 #include <QtQml/qqml.h>
 
 CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
-    m_connection(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
+    m_connection(QUuid::createUuid().toString(QUuid::WithoutBraces)),
+    m_storage(new QObject) {
+    m_storage->moveToThread(&m_storageThread);
+    connect(&m_storageThread, &QThread::finished, m_storage, &QObject::deleteLater);
+    m_storageThread.start();
+}
 CardStore::~CardStore() {
-    m_db.close();
-    m_db = QSqlDatabase();
-    QSqlDatabase::removeDatabase(m_connection);
+    // Drain queued commits before closing: an offline action survives exit.
+    QMetaObject::invokeMethod(m_storage, [this] {
+        m_db.close();
+        m_db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(m_connection);
+    }, Qt::BlockingQueuedConnection);
+    m_storageThread.quit();
+    m_storageThread.wait();
 }
 void CardStore::registerQml(const char *uri, int major, int minor) {
     qmlRegisterType<CardStore>(uri, major, minor, "CardStore");
@@ -34,39 +44,181 @@ bool CardStore::execute(const QString &sql) {
     return false;
 }
 bool CardStore::open(const QString &path) {
-    if (m_db.isOpen() || !m_inFlight.isEmpty()) return false;
-    m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connection);
-    m_db.setDatabaseName(path);
-    if (!m_db.open()) { emit storageError(m_db.lastError().text()); return false; }
-    if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
-        !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
-        !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
-        !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL)"))) {
-        m_db.close(); return false;
-    }
-    reloadCache();
+    if (m_open || !m_inFlight.isEmpty()) return false;
+    QList<QVariantMap> cards, outbox;
+    QHash<QString, QVariantMap> bodies;
+    bool opened = false;
+    // Startup only, before the window exists. Every subsequent write is queued.
+    QMetaObject::invokeMethod(m_storage, [&, this] {
+        m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connection);
+        m_db.setDatabaseName(path);
+        if (!m_db.open()) { emit storageError(m_db.lastError().text()); return; }
+        if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL)"))) return;
+        QSqlQuery q(m_db);
+        if (!q.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) return;
+        while (q.next()) {
+            QVariantMap card = QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap();
+            const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+            if (rank.isValid() && !rank.isNull() && card.value(QStringLiteral("section")).toString() != QStringLiteral("pinned")) {
+                card.insert(QStringLiteral("section_before_pin"), card.value(QStringLiteral("section")));
+                card.insert(QStringLiteral("section"), QStringLiteral("pinned"));
+            }
+            cards.append(std::move(card));
+        }
+        if (!q.exec(QStringLiteral("SELECT payload FROM outbox ORDER BY seq"))) return;
+        while (q.next()) outbox.append(QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap());
+        if (!q.exec(QStringLiteral("SELECT card_id,html,source_url FROM mail_bodies"))) return;
+        while (q.next()) bodies.insert(q.value(0).toString(), {{QStringLiteral("html"), q.value(1)}, {QStringLiteral("source_url"), q.value(2)}});
+        opened = true;
+    }, Qt::BlockingQueuedConnection);
+    if (!opened) return false;
+    m_open = true;
+    m_outbox = std::move(outbox);
+    for (const auto &op : m_outbox) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
+    m_mailBodies = std::move(bodies);
+    replaceCards(std::move(cards));
     emit pendingOpsChanged();
     flush();
     return true;
 }
-void CardStore::reloadCache() {
-    QList<QVariantMap> cards;
-    QSqlQuery q(m_db);
-    if (!q.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position"))) {
-        emit storageError(q.lastError().text()); return;
-    }
-    while (q.next()) {
-        QVariantMap card = QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap();
-        const QVariant rank = card.value(QStringLiteral("pinned_rank"));
-        const bool pinned = card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
-        if (pinned && card.value(QStringLiteral("section")).toString() != QStringLiteral("pinned")) {
-            card.insert(QStringLiteral("section_before_pin"), card.value(QStringLiteral("section")));
-            card.insert(QStringLiteral("section"), QStringLiteral("pinned"));
-        }
-        cards.append(std::move(card));
-    }
+
+void CardStore::replaceCards(QList<QVariantMap> cards) {
     deriveBundles(cards);
-    beginResetModel(); m_cards = std::move(cards); endResetModel();
+    QSet<QString> ids;
+    for (const auto &card : cards) ids.insert(card.value(QStringLiteral("id")).toString());
+    for (int row = m_cards.size() - 1; row >= 0; --row) {
+        if (ids.contains(m_cards[row].value(QStringLiteral("id")).toString())) continue;
+        beginRemoveRows({}, row, row);
+        m_cards.removeAt(row);
+        endRemoveRows();
+    }
+    QStringList order = cardIds();
+    for (int row = 0; row < cards.size(); ++row) {
+        const QString id = cards[row].value(QStringLiteral("id")).toString();
+        if (row >= order.size() || order[row] != id) {
+            const int from = order.indexOf(id, row);
+            if (from < 0) {
+                beginInsertRows({}, row, row);
+                m_cards.insert(row, cards[row]);
+                order.insert(row, id);
+                endInsertRows();
+            } else {
+                beginMoveRows({}, from, from, {}, row);
+                m_cards.move(from, row);
+                order.move(from, row);
+                endMoveRows();
+            }
+        }
+        if (m_cards[row] != cards[row]) {
+            m_cards[row] = cards[row];
+            emit dataChanged(index(row), index(row));
+        }
+    }
+}
+
+bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after) {
+    // Derived bundle flags are presentation state, not durable card changes.
+    const auto stored = [](QVariantMap card) {
+        card.remove(QStringLiteral("bundle_leader"));
+        card.remove(QStringLiteral("bundle_member_count"));
+        return card;
+    };
+    QHash<QString, QVariantMap> old;
+    QSet<QString> ids;
+    QStringList retained, order;
+    for (const auto &card : before) old.insert(card.value(QStringLiteral("id")).toString(), stored(card));
+    for (const auto &card : after) {
+        const QString id = card.value(QStringLiteral("id")).toString();
+        ids.insert(id);
+        order.append(id);
+    }
+    QSqlQuery q(m_db);
+    if (!q.prepare(QStringLiteral("DELETE FROM cards WHERE id=?"))) return false;
+    for (const auto &card : before) {
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (ids.contains(id)) { retained.append(id); continue; }
+        q.bindValue(0, id);
+        if (!q.exec()) return false;
+    }
+    const bool reordered = retained != order;
+    for (int row = 0; row < after.size(); ++row) {
+        const QVariantMap card = stored(after[row]);
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (!reordered && old.value(id) == card) continue;
+        if (!q.prepare(reordered ?
+                QStringLiteral("INSERT INTO cards(id,position,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position,payload=excluded.payload") :
+                QStringLiteral("UPDATE cards SET position=position,payload=? WHERE id=?"))) return false;
+        const QString payload = QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(card)).toJson(QJsonDocument::Compact));
+        if (reordered) { q.addBindValue(id); q.addBindValue(row); q.addBindValue(payload); }
+        else { q.addBindValue(payload); q.addBindValue(id); }
+        if (!q.exec()) return false;
+    }
+    return true;
+}
+
+void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after, const QVariantMap &op) {
+    QMetaObject::invokeMethod(m_storage, [this, before, after, op] {
+        bool ok = m_db.transaction();
+        if (ok && !op.isEmpty()) {
+            QSqlQuery q(m_db);
+            ok = q.prepare(QStringLiteral("INSERT INTO outbox(op_id,payload) VALUES(?,?)"));
+            q.addBindValue(op.value(QStringLiteral("op_id")));
+            q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(op)).toJson(QJsonDocument::Compact)));
+            if (ok) ok = q.exec();
+        }
+        if (ok) ok = writeCards(before, after);
+        if (ok) ok = m_db.commit();
+        if (!ok) m_db.rollback();
+        const QString error = m_db.lastError().text();
+        QMetaObject::invokeMethod(this, [this, op, ok, error] {
+            const QString id = op.value(QStringLiteral("op_id")).toString();
+            if (!ok) {
+                if (!id.isEmpty()) {
+                    undoOp(id);
+                    m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const auto &entry) { return entry.value(QStringLiteral("op_id")).toString() == id; }), m_outbox.end());
+                    emit pendingOpsChanged();
+                }
+                emit storageError(error);
+                return;
+            }
+            if (!id.isEmpty()) m_durableOps.insert(id);
+            flush();
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
+
+void CardStore::undoOp(const QString &opId) {
+    if (!m_mutations.contains(opId)) return;
+    const Mutation mutation = m_mutations.take(opId);
+    QList<QVariantMap> cards = m_cards;
+    QHash<QString, QVariantMap> before, after;
+    for (const auto &card : mutation.before) before.insert(card.value(QStringLiteral("id")).toString(), card);
+    for (const auto &card : mutation.after) after.insert(card.value(QStringLiteral("id")).toString(), card);
+    for (int row = cards.size() - 1; row >= 0; --row) {
+        const QString id = cards[row].value(QStringLiteral("id")).toString();
+        if (!before.contains(id) && after.contains(id)) { cards.removeAt(row); continue; }
+        if (!before.contains(id) || !after.contains(id)) continue;
+        const auto old = before.value(id), optimistic = after.value(id);
+        QSet<QString> keys;
+        for (auto it = old.begin(); it != old.end(); ++it) keys.insert(it.key());
+        for (auto it = optimistic.begin(); it != optimistic.end(); ++it) keys.insert(it.key());
+        for (const auto &key : keys) {
+            if (old.value(key) == optimistic.value(key) || cards[row].value(key) != optimistic.value(key)) continue;
+            if (old.contains(key)) cards[row].insert(key, old.value(key));
+            else cards[row].remove(key);
+        }
+    }
+    for (int row = 0; row < mutation.before.size(); ++row) {
+        const auto &card = mutation.before[row];
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (!after.contains(id)) cards.insert(qMin(row, int(cards.size())), card);
+    }
+    const auto current = m_cards;
+    replaceCards(cards);
+    persistCards(current, cards);
 }
 // Derive bundle_leader and bundle_member_count from the complete current open
 // snapshot. Pinned and important cards are shown standalone: they are neither
@@ -100,26 +252,21 @@ void CardStore::deriveBundles(QList<QVariantMap> &cards) {
         card.insert(QStringLiteral("bundle_member_count"), memberCounts.value(bundle));
     }
 }
-int CardStore::pendingOps() const {
-    if (!m_db.isOpen()) return 0;
-    QSqlQuery q(m_db);
-    if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM outbox")) || !q.next()) return 0;
-    return q.value(0).toInt();
-}
+int CardStore::pendingOps() const { return m_outbox.size(); }
 void CardStore::setOnline(bool online) {
     if (m_online == online) return;
     m_online = online; emit onlineChanged();
-    if (online) { flush(); refresh(); }
+    if (online) { m_failedOp.clear(); flush(); refresh(); }
 }
 void CardStore::setTransport(cardstore::OpTransport *transport) {
     m_transport = transport;
     flush();
 }
 void CardStore::refresh() {
-    if (m_online && m_db.isOpen()) emit requestCards(QStringLiteral("/v1/cards"));
+    if (m_online && m_open) emit requestCards(QStringLiteral("/v1/cards"));
 }
 bool CardStore::applyRemoteCards(const QVariantMap &sections) {
-    if (!m_db.isOpen()) return false;
+    if (!m_open) return false;
     // Validate the complete snapshot before replacing a usable offline cache.
     QList<QVariantMap> cards;
     QSet<QString> ids;
@@ -147,20 +294,31 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
         if (leftPinned != rightPinned) return leftPinned;
         return leftPinned && leftRank.toLongLong() < rightRank.toLongLong();
     });
-    if (!m_db.transaction()) return false;
-    QSqlQuery q(m_db);
-    bool ok = q.exec(QStringLiteral("DELETE FROM cards"));
-    if (ok) ok = q.prepare(QStringLiteral("INSERT INTO cards(id,position,payload) VALUES(?,?,?)"));
-    for (int i = 0; ok && i < cards.size(); ++i) {
-        q.bindValue(0, cards[i].value(QStringLiteral("id")));
-        q.bindValue(1, i);
-        q.bindValue(2, QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(cards[i])).toJson(QJsonDocument::Compact)));
-        ok = q.exec();
+    // A snapshot received while an operation is pending must not resurrect its
+    // removed card or overwrite its local note/pin state.
+    for (const auto &mutation : m_mutations) {
+        QHash<QString, QVariantMap> before, after;
+        for (const auto &card : mutation.before) before.insert(card.value(QStringLiteral("id")).toString(), card);
+        for (const auto &card : mutation.after) after.insert(card.value(QStringLiteral("id")).toString(), card);
+        cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const auto &card) {
+            const QString id = card.value(QStringLiteral("id")).toString();
+            return before.contains(id) && !after.contains(id);
+        }), cards.end());
+        for (auto &card : cards) {
+            const QString id = card.value(QStringLiteral("id")).toString();
+            if (!before.contains(id) || !after.contains(id)) continue;
+            const auto old = before.value(id), optimistic = after.value(id);
+            for (auto it = optimistic.begin(); it != optimistic.end(); ++it)
+                if (old.value(it.key()) != it.value()) card.insert(it.key(), it.value());
+        }
+        for (const auto &card : mutation.after) {
+            const QString id = card.value(QStringLiteral("id")).toString();
+            if (!before.contains(id) && std::none_of(cards.begin(), cards.end(), [&](const auto &entry) { return entry.value(QStringLiteral("id")).toString() == id; })) cards.prepend(card);
+        }
     }
-    if (!ok || !m_db.commit()) {
-        emit storageError(q.lastError().text()); m_db.rollback(); return false;
-    }
-    reloadCache();
+    const auto before = m_cards;
+    replaceCards(cards);
+    persistCards(before, cards);
     // Proactively cache mail and has_body agent bodies after a remote snapshot
     // so first-slice offline reading is not contingent on opening each card.
     // Mail behavior is unchanged; agent cards opt in via has_body from /v1/cards.
@@ -256,13 +414,13 @@ bool CardStore::createCard(const QString &title, const QString &summary) {
         {{QStringLiteral("title"), cleanTitle}, {QStringLiteral("summary"), summary.trimmed()}}).isEmpty();
 }
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
-    if (!m_db.isOpen() || QUuid(cardId).isNull()) return {};
+    if (!m_open || QUuid(cardId).isNull()) return {};
     static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
         QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const QJsonObject payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
-        {QStringLiteral("type"), type}, {QStringLiteral("args"), QJsonObject::fromVariantMap(args)}};
+    const QVariantMap payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
+        {QStringLiteral("type"), type}, {QStringLiteral("args"), args}};
 
     QList<QVariantMap> cards = m_cards;
     auto isPinned = [](const QVariantMap &card) {
@@ -283,9 +441,15 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
             cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
                 return card.value(QStringLiteral("bundle_id")).toString() == bundle &&
                     card.value(QStringLiteral("state")).toString() == QStringLiteral("open") &&
-                    card.contains(QStringLiteral("pinned_rank")) && !isPinned(card);
+                    !isPinned(card);
             }), cards.end());
             changed = cards.size() != oldSize;
+        }
+    } else if (type == QStringLiteral("note")) {
+        for (QVariantMap &card : cards) {
+            if (card.value(QStringLiteral("id")).toString() != cardId) continue;
+            card.insert(QStringLiteral("note"), args.value(QStringLiteral("note")));
+            changed = true;
         }
     } else if (type == QStringLiteral("take_out")) {
         const QString target = args.value(QStringLiteral("card")).toString();
@@ -301,6 +465,7 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
             if (isPinned(card)) maxRank = qMax(maxRank, card.value(QStringLiteral("pinned_rank")).toLongLong());
         for (QVariantMap &card : cards) {
             if (card.value(QStringLiteral("id")).toString() != cardId) continue;
+            changed = true;
             if (type == QStringLiteral("pin")) {
                 if (!isPinned(card) && card.value(QStringLiteral("section")).toString() != QStringLiteral("pinned"))
                     card.insert(QStringLiteral("section_before_pin"), card.value(QStringLiteral("section")));
@@ -347,7 +512,8 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         cards.prepend(card);
         changed = true;
     }
-    if (changed) {
+    if (changed && (type == QStringLiteral("pin") || type == QStringLiteral("unpin") ||
+                    type == QStringLiteral("reorder_pins") || type == QStringLiteral("create_card"))) {
         std::stable_sort(cards.begin(), cards.end(), [&](const QVariantMap &left, const QVariantMap &right) {
             const bool leftPinned = isPinned(left), rightPinned = isPinned(right);
             if (leftPinned != rightPinned) return leftPinned;
@@ -356,40 +522,27 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         });
     }
 
-    if (!m_db.transaction()) return {};
-    QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("INSERT INTO outbox(op_id,payload) VALUES(?,?)"));
-    q.addBindValue(id); q.addBindValue(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
-    if (!q.exec()) { m_db.rollback(); emit storageError(q.lastError().text()); return {}; }
+    const auto before = m_cards;
     if (changed) {
-        if (!q.exec(QStringLiteral("DELETE FROM cards")) ||
-            !q.prepare(QStringLiteral("INSERT INTO cards(id,position,payload) VALUES(?,?,?)"))) {
-            m_db.rollback(); emit storageError(q.lastError().text()); return {};
-        }
-        for (int i = 0; i < cards.size(); ++i) {
-            q.bindValue(0, cards[i].value(QStringLiteral("id")));
-            q.bindValue(1, i);
-            q.bindValue(2, QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(cards[i])).toJson(QJsonDocument::Compact)));
-            if (!q.exec()) { m_db.rollback(); emit storageError(q.lastError().text()); return {}; }
-        }
+        m_mutations.insert(id, {before, cards});
+        replaceCards(cards);
     }
-    if (!m_db.commit()) { emit storageError(m_db.lastError().text()); m_db.rollback(); return {}; }
-    if (changed) reloadCache();
-    emit pendingOpsChanged(); flush(); return id;
+    m_outbox.append(payload);
+    persistCards(before, cards, payload);
+    emit pendingOpsChanged();
+    return id;
 }
 void CardStore::flush() {
-    if (m_online && m_db.isOpen() && m_inFlight.isEmpty()) flushNext();
+    if (m_online && m_open && m_inFlight.isEmpty()) flushNext();
 }
 void CardStore::flushNext() {
     if (!m_online || !m_inFlight.isEmpty()) return;
-    QSqlQuery q(m_db);
-    if (!q.exec(QStringLiteral("SELECT op_id,payload FROM outbox ORDER BY seq LIMIT 1"))) {
-        emit storageError(q.lastError().text()); return;
-    }
-    if (!q.next()) { emit flushFinished(); return; }
-    m_inFlight = q.value(0).toString();
-    const QString id = m_inFlight;
-    const QVariantMap payload = QJsonDocument::fromJson(q.value(1).toByteArray()).object().toVariantMap();
+    if (m_outbox.isEmpty()) { emit flushFinished(); return; }
+    const QVariantMap payload = m_outbox.first();
+    const QString id = payload.value(QStringLiteral("op_id")).toString();
+    if (id == m_failedOp) return;
+    if (!m_durableOps.contains(id)) return;
+    m_inFlight = id;
     if (m_transport) {
         QPointer<CardStore> self(this);
         m_transport->postOp(QStringLiteral("/v1/ops"), payload, [self,id](int status, const QVariantMap &response) {
@@ -401,32 +554,35 @@ void CardStore::flushNext() {
 }
 void CardStore::reportPostResult(const QString &opId, int status, const QVariantMap &response) {
     if (opId != m_inFlight || m_inFlight.isEmpty()) return;
-    m_inFlight.clear();
+    // Keep the head in flight until its durable acknowledgement is committed.
     // A transport success alone is not a server acknowledgement.
     if (status < 200 || status >= 300 || response.value(QStringLiteral("ok")) != QVariant(true)) {
+        m_inFlight.clear();
+        m_failedOp = opId;
+        undoOp(opId);
         emit operationFailed(opId, status); return;
     }
-    QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);
-    if (!q.exec()) { emit storageError(q.lastError().text()); return; }
-    emit pendingOpsChanged();
-    // Avoid recursion if an injected transport acknowledges synchronously.
-    QTimer::singleShot(0, this, [this] { flush(); });
-    refresh();
+    QMetaObject::invokeMethod(m_storage, [this, opId] {
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);
+        const bool ok = q.exec();
+        const QString error = q.lastError().text();
+        QMetaObject::invokeMethod(this, [this, opId, ok, error] {
+            m_inFlight.clear();
+            if (!ok) { m_failedOp = opId; undoOp(opId); emit storageError(error); return; }
+            if (!m_outbox.isEmpty() && m_outbox.first().value(QStringLiteral("op_id")).toString() == opId) m_outbox.removeFirst();
+            m_durableOps.remove(opId);
+            m_mutations.remove(opId);
+            emit pendingOpsChanged();
+            flush();
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
 }
 QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
-    if (!m_db.isOpen() || cardId.isEmpty()) return {};
-    QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("SELECT html, source_url FROM mail_bodies WHERE card_id=?"));
-    q.addBindValue(cardId);
-    if (!q.exec() || !q.next()) return {};
-    QVariantMap result;
-    result.insert(QStringLiteral("html"), q.value(0).toString());
-    result.insert(QStringLiteral("source_url"), q.value(1).toString());
-    return result;
+    return m_mailBodies.value(cardId);
 }
 void CardStore::requestMailBody(const QString &cardId) {
-    if (!m_online || !m_db.isOpen() || cardId.isEmpty()) return;
+    if (!m_online || !m_open || cardId.isEmpty()) return;
     // Mail cards keep their existing fetchable body; non-mail cards opt in
     // via has_body from /v1/cards. Cards without either have no body route.
     const QVariantMap *card = nullptr;
@@ -439,27 +595,33 @@ void CardStore::requestMailBody(const QString &cardId) {
     emit requestMailBodyGet(cardId, QStringLiteral("/v1/cards/") + cardId + QStringLiteral("/body"));
 }
 void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &body) {
-    if (!m_db.isOpen() || cardId.isEmpty()) return;
+    if (!m_open || cardId.isEmpty()) return;
     const QString html = body.value(QStringLiteral("html")).toString();
     QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
     // Body responses omit empty source_url; SQLite requires a non-null string.
     if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
     // A malformed/error response must not replace a usable cached body.
     if (html.trimmed().isEmpty()) { emit mailBodyFailed(cardId); return; }
-    QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url) VALUES(?,?,?) "
-                             "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url"));
-    q.addBindValue(cardId);
-    q.addBindValue(html);
-    q.addBindValue(sourceUrl);
-    if (!q.exec()) { emit storageError(q.lastError().text()); return; }
-    emit mailBodyChanged(cardId);
+    const auto previous = m_mailBodies.value(cardId);
+    m_mailBodies.insert(cardId, {{QStringLiteral("html"), html}, {QStringLiteral("source_url"), sourceUrl}});
+    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, previous] {
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url) VALUES(?,?,?) "
+                                 "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url"));
+        q.addBindValue(cardId); q.addBindValue(html); q.addBindValue(sourceUrl);
+        const bool ok = q.exec();
+        const QString error = q.lastError().text();
+        QMetaObject::invokeMethod(this, [this, cardId, previous, ok, error] {
+            if (!ok) { m_mailBodies.insert(cardId, previous); emit storageError(error); emit mailBodyFailed(cardId); return; }
+            emit mailBodyChanged(cardId);
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
 }
 void CardStore::reportMailBodyFailed(const QString &cardId) {
     emit mailBodyFailed(cardId);
 }
 QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl) const {
-    if (!m_db.isOpen() || cardId.isEmpty() || dataUrl.isEmpty()) return {};
+    if (!m_open || cardId.isEmpty() || dataUrl.isEmpty()) return {};
     if (!dataUrl.startsWith(QStringLiteral("data:"))) return {};
     if (cardId.contains(QLatin1Char('/')) || cardId.contains(QLatin1Char('\\')) ||
         cardId.contains(QStringLiteral("..")) || cardId.contains(QChar(u'\0')) ||

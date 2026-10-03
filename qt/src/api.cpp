@@ -11,7 +11,10 @@ Api::Api(QObject *parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
 {
+    m_jsonPool.setMaxThreadCount(1);
 }
+
+Api::~Api() { m_jsonPool.waitForDone(); }
 
 QString Api::baseUrl() const { return m_baseUrl; }
 
@@ -95,34 +98,37 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
         const QByteArray body = reply->readAll();
         const QString transportError = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
         reply->deleteLater();
-        const QJSValue callback = m_callbacks.take(id);
-        auto fail = [&](const QString &message) {
-            if (callback.isCallable() && m_engine)
-                callback.call({m_engine->newErrorObject(QJSValue::GenericError, message), QJSValue(QJSValue::NullValue)});
-            emit requestFailed(id, status, message);
-        };
-        if (status < 200 || status >= 300) {
-            fail(transportError.isEmpty() ? QStringLiteral("HTTP %1: %2").arg(status).arg(QString::fromUtf8(body.left(200))) : transportError);
-            return;
-        }
-        QJsonValue data(QJsonValue::Undefined);
-        if (!body.trimmed().isEmpty()) {
-            QJsonParseError parseError{};
-            const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
-            if (parseError.error != QJsonParseError::NoError) {
-                fail(QStringLiteral("invalid JSON: %1").arg(parseError.errorString()));
-                return;
+        m_jsonPool.start([this, id, status, body, transportError] {
+            QString error;
+            QJsonValue data(QJsonValue::Undefined);
+            if (status < 200 || status >= 300) {
+                error = transportError.isEmpty() ? QStringLiteral("HTTP %1: %2").arg(status).arg(QString::fromUtf8(body.left(200))) : transportError;
+            } else if (!body.trimmed().isEmpty()) {
+                QJsonParseError parseError{};
+                const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+                if (parseError.error != QJsonParseError::NoError)
+                    error = QStringLiteral("invalid JSON: %1").arg(parseError.errorString());
+                else
+                    data = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
             }
-            data = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
-        }
-        if (callback.isCallable() && m_engine) {
-            QJSValue response = m_engine->newObject();
-            response.setProperty(QStringLiteral("status"), status);
-            response.setProperty(QStringLiteral("body"),
-                                 data.isUndefined() ? QJSValue(true) : jsonToJs(m_engine, data));
-            callback.call({QJSValue(QJSValue::NullValue), response});
-        }
-        emit requestFinished(id, data, status);
+            // QJSValue and model consumers remain owned by the GUI thread.
+            QMetaObject::invokeMethod(this, [this, id, status, data, error] {
+                const QJSValue callback = m_callbacks.take(id);
+                if (!error.isEmpty()) {
+                    if (callback.isCallable() && m_engine)
+                        callback.call({m_engine->newErrorObject(QJSValue::GenericError, error), QJSValue(QJSValue::NullValue)});
+                    emit requestFailed(id, status, error);
+                    return;
+                }
+                if (callback.isCallable() && m_engine) {
+                    QJSValue response = m_engine->newObject();
+                    response.setProperty(QStringLiteral("status"), status);
+                    response.setProperty(QStringLiteral("body"), data.isUndefined() ? QJSValue(true) : jsonToJs(m_engine, data));
+                    callback.call({QJSValue(QJSValue::NullValue), response});
+                }
+                emit requestFinished(id, data, status);
+            }, Qt::QueuedConnection);
+        });
     });
 }
 
