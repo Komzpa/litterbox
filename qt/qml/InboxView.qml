@@ -85,20 +85,16 @@ ApplicationWindow {
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
         bundleArchiveStatus = qsTr("Archived %1 emails").arg(result.count)
-        bundleArchiveTimer.interval = 8000
-        bundleArchiveTimer.restart()
         return true
     }
     function undoBundleArchive() {
-        bundleArchiveTimer.stop()
         const restored = bundleArchiveToken.length > 0 && store.undoBundleArchive(bundleArchiveToken)
         bundleArchiveToken = ""
         if (restored) {
             bundleArchiveStatus = ""
         } else {
             bundleArchiveStatus = qsTr("Undo expired")
-            bundleArchiveTimer.interval = 2200
-            bundleArchiveTimer.restart()
+            undoExpiredNoticeTimer.restart()
         }
         return restored
     }
@@ -106,14 +102,21 @@ ApplicationWindow {
     property string updateVersion: ""
     property string bundleArchiveToken: ""
     property string bundleArchiveStatus: ""
-    Timer {
-        id: bundleArchiveTimer
-        interval: 8000
-        repeat: false
-        onTriggered: {
+    Connections {
+        target: store
+        ignoreUnknownSignals: true
+        function onBundleArchiveExpired(token) {
+            if (token !== window.bundleArchiveToken) return
             window.bundleArchiveToken = ""
-            window.bundleArchiveStatus = ""
+            window.bundleArchiveStatus = qsTr("Undo expired")
+            undoExpiredNoticeTimer.restart()
         }
+    }
+    Timer {
+        id: undoExpiredNoticeTimer
+        interval: 2200
+        repeat: false
+        onTriggered: if (window.bundleArchiveStatus === qsTr("Undo expired")) window.bundleArchiveStatus = ""
     }
 
 
@@ -509,7 +512,7 @@ ApplicationWindow {
                     }
                     visible: !bundled || card.bundle_leader !== false || bundleExpanded
                     width: ListView.view.width
-                    height: visible ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.edgeSpacing) : 0
+                    height: (!bundled || card.bundle_leader !== false || bundleExpanded) ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.edgeSpacing) : 0
                     z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
                     Item {
@@ -654,6 +657,12 @@ ApplicationWindow {
                                     Accessible.description: qsTr("Archives all %1 unpinned emails; pinned cards stay open").arg(cardRow.bundleSummary.unpinned)
                                     ToolTip.text: Accessible.name
                                     ToolTip.visible: hovered
+                                    background: Rectangle {
+                                        radius: Kirigami.Units.cornerRadius
+                                        color: parent.down ? "#e7f1ee" : parent.hovered ? "#f3f7f6" : "transparent"
+                                        border.width: parent.visualFocus ? 2 : 0
+                                        border.color: window.accent
+                                    }
                                     onClicked: window.archiveBundle(card.bundle_id)
                                 }
                                 ToolButton {

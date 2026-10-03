@@ -182,6 +182,30 @@ TestCase {
         }
         inbox.close()
     }
+    function test_archiveBundleUndoExpiresFromTokenDeadline() {
+        const bundle = "sender:expiry@example.test"
+        const ids = ["expiry-leader", "expiry-member"]
+        verify(store.applyRemoteCards({now: [card(ids[0], bundle, "now", {state: "open"}), card(ids[1], bundle, "now", {state: "open"})], later: [], missed: []}))
+        store.setBundleArchiveUndoDurationForTest(1200)
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 520, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const archive = findChild(list.itemAtIndex(0), "archiveBundle-" + ids[0])
+        mouseClick(archive, archive.width / 2, archive.height / 2)
+        tryCompare(store, "bundleArchiveUndoActive", true)
+        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        verify(bar && bar.visible)
+        tryCompare(store, "bundleArchiveUndoActive", false, 3000)
+        tryCompare(inbox, "bundleArchiveStatus", "Undo expired")
+        compare(inbox.undoBundleArchive(), false, "Undo must reject the expired CardStore token")
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Undo expired")
+        store.setBundleArchiveUndoDurationForTest(8000)
+        inbox.close()
+    }
     function test_archiveBundleUndo() {
         const bundle = "sender:undo@example.test"
         const ids = ["undo-leader", "undo-member"]

@@ -1,3 +1,10 @@
+litterbox-qt (0.1-15) unstable; urgency=medium
+
+  * Drive bundle Undo visibility and expiry from the CardStore deadline.
+  * Flatten the bundle archive icon and remove the inbox height binding loop.
+
+ -- Litterbox <litterbox@example.com>  Sat, 03 Oct 2026 22:30:00 +0400
+
 litterbox-qt (0.1-14) unstable; urgency=medium
 
   * Add bundle summaries, Gmail-style sender titles, archive with Undo, and

@@ -2,7 +2,7 @@
 #pragma once
 
 #include <QAbstractListModel>
-#include <QDeadlineTimer>
+#include <QTimer>
 #include <QSqlDatabase>
 #include <QStringList>
 #include <QVariantMap>
@@ -62,10 +62,11 @@ public:
     // per-card `archive` op for every open unpinned card in the bundle (R22),
     // so each message is archived in its originating Gmail account (R7), and
     // returns {token, count}; an empty map means nothing was archived.
-    // undoBundleArchive(token), within 8 s, puts the cards back where they
-    // were, cancels the ops still waiting in the outbox, and queues the
-    // existing `gmail.label_add` INBOX op for mail whose archive was already
-    // sent. It returns false for an unknown, used or expired token.
+    Q_PROPERTY(bool bundleArchiveUndoActive READ bundleArchiveUndoActive NOTIFY bundleArchiveUndoChanged)
+    Q_PROPERTY(int bundleArchiveUndoRemainingMs READ bundleArchiveUndoRemainingMs NOTIFY bundleArchiveUndoChanged)
+    Q_INVOKABLE void setBundleArchiveUndoDurationForTest(int milliseconds);
+    bool bundleArchiveUndoActive() const;
+    int bundleArchiveUndoRemainingMs() const;
     Q_INVOKABLE QVariantMap archiveBundleNow(const QString &bundleId);
     Q_INVOKABLE bool undoBundleArchive(const QString &token);
     Q_INVOKABLE void flush();
@@ -93,6 +94,8 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 signals:
+    void bundleArchiveUndoChanged();
+    void bundleArchiveExpired(const QString &token);
     void onlineChanged();
     void pendingOpsChanged();
     void requestPost(const QString &opId, const QString &path, const QVariantMap &body);
@@ -131,6 +134,9 @@ private:
         QDeadlineTimer deadline;
     };
     QHash<QString, BundleArchive> m_bundleArchives;
+    void expireBundleArchives();
+    int m_bundleUndoDurationMs = 8000;
+    QTimer *m_bundleUndoTimer = nullptr;
     QHash<QString, QVariantMap> m_mailBodies;
     bool m_online = false;
     QString m_inFlight;

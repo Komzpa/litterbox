@@ -28,6 +28,7 @@ TestCase {
     }
     function capture(inbox, name) {
         grabImage(inbox.contentItem.parent).save(bundleProofDirectory + "/" + name + ".png")
+        console.log("BUNDLE_CAPTURE", name)
     }
     function rows(list, ids) {
         const result = []
@@ -115,6 +116,13 @@ TestCase {
         compare(ids, bundleStore.cardIds().filter(id => ids.indexOf(id) >= 0), "Undo restores bundle order")
         tryVerify(function() { return !undoBar.visible })
         capture(inbox, "bundle-restored-" + data.width)
+        bundleStore.setBundleArchiveUndoDurationForTest(450)
+        const expiryArchive = findChild(list.itemAtIndex(0), "archiveBundle-" + leader.id)
+        input(expiryArchive, "bundle-expiry-archive-click")
+        tryCompare(inbox, "bundleArchiveStatus", "Undo expired", 3000)
+        verify(!bundleStore.bundleArchiveUndoActive)
+        verify(!inbox.undoBundleArchive())
+        capture(inbox, "bundle-expired-" + data.width)
         inbox.close()
     }
 }

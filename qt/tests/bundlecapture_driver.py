@@ -35,7 +35,13 @@ with (args.output / "run.log").open("w") as log:
             for line in process.stdout:
                 print(line, end="", flush=True)
                 log.write(line)
-                log.flush()
+                if "BUNDLE_CAPTURE " in line:
+                    name = line.split("BUNDLE_CAPTURE ", 1)[1].strip()
+                    xwd = subprocess.run(["xwd", "-root", "-silent"], env=env, check=True, capture_output=True).stdout
+                    pnm = subprocess.run(["xwdtopnm"], env=env, input=xwd, check=True, capture_output=True).stdout
+                    png = subprocess.run(["pnmtopng"], env=env, input=pnm, check=True, capture_output=True).stdout
+                    (args.output / (name + "-xwd.png")).write_bytes(png)
+                    continue
                 if "BUNDLE_INPUT " not in line:
                     continue
                 request = json.loads(line.split("BUNDLE_INPUT ", 1)[1])
@@ -61,6 +67,9 @@ source_unchanged = hashlib.sha256(args.cache.read_bytes()).hexdigest() == source
     "source_cache_sha256": source_sha, "source_cache_unchanged": source_unchanged,
     "runner_statuses": statuses}, indent=2) + "\n")
 print("RUNNER_EXITS", json.dumps(statuses))
-if not source_unchanged or len(receipts) != 12:
+run_log = (args.output / "run.log").read_text()
+if "Binding loop detected for property \"height\"" in run_log:
+    raise SystemExit("QML binding-loop warning detected")
+if not source_unchanged or len(receipts) != 15:
     raise SystemExit("Incomplete click proof or modified frozen source")
 raise SystemExit(max(status["exit_status"] for status in statuses))

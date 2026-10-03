@@ -19,7 +19,9 @@
 
 CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_connection(QUuid::createUuid().toString(QUuid::WithoutBraces)),
-    m_storage(new QObject) {
+    m_storage(new QObject), m_bundleUndoTimer(new QTimer(this)) {
+    m_bundleUndoTimer->setSingleShot(true);
+    connect(m_bundleUndoTimer, &QTimer::timeout, this, &CardStore::expireBundleArchives);
     m_storage->moveToThread(&m_storageThread);
     connect(&m_storageThread, &QThread::finished, m_storage, &QObject::deleteLater);
     m_storageThread.start();
@@ -574,6 +576,31 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
     emit pendingOpsChanged();
     return id;
 }
+bool CardStore::bundleArchiveUndoActive() const {
+    for (auto it = m_bundleArchives.cbegin(); it != m_bundleArchives.cend(); ++it)
+        if (!it->deadline.hasExpired()) return true;
+    return false;
+}
+int CardStore::bundleArchiveUndoRemainingMs() const {
+    qint64 remaining = 0;
+    for (auto it = m_bundleArchives.cbegin(); it != m_bundleArchives.cend(); ++it)
+        if (!it->deadline.hasExpired()) remaining = std::max(remaining, it->deadline.remainingTime());
+    return static_cast<int>(remaining);
+}
+void CardStore::setBundleArchiveUndoDurationForTest(int milliseconds) {
+    m_bundleUndoDurationMs = std::max(1, milliseconds);
+}
+void CardStore::expireBundleArchives() {
+    QStringList expired;
+    for (auto it = m_bundleArchives.begin(); it != m_bundleArchives.end();) {
+        if (it->deadline.hasExpired()) { expired.append(it.key()); it = m_bundleArchives.erase(it); }
+        else ++it;
+    }
+    emit bundleArchiveUndoChanged();
+    for (const QString &token : expired) emit bundleArchiveExpired(token);
+    if (!m_bundleArchives.isEmpty())
+        m_bundleUndoTimer->start(std::max(1, bundleArchiveUndoRemainingMs()));
+}
 QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
     if (!m_open || bundleId.isEmpty()) return {};
     for (auto it = m_bundleArchives.begin(); it != m_bundleArchives.end();)
@@ -598,7 +625,7 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
     // mail thread in its originating Gmail account (R7). Each op keeps its own
     // mutation so a rejected op restores only its card, and a remote snapshot
     // cannot resurrect a card while its op is pending.
-    BundleArchive entry{before, {}, QDeadlineTimer(8000)};
+    BundleArchive entry{before, {}, QDeadlineTimer(m_bundleUndoDurationMs)};
     QList<QVariantMap> ops;
     for (const QVariantMap &card : before) {
         const QString cardId = card.value(QStringLiteral("id")).toString();
@@ -620,12 +647,15 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
     emit pendingOpsChanged();
     const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_bundleArchives.insert(token, std::move(entry));
+    m_bundleUndoTimer->start(std::max(1, bundleArchiveUndoRemainingMs()));
+    emit bundleArchiveUndoChanged();
     return {{QStringLiteral("token"), token}, {QStringLiteral("count"), archived.size()}};
 }
 bool CardStore::undoBundleArchive(const QString &token) {
     if (!m_open || !m_bundleArchives.contains(token)) return false;
     const BundleArchive entry = m_bundleArchives.take(token);
-    if (entry.deadline.hasExpired()) return false;
+    emit bundleArchiveUndoChanged();
+    if (!m_bundleArchives.isEmpty()) m_bundleUndoTimer->start(std::max(1, bundleArchiveUndoRemainingMs()));
     QHash<QString, QVariantMap> previous;
     for (const QVariantMap &card : entry.before) previous.insert(card.value(QStringLiteral("id")).toString(), card);
     QSet<QString> present;
