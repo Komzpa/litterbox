@@ -1,3 +1,11 @@
+litterbox-qt (0.1-7) unstable; urgency=medium
+
+  * Fix inbox archiving responsiveness and stable layout after restart.
+  * Render email card details, preserve inbox position, and support creating
+    private journal cards from the inbox.
+
+ -- Litterbox <litterbox@example.com>  Sat, 03 Oct 2026 13:18:00 +0400
+
 litterbox-qt (0.1-6) unstable; urgency=medium
 
   * UI fixes: centered column layout, named icons bundled as a qrc Breeze
