@@ -44,7 +44,8 @@ public:
             return QStringLiteral("reminder");
         return card.value(QStringLiteral("source")).toString();
     }
-    Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {});
+    Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {},
+                                const QString &kind = QStringLiteral("manual"));
     Q_INVOKABLE QStringList cardIds() const;
     Q_INVOKABLE bool moveCard(const QString &cardId, int delta);
     Q_INVOKABLE bool moveCardTo(const QString &cardId, int targetIndex);

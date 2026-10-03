@@ -316,6 +316,19 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
             if (!before.contains(id) && std::none_of(cards.begin(), cards.end(), [&](const auto &entry) { return entry.value(QStringLiteral("id")).toString() == id; })) cards.prepend(card);
         }
     }
+    // Cold starts have a durable outbox but no in-memory mutation snapshots.
+    // Keep unsent creations visible until the server acknowledges them.
+    for (const auto &op : m_outbox) {
+        const QString id = op.value(QStringLiteral("card_id")).toString();
+        const QString type = op.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("create_card")) {
+            if (std::any_of(cards.begin(), cards.end(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; })) continue;
+            const auto local = std::find_if(m_cards.begin(), m_cards.end(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; });
+            if (local != m_cards.end()) cards.insert(qMin(qsizetype(std::distance(m_cards.begin(), local)), cards.size()), *local);
+        } else if (type == QStringLiteral("archive") || type == QStringLiteral("done") || type == QStringLiteral("snooze")) {
+            cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; }), cards.end());
+        }
+    }
     const auto before = m_cards;
     replaceCards(cards);
     persistCards(before, cards);
@@ -407,11 +420,17 @@ QString CardStore::reorderCards(const QStringList &ids) {
     for (const QString &cardId : ids) ordered.append(cardId);
     return enqueueOp(ids.first(), QStringLiteral("reorder_cards"), {{QStringLiteral("cards"), ordered}});
 }
-bool CardStore::createCard(const QString &title, const QString &summary) {
-    const QString cleanTitle = title.trimmed();
-    if (cleanTitle.isEmpty()) return false;
-    return !enqueueOp(QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("create_card"),
-        {{QStringLiteral("title"), cleanTitle}, {QStringLiteral("summary"), summary.trimmed()}}).isEmpty();
+bool CardStore::createCard(const QString &title, const QString &summary, const QString &kind) {
+    const QString text = title.trimmed();
+    if (text.isEmpty() || (kind != QStringLiteral("manual") && kind != QStringLiteral("journal"))) return false;
+    QVariantMap args{{QStringLiteral("title"), text}, {QStringLiteral("summary"), summary.trimmed()}};
+    if (kind == QStringLiteral("journal")) {
+        args.insert(QStringLiteral("kind"), kind);
+        args.insert(QStringLiteral("body"), text);
+        args.insert(QStringLiteral("title"), text.section(QLatin1Char('\n'), 0, 0));
+        args.insert(QStringLiteral("summary"), text.section(QLatin1Char('\n'), 1));
+    }
+    return !enqueueOp(QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("create_card"), args).isEmpty();
 }
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_open || QUuid(cardId).isNull()) return {};
@@ -505,7 +524,10 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         cards = std::move(reordered);
         changed = true;
     } else if (type == QStringLiteral("create_card")) {
-        QVariantMap card{{QStringLiteral("id"), cardId}, {QStringLiteral("source"), QStringLiteral("manual")},
+        const QString kind = args.value(QStringLiteral("kind"), QStringLiteral("manual")).toString();
+        if (kind != QStringLiteral("manual") && kind != QStringLiteral("journal")) return {};
+        if (kind == QStringLiteral("journal") && args.value(QStringLiteral("body")).toString().trimmed().isEmpty()) return {};
+        QVariantMap card{{QStringLiteral("id"), cardId}, {QStringLiteral("source"), kind},
             {QStringLiteral("title"), args.value(QStringLiteral("title"))}, {QStringLiteral("summary"), args.value(QStringLiteral("summary"))},
             {QStringLiteral("state"), QStringLiteral("open")}, {QStringLiteral("section"), QStringLiteral("now")}};
         if (card.value(QStringLiteral("title")).toString().trimmed().isEmpty()) return {};

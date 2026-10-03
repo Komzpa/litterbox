@@ -431,7 +431,7 @@ ApplicationWindow {
                                 }
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
-                                    text: card.source === "mail" ? qsTr("Archive") : qsTr("Done")
+                                    text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
                                     icon.name: card.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
                                     icon.width: Kirigami.Units.iconSizes.smallMedium
                                     icon.height: Kirigami.Units.iconSizes.smallMedium
@@ -702,6 +702,7 @@ ApplicationWindow {
     Dialog {
         id: createDialog
         objectName: "createDialog"
+        readonly property bool journal: createKind.currentIndex === 1
         Material.theme: Material.Light
         Material.background: window.surface
         Material.foreground: window.ink
@@ -721,6 +722,7 @@ ApplicationWindow {
                 id: createSaveButton
                 objectName: "createSaveButton"
                 text: qsTr("Create")
+                enabled: (createDialog.journal ? createJournal.text : createTitle.text).trim().length > 0
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 palette.button: window.surface
                 palette.buttonText: window.ink
@@ -730,7 +732,16 @@ ApplicationWindow {
                     border.width: createSaveButton.visualFocus ? 2 : 1
                     border.color: createSaveButton.visualFocus ? window.ink : "#dce5e3"
                 }
-                onClicked: createDialog.accept()
+                onClicked: {
+                    if (store.createCard(createDialog.journal ? createJournal.text : createTitle.text,
+                                         createDialog.journal ? "" : createSummary.text,
+                                         createDialog.journal ? "journal" : "manual")) {
+                        createTitle.clear()
+                        createSummary.clear()
+                        createJournal.clear()
+                        createDialog.accept()
+                    }
+                }
             }
             Button {
                 id: createCancelButton
@@ -748,12 +759,38 @@ ApplicationWindow {
                 onClicked: createDialog.reject()
             }
         }
-        onOpened: createTitle.forceActiveFocus()
+        onOpened: (journal ? createJournal : createTitle).forceActiveFocus()
         contentItem: ColumnLayout {
-            TextField { id: createTitle; placeholderText: qsTr("Title"); Layout.fillWidth: true }
-            TextField { id: createSummary; placeholderText: qsTr("Details (optional)"); Layout.fillWidth: true }
+            ComboBox {
+                id: createKind
+                objectName: "createKind"
+                model: [qsTr("Task"), qsTr("Private journal note")]
+                Layout.fillWidth: true
+                Accessible.name: qsTr("Card kind")
+                onActivated: (createDialog.journal ? createJournal : createTitle).forceActiveFocus()
+            }
+            TextField { id: createTitle; objectName: "createTitle"; visible: !createDialog.journal; placeholderText: qsTr("Title"); Layout.fillWidth: true }
+            TextField { id: createSummary; objectName: "createSummary"; visible: !createDialog.journal; placeholderText: qsTr("Details (optional)"); Layout.fillWidth: true }
+            ScrollView {
+                visible: createDialog.journal
+                Layout.fillWidth: true
+                Layout.preferredHeight: 180
+                TextArea {
+                    id: createJournal
+                    objectName: "createJournal"
+                    placeholderText: qsTr("Write a private note…")
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.Wrap
+                }
+            }
+            Label {
+                visible: createDialog.journal
+                text: qsTr("Private · saved offline and synced to your inbox. Your assistant can read it, not write it.")
+                color: window.mutedInk
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
         }
-        onAccepted: if (store.createCard(createTitle.text, createSummary.text)) { createTitle.clear(); createSummary.clear() }
     }
     Dialog {
         id: updateDialog

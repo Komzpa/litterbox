@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -67,12 +68,19 @@ func (s Store) Create(ctx context.Context, tenant, body string) (Entry, error) {
 		return Entry{}, err
 	}
 	defer tx.Rollback(ctx)
-	var e Entry
-	err = tx.QueryRow(ctx, `INSERT INTO journal_entries(tenant_id,body) VALUES($1,$2) RETURNING id::text,body,created_at,updated_at`, tenant, body).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt)
+	e, err := CreateInTx(ctx, tx, tenant, uuid.NewString(), body)
 	if err != nil {
 		return e, err
 	}
 	err = tx.Commit(ctx)
+	return e, err
+}
+
+// CreateInTx shares journal persistence with durable inbox creation. The caller
+// supplies its card ID and commits both records atomically in the same tenant.
+func CreateInTx(ctx context.Context, tx pgx.Tx, tenant, id, body string) (Entry, error) {
+	var e Entry
+	err := tx.QueryRow(ctx, `INSERT INTO journal_entries(id,tenant_id,body) VALUES($1,$2,$3) RETURNING id::text,body,created_at,updated_at`, id, tenant, body).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt)
 	return e, err
 }
 func (s Store) List(ctx context.Context, tenant string) ([]Entry, error) {
