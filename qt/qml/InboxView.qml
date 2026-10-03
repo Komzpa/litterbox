@@ -80,8 +80,41 @@ ApplicationWindow {
         bundleModel.groupBundles()
         if (!next[bundleId] && bundleOpeners[bundleId]) bundleOpeners[bundleId].forceActiveFocus()
     }
+    function archiveBundle(bundleId) {
+        const result = store.archiveBundleNow(bundleId)
+        if (!result || !result.token || Number(result.count) < 1) return false
+        bundleArchiveToken = result.token
+        bundleArchiveStatus = qsTr("Archived %1 emails").arg(result.count)
+        bundleArchiveTimer.interval = 8000
+        bundleArchiveTimer.restart()
+        return true
+    }
+    function undoBundleArchive() {
+        bundleArchiveTimer.stop()
+        const restored = bundleArchiveToken.length > 0 && store.undoBundleArchive(bundleArchiveToken)
+        bundleArchiveToken = ""
+        if (restored) {
+            bundleArchiveStatus = ""
+        } else {
+            bundleArchiveStatus = qsTr("Undo expired")
+            bundleArchiveTimer.interval = 2200
+            bundleArchiveTimer.restart()
+        }
+        return restored
+    }
     property string updateStatus: ""
     property string updateVersion: ""
+    property string bundleArchiveToken: ""
+    property string bundleArchiveStatus: ""
+    Timer {
+        id: bundleArchiveTimer
+        interval: 8000
+        repeat: false
+        onTriggered: {
+            window.bundleArchiveToken = ""
+            window.bundleArchiveStatus = ""
+        }
+    }
 
 
     // Drop the dragged card at the row the reorder handle was released over.
@@ -223,7 +256,56 @@ ApplicationWindow {
             }
             Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
             Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
-            Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
+            Rectangle {
+                id: bundleArchiveUndoBar
+                objectName: "bundleArchiveUndoBar"
+                visible: window.bundleArchiveStatus.length > 0
+                Layout.fillWidth: true
+                implicitHeight: undoBarRow.implicitHeight + Kirigami.Units.smallSpacing * 2
+                radius: Kirigami.Units.cornerRadius
+                color: window.surface
+                border.color: "#dce5e3"
+                RowLayout {
+                    id: undoBarRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: Kirigami.Units.smallSpacing
+                    anchors.rightMargin: Kirigami.Units.smallSpacing
+                    spacing: 0
+                    Label {
+                        objectName: "bundleArchiveUndoMessage"
+                        text: window.bundleArchiveStatus === qsTr("Undo expired")
+                            ? window.bundleArchiveStatus
+                            : window.bundleArchiveStatus + " ·"
+                        color: window.ink
+                        font: Kirigami.Theme.defaultFont
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+                    Button {
+                        id: bundleArchiveUndoButton
+                        objectName: "bundleArchiveUndoButton"
+                        visible: window.bundleArchiveStatus !== qsTr("Undo expired")
+                        text: qsTr("Undo")
+                        implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
+                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                        leftPadding: Kirigami.Units.smallSpacing
+                        rightPadding: Kirigami.Units.smallSpacing
+                        Material.theme: Material.Light
+                        Material.foreground: window.accent
+                        palette.buttonText: window.accent
+                        background: Rectangle {
+                            radius: Kirigami.Units.cornerRadius
+                            color: bundleArchiveUndoButton.down ? "#e7f1ee" : bundleArchiveUndoButton.hovered ? "#f3f7f6" : window.surface
+                            border.width: bundleArchiveUndoButton.visualFocus ? 2 : 0
+                            border.color: window.accent
+                        }
+                        onClicked: window.undoBundleArchive()
+                    }
+                }
+            }
+             Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
         }
     }
     Connections {
@@ -572,7 +654,7 @@ ApplicationWindow {
                                     Accessible.description: qsTr("Archives all %1 unpinned emails; pinned cards stay open").arg(cardRow.bundleSummary.unpinned)
                                     ToolTip.text: Accessible.name
                                     ToolTip.visible: hovered
-                                    onClicked: cardActions.archiveBundle()
+                                    onClicked: window.archiveBundle(card.bundle_id)
                                 }
                                 ToolButton {
                                     objectName: "bundleOptions-" + cardId
@@ -688,9 +770,7 @@ ApplicationWindow {
                                     sourceLabel: window.cardStore.sourceLabel(card)
                                     hasBody: !!card.has_body
                                     bundleId: card.bundle_id || ""
-                                    bundleArchiveScope: qsTr("Archive all %1 unpinned emails in this bundle, including %2 important emails. Pinned cards stay open. Each email is archived in its originating Gmail account.").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.important)
                                     pinnedRank: card.pinned_rank
-                                    showBundleArchive: !cardRow.bundled
                                     cardTitle: title
                                     accountName: card.account_name || ""
                                     canOpenSource: !!card.source_url

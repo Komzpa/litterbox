@@ -12,9 +12,6 @@ Controls.ToolButton {
     property string sourceLabel: source
     property bool hasBody: false
     property string bundleId: ""
-    property bool showBundleArchive: true
-    property string bundleArchiveScope: qsTr("Archive every unpinned email in this bundle in its originating Gmail account. Important emails are included; pinned cards stay open.")
-    function archiveBundle() { archiveDialog.open() }
     property var pinnedRank: undefined
     property string snoozeError: ""
     property string cardTitle: ""
@@ -281,25 +278,6 @@ Controls.ToolButton {
                 onClicked: { actionSheet.close(); root.store.enqueueOp(root.cardKey, root.pinned ? "unpin" : "pin", {}) }
             }
             Controls.ItemDelegate {
-                objectName: "actionRow-bundle-" + root.cardKey
-                text: root.source === "mail" ? qsTr("Archive unpinned bundle members") : qsTr("Complete unpinned bundle members")
-                icon.name: root.source === "mail" ? "mail-mark-read-symbolic" : "folder"
-                icon.width: Kirigami.Units.iconSizes.smallMedium
-                icon.height: Kirigami.Units.iconSizes.smallMedium
-                icon.color: root.actionInk
-                Layout.fillWidth: true
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                Material.foreground: root.actionInk
-                palette.text: root.actionInk
-                palette.buttonText: root.actionInk
-                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
-                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; isMask: true; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
-                Controls.ToolTip.text: text
-                Controls.ToolTip.visible: hovered
-                visible: root.bundleId.length > 0 && root.showBundleArchive
-                onClicked: { actionSheet.close(); if (root.source === "mail") root.archiveBundle(); else completeDialog.open() }
-            }
-            Controls.ItemDelegate {
                 objectName: "actionRow-takeout-" + root.cardKey
                 text: qsTr("Take out of bundle")
                 icon.name: "list-remove"
@@ -465,94 +443,5 @@ Controls.ToolButton {
         palette.highlightedText: root.actionSurface
         background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
         onAccepted: root.store.enqueueOp(root.cardKey, "bundle_done", { bundle_id: root.bundleId })
-    }
-    Controls.Dialog {
-        id: archiveDialog
-        parent: Controls.Overlay.overlay
-        objectName: "archiveDialog"
-        title: qsTr("Archive all unpinned cards in this bundle?")
-        modal: true
-        width: Math.min(560, parent ? parent.width - 36 : 560)
-        implicitWidth: width
-        anchors.centerIn: parent
-        header: Controls.Label {
-            text: archiveDialog.title
-            color: root.actionInk
-            font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true})
-            padding: Kirigami.Units.largeSpacing
-            wrapMode: Text.Wrap
-        }
-        contentItem: ColumnLayout {
-            Controls.Label {
-                text: root.bundleArchiveScope
-                color: root.actionInk
-                font: Kirigami.Theme.defaultFont
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-            }
-        }
-        // Like the action sheet, avoid the style-owned header/button labels
-        // and button-box roles so both labels and hit targets stay visible.
-        footer: Controls.Pane {
-            background: Rectangle { color: root.actionSurface }
-            contentItem: RowLayout {
-                Item { Layout.fillWidth: true }
-                Controls.Button {
-                    id: archiveOkButton
-                    objectName: "archiveOkButton"
-                    text: qsTr("OK")
-                    implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                    contentItem: Controls.Label {
-                        text: archiveOkButton.text
-                        color: root.actionInk
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: Kirigami.Units.cornerRadius
-                        color: archiveOkButton.down ? "#e8eeed" : archiveOkButton.hovered ? "#eef3f2" : root.actionSurface
-                        border.width: archiveOkButton.visualFocus ? 2 : 1
-                        border.color: archiveOkButton.visualFocus ? root.actionInk : "#dce5e3"
-                    }
-                    onClicked: archiveDialog.accept()
-                }
-                Controls.Button {
-                    id: archiveCancelButton
-                    objectName: "archiveCancelButton"
-                    text: qsTr("Cancel")
-                    implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                    contentItem: Controls.Label {
-                        text: archiveCancelButton.text
-                        color: root.actionInk
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: Kirigami.Units.cornerRadius
-                        color: archiveCancelButton.down ? "#e8eeed" : archiveCancelButton.hovered ? "#eef3f2" : root.actionSurface
-                        border.width: archiveCancelButton.visualFocus ? 2 : 1
-                        border.color: archiveCancelButton.visualFocus ? root.actionInk : "#dce5e3"
-                    }
-                    onClicked: archiveDialog.reject()
-                }
-            }
-        }
-        Material.theme: Material.Light
-        Material.background: root.actionSurface
-        Material.foreground: root.actionInk
-        Material.accent: root.actionAccent
-        Material.primary: root.actionAccent
-        palette.window: root.actionSurface
-        palette.windowText: root.actionInk
-        palette.base: root.actionSurface
-        palette.text: root.actionInk
-        palette.button: root.actionSurface
-        palette.buttonText: root.actionInk
-        palette.highlight: root.actionAccent
-        palette.highlightedText: root.actionSurface
-        background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
-        onAccepted: root.store.enqueueOp(root.cardKey, "bundle_archive", { bundle_id: root.bundleId })
     }
 }

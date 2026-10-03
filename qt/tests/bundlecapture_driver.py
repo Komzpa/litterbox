@@ -61,6 +61,6 @@ source_unchanged = hashlib.sha256(args.cache.read_bytes()).hexdigest() == source
     "source_cache_sha256": source_sha, "source_cache_unchanged": source_unchanged,
     "runner_statuses": statuses}, indent=2) + "\n")
 print("RUNNER_EXITS", json.dumps(statuses))
-if not source_unchanged or len(receipts) != 6:
+if not source_unchanged or len(receipts) != 12:
     raise SystemExit("Incomplete click proof or modified frozen source")
 raise SystemExit(max(status["exit_status"] for status in statuses))

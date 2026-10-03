@@ -182,4 +182,36 @@ TestCase {
         }
         inbox.close()
     }
-}
+    function test_archiveBundleUndo() {
+        const bundle = "sender:undo@example.test"
+        const ids = ["undo-leader", "undo-member"]
+        verify(store.applyRemoteCards({now: [
+            card(ids[0], bundle, "now", {state: "open"}),
+            card("undo-unrelated", "", "now", {state: "open"}),
+            card(ids[1], bundle, "now", {state: "open"})
+        ], later: [], missed: []}))
+        const before = store.cardIds()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 520, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const archive = findChild(list.itemAtIndex(0), "archiveBundle-" + ids[0])
+        verify(archive && archive.visible)
+        mouseClick(archive, archive.width / 2, archive.height / 2)
+        tryVerify(function() { return store.cardIds().indexOf(ids[0]) < 0 && store.cardIds().indexOf(ids[1]) < 0 })
+        compare(store.cardIds(), ["undo-unrelated"])
+        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        verify(bar && bar.visible)
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Archived 2 emails ·")
+        const undo = findChild(bar, "bundleArchiveUndoButton")
+        verify(undo && undo.visible && undo.width >= 48 && undo.height >= 48)
+        mouseClick(undo, undo.width / 2, undo.height / 2)
+        tryCompare(inbox, "bundleArchiveStatus", "")
+        compare(store.cardIds(), before, "Undo restores every bundle member to its original order")
+        verify(!bar.visible, "Undo hides the inline bar")
+        inbox.close()
+    }
+    }
