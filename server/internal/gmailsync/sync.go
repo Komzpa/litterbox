@@ -6,12 +6,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
+ 	"net/http"
+ 	"net/mail"
+ 	"strconv"
+ 	"strings"
+ 	"time"
 
-	"golang.org/x/net/html"
+ 	"golang.org/x/net/html"
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
@@ -49,10 +50,86 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
 	if e = tx.Commit(ctx); e != nil {
 		return e
 	}
-	if cursor == "" {
-		return s.initial(ctx, a, c, initialStarted, pageToken, initialHistory)
-	}
-	return s.poll(ctx, a, c, cursor)
+ 	if err := s.backfillSenderNames(ctx, a, c); err != nil {
+ 		return err
+ 	}
+ 	if cursor == "" {
+ 		return s.initial(ctx, a, c, initialStarted, pageToken, initialHistory)
+ 	}
+ 	return s.poll(ctx, a, c, cursor)
+}
+
+func senderDisplayName(header string) string {
+ 	address, err := mail.ParseAddress(header)
+ 	if err != nil {
+ 		return ""
+ 	}
+ 	return address.Name
+}
+
+// Backfill names for existing cards once. NULL distinguishes old records from
+// a parsed bare address, whose sender_name is intentionally the empty string.
+func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) error {
+ 	tx, err := s.beginTenant(ctx, a.TenantID)
+ 	if err != nil {
+ 		return err
+ 	}
+ 	rows, err := tx.Query(ctx, `SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND source='mail' AND sender_name IS NULL ORDER BY sort_at,id`, a.TenantID, a.ID)
+ 	if err != nil {
+ 		tx.Rollback(ctx)
+ 		return err
+ 	}
+ 	var threads []string
+ 	for rows.Next() {
+ 		var thread string
+ 		if err = rows.Scan(&thread); err != nil {
+ 			rows.Close()
+ 			tx.Rollback(ctx)
+ 			return err
+ 		}
+ 		threads = append(threads, thread)
+ 	}
+ 	if err = rows.Err(); err != nil {
+ 		rows.Close()
+ 		tx.Rollback(ctx)
+ 		return err
+ 	}
+ 	rows.Close()
+ 	if err = tx.Commit(ctx); err != nil {
+ 		return err
+ 	}
+
+ 	names := make(map[string]string, len(threads))
+ 	for _, threadID := range threads {
+ 		thread, fetchErr := c.GetThreadMetadata(ctx, threadID)
+ 		if fetchErr != nil {
+ 			return fetchErr
+ 		}
+ 		from := ""
+ 		for _, message := range thread.Messages {
+ 			for _, header := range message.Payload.Headers {
+ 				if strings.EqualFold(header.Name, "From") {
+ 					from = header.Value
+ 				}
+ 			}
+ 		}
+ 		names[threadID] = senderDisplayName(from)
+ 	}
+ 	if len(names) == 0 {
+ 		return nil
+ 	}
+
+ 	tx, err = s.beginTenant(ctx, a.TenantID)
+ 	if err != nil {
+ 		return err
+ 	}
+ 	defer tx.Rollback(ctx)
+ 	for threadID, name := range names {
+ 		if _, err = tx.Exec(ctx, `UPDATE cards SET sender_name=$1 WHERE tenant_id=$2 AND account_id=$3 AND gmail_thread_id=$4 AND sender_name IS NULL`, name, a.TenantID, a.ID, threadID); err != nil {
+ 			return err
+ 		}
+ 	}
+ 	return tx.Commit(ctx)
 }
 func (s *Syncer) initial(ctx context.Context, a Account, c *Client, started bool, page, history string) error {
 	if !started {
@@ -243,26 +320,27 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		}
 		prepared[i] = *parsed
 	}
-	subject, sender := "", ""
-	var newest time.Time
-	for _, m := range t.Messages {
-		millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
-		date := time.UnixMilli(millis).UTC()
-		if date.After(newest) {
-			newest = date
-		}
-		for _, h := range m.Payload.Headers {
-			switch strings.ToLower(h.Name) {
-			case "subject":
-				subject = h.Value
-			case "from":
-				sender = h.Value
-			}
-		}
-	}
-	if newest.IsZero() {
-		newest = time.Now().UTC()
-	}
+ subject, sender := "", ""
+ var newest time.Time
+ for _, m := range t.Messages {
+ 	millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
+ 	date := time.UnixMilli(millis).UTC()
+ 	if date.After(newest) {
+ 		newest = date
+ 	}
+ 	for _, h := range m.Payload.Headers {
+ 		switch strings.ToLower(h.Name) {
+ 		case "subject":
+ 			subject = h.Value
+ 		case "from":
+ 			sender = h.Value
+ 		}
+ 	}
+ }
+ senderName := senderDisplayName(sender)
+ if newest.IsZero() {
+ 	newest = time.Now().UTC()
+ }
 	state := "open"
 	if !inbox {
 		state = "archived"
@@ -272,7 +350,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		return e
 	}
 	defer tx.Rollback(ctx)
-	_, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, newest)
+ _, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, newest)
 	if e != nil {
 		return e
 	}

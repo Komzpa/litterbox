@@ -210,6 +210,23 @@ private slots:
         QCOMPARE(restored.sourceLabel({{"source", "reminder"}}), QStringLiteral("reminder"));
         QCOMPARE(restored.sourceLabel({{"source", "mail"}, {"source_kind", ""}}), QStringLiteral("mail"));
     }
+    void senderNameRoleArrives() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("sender-name.sqlite");
+        const QVariantMap card{{"id", cardId}, {"title", "LinkedIn"}, {"sender_name", "LinkedIn"}};
+        const QVariantMap sections{{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(sections));
+            QCOMPARE(store.data(store.index(0), CardStore::SenderNameRole).toString(), QStringLiteral("LinkedIn"));
+            QCOMPARE(store.roleNames().value(CardStore::SenderNameRole), QByteArray("sender_name"));
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.data(restored.index(0), CardStore::SenderNameRole).toString(), QStringLiteral("LinkedIn"));
+    }
     void cachedCardsSurviveRestart() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

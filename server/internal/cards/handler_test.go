@@ -45,7 +45,7 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql"} {
+ 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {
 			t.Fatal(err)
@@ -279,7 +279,7 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql"} {
+ 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {
 			t.Fatal(err)

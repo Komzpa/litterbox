@@ -70,7 +70,7 @@ func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if i > 1 {
 				labels = []string{"INBOX"}
 			}
-			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": "sender@example.test"}}}})
+ 			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": "LinkedIn <messages-noreply@linkedin.com>"}}}})
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "thread-1", "historyId": f.history, "messages": msgs})
 	case strings.HasPrefix(r.URL.Path, "/gmail/v1/users/me/messages/"):
@@ -121,7 +121,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	if _, e := db.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); e != nil {
 		t.Fatal(e)
 	}
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql"} {
+ 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql", "017_card_sender_name.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)
@@ -172,13 +172,16 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 		t.Fatal(e)
 	}
 	var cardID uuid.UUID
-	var state string
-	if e := db.QueryRow(ctx, "SELECT id,state FROM cards WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id='thread-1'", tenant, account).Scan(&cardID, &state); e != nil {
+ 	var state, senderName string
+ 	if e := db.QueryRow(ctx, "SELECT id,state,sender_name FROM cards WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id='thread-1'", tenant, account).Scan(&cardID, &state, &senderName); e != nil {
 		t.Fatal(e)
 	}
 	if state != "open" {
 		t.Fatalf("initial card state=%s", state)
 	}
+ 	if senderName != "LinkedIn" {
+ 		t.Fatalf("sender_name=%q, want LinkedIn", senderName)
+ 	}
 	fake.inbox = false
 	fake.history = "2"
 	if e := s.SyncAccount(ctx, a); e != nil {
@@ -292,4 +295,41 @@ func TestClientFactoryUsesBoundedDefaultHTTPClient(t *testing.T) {
 	if client.HTTP == nil || client.HTTP.Timeout <= 0 {
 		t.Fatalf("default Gmail client timeout=%v", client.HTTP)
 	}
+}
+
+func TestSenderDisplayName(t *testing.T) {
+	for _, tc := range []struct{ header, want string }{
+		{"LinkedIn <messages-noreply@linkedin.com>", "LinkedIn"},
+ 		{"=?UTF-8?B?SmFuZSBEw7Y=?= <jane@example.com>", "Jane Dö"},
+		{"jane@example.com", ""},
+	} {
+		if got := senderDisplayName(tc.header); got != tc.want {
+			t.Errorf("senderDisplayName(%q) = %q, want %q", tc.header, got, tc.want)
+		}
+	}
+}
+
+func TestBackfillSenderNameFromGmailMetadata(t *testing.T) {
+	db := testPool(t)
+	ctx := context.Background()
+	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil { t.Fatal(err) }
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'legacy@example.test',$3)`, tenant, account, []byte("refresh")); err != nil { t.Fatal(err) }
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'legacy-thread','Old mail','legacy@example.test')`, tenant, card, account); err != nil { t.Fatal(err) }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" { json.NewEncoder(w).Encode(map[string]any{"access_token":"test-access","expires_in":3600}); return }
+		if r.URL.Path != "/gmail/v1/users/me/threads/legacy-thread" || r.URL.Query().Get("format") != "metadata" || r.URL.Query().Get("metadataHeaders") != "From" {
+			t.Errorf("unexpected metadata request: %s", r.URL)
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"messages": []any{map[string]any{"payload":map[string]any{"headers":[]any{map[string]string{"name":"From","value":"LinkedIn <messages-noreply@linkedin.com>"}}}}}})
+	}))
+	defer srv.Close()
+	client := &Client{HTTP:srv.Client(), APIBase:srv.URL+"/gmail/v1/users/me", TokenURL:srv.URL+"/token", RefreshToken:"refresh", ClientID:"id", ClientSecret:"secret"}
+	syncer := &Syncer{DB:db}
+	if err := syncer.backfillSenderNames(ctx, Account{TenantID:tenant, ID:account}, client); err != nil { t.Fatal(err) }
+	var got string
+	if err := db.QueryRow(ctx, `SELECT sender_name FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&got); err != nil { t.Fatal(err) }
+	if got != "LinkedIn" { t.Fatalf("backfilled sender_name=%q, want LinkedIn", got) }
 }

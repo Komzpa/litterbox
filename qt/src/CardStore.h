@@ -27,7 +27,7 @@ class CardStore : public QAbstractListModel {
     Q_PROPERTY(bool online READ online WRITE setOnline NOTIFY onlineChanged)
     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
 public:
-    enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole };
+    enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole };
     Q_ENUM(Role)
     explicit CardStore(QObject *parent = nullptr);
     ~CardStore() override;

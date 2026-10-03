@@ -220,6 +220,13 @@ func (c *Client) GetThread(ctx context.Context, id string) (Thread, error) {
 	return x, e
 }
 
+func (c *Client) GetThreadMetadata(ctx context.Context, id string) (Thread, error) {
+	var x Thread
+	p := "/threads/" + url.PathEscape(id) + "?format=metadata&metadataHeaders=From"
+	err := c.request(ctx, "GET", p, nil, &x)
+	return x, err
+}
+
 func (c *Client) GetMessageRaw(ctx context.Context, id string) ([]byte, error) {
 	var message struct {
 		Raw string `json:"raw"`
