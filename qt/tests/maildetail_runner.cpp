@@ -1,10 +1,15 @@
 #include "maildocumentprofile.h"
+#ifdef LB_RESIZE_STORE
+#include "CardStore.h"
+#include <QTemporaryDir>
+#endif
 
 #include <QElapsedTimer>
 #include <QFile>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTimer>
+#include <QVariantList>
 #include <QtQuickTest/quicktest.h>
 #include <QtWebEngineQuick>
 
@@ -18,8 +23,7 @@ public:
         m_timer.setInterval(1);
         connect(&m_timer, &QTimer::timeout, this, [this] {
             const qint64 now = m_clock.nsecsElapsed();
-            m_longest = qMax(m_longest, now - m_last);
-            m_last = now;
+            recordGap(now);
         });
     }
     Q_INVOKABLE QString read(const QString &name)
@@ -31,16 +35,28 @@ public:
     Q_INVOKABLE void startHeartbeat()
     {
         m_longest = m_last = 0;
+        m_gaps.clear();
         m_clock.start();
         m_timer.start();
     }
     Q_INVOKABLE double stopHeartbeat()
     {
-        m_longest = qMax(m_longest, m_clock.nsecsElapsed() - m_last);
+        recordGap(m_clock.nsecsElapsed());
         m_timer.stop();
         return m_longest / 1000000.0;
     }
+    Q_INVOKABLE QVariantList heartbeatBlocks() const { return m_gaps; }
 private:
+    void recordGap(qint64 now)
+    {
+        const qint64 gap = now - m_last;
+        m_longest = qMax(m_longest, gap);
+        if (gap > 50000000)
+            m_gaps.append(QVariantMap{{QStringLiteral("atMs"), now / 1000000.0},
+                                      {QStringLiteral("gapMs"), gap / 1000000.0}});
+        m_last = now;
+    }
+    QVariantList m_gaps;
     QTimer m_timer;
     QElapsedTimer m_clock;
     qint64 m_last = 0, m_longest = 0;
@@ -53,7 +69,17 @@ public slots:
     void qmlEngineAvailable(QQmlEngine *engine)
     {
         engine->rootContext()->setContextProperty(QStringLiteral("mailFixtures"), new MailFixtures(engine));
+#ifdef LB_RESIZE_STORE
+        auto *store = new CardStore(engine);
+        if (!m_database.isValid() || !store->open(m_database.filePath(QStringLiteral("cache.sqlite"))))
+            qFatal("Cannot open disposable resize cache");
+        engine->rootContext()->setContextProperty(QStringLiteral("resizeStore"), store);
+#endif
     }
+private:
+#ifdef LB_RESIZE_STORE
+    QTemporaryDir m_database;
+#endif
 };
 
 int main(int argc, char **argv)
