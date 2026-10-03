@@ -69,6 +69,7 @@ TestCase {
             verify(expandedGap >= 0 && expandedGap <= inbox.edgeSpacing + 1,
                    "expanded bundle spacing differs at row " + i + ": " + expandedGap)
         }
+        verify(waitForRendering(toggle), "Expanded opener geometry must be rendered before the second center click")
         mouseClick(toggle)
         tryVerify(function() { list.forceLayout(); return !list.itemAtIndex(1).visible })
         compare(next.y - leader.y - frame.y - frame.height, gap)

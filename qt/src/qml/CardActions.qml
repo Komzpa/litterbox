@@ -13,6 +13,7 @@ Controls.ToolButton {
     property bool hasBody: false
     property string bundleId: ""
     property bool showBundleArchive: true
+    property string bundleArchiveScope: qsTr("Archive every unpinned email in this bundle in its originating Gmail account. Important emails are included; pinned cards stay open.")
     function archiveBundle() { archiveDialog.open() }
     property var pinnedRank: undefined
     property string snoozeError: ""
@@ -471,38 +472,71 @@ Controls.ToolButton {
         objectName: "archiveDialog"
         title: qsTr("Archive all unpinned cards in this bundle?")
         modal: true
-        // Explicit English buttons (see snoozeDialog).
-        footer: Controls.DialogButtonBox {
-            background: Rectangle { color: root.actionSurface }
-            Controls.Button {
-                id: archiveOkButton
-                objectName: "archiveOkButton"
-                text: qsTr("OK")
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                palette.button: root.actionSurface
-                palette.buttonText: root.actionInk
-                background: Rectangle {
-                    radius: Kirigami.Units.cornerRadius
-                    color: archiveOkButton.down ? "#e8eeed" : archiveOkButton.hovered ? "#eef3f2" : root.actionSurface
-                    border.width: archiveOkButton.visualFocus ? 2 : 1
-                    border.color: archiveOkButton.visualFocus ? root.actionInk : "#dce5e3"
-                }
-                onClicked: archiveDialog.accept()
+        width: Math.min(560, parent ? parent.width - 36 : 560)
+        implicitWidth: width
+        anchors.centerIn: parent
+        header: Controls.Label {
+            text: archiveDialog.title
+            color: root.actionInk
+            font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true})
+            padding: Kirigami.Units.largeSpacing
+            wrapMode: Text.Wrap
+        }
+        contentItem: ColumnLayout {
+            Controls.Label {
+                text: root.bundleArchiveScope
+                color: root.actionInk
+                font: Kirigami.Theme.defaultFont
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
             }
-            Controls.Button {
-                id: archiveCancelButton
-                objectName: "archiveCancelButton"
-                text: qsTr("Cancel")
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                palette.button: root.actionSurface
-                palette.buttonText: root.actionInk
-                background: Rectangle {
-                    radius: Kirigami.Units.cornerRadius
-                    color: archiveCancelButton.down ? "#e8eeed" : archiveCancelButton.hovered ? "#eef3f2" : root.actionSurface
-                    border.width: archiveCancelButton.visualFocus ? 2 : 1
-                    border.color: archiveCancelButton.visualFocus ? root.actionInk : "#dce5e3"
+        }
+        // Like the action sheet, avoid the style-owned header/button labels
+        // and button-box roles so both labels and hit targets stay visible.
+        footer: Controls.Pane {
+            background: Rectangle { color: root.actionSurface }
+            contentItem: RowLayout {
+                Item { Layout.fillWidth: true }
+                Controls.Button {
+                    id: archiveOkButton
+                    objectName: "archiveOkButton"
+                    text: qsTr("OK")
+                    implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    contentItem: Controls.Label {
+                        text: archiveOkButton.text
+                        color: root.actionInk
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: Kirigami.Units.cornerRadius
+                        color: archiveOkButton.down ? "#e8eeed" : archiveOkButton.hovered ? "#eef3f2" : root.actionSurface
+                        border.width: archiveOkButton.visualFocus ? 2 : 1
+                        border.color: archiveOkButton.visualFocus ? root.actionInk : "#dce5e3"
+                    }
+                    onClicked: archiveDialog.accept()
                 }
-                onClicked: archiveDialog.reject()
+                Controls.Button {
+                    id: archiveCancelButton
+                    objectName: "archiveCancelButton"
+                    text: qsTr("Cancel")
+                    implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    contentItem: Controls.Label {
+                        text: archiveCancelButton.text
+                        color: root.actionInk
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: Kirigami.Units.cornerRadius
+                        color: archiveCancelButton.down ? "#e8eeed" : archiveCancelButton.hovered ? "#eef3f2" : root.actionSurface
+                        border.width: archiveCancelButton.visualFocus ? 2 : 1
+                        border.color: archiveCancelButton.visualFocus ? root.actionInk : "#dce5e3"
+                    }
+                    onClicked: archiveDialog.reject()
+                }
             }
         }
         Material.theme: Material.Light

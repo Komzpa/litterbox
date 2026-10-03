@@ -28,13 +28,20 @@ TestCase {
     }
     function mixed(inbox, list, width) {
         // Additive demonstration controls live only in this disposable store.
+        const originalIds = bundleStore.cardIds()
         verify(bundleStore.createCard("Review the release plan", "A pinned card stays standalone."))
-        const pinned = bundleStore.cardIds()[0]
+        const pinned = bundleStore.cardIds().find(id => originalIds.indexOf(id) < 0)
+        verify(pinned)
         verify(bundleStore.enqueueOp(pinned, "pin", {}))
         verify(bundleStore.createCard("Confirm the meeting time", ""))
         verify(bundleStore.createCard("Private journal note", "Normal journal controls stay unchanged.", "journal"))
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) && list.itemAtIndex(0).cardId === pinned })
         list.positionViewAtBeginning()
         wait(400)
+        const added = bundleStore.cardIds().filter(id => originalIds.indexOf(id) < 0)
+        compare(added.length, 3)
+        for (const id of added) verify(rows(list, [id])[0].visible, "Mixed control must stay visible")
+        console.log("BUNDLE_MIXED", JSON.stringify({width: width, added: rows(list, added)}))
         capture(inbox, "mixed-" + width)
     }
     function capture(inbox, name) {
@@ -49,9 +56,13 @@ TestCase {
         }
         return result
     }
-    function test_matrix_data() { return [{tag: "1440", width: 1440, height: 1000}, {tag: "598", width: 598, height: 1200}] }
+    function test_matrix_data() {
+        return [{tag: "1440", width: 1440, height: 1000}, {tag: "598", width: 598, height: 1200}]
+            .filter(viewport => viewport.width === bundleProofWidth)
+    }
     function test_matrix(data) {
         verify(bundleCacheLoaded && bundleProofDirectory, "Use a read-only copied real cache and an output directory")
+        console.log("BUNDLE_CACHE", JSON.stringify({path: bundleCachePath, width: data.width}))
         const cached = bundleCachedCards.map(card => Object.assign({}, card))
         const leader = cached.find(card => card.bundle_title === "sender:messages-noreply@linkedin.com" && card.bundle_leader === true)
         verify(leader)
@@ -65,8 +76,8 @@ TestCase {
         })
         verify(inbox)
         const list = findChild(inbox, "inboxList")
-        list.cacheBuffer = 50000
-        tryVerify(function() { list.forceLayout(); return rows(list, ids).length === 8 }, 15000)
+        list.cacheBuffer = 2 * data.height
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null }, 15000)
         list.positionViewAtBeginning()
         wait(400)
         const row = list.itemAtIndex(0)
@@ -79,9 +90,11 @@ TestCase {
         capture(inbox, "collapsed-" + data.width)
         input(toggle, "chevron-click", 12)
         if (archive) tryCompare(inbox.expandedBundles, leader.bundle_id, true)
+        tryVerify(function() { list.forceLayout(); return rows(list, ids).filter(row => row.visible).length === 8 }, 15000)
         list.forceLayout()
         wait(250)
         const expanded = rows(list, ids)
+        compare(expanded.length, 8)
         console.log("BUNDLE_EXPANDED", JSON.stringify({width: data.width, rows: expanded}))
         for (let i = 1; i < expanded.length && inbox.expandedBundles[leader.bundle_id]; ++i) {
             compare(expanded[i].index, expanded[0].index + i)
@@ -111,12 +124,19 @@ TestCase {
         wait(200)
         console.log("BUNDLE_COLLAPSED", JSON.stringify({width: data.width, rows: rows(list, ids)}))
         if (archive && archive.visible) {
+            const beforeCancelIds = bundleStore.cardIds()
+            const beforeCancelOps = bundleStore.pendingOps
             input(archive, "archive-click")
             const dialog = findChild(row, "archiveDialog")
             tryCompare(dialog, "visible", true)
             capture(inbox, "archive-confirmation-" + data.width)
             input(findChild(dialog, "archiveCancelButton"), "archive-cancel")
             tryCompare(dialog, "visible", false)
+            compare(bundleStore.cardIds(), beforeCancelIds, "Cancel must leave every card open")
+            compare(bundleStore.pendingOps, beforeCancelOps, "Cancel must enqueue no archive")
+            capture(inbox, "after-cancel-" + data.width)
+            console.log("BUNDLE_CANCELLED", JSON.stringify({width: data.width, cards: beforeCancelIds.length, pendingOps: bundleStore.pendingOps}))
+            wait(500) // Allow the driver to independently read the durable cache.
         }
         mixed(inbox, list, data.width)
         inbox.close()

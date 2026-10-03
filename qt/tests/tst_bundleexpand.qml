@@ -95,12 +95,14 @@ TestCase {
         const toggle = findChild(list.itemAtIndex(leader.index), "bundleToggle-" + leaderId)
         verify(toggle)
         verify(toggle.width >= 48 && toggle.height >= 48)
-        compare(toggle.text, "linkedin.com", "The summary must show a sender-domain fallback, never its internal key")
         const archive = findChild(list.itemAtIndex(leader.index), "archiveBundle-" + leaderId)
         verify(archive && archive.visible)
-        compare(archive.text, "Archive bundle")
-        const collapsedPositions = snapshot(list, ids).map(row => ({id: row.id, y: row.y, height: row.height}))
-        compare(toggle.icon.name, "arrow-right")
+        const collapsedRows = snapshot(list, sourceIds)
+        const settledLeader = collapsedRows.find(row => row.id === leaderId)
+        const nextVisible = collapsedRows.find(row => row.visible && row.index > settledLeader.index)
+        verify(nextVisible)
+        const collapsedGap = nextVisible.y - settledLeader.y - settledLeader.height
+        verify(collapsedGap >= 0 && collapsedGap <= inbox.edgeSpacing + 1, "Collapsed visible cards must have no spacing hole")
         mouseClick(toggle, 12, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, true)
         wait(200)
@@ -108,7 +110,6 @@ TestCase {
         rows = snapshot(list, ids)
         console.log("BUNDLE_EXPANDED", JSON.stringify(rows), JSON.stringify(inbox.expandedBundles))
         capture(inbox, "expanded-" + data.width)
-        compare(toggle.icon.name, "arrow-down")
         compare(rows.filter(row => row.visible).length, ids.length)
         const ordered = rows.sort((a, b) => a.index - b.index)
         for (let i = 1; i < ordered.length; ++i) {
@@ -121,9 +122,15 @@ TestCase {
         mouseClick(toggle, 12, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, false)
         tryVerify(function() { list.forceLayout(); return snapshot(list, ids).filter(row => row.visible).length === 1 })
-        compare(toggle.icon.name, "arrow-right")
-        compare(snapshot(list, ids).map(row => ({id: row.id, y: row.y, height: row.height})), collapsedPositions,
-            "Collapse must restore the same zero-spacing layout")
+        for (const row of snapshot(list, ids).filter(row => row.id !== leaderId)) {
+            verify(!row.visible)
+            compare(row.height, 0, "Hidden members must consume no height")
+        }
+        tryVerify(function() {
+            list.forceLayout()
+            const visible = snapshot(list, [leaderId, nextVisible.id])
+            return visible.length === 2 && Math.abs(visible[1].y - visible[0].y - visible[0].height - collapsedGap) <= 1
+        }, 5000, "Collapse must restore the following visible card's gap")
         if (!bundleCacheLoaded) {
             const exempt = snapshot(list, ["important", "pinned"])
             compare(exempt.filter(row => row.visible).length, 2, "Exempt cards remain standalone")

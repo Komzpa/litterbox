@@ -406,6 +406,7 @@ ApplicationWindow {
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
                     readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], important: 0, unpinned: 0, lastId: cardId}
                     readonly property bool lastMember: bundleSummary.lastId === cardId
+                    readonly property real bundleTextInset: bundleToggle.leftPadding + Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
                     Keys.onLeftPressed: function(event) {
                         if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
                         else event.accepted = false
@@ -446,14 +447,28 @@ ApplicationWindow {
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : window.surface
                             border.color: cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
+                            border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
+                            // Adjacent delegates paint the sides of one group, not
+                            // individual cards. Only its first/last row closes it.
+                            Rectangle { x: 0; width: 1; height: parent.height; color: "#cbded8"; visible: cardRow.bundled && cardRow.bundleExpanded }
+                            Rectangle { x: parent.width - 1; width: 1; height: parent.height; color: "#cbded8"; visible: cardRow.bundled && cardRow.bundleExpanded }
+                            Rectangle { width: parent.width; height: 1; color: "#cbded8"; visible: cardRow.bundled && cardRow.bundleExpanded && cardRow.bundleLeader }
+                            Rectangle { y: parent.height - 1; width: parent.width; height: 1; color: "#cbded8"; visible: cardRow.bundled && cardRow.bundleExpanded && cardRow.lastMember }
                             Rectangle {
                                 x: window.edgeSpacing
-                                y: window.edgeSpacing
-                                width: 3
-                                height: parent.height - 2 * window.edgeSpacing
-                                color: "#cbded8"
+                                width: parent.width - 2 * window.edgeSpacing
+                                height: 1
+                                color: "#e0e9e6"
                                 visible: cardRow.bundled && cardRow.bundleExpanded && !cardRow.bundleLeader
+                            }
+                            Rectangle {
+                                x: window.edgeSpacing
+                                y: cardRow.bundleLeader ? cardFrame.topPadding + bundleDivider.y : 0
+                                width: 3
+                                height: parent.height - y - (cardRow.lastMember ? window.edgeSpacing : 0)
+                                color: "#cbded8"
+                                visible: cardRow.bundled && cardRow.bundleExpanded
                             }
                         }
                         contentItem: ColumnLayout {
@@ -518,6 +533,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
+                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
                                             wrapMode: Text.Wrap
                                         }
                                     }
@@ -558,8 +574,9 @@ ApplicationWindow {
                                     }
                                 }
                             }
-                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#e0e9e6"; visible: cardRow.bundleLeader && cardRow.bundleExpanded }
+                            Rectangle { id: bundleDivider; Layout.fillWidth: true; implicitHeight: 1; color: "#e0e9e6"; visible: cardRow.bundleLeader && cardRow.bundleExpanded }
                             RowLayout {
+                                Layout.leftMargin: cardRow.bundled ? cardRow.bundleTextInset : 0
                                 visible: !cardRow.bundleLeader || cardRow.bundleExpanded
                                 Layout.fillWidth: true
                                 Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
@@ -652,6 +669,7 @@ ApplicationWindow {
                                     sourceLabel: window.cardStore.sourceLabel(card)
                                     hasBody: !!card.has_body
                                     bundleId: card.bundle_id || ""
+                                    bundleArchiveScope: qsTr("Archive all %1 unpinned emails in this bundle, including %2 important emails. Pinned cards stay open. Each email is archived in its originating Gmail account.").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.important)
                                     pinnedRank: card.pinned_rank
                                     showBundleArchive: !cardRow.bundled
                                     cardTitle: title
