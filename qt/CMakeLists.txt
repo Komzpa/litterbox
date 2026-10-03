@@ -44,7 +44,6 @@ qt_add_resources(litterbox-qt "lb_pages"
     FILES
         pages/EnrollmentPage.qml
         pages/GmailAccountsPage.qml
-        pages/JournalPage.qml
         pages/McpTokensPage.qml
         pages/MailDetailPage.qml
         pages/ReminderDialog.qml
@@ -122,7 +121,9 @@ add_test(NAME androidupdater COMMAND tst_androidupdater)
 
 # Page slice QMLTestUnit specs (owned by the screens slice), run headless.
 file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")
-list(REMOVE_ITEM _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml")
+list(REMOVE_ITEM _lb_page_tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml")
 find_program(QMLTESTRUNNER6 NAMES qmltestrunner PATHS "/usr/lib/qt6/bin" NO_DEFAULT_PATH)
 if (QMLTESTRUNNER6)
     foreach (_test ${_lb_page_tests})
@@ -135,6 +136,10 @@ if (QMLTESTRUNNER6)
              COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml
                      -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
     set_tests_properties(tst_touchdefects PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME tst_inboxlayout
+             COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml
+                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
+    set_tests_properties(tst_inboxlayout PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 # Install desktop executables to bin and Android module libraries to lib.

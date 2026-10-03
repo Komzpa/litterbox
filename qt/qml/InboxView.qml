@@ -68,7 +68,7 @@ ApplicationWindow {
     property string updateVersion: ""
 
 
-    // Drop the dragged card at the row the `=` handle was released over.
+    // Drop the dragged card at the row the reorder handle was released over.
     function commitCardDrag(cardId, targetIndex) {
         return targetIndex >= 0 && store.moveCardTo(cardId, targetIndex)
     }
@@ -142,7 +142,7 @@ ApplicationWindow {
         ColumnLayout {
             width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 0
+            spacing: Kirigami.Units.smallSpacing
             RowLayout {
                 spacing: Kirigami.Units.mediumSpacing
                 Layout.fillWidth: true
@@ -185,12 +185,11 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
                         MenuItem { text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
                         MenuItem { text: qsTr("Refresh"); icon.name: "view-refresh"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: store.refresh() }
-                        MenuItem { text: qsTr("Private journal"); icon.name: "journal-new"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("JournalPage") }
                         MenuItem { text: qsTr("Check updates"); icon.name: "system-software-update"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                     }
                 }
             }
-            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.smallFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
             Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
             Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
         }
@@ -290,18 +289,19 @@ ApplicationWindow {
                 }
                 model: store
                 section.property: "section"
-                spacing: window.edgeSpacing
+                // Hidden bundle members must contribute neither height nor spacing.
+                spacing: 0
                 section.delegate: Item {
                     width: ListView.view.width
-                    height: sectionHeading.implicitHeight + window.edgeSpacing
+                    height: sectionHeading.implicitHeight + 2 * window.edgeSpacing
                     Label {
                         id: sectionHeading
                         width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
                         anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: window.edgeSpacing
                         text: (section === "pinned" ? qsTr("Pinned") : section === "now" ? qsTr("Now") : section === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
-                        font.family: Kirigami.Theme.smallFont.family
-                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        font.weight: Font.DemiBold
+                        font: Kirigami.Theme.defaultFont
                         color: window.mutedInk
                         padding: 0
                     }
@@ -317,7 +317,7 @@ ApplicationWindow {
                     readonly property bool bundleExpanded: !!window.expandedBundles[card.bundle_id]
                     visible: !bundled || card.bundle_leader !== false || bundleExpanded
                     width: ListView.view.width
-                    height: visible ? cardFrame.implicitHeight : 0
+                    height: visible ? cardFrame.implicitHeight + window.edgeSpacing : 0
                     z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
                     Frame {
@@ -328,10 +328,9 @@ ApplicationWindow {
                         y: cardRow.lifted ? window.dragOffset : 0
                         padding: window.edgeSpacing
                         background: Rectangle { color: cardRow.lifted ? "#e4efed" : "#ffffff"; border.color: cardRow.lifted ? window.accent : "#edf0ef"; radius: Kirigami.Units.cornerRadius }
-                        RowLayout {
-                            width: parent.width
+                        contentItem: RowLayout {
                             spacing: Kirigami.Units.smallSpacing
-                                Item {
+                                ToolButton {
                                     id: dragHandle
                                     objectName: "reorderHandle-" + cardId
                                     implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
@@ -340,71 +339,75 @@ ApplicationWindow {
                                     readonly property bool reorderable: pinned || !card.timed
                                     opacity: reorderable ? 1.0 : 0.4
 
-                                    // The handle is the visible affordance and the hit-test
-                                    // target; the drag itself is driven by the list-level
-                                    // surface below, because under delivered pointer events a
-                                    // pressed item only receives the pointer while it stays
-                                    // inside its own 32px bounds.
+                                    // The list-level surface keeps the pointer throughout
+                                    // the drag, beyond this handle's hit target.
+                                    display: AbstractButton.IconOnly
+                                    icon.name: "transform-move"
+                                    icon.width: Kirigami.Units.iconSizes.smallMedium
+                                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                                    icon.color: window.ink
                                     Component.onCompleted: window.cardHandles[cardId] = dragHandle
                                     Component.onDestruction: delete window.cardHandles[cardId]
 
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: "="
-                                        font.pointSize: Kirigami.Theme.defaultFont.pointSize + 2
-                                        font.weight: Font.DemiBold
-                                        color: window.ink
-                                    }
                                     Accessible.name: qsTr("Drag to reorder")
                                     Accessible.description: reorderable ? qsTr("Hold and drag to a new position") : qsTr("Position is fixed by pin or time")
                                     Accessible.role: Accessible.Button
-                                    // No attached ToolTip on this handle: its popup closes on
-                                    // mouse press, and that close cancels the press on the
-                                    // drag surface a millisecond in, so grabbing `=` while
-                                    // hovering it never started a drag. The cursor carries
-                                    // the affordance instead.
+                                    // A popup tooltip would cancel the pressed drag surface;
+                                    // the named icon and cursor carry the affordance instead.
                                     HoverHandler { cursorShape: dragHandle.reorderable ? Qt.OpenHandCursor : Qt.ArrowCursor }
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
-                                    Label {
+                                    ToolButton {
+                                        id: bundleToggle
+                                        objectName: "bundleToggle-" + cardId
                                         visible: cardRow.bundled && card.bundle_leader === true
-                                        text: (cardRow.bundleExpanded ? "⌄ " : "› ") + (card.bundle_title || qsTr("Bundle")) + " · " + (card.bundle_member_count || "")
-                                        // A full-width ToolButton centers its text, which
-                                        // floated this bundle toggle above the mail card as
-                                        // a detached centered line. A plain label aligns
-                                        // with the card's text column like the source line
-                                        // below it; the ›/⌄ prefix keeps the toggle visible
-                                        // at rest. Bundle title/count info is kept.
-                                        color: bundleHover.containsMouse || activeFocus ? window.accent : window.mutedInk
-                                        font.family: Kirigami.Theme.smallFont.family
-                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                        wrapMode: Text.Wrap
-                                        verticalAlignment: Text.AlignVCenter
+                                        text: card.bundle_title || qsTr("Bundle")
+                                        icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
+                                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                        leftPadding: 0
+                                        rightPadding: 0
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: Math.max(48, implicitHeight)
-                                        Accessible.role: Accessible.Button
+                                        contentItem: RowLayout {
+                                            spacing: Kirigami.Units.smallSpacing
+                                            Kirigami.Icon {
+                                                source: bundleToggle.icon.name
+                                                color: window.ink
+                                                isMask: true
+                                                implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                                                implicitHeight: implicitWidth
+                                            }
+                                            Label {
+                                                text: bundleToggle.text
+                                                color: window.mutedInk
+                                                font: Kirigami.Theme.defaultFont
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                                Layout.maximumWidth: implicitWidth
+                                            }
+                                            Label {
+                                                text: "· " + (card.bundle_member_count || "")
+                                                color: window.mutedInk
+                                                font: Kirigami.Theme.defaultFont
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                        }
                                         Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1") : qsTr("Expand %1")).arg(card.bundle_title || qsTr("bundle"))
-                                        activeFocusOnTab: true
-                                        HoverHandler { id: bundleHover }
-                                        TapHandler { onTapped: window.toggleBundle(card.bundle_id) }
-                                        Keys.onSpacePressed: window.toggleBundle(card.bundle_id)
-                                        Keys.onReturnPressed: window.toggleBundle(card.bundle_id)
+                                        onClicked: window.toggleBundle(card.bundle_id)
                                     }
-                                    Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font: Kirigami.Theme.smallFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                                    Label {
+                                    Label { text: window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : ""); color: window.mutedInk; font: Kirigami.Theme.defaultFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Kirigami.Heading {
                                         text: title
                                         color: window.ink
-                                        font.pointSize: Kirigami.Theme.defaultFont.pointSize + 2
-                                        font.weight: Font.DemiBold
+                                        level: 4
                                         wrapMode: Text.Wrap
                                         Layout.fillWidth: true
                                         TapHandler { onTapped: cardActions.openRequested() }
                                     }
                                     Label { text: card.summary || ""; color: window.mutedInk; visible: text.length > 0; font: Kirigami.Theme.defaultFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.smallFont }
+                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
@@ -445,8 +448,7 @@ ApplicationWindow {
                                 }
                             }
                     }
-                    // Overlay, not a Frame child: a second declared child collapses the
-                    // Frame's implicit height (probe: 87px with one child, 18px with two).
+                    // Keep overlays outside the Frame so its height follows only its content.
                     Rectangle {
                         objectName: "dropIndicator"
                         visible: window.dragCardId.length > 0 && window.dragCardId !== cardId && window.cardIdAt(window.dragTargetIndex) === cardId
@@ -460,7 +462,7 @@ ApplicationWindow {
                 }
             }
 
-            // The accepting surface for the `=` drag. It must be as tall as the drag
+            // The accepting surface for the reorder drag. It must be as tall as the drag
             // travel: under delivered pointer events a pressed item stops receiving the
             // pointer as soon as it leaves its own 32px bounds, so a handle-sized press
             // target can never drive a reorder (probe15). It is confined to the handle
@@ -549,7 +551,7 @@ ApplicationWindow {
                 onPressed: function (mouse) { reorderSurface.startDragAt(mouse) }
                 // A press that lands on the same point as the previous release within
                 // the double-click interval arrives as a double click, not as a press;
-                // grabbing `=` twice in a row must still start a drag.
+                // grabbing the handle twice in a row must still start a drag.
                 onDoubleClicked: function (mouse) {
                     reorderSurface.startDragAt(mouse)
                 }
