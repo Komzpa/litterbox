@@ -54,6 +54,42 @@ TestCase {
         verify(list.itemAtIndex(0).visible)
         inbox.close()
     }
+    function test_senderSummary_data() {
+        return [
+            {tag: "one-sender", names: ["LinkedIn", "LinkedIn"], title: "LinkedIn", preview: "LinkedIn"},
+            {tag: "two-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn"], title: "LinkedIn, LinkedIn Job Alerts", preview: "LinkedIn, LinkedIn Job Alerts"},
+            {tag: "more-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn", "Recruiting", "Careers"], title: "LinkedIn, LinkedIn Job Alerts +2", preview: "LinkedIn, LinkedIn Job Alerts +2"},
+            {tag: "domain-fallback", names: [undefined, ""], title: "linkedin.com", preview: "linkedin.com"},
+            {tag: "topic-title", names: ["LinkedIn", "LinkedIn Job Alerts"], bundle: "Career opportunities", title: "Career opportunities", preview: "LinkedIn, LinkedIn Job Alerts"}
+        ]
+    }
+    function test_senderSummary(data) {
+        const bundle = data.bundle || "sender:messages-noreply@linkedin.com"
+        const cards = data.names.map((name, index) => card("sender-" + index, bundle, "now", {
+            sender_name: name, title: index === 0 ? "Your latest career update" : "An earlier update"
+        }))
+        verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 520, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        const toggle = findChild(row, "bundleToggle-sender-0")
+        tryCompare(toggle, "text", data.title)
+        const sender = findChild(row, "bundleAccountLabel-sender-0")
+        compare(sender.text, data.preview + " · test@example.test")
+        const latest = findChild(row, "bundleLatestLabel-sender-0")
+        verify(latest && latest.visible && latest.height > 0, "Collapsed preview must show the latest subject")
+        compare(latest.text, "Latest: Your latest career update")
+        const title = findChild(row, "bundleTitleLabel-sender-0")
+        verify(!title.truncated, "Distinct sender names must remain readable at 520 px")
+        mouseClick(toggle, toggle.width / 2, toggle.height / 2)
+        tryCompare(inbox.expandedBundles, bundle, true)
+        verify(!latest.visible, "Expanded cards show their subjects instead of the collapsed preview")
+        inbox.close()
+    }
     function test_nonAdjacentMembersExpandUnderLeader_data() {
         return [{tag: "1440", width: 1440, height: 1000}, {tag: "598", width: 598, height: 1200}, {tag: "520", width: 520, height: 900}]
     }

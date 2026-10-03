@@ -67,6 +67,8 @@ ApplicationWindow {
     function bundleTitle(card) {
         const title = card.bundle_title || ""
         if (!title.startsWith("sender:")) return title || qsTr("Bundle")
+        const summary = bundleSummaries[card.bundle_id]
+        if (summary && summary.senderLabel) return summary.senderLabel
         const sender = title.slice(7)
         const domain = sender.slice(sender.lastIndexOf("@") + 1).replace(/[<>]/g, "")
         return domain || qsTr("Bundle")
@@ -346,19 +348,27 @@ ApplicationWindow {
                         for (const entry of entries) {
                             const card = entry.model.card
                             if (card.bundle_id) {
-                                const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], important: 0, unpinned: 0, lastId: ""})
+                                const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], senders: [], important: 0, unpinned: 0, lastId: ""})
                                 if (card.account_name && summary.accounts.indexOf(card.account_name) < 0) summary.accounts.push(card.account_name)
                                 if (card.pinned_rank == null && card.section !== "pinned") {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
                                 }
-                                if (card.bundle_leader !== undefined) summary.lastId = entry.model.cardId
+                                if (card.bundle_leader !== undefined) {
+                                    summary.lastId = entry.model.cardId
+                                    const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
+                                    if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
+                                }
                             }
                             if (card.bundle_leader === true) sections[card.bundle_id] = card.section
                             else if (card.bundle_leader === false) {
                                 if (!members[card.bundle_id]) members[card.bundle_id] = []
                                 members[card.bundle_id].push(entry)
                             }
+                        }
+                        for (const bundle in summaries) {
+                            const summary = summaries[bundle]
+                            summary.senderLabel = summary.senders.slice(0, 2).join(", ") + (summary.senders.length > 2 ? " +" + (summary.senders.length - 2) : "")
                         }
                         const ordered = []
                         for (const entry of entries) {
@@ -500,7 +510,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: Kirigami.Units.smallSpacing
                                             Kirigami.Icon { source: bundleToggle.icon.name; color: window.ink; isMask: true; implicitWidth: Kirigami.Units.iconSizes.smallMedium; implicitHeight: implicitWidth }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth }
                                             Rectangle {
                                                 implicitWidth: countLabel.implicitWidth + 16
                                                 implicitHeight: countLabel.implicitHeight + 8
@@ -512,7 +522,17 @@ ApplicationWindow {
                                         }
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
-                                            text: bundleToggle.text + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            Layout.fillWidth: true
+                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                                            wrapMode: Text.Wrap
+                                        }
+                                        Label {
+                                            objectName: "bundleLatestLabel-" + cardId
+                                            text: qsTr("Latest: %1").arg(title)
+                                            visible: !cardRow.bundleExpanded
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
