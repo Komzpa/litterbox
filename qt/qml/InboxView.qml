@@ -132,7 +132,7 @@ ApplicationWindow {
     }
     property real inboxScrollPosition: 0
     function openPage(name, properties) {
-        if (stack.depth === 1) inboxScrollPosition = inboxList.contentY
+        if (stack.depth === 1) inboxScrollPosition = inboxList.contentY - inboxList.originY
         const page = pagesDir.toString() + name + ".qml"
         stack.push(page, properties || { api: api })
     }
@@ -221,7 +221,7 @@ ApplicationWindow {
         initialItem: Item {
             StackView.onActivated: {
                 inboxList.forceLayout()
-                inboxList.contentY = window.inboxScrollPosition
+                inboxList.contentY = inboxList.originY + window.inboxScrollPosition
                 inboxList.forceActiveFocus()
             }
             ListView {
@@ -462,7 +462,15 @@ ApplicationWindow {
                                     onOpenRequested: {
                                         if (card.source_url) Qt.openUrlExternally(card.source_url)
                                     }
-                                    onReadCachedRequested: window.openPage("MailDetailPage", { store: window.cardStore, cardId: cardId, cardTitle: title, accountName: card.account_name || "" })
+                                    onReadCachedRequested: window.openPage("MailDetailPage", {
+                                        store: window.cardStore, cardId: cardId, cardTitle: title,
+                                        accountName: card.account_name || "", card: card,
+                                        requestNote: function(detailCardId, note) {
+                                            noteDialog.cardId = detailCardId
+                                            noteField.text = note
+                                            noteDialog.open()
+                                        }
+                                    })
                                     Component.onCompleted: window.captureActions[cardId] = cardActions
                                     Component.onDestruction: delete window.captureActions[cardId]
                                 }

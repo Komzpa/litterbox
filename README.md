@@ -32,6 +32,12 @@ Click a mail card's text or preview to read the message inside Litterbox.
 the message. Bodies load asynchronously through `GET /v1/cards/{id}/body` and
 remain available in the device's existing offline cache.
 
+**Archive** and the card's **⋮ More actions** are available while reading.
+Archive, Done and Snooze use the same optimistic outbox as inbox cards and
+return to the saved inbox position immediately, without waiting for sync.
+Press **e** to archive the open message; the shortcut is disabled while a
+dialog is open, so it does not interrupt note or snooze entry.
+
 The detail page uses Qt rich text, not a JavaScript-capable web browser. The
 existing server sanitizer removes scripts, event handlers, active embeds and
 tracking pixels; permitted remote images are fetched by the server with its
@@ -42,8 +48,7 @@ lines wrap. Only explicitly clicked HTTP(S)/mailto links open externally.
 Focused UI regression checks:
 
 ```sh
-/usr/lib/qt6/bin/qmltestrunner -input qt/tests/tst_mailopen.qml -import qt/tests/qml-imports -platform offscreen
-/usr/lib/qt6/bin/qmltestrunner -input qt/tests/tst_maildetail.qml -platform offscreen
+ctest --test-dir build/qt -R '^tst_mail(open|detail)$' --output-on-failure
 ```
 
 

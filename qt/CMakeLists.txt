@@ -155,10 +155,12 @@ if (QMLTESTRUNNER6)
              COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml
                      -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
     set_tests_properties(tst_inboxlayout PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    add_test(NAME tst_mailopen
-             COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
-                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
-    set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    if(ANDROID)
+        add_test(NAME tst_mailopen
+                 COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
+                         -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
+        set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    endif()
 endif()
 # The mail body renders in QtWebEngine on desktop, which must be initialized
 # before the GUI application exists; qmltestrunner cannot do that.
@@ -169,11 +171,17 @@ if(NOT ANDROID)
     target_compile_definitions(tst_maildetail PRIVATE LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     target_link_libraries(tst_maildetail PRIVATE Qt6::Quick Qt6::QuickTest Qt6::WebEngineQuick)
     add_test(NAME tst_maildetail
-             COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_maildetail.qml)
+             COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_maildetail.qml
+                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports)
     set_tests_properties(tst_maildetail PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                          # The installed Plasma session resolves controls through
                          # org.kde.desktop; the default Basic style hides the dark
                          # button fill reported on the 0.1-7 build.
+                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    add_test(NAME tst_mailopen
+             COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
+                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports)
+    set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                          ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 endif()
 

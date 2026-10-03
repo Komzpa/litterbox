@@ -24,10 +24,13 @@ Controls.ToolButton {
     signal noteRequested()
     signal openRequested()
     signal readCachedRequested()
+    // Navigation follows the optimistic mutation, never its HTTP acknowledgement.
+    signal cardHandled()
     readonly property string primaryName: source === "mail" ? qsTr("Archive in Gmail%1").arg(accountName ? " · " + accountName : "") : source === "journal" ? qsTr("Archive private note") : source === "home_assistant" ? qsTr("Dismiss Home Assistant notification") : qsTr("Done · dismiss in Litterbox only")
     function primaryAction() {
-        if (source === "mail" || source === "journal") store.enqueueOp(cardKey, "archive", {})
-        else store.dismiss(cardKey)
+        const operation = source === "mail" || source === "journal"
+            ? store.enqueueOp(cardKey, "archive", {}) : store.dismiss(cardKey)
+        if (operation) cardHandled()
     }
     readonly property bool pinStateKnown: pinnedRank !== undefined
     readonly property bool pinned: pinStateKnown && pinnedRank !== null
@@ -401,7 +404,8 @@ Controls.ToolButton {
                 return
             }
             root.snoozeError = ""
-            root.store.enqueueOp(root.cardKey, "snooze", { until: until.toISOString() })
+            if (root.store.enqueueOp(root.cardKey, "snooze", { until: until.toISOString() }))
+                root.cardHandled()
         }
     }
     Controls.Dialog {

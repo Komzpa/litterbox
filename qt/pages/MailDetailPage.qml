@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import QtQuick.Controls.Material
 import org.kde.kirigami as Kirigami
+import litterbox 1.0 as Litterbox
 
 // A plain Page: the message body scrolls itself inside the remaining height,
 // so a browser view never has to report its document height back to QML.
@@ -43,6 +44,8 @@ Kirigami.Page {
     property string cardId: ""
     property string cardTitle: ""
     property string accountName: ""
+    property var card: ({ source: "mail" })
+    property var requestNote: null
     // Set to false in tests to avoid spawning an external browser.
     property bool openLinks: true
 
@@ -98,6 +101,16 @@ Kirigami.Page {
 
         RowLayout {
             Layout.fillWidth: true
+            Connections {
+                target: root.store
+                // Keep pin/bundle state current even if the inbox delegate moves away.
+                ignoreUnknownSignals: true
+                function onDataChanged() {
+                    const row = root.store.cardIds().indexOf(root.cardId)
+                    if (row >= 0)
+                        root.card = root.store.data(root.store.index(row, 0), Litterbox.CardStore.CardRole)
+                }
+            }
             MailActionButton {
                 objectName: "backToInbox"
                 text: qsTr("Back to inbox")
@@ -115,6 +128,36 @@ Kirigami.Page {
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 visible: root.sourceUrl !== ""
                 onClicked: root.openInGmail()
+            }
+            MailActionButton {
+                id: archiveButton
+                objectName: "archiveMail"
+                text: mailActions.source === "mail" || mailActions.source === "journal" ? qsTr("Archive") : qsTr("Done")
+                icon.name: mailActions.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
+                Accessible.name: mailActions.primaryName
+                onClicked: mailActions.primaryAction()
+                Shortcut {
+                    sequence: "E"
+                    enabled: root.QQC2.StackView.status === QQC2.StackView.Active && (!root.QQC2.Overlay.overlay || !root.QQC2.Overlay.overlay.visible)
+                    onActivated: mailActions.primaryAction()
+                }
+            }
+            Litterbox.CardActions {
+                id: mailActions
+                objectName: "mailActions"
+                store: root.store
+                cardKey: root.cardId
+                source: root.card.source || ""
+                hasBody: !!root.card.has_body
+                bundleId: root.card.bundle_id || ""
+                pinnedRank: root.card.pinned_rank
+                cardTitle: root.cardTitle
+                accountName: root.accountName
+                canOpenSource: root.sourceUrl !== ""
+                onOpenRequested: root.openInGmail()
+                onReadCachedRequested: root.reload()
+                onNoteRequested: { if (root.requestNote) root.requestNote(root.cardId, root.card.note || "") }
+                onCardHandled: root.QQC2.StackView.view.pop()
             }
         }
 
