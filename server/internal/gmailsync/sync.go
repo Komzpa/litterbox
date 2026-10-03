@@ -268,6 +268,11 @@ func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) 
 	for id := range ids {
 		t, e := c.GetThread(ctx, id)
 		if e != nil {
+			if isNotFound(e) {
+				// The thread was deleted in Gmail; skip it so one dead
+				// thread cannot wedge the account's history cursor.
+				continue
+			}
 			return e
 		}
 		inbox := false
@@ -314,6 +319,10 @@ func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) 
 func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID string, inbox bool) error {
 	t, e := c.GetThread(ctx, threadID)
 	if e != nil {
+		if isNotFound(e) {
+			// The thread was deleted in Gmail; there is nothing to save.
+			return nil
+		}
 		return e
 	}
 	prepared := make([]mailhtml.Message, len(t.Messages))

@@ -504,3 +504,47 @@ func TestSyncErrorLogsCarryBuildField(t *testing.T) {
 		t.Fatalf("sync error log line missing build field: %q", buf.String())
 	}
 }
+
+func TestPollSkipsDeletedThreadFromHistory(t *testing.T) {
+	db := testPool(t)
+	ctx := context.Background()
+	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token,history_id) VALUES($1,$2,'gone@example.test',$3,'1')`, tenant, account, []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender,sender_name) VALUES($1,$2,$3,'gone-thread','S','x@example.test','X')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
+			return
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/history"):
+			json.NewEncoder(w).Encode(map[string]any{"history": []any{map[string]any{"id": "2", "labelsRemoved": []any{map[string]any{"message": map[string]string{"id": "m1", "threadId": "gone-thread"}, "labelIds": []string{"INBOX"}}}}}, "historyId": "2"})
+		case strings.HasSuffix(r.URL.Path, "/threads/gone-thread"):
+			http.NotFound(w, r) // deleted in Gmail
+		default:
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	s := &Syncer{DB: db, Client: func(Account) *Client {
+		return &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret", RetryDelay: time.Millisecond}
+	}}
+	if err := s.SyncAccount(ctx, Account{TenantID: tenant, ID: account}); err != nil {
+		t.Fatalf("sync aborted on deleted thread in history: %v", err)
+	}
+	var cursor string
+	if err := db.QueryRow(ctx, `SELECT COALESCE(history_id,'') FROM accounts WHERE tenant_id=$1 AND id=$2`, tenant, account).Scan(&cursor); err != nil {
+		t.Fatal(err)
+	}
+	if cursor != "2" {
+		t.Fatalf("history cursor = %q, want 2 (event consumed, deleted thread not retried every minute)", cursor)
+	}
+}
