@@ -29,7 +29,8 @@ qt_add_executable(litterbox-qt
     src/timerules.cpp
 )
 if(NOT ANDROID)
-    target_sources(litterbox-qt PRIVATE src/maildocumentprofile.h src/maildocumentprofile.cpp)
+    target_sources(litterbox-qt PRIVATE src/maildocumentprofile.h src/maildocumentprofile.cpp
+        src/updatewatcher.h src/updatewatcher.cpp)
     target_link_libraries(litterbox-qt PRIVATE Qt6::WebEngineQuick)
 endif()
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
@@ -128,7 +129,11 @@ target_link_libraries(tst_androidupdater PRIVATE Qt6::Core Qt6::Network Qt6::Tes
 qt_add_executable(tst_serverurl tests/tst_serverurl.cpp src/api.h src/api.cpp)
 target_include_directories(tst_serverurl PRIVATE src)
 target_link_libraries(tst_serverurl PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
+qt_add_executable(tst_updatewatcher tests/tst_updatewatcher.cpp src/updatewatcher.h src/updatewatcher.cpp)
+target_include_directories(tst_updatewatcher PRIVATE src)
+target_link_libraries(tst_updatewatcher PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME serverurl COMMAND tst_serverurl)
+add_test(NAME updatewatcher COMMAND tst_updatewatcher)
 add_test(NAME androidupdater COMMAND tst_androidupdater)
 
 

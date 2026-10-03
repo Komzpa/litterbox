@@ -4,6 +4,7 @@
 #include "timerules.h"
 #ifndef Q_OS_ANDROID
 #include "maildocumentprofile.h"
+#include "updatewatcher.h"
 #include <QtWebEngineQuick>
 #endif
 
@@ -368,6 +369,36 @@ int main(int argc, char *argv[])
     });
     engine.load(pageUrl);
     if (engine.rootObjects().isEmpty()) return 1;
+#ifndef Q_OS_ANDROID
+    // Window placement is persisted so an upgrade restart (UpdateWatcher)
+    // comes back where the user left it. Capture harnesses resize their own
+    // frames and must neither inherit nor record normal placement.
+    if (!captureMode) {
+        auto *restoredWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+        if (restoredWindow) {
+            const QVariantMap geometry = settings->value(QStringLiteral("windowGeometry")).toMap();
+            const int width = geometry.value(QStringLiteral("width")).toInt();
+            const int height = geometry.value(QStringLiteral("height")).toInt();
+            if (width > 0 && height > 0) {
+                restoredWindow->setPosition(geometry.value(QStringLiteral("x")).toInt(),
+                                            geometry.value(QStringLiteral("y")).toInt());
+                restoredWindow->resize(width, height);
+                if (geometry.value(QStringLiteral("maximized")).toBool()) restoredWindow->showMaximized();
+            }
+            QObject::connect(&app, &QCoreApplication::aboutToQuit, &app,
+                [settings = settings.get(), restoredWindow] {
+                    settings->setValue(QStringLiteral("windowGeometry"), QVariantMap{
+                        {QStringLiteral("x"), restoredWindow->x()},
+                        {QStringLiteral("y"), restoredWindow->y()},
+                        {QStringLiteral("width"), restoredWindow->width()},
+                        {QStringLiteral("height"), restoredWindow->height()},
+                        {QStringLiteral("maximized"),
+                         (restoredWindow->windowState() & Qt::WindowMaximized) != 0}});
+                    settings->sync();
+                });
+        }
+    }
+#endif
     if (captureScrollScenario) {
         QTimer::singleShot(0, &app, [&] {
             auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
@@ -838,5 +869,17 @@ int main(int argc, char *argv[])
         store.setOnline(true);
         openStream();
     }
+#ifndef Q_OS_ANDROID
+    // Restart into a package-upgraded binary: the watcher spawns the
+    // replacement detached first, then quits here — a normal quit, so
+    // ~CardStore drains queued commits (the outbox) before the replacement
+    // instance opens the same database. Capture runs are harnesses and never
+    // self-restart; a build-directory binary fails createForRunningApp.
+    if (!captureMode) {
+        if (UpdateWatcher *updateWatcher = UpdateWatcher::createForRunningApp(&app))
+            QObject::connect(updateWatcher, &UpdateWatcher::replacementSpawned,
+                             &app, &QCoreApplication::quit);
+    }
+#endif
     return app.exec();
 }
