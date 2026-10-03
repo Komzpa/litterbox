@@ -24,9 +24,9 @@ Controls.ToolButton {
     signal noteRequested()
     signal openRequested()
     signal readCachedRequested()
-    readonly property string primaryName: source === "mail" ? qsTr("Archive in Gmail%1").arg(accountName ? " · " + accountName : "") : source === "home_assistant" ? qsTr("Dismiss Home Assistant notification") : qsTr("Done · dismiss in Litterbox only")
+    readonly property string primaryName: source === "mail" ? qsTr("Archive in Gmail%1").arg(accountName ? " · " + accountName : "") : source === "journal" ? qsTr("Archive private note") : source === "home_assistant" ? qsTr("Dismiss Home Assistant notification") : qsTr("Done · dismiss in Litterbox only")
     function primaryAction() {
-        if (source === "mail") store.enqueueOp(cardKey, "archive", {})
+        if (source === "mail" || source === "journal") store.enqueueOp(cardKey, "archive", {})
         else store.dismiss(cardKey)
     }
     readonly property bool pinStateKnown: pinnedRank !== undefined

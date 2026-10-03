@@ -473,6 +473,78 @@ private slots:
         const QVariantList expectedOrder{createdId, second, first};
         QCOMPARE(server.received[1].value("args").toMap().value("cards").toList(), expectedOrder);
     }
+    void journalCreateOfflineRestartSyncAndArchive() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("cache.sqlite");
+        const QString body = QStringLiteral("A private thought\nOnly the owner writes this.");
+        const QVariantMap sections{{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Existing task"}}}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QString journalId;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(sections));
+            QSignalSpy resets(&store, &QAbstractItemModel::modelReset);
+            QVERIFY(!store.createCard("   ", "", "journal"));
+            QVERIFY(!store.createCard("Private", "", "external"));
+            QCOMPARE(store.pendingOps(), 0);
+            QVERIFY(store.createCard("  " + body + "  ", "", "journal"));
+            journalId = store.cardIds().first();
+            const auto card = store.data(store.index(0), CardStore::CardRole).toMap();
+            QCOMPARE(card.value("source").toString(), QStringLiteral("journal"));
+            QCOMPARE(store.sourceLabel(card), QStringLiteral("journal"));
+            QCOMPARE(card.value("title").toString(), QStringLiteral("A private thought"));
+            QCOMPARE(card.value("summary").toString(), QStringLiteral("Only the owner writes this."));
+            QCOMPARE(resets.count(), 0);
+        }
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.cardIds(), QStringList({journalId, cardId}));
+        // A snapshot racing reconnect must not hide the offline-created note.
+        QVERIFY(restored.applyRemoteCards(sections));
+        QCOMPARE(restored.cardIds(), QStringList({journalId, cardId}));
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.received.first().value("args").toMap().value("body").toString(), body);
+        QVERIFY(!restored.enqueueOp(journalId, "archive").isEmpty());
+        QCOMPARE(restored.cardIds(), QStringList({cardId}));
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.received.last().value("type").toString(), QStringLiteral("archive"));
+        CardStore coldStart;
+        QVERIFY(coldStart.open(path));
+        QCOMPARE(coldStart.cardIds(), QStringList({cardId}));
+    }
+    void journalSaveDoesNotWaitForDatabaseLock() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("locked.sqlite");
+        CardStore store;
+        QVERIFY(store.open(path));
+        const QString connection = QUuid::createUuid().toString();
+        auto lock = QSqlDatabase::addDatabase("QSQLITE", connection);
+        lock.setDatabaseName(path);
+        QVERIFY(lock.open());
+        bool heartbeat = false;
+        QSignalSpy resets(&store, &QAbstractItemModel::modelReset);
+        {
+            QSqlQuery query(lock);
+            QVERIFY(query.exec("BEGIN EXCLUSIVE"));
+            QTimer::singleShot(0, &store, [&] { heartbeat = true; });
+            QElapsedTimer timer;
+            timer.start();
+            QVERIFY(store.createCard("Private note", "", "journal"));
+            QVERIFY2(timer.elapsed() < 100, "Journal creation waited for SQLite on the GUI thread");
+            QTRY_VERIFY(heartbeat);
+            QCOMPARE(store.sourceLabel(store.data(store.index(0), CardStore::CardRole).toMap()), QStringLiteral("journal"));
+            QCOMPARE(resets.count(), 0);
+            QVERIFY(query.exec("COMMIT"));
+        }
+        lock.close();
+        lock = QSqlDatabase();
+        QSqlDatabase::removeDatabase(connection);
+    }
     void rejectionRetainsHeadAndBlocksLaterOps() {
         QTemporaryDir directory;
         OpsServer server;

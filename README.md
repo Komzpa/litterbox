@@ -12,8 +12,11 @@ The name is cats + letter box.
 - unanswered chats from messengers and dating apps
 - system alerts
 
-Plus private journal notes: they go nowhere, and the owner's AI assistant may
-read them.
+Create private journal notes in the Qt inbox with **Add card → Private journal
+note**. The same composer accepts one note field; notes appear as ordinary
+`journal` cards, save offline on the shared storage worker, and sync through the
+existing card outbox. The owner's assistant may read the journal, not write it.
+Archiving removes the card from the inbox without deleting the journal entry.
 
 The goal is Inbox Zero that is actually reachable.
 

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/ingest"
+	"github.com/Komzpa/litterbox/server/internal/journal"
 	"github.com/google/uuid"
 )
 
@@ -127,6 +128,8 @@ func init() {
 		var in struct {
 			Title   string `json:"title"`
 			Summary string `json:"summary"`
+			Kind    string `json:"kind"`
+			Body    string `json:"body"`
 		}
 		if err := json.Unmarshal(args, &in); err != nil {
 			return err
@@ -135,7 +138,21 @@ func init() {
 		if in.Title == "" {
 			return fmt.Errorf("title required")
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,$2,NULL,NULL,'manual',$3,$4,$5,'open')`, tenant, card, card.String(), in.Title, in.Summary)
+		source := "manual"
+		switch in.Kind {
+		case "", "manual":
+		case "journal":
+			if strings.TrimSpace(in.Body) == "" {
+				return fmt.Errorf("journal body required")
+			}
+			source = "journal"
+			if _, err := journal.CreateInTx(ctx, tx, tenant.String(), card.String(), in.Body); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown card kind")
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,$2,NULL,NULL,$3,$4,$5,$6,'open')`, tenant, card, source, card.String(), in.Title, in.Summary)
 		return err
 	})
 	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {

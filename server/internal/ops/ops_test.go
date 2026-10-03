@@ -170,3 +170,83 @@ func TestManualCreateAndReorderOperationsAreTenantScoped(t *testing.T) {
 		t.Fatalf("foreign tenant order=%d, want unchanged 9", foreignOrder)
 	}
 }
+
+func TestJournalCreateReplayArchiveAndTenantIsolation(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("set CARD_TEST_POSTGRES=1 to run PostgreSQL integration test")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	schema := "ops_journal_test_" + uuid.NewString()[:8]
+	if _, err := pool.Exec(ctx, `CREATE SCHEMA `+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `DROP SCHEMA `+schema+` CASCADE`)
+	cfg := pool.Config().Copy()
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	db, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, ddl := range []string{
+		`CREATE TABLE cards (tenant_id uuid NOT NULL, id uuid NOT NULL, account_id uuid, gmail_thread_id text, source text NOT NULL, source_kind text, source_actions jsonb, external_id text, title text NOT NULL, summary text NOT NULL, state text NOT NULL, PRIMARY KEY(tenant_id,id))`,
+		`CREATE TABLE journal_entries (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())`,
+		`CREATE TABLE ops (tenant_id uuid NOT NULL, op_id uuid NOT NULL, device_id uuid, payload_hash bytea NOT NULL, payload jsonb NOT NULL, PRIMARY KEY(tenant_id,op_id))`,
+		`CREATE TABLE source_tokens (tenant_id uuid, source text, callback_url text, revoked_at timestamptz)`,
+		`CREATE TABLE source_action_callbacks (tenant_id uuid, card_id uuid, source text, callback_url text, action jsonb)`,
+	} {
+		if _, err := db.Exec(ctx, ddl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tenant, otherTenant, cardID, opID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	api := API{DB: db, Identity: func(context.Context) (string, string, bool) { return tenant.String(), "", true }}
+	post := func(op, card uuid.UUID, typ, args string) int {
+		t.Helper()
+		body := fmt.Sprintf(`{"op_id":%q,"card_id":%q,"type":%q,"args":%s}`, op, card, typ, args)
+		response := httptest.NewRecorder()
+		api.ServeHTTP(response, httptest.NewRequest("POST", "/v1/ops", strings.NewReader(body)))
+		return response.Code
+	}
+	args := `{"kind":"journal","title":"A private thought","summary":"Only the owner writes this.","body":"A private thought\nOnly the owner writes this."}`
+	for i := range 2 {
+		if status := post(opID, cardID, "create_card", args); status != 200 {
+			t.Fatalf("journal create/replay %d: status=%d", i, status)
+		}
+	}
+	var source, body, state string
+	if err := db.QueryRow(ctx, `SELECT c.source,j.body,c.state FROM cards c JOIN journal_entries j ON j.id=c.id AND j.tenant_id=c.tenant_id WHERE c.tenant_id=$1 AND c.id=$2`, tenant, cardID).Scan(&source, &body, &state); err != nil {
+		t.Fatal(err)
+	}
+	if source != "journal" || body != "A private thought\nOnly the owner writes this." || state != "open" {
+		t.Fatalf("journal source=%q body=%q state=%q", source, body, state)
+	}
+	for _, bad := range []string{
+		`{"kind":"journal","title":"Empty note","body":"   "}`,
+		`{"kind":"external","title":"Wrong kind","summary":"Private"}`,
+	} {
+		if status := post(uuid.New(), uuid.New(), "create_card", bad); status != 422 {
+			t.Fatalf("invalid kind/body status=%d, want 422", status)
+		}
+	}
+	api.Identity = func(context.Context) (string, string, bool) { return otherTenant.String(), "", true }
+	if status := post(uuid.New(), cardID, "archive", `{}`); status != 422 {
+		t.Fatalf("foreign tenant archive status=%d, want 422", status)
+	}
+	api.Identity = func(context.Context) (string, string, bool) { return tenant.String(), "", true }
+	if status := post(uuid.New(), cardID, "archive", `{}`); status != 200 {
+		t.Fatalf("owner archive status=%d, want 200", status)
+	}
+	if err := db.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, cardID).Scan(&state); err != nil || state != "archived" {
+		t.Fatalf("archived state=%q error=%v", state, err)
+	}
+	var count int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM journal_entries WHERE tenant_id=$1 AND id=$2`, tenant, cardID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("journal persisted after archive/replay count=%d error=%v", count, err)
+	}
+}

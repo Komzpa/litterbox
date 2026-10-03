@@ -91,6 +91,27 @@ func TestSectionManualCardsUseManualOrder(t *testing.T) {
 	}
 }
 
+func TestSectionJournalSharesOwnerWrittenOrder(t *testing.T) {
+	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	input := []Card{
+		{ID: "manual-first", Source: "manual", State: "open", order: 0, createdAt: now.Add(-time.Hour)},
+		{ID: "manual-next", Source: "manual", State: "open", order: 1},
+		{ID: "todo", Source: "todo", State: "open", order: 0},
+		{ID: "journal-reordered", Source: "journal", State: "open", order: 2},
+		{ID: "journal-new", Source: "journal", State: "open", order: 0, createdAt: now},
+	}
+	got := cardIDs(Section(input, now).Now)
+	want := []string{"journal-new", "manual-first", "manual-next", "journal-reordered", "todo"}
+	if len(got) != len(want) {
+		t.Fatalf("owner-written order=%v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("owner-written order=%v, want %v", got, want)
+		}
+	}
+}
+
 func cardIDs(cards []Card) []string {
 	ids := make([]string, len(cards))
 	for i := range cards {

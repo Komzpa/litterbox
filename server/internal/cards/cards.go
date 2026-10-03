@@ -48,13 +48,18 @@ func Section(input []Card, now time.Time) Sections {
 	out := Sections{Now: []Card{}, Later: []Card{}, Missed: []Card{}}
 	timed := make([]Card, 0, len(input))
 	sort.SliceStable(input, func(i, j int) bool {
-		if input[i].Source == "manual" && input[j].Source == "manual" {
-			return input[i].order < input[j].order
+		ownerI := input[i].Source == "manual" || input[i].Source == "journal"
+		ownerJ := input[j].Source == "manual" || input[j].Source == "journal"
+		if ownerI && ownerJ {
+			if input[i].order != input[j].order {
+				return input[i].order < input[j].order
+			}
+			return input[i].createdAt.After(input[j].createdAt)
 		}
-		if input[i].Source == "manual" {
+		if ownerI {
 			return true
 		}
-		if input[j].Source == "manual" {
+		if ownerJ {
 			return false
 		}
 		if input[i].Source == "todo" && input[j].Source == "todo" {
