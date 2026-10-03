@@ -669,6 +669,93 @@ private slots:
         QCOMPARE(store.cachedMailBody(hiddenId).value(QStringLiteral("html")).toString(), hiddenUrl);
         QCOMPARE(store.openCachedFile(hiddenId, hiddenUrl), QString());
     }
+    // Archive bundle acts at once; Undo puts the cards back in order and
+    // cancels their queued archive ops, or queues the INBOX re-add for ops
+    // that were already sent. Invoked by name so this test fails (instead of
+    // not compiling) on a store without the API.
+    void bundleArchiveUndoRestoresOrderAndReversesOps() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("bundle-undo.sqlite");
+        const QString bundle = QStringLiteral("99999999-9999-4999-8999-999999999999");
+        const QString pinned = QStringLiteral("aaaaaaaa-0000-4000-8000-000000000001");
+        const QString loose = QStringLiteral("aaaaaaaa-0000-4000-8000-000000000002");
+        const QString first = QStringLiteral("aaaaaaaa-0000-4000-8000-000000000003");
+        const QString middle = QStringLiteral("aaaaaaaa-0000-4000-8000-000000000004");
+        const QString last = QStringLiteral("aaaaaaaa-0000-4000-8000-000000000005");
+        const auto mail = [&](const QString &id, const QVariant &bundleId) {
+            return QVariantMap{{"id", id}, {"title", id}, {"source", "mail"}, {"state", "open"}, {"bundle_id", bundleId}};
+        };
+        QVariantMap pinnedCard = mail(pinned, bundle);
+        pinnedCard.insert("pinned_rank", 1);
+        CardStore store;
+        QVERIFY(store.open(path));
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{mail(loose, QVariant()), mail(first, bundle), pinnedCard,
+            mail(middle, QVariant()), mail(last, bundle)}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        const QStringList original{pinned, loose, first, middle, last};
+        QCOMPARE(store.cardIds(), original);
+        const auto durableOps = [&] {
+            QStringList ops;
+            const QString connection = QUuid::createUuid().toString();
+            {
+                auto db = QSqlDatabase::addDatabase("QSQLITE", connection);
+                db.setDatabaseName(path);
+                QSqlQuery q(db);
+                if (db.open() && q.exec("SELECT payload FROM outbox ORDER BY seq"))
+                    while (q.next()) {
+                        const QVariantMap op = QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap();
+                        ops.append(op.value("type").toString() + ":" + op.value("card_id").toString());
+                    }
+            }
+            QSqlDatabase::removeDatabase(connection);
+            return ops;
+        };
+        const auto archiveNow = [&](QVariantMap &result) {
+            return QMetaObject::invokeMethod(&store, "archiveBundleNow", Q_RETURN_ARG(QVariantMap, result), Q_ARG(QString, bundle));
+        };
+        const auto undo = [&](const QString &token) {
+            bool undone = false;
+            const bool called = QMetaObject::invokeMethod(&store, "undoBundleArchive", Q_RETURN_ARG(bool, undone), Q_ARG(QString, token));
+            return called && undone;
+        };
+
+        // Offline: cards leave at once and one archive op per unpinned card is queued.
+        QVariantMap archived;
+        QVERIFY2(archiveNow(archived), "CardStore::archiveBundleNow(QString) is missing");
+        QCOMPARE(archived.value("count").toInt(), 2);
+        QCOMPARE(store.cardIds(), QStringList({pinned, loose, middle}));
+        QCOMPARE(store.pendingOps(), 2);
+        QTRY_COMPARE(durableOps(), QStringList({"archive:" + first, "archive:" + last}));
+        // Undo: same order as before, ops cancelled in memory and on disk.
+        QVERIFY(undo(archived.value("token").toString()));
+        QCOMPARE(store.cardIds(), original);
+        QCOMPARE(store.pendingOps(), 0);
+        QTRY_COMPARE(durableOps(), QStringList());
+        // Negative controls: a used or unknown token changes nothing.
+        QVERIFY(!undo(archived.value("token").toString()));
+        QVERIFY(!undo(QStringLiteral("not-a-token")));
+        QCOMPARE(store.cardIds(), original);
+
+        // Online: once the archives were sent, Undo queues the INBOX re-add.
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QVERIFY(archiveNow(archived));
+        QTRY_COMPARE(server.received.size(), 2);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QVERIFY(undo(archived.value("token").toString()));
+        QCOMPARE(store.cardIds(), original);
+        QTRY_COMPARE(server.received.size(), 4);
+        for (int i = 2; i < 4; ++i) {
+            QCOMPARE(server.received[i].value("type").toString(), QStringLiteral("gmail.label_add"));
+            QCOMPARE(server.received[i].value("args").toMap().value("label").toString(), QStringLiteral("INBOX"));
+        }
+        QCOMPARE(server.received[2].value("card_id").toString(), first);
+        QCOMPARE(server.received[3].value("card_id").toString(), last);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(store.cardIds(), original);
+    }
 };
 QTEST_MAIN(CardStoreTest)
 #include "tst_cardstore.moc"

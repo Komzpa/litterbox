@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QDeadlineTimer>
 #include <QSqlDatabase>
 #include <QStringList>
 #include <QVariantMap>
@@ -57,6 +58,16 @@ public:
     Q_INVOKABLE QString saveNote(const QString &cardId, const QString &note) {
         return enqueueOp(cardId, QStringLiteral("note"), {{QStringLiteral("note"), note}});
     }
+    // Bundle archive acts at once, with no confirmation. It queues one
+    // per-card `archive` op for every open unpinned card in the bundle (R22),
+    // so each message is archived in its originating Gmail account (R7), and
+    // returns {token, count}; an empty map means nothing was archived.
+    // undoBundleArchive(token), within 8 s, puts the cards back where they
+    // were, cancels the ops still waiting in the outbox, and queues the
+    // existing `gmail.label_add` INBOX op for mail whose archive was already
+    // sent. It returns false for an unknown, used or expired token.
+    Q_INVOKABLE QVariantMap archiveBundleNow(const QString &bundleId);
+    Q_INVOKABLE bool undoBundleArchive(const QString &token);
     Q_INVOKABLE void flush();
     Q_INVOKABLE void reportPostResult(const QString &opId, int status,
                                      const QVariantMap &response);
@@ -94,8 +105,9 @@ signals:
     void flushFinished();
 private:
     void replaceCards(QList<QVariantMap> cards);
+    // Commits card rows, inserted ops and cancelled op ids in one transaction.
     void persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after,
-                      const QVariantMap &op = {});
+                      const QList<QVariantMap> &ops = {}, const QStringList &cancelledOps = {});
     bool writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after);
     void undoOp(const QString &opId);
     void flushNext();
@@ -111,6 +123,14 @@ private:
     QSet<QString> m_durableOps;
     struct Mutation { QList<QVariantMap> before, after; };
     QHash<QString, Mutation> m_mutations;
+    // One Undo window per bundle archive: the card list just before it and
+    // its (card id, archive op id) pairs, kept until the deadline passes.
+    struct BundleArchive {
+        QList<QVariantMap> before;
+        QList<QPair<QString, QString>> ops;
+        QDeadlineTimer deadline;
+    };
+    QHash<QString, BundleArchive> m_bundleArchives;
     QHash<QString, QVariantMap> m_mailBodies;
     bool m_online = false;
     QString m_inFlight;

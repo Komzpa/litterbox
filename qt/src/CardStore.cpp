@@ -159,32 +159,43 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
     return true;
 }
 
-void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after, const QVariantMap &op) {
-    QMetaObject::invokeMethod(m_storage, [this, before, after, op] {
+void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after,
+                             const QList<QVariantMap> &ops, const QStringList &cancelledOps) {
+    QMetaObject::invokeMethod(m_storage, [this, before, after, ops, cancelledOps] {
         bool ok = m_db.transaction();
-        if (ok && !op.isEmpty()) {
+        for (const QVariantMap &op : ops) {
+            if (!ok) break;
             QSqlQuery q(m_db);
             ok = q.prepare(QStringLiteral("INSERT INTO outbox(op_id,payload) VALUES(?,?)"));
             q.addBindValue(op.value(QStringLiteral("op_id")));
             q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(op)).toJson(QJsonDocument::Compact)));
             if (ok) ok = q.exec();
         }
+        for (const QString &opId : cancelledOps) {
+            if (!ok) break;
+            QSqlQuery q(m_db);
+            ok = q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?"));
+            q.addBindValue(opId);
+            if (ok) ok = q.exec();
+        }
         if (ok) ok = writeCards(before, after);
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
         const QString error = m_db.lastError().text();
-        QMetaObject::invokeMethod(this, [this, op, ok, error] {
-            const QString id = op.value(QStringLiteral("op_id")).toString();
+        QMetaObject::invokeMethod(this, [this, ops, ok, error] {
             if (!ok) {
-                if (!id.isEmpty()) {
+                // Cancelled ops stay durable after a failed commit; the next
+                // open() reloads that outbox as the source of truth.
+                for (const QVariantMap &op : ops) {
+                    const QString id = op.value(QStringLiteral("op_id")).toString();
                     undoOp(id);
                     m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const auto &entry) { return entry.value(QStringLiteral("op_id")).toString() == id; }), m_outbox.end());
-                    emit pendingOpsChanged();
                 }
+                if (!ops.isEmpty()) emit pendingOpsChanged();
                 emit storageError(error);
                 return;
             }
-            if (!id.isEmpty()) m_durableOps.insert(id);
+            for (const QVariantMap &op : ops) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
             flush();
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
@@ -550,9 +561,123 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         replaceCards(cards);
     }
     m_outbox.append(payload);
-    persistCards(before, cards, payload);
+    persistCards(before, cards, {payload});
     emit pendingOpsChanged();
     return id;
+}
+QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
+    if (!m_open || bundleId.isEmpty()) return {};
+    for (auto it = m_bundleArchives.begin(); it != m_bundleArchives.end();)
+        it = it->deadline.hasExpired() ? m_bundleArchives.erase(it) : std::next(it);
+    const auto isPinned = [](const QVariantMap &card) {
+        const QVariant rank = card.value(QStringLiteral("pinned_rank"));
+        return card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
+    };
+    // R22: every open unpinned card in the bundle; pinned cards stay open.
+    const QList<QVariantMap> before = m_cards;
+    QList<QVariantMap> after;
+    QSet<QString> archived;
+    for (const QVariantMap &card : before) {
+        if (card.value(QStringLiteral("bundle_id")).toString() == bundleId &&
+            card.value(QStringLiteral("state")).toString() == QStringLiteral("open") && !isPinned(card))
+            archived.insert(card.value(QStringLiteral("id")).toString());
+        else
+            after.append(card);
+    }
+    if (archived.isEmpty()) return {};
+    // One existing per-card `archive` op per message: the server archives each
+    // mail thread in its originating Gmail account (R7). Each op keeps its own
+    // mutation so a rejected op restores only its card, and a remote snapshot
+    // cannot resurrect a card while its op is pending.
+    BundleArchive entry{before, {}, QDeadlineTimer(8000)};
+    QList<QVariantMap> ops;
+    for (const QVariantMap &card : before) {
+        const QString cardId = card.value(QStringLiteral("id")).toString();
+        if (!archived.contains(cardId)) continue;
+        const QString opId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        ops.append({{QStringLiteral("op_id"), opId}, {QStringLiteral("card_id"), cardId},
+            {QStringLiteral("type"), QStringLiteral("archive")}, {QStringLiteral("args"), QVariantMap{}}});
+        QList<QVariantMap> withCard;
+        for (const QVariantMap &other : before) {
+            const QString otherId = other.value(QStringLiteral("id")).toString();
+            if (otherId == cardId || !archived.contains(otherId)) withCard.append(other);
+        }
+        m_mutations.insert(opId, {withCard, after});
+        entry.ops.append({cardId, opId});
+    }
+    replaceCards(after);
+    m_outbox.append(ops);
+    persistCards(before, after, ops);
+    emit pendingOpsChanged();
+    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_bundleArchives.insert(token, std::move(entry));
+    return {{QStringLiteral("token"), token}, {QStringLiteral("count"), archived.size()}};
+}
+bool CardStore::undoBundleArchive(const QString &token) {
+    if (!m_open || !m_bundleArchives.contains(token)) return false;
+    const BundleArchive entry = m_bundleArchives.take(token);
+    if (entry.deadline.hasExpired()) return false;
+    QHash<QString, QVariantMap> previous;
+    for (const QVariantMap &card : entry.before) previous.insert(card.value(QStringLiteral("id")).toString(), card);
+    QSet<QString> present;
+    for (const QVariantMap &card : m_cards) present.insert(card.value(QStringLiteral("id")).toString());
+    QSet<QString> restore;
+    QStringList cancelled;
+    QList<QVariantMap> reverseOps;
+    for (const auto &[cardId, opId] : entry.ops) {
+        // A card already back (for example after a rejected op) needs nothing.
+        if (present.contains(cardId)) continue;
+        const bool queued = opId != m_inFlight && std::any_of(m_outbox.begin(), m_outbox.end(),
+            [&](const QVariantMap &op) { return op.value(QStringLiteral("op_id")).toString() == opId; });
+        // Undo owns the card from here: a late failure of an in-flight op
+        // must not restore it a second time.
+        m_mutations.remove(opId);
+        if (queued) {
+            m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(),
+                [&](const QVariantMap &op) { return op.value(QStringLiteral("op_id")).toString() == opId; }), m_outbox.end());
+            m_durableOps.remove(opId);
+            cancelled.append(opId);
+            restore.insert(cardId);
+        } else if (previous.value(cardId).value(QStringLiteral("source")).toString() == QStringLiteral("mail")) {
+            // Already sent: Gmail archive removed INBOX, so the existing source
+            // action adds it back in the same account. Non-mail archives have
+            // no reverse op and stay archived rather than reappear falsely.
+            reverseOps.append({{QStringLiteral("op_id"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
+                {QStringLiteral("card_id"), cardId}, {QStringLiteral("type"), QStringLiteral("gmail.label_add")},
+                {QStringLiteral("args"), QVariantMap{{QStringLiteral("label"), QStringLiteral("INBOX")}}}});
+            restore.insert(cardId);
+        }
+    }
+    if (restore.isEmpty()) return false;
+    // Put each card back right after its nearest earlier neighbour that is
+    // still listed, so its previous order survives unrelated changes.
+    QList<QVariantMap> cards = m_cards;
+    for (int row = 0; row < entry.before.size(); ++row) {
+        const QString cardId = entry.before[row].value(QStringLiteral("id")).toString();
+        if (!restore.contains(cardId)) continue;
+        int at = 0;
+        for (int prior = row - 1; prior >= 0 && at == 0; --prior) {
+            const QString anchor = entry.before[prior].value(QStringLiteral("id")).toString();
+            for (int i = 0; i < cards.size(); ++i)
+                if (cards[i].value(QStringLiteral("id")).toString() == anchor) { at = i + 1; break; }
+        }
+        cards.insert(at, entry.before[row]);
+    }
+    // Keep restored cards visible across remote snapshots until the reverse
+    // op is acknowledged, as for any other pending op.
+    for (const QVariantMap &op : reverseOps) {
+        const QString cardId = op.value(QStringLiteral("card_id")).toString();
+        QList<QVariantMap> without = cards;
+        without.erase(std::remove_if(without.begin(), without.end(),
+            [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == cardId; }), without.end());
+        m_mutations.insert(op.value(QStringLiteral("op_id")).toString(), {without, cards});
+    }
+    const QList<QVariantMap> current = m_cards;
+    replaceCards(cards);
+    m_outbox.append(reverseOps);
+    persistCards(current, cards, reverseOps, cancelled);
+    emit pendingOpsChanged();
+    return true;
 }
 void CardStore::flush() {
     if (m_online && m_open && m_inFlight.isEmpty()) flushNext();
