@@ -41,6 +41,7 @@ Kirigami.ScrollablePage {
     property var api
 
     property bool busy: false
+    readonly property bool serverUrlValid: /^https?:\/\/[a-z0-9.-]+(?::[0-9]+)?(?:[/?#][^\s]*)?$/i.test(serverField.text.trim())
     property string errorText: ""
     // Set on success; the token is only shown once.
     property string token: ""
@@ -56,12 +57,12 @@ Kirigami.ScrollablePage {
         const server = serverField.text.trim()
         const invite = inviteField.text.trim()
         const name = deviceNameField.text.trim()
-        if (invite === "" || name === "") {
-            errorText = qsTr("Invite code and device name are required.")
+        if (!serverUrlValid) {
+            errorText = qsTr("Enter a valid HTTP or HTTPS server URL.")
             return false
         }
-        if (server === "") {
-            errorText = qsTr("Server URL is required.")
+        if (invite === "" || name === "") {
+            errorText = qsTr("Invite code and device name are required.")
             return false
         }
         // Persisted to QSettings server_url by the baseUrlChanged connection
@@ -114,6 +115,14 @@ Kirigami.ScrollablePage {
             // A committed "http" suggestion would silently corrupt the URL.
             inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
         }
+        QQC2.Label {
+            objectName: "serverUrlError"
+            visible: serverField.text.trim() !== "" && !root.serverUrlValid
+            text: qsTr("Enter a valid HTTP or HTTPS server URL.")
+            color: "#b3261e"
+            wrapMode: Text.Wrap
+            Kirigami.FormData.isSection: true
+        }
         QQC2.TextField {
             id: inviteField
             objectName: "inviteField"
@@ -155,11 +164,14 @@ Kirigami.ScrollablePage {
             palette.base: root.surface
             background: Rectangle { radius: 4; color: root.surface; border.color: "#879b99" }
             palette.text: root.ink
-            contentItem: QQC2.Label {
+            contentItem: QQC2.TextField {
                 text: platformBox.displayText
                 color: root.ink
+                readOnly: true
+                selectByMouse: false
                 leftPadding: 8
                 verticalAlignment: Text.AlignVCenter
+                background: null
             }
             implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
         }
@@ -176,7 +188,7 @@ Kirigami.ScrollablePage {
             id: enrollButton
             objectName: "enrollButton"
             text: root.busy ? qsTr("Enrolling…") : qsTr("Enroll")
-            enabled: !root.busy
+            enabled: !root.busy && root.serverUrlValid
             implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             Layout.fillWidth: true
             Material.theme: Material.Light
@@ -186,13 +198,13 @@ Kirigami.ScrollablePage {
             palette.buttonText: root.surface
             background: Rectangle {
                 radius: Kirigami.Units.cornerRadius
-                color: parent.down ? "#286358" : parent.hovered ? "#326f65" : root.accent
+                color: !parent.enabled ? "#cbd5d3" : parent.down ? "#286358" : parent.hovered ? "#326f65" : root.accent
                 border.width: parent.visualFocus ? 2 : 0
                 border.color: root.ink
             }
             contentItem: QQC2.Label {
                 text: enrollButton.text
-                color: root.surface
+                color: enrollButton.enabled ? root.surface : root.mutedInk
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 font: enrollButton.font
