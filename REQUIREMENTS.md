@@ -98,6 +98,7 @@ Each requirement is **decided** or **open** and names its source.
   They apply locally at once and sync when the connection returns. Gmail
   changes for archive and snooze (R7, R20), and star changes for pin (R21),
   run then; other source actions run on sync through R12.
+  A rejected action never holds back later queued actions; it is shown as failed on its card.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not
   break in the elevator"). Losing the network mid-use never blocks the
   interface or shows an error screen.

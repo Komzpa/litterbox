@@ -22,6 +22,8 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_storage(new QObject), m_bundleUndoTimer(new QTimer(this)) {
     m_bundleUndoTimer->setSingleShot(true);
     connect(m_bundleUndoTimer, &QTimer::timeout, this, &CardStore::expireBundleArchives);
+    m_retryTimer.setSingleShot(true);
+    connect(&m_retryTimer, &QTimer::timeout, this, &CardStore::flush);
     m_storage->moveToThread(&m_storageThread);
     connect(&m_storageThread, &QThread::finished, m_storage, &QObject::deleteLater);
     m_storageThread.start();
@@ -278,7 +280,7 @@ int CardStore::pendingOps() const { return m_outbox.size(); }
 void CardStore::setOnline(bool online) {
     if (m_online == online) return;
     m_online = online; emit onlineChanged();
-    if (online) { m_failedOp.clear(); flush(); refresh(); }
+    if (online) { flush(); refresh(); }
 }
 void CardStore::setTransport(cardstore::OpTransport *transport) {
     m_transport = transport;
@@ -719,14 +721,13 @@ bool CardStore::undoBundleArchive(const QString &token) {
     return true;
 }
 void CardStore::flush() {
-    if (m_online && m_open && m_inFlight.isEmpty()) flushNext();
+    if (m_online && m_open && m_inFlight.isEmpty() && !m_retryTimer.isActive()) flushNext();
 }
 void CardStore::flushNext() {
     if (!m_online || !m_inFlight.isEmpty()) return;
     if (m_outbox.isEmpty()) { emit flushFinished(); return; }
     const QVariantMap payload = m_outbox.first();
     const QString id = payload.value(QStringLiteral("op_id")).toString();
-    if (id == m_failedOp) return;
     if (!m_durableOps.contains(id)) return;
     m_inFlight = id;
     if (m_transport) {
@@ -740,13 +741,44 @@ void CardStore::flushNext() {
 }
 void CardStore::reportPostResult(const QString &opId, int status, const QVariantMap &response) {
     if (opId != m_inFlight || m_inFlight.isEmpty()) return;
-    // Keep the head in flight until its durable acknowledgement is committed.
-    // A transport success alone is not a server acknowledgement.
-    if (status < 200 || status >= 300 || response.value(QStringLiteral("ok")) != QVariant(true)) {
+    const bool acknowledged = status >= 200 && status < 300 && response.value(QStringLiteral("ok")) == QVariant(true);
+    if (!acknowledged) {
+        if (status >= 400 && status < 500) {
+            m_retryAttempt = 0;
+            const bool canUndoLocally = m_mutations.contains(opId);
+            undoOp(opId);
+            emit operationFailed(opId, status);
+            QMetaObject::invokeMethod(m_storage, [this, opId, canUndoLocally] {
+                QSqlQuery q(m_db);
+                q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);
+                const bool ok = q.exec();
+                const QString error = q.lastError().text();
+                QMetaObject::invokeMethod(this, [this, opId, canUndoLocally, ok, error] {
+                    if (!ok) {
+                        m_inFlight.clear();
+                        emit storageError(error);
+                        const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+                        m_retryAttempt = qMin(m_retryAttempt + 1, 6);
+                        m_retryTimer.start(delay);
+                        return;
+                    }
+                    m_inFlight.clear();
+                    if (!m_outbox.isEmpty() && m_outbox.first().value(QStringLiteral("op_id")).toString() == opId)
+                        m_outbox.removeFirst();
+                    m_durableOps.remove(opId);
+                    m_mutations.remove(opId);
+                    emit pendingOpsChanged();
+                    if (!canUndoLocally) refresh();
+                    flush();
+                }, Qt::QueuedConnection);
+            }, Qt::QueuedConnection);
+            return;
+        }
         m_inFlight.clear();
-        m_failedOp = opId;
-        undoOp(opId);
-        emit operationFailed(opId, status); return;
+        const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+        m_retryAttempt = qMin(m_retryAttempt + 1, 6);
+        m_retryTimer.start(delay);
+        return;
     }
     QMetaObject::invokeMethod(m_storage, [this, opId] {
         QSqlQuery q(m_db);
@@ -755,7 +787,14 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         const QString error = q.lastError().text();
         QMetaObject::invokeMethod(this, [this, opId, ok, error] {
             m_inFlight.clear();
-            if (!ok) { m_failedOp = opId; undoOp(opId); emit storageError(error); return; }
+            if (!ok) {
+                emit storageError(error);
+                const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+                m_retryAttempt = qMin(m_retryAttempt + 1, 6);
+                m_retryTimer.start(delay);
+                return;
+            }
+            m_retryAttempt = 0;
             if (!m_outbox.isEmpty() && m_outbox.first().value(QStringLiteral("op_id")).toString() == opId) m_outbox.removeFirst();
             m_durableOps.remove(opId);
             m_mutations.remove(opId);

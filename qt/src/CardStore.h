@@ -140,6 +140,7 @@ private:
     QHash<QString, QVariantMap> m_mailBodies;
     bool m_online = false;
     QString m_inFlight;
-    QString m_failedOp;
+    QTimer m_retryTimer;
+    int m_retryAttempt = 0;
     cardstore::OpTransport *m_transport = nullptr;
 };

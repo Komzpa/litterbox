@@ -31,6 +31,7 @@ public:
     int applied = 0;
     bool loseNextAck = false;
     int reject = 0;
+    QList<int> statusSequence;
     OpsServer() {
         connect(this, &QTcpServer::newConnection, this, [this] {
             while (hasPendingConnections()) {
@@ -48,7 +49,7 @@ public:
                     const QVariantMap op = QJsonDocument::fromJson(body).object().toVariantMap();
                     received.append(op);
                     const QString id = op.value("op_id").toString();
-                    int status = reject;
+                    int status = statusSequence.isEmpty() ? reject : statusSequence.takeFirst();
                     if (!status) {
                         if (ledger.contains(id) && ledger[id] != body) status = 409;
                         else if (!ledger.contains(id)) { ledger[id] = body; ++applied; }
@@ -78,6 +79,20 @@ public:
             const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             const QVariantMap body = QJsonDocument::fromJson(reply->readAll()).object().toVariantMap();
             completed(status, body); reply->deleteLater();
+        });
+    }
+};
+class ScriptedTransport : public QObject, public cardstore::OpTransport {
+public:
+    QList<QVariantMap> posted;
+    QList<int> statuses;
+    explicit ScriptedTransport(QList<int> results) : statuses(std::move(results)) {}
+    void postOp(const QString &, const QVariantMap &body,
+                std::function<void(int, const QVariantMap &)> completed) override {
+        posted.append(body);
+        const int status = statuses.isEmpty() ? 200 : statuses.takeFirst();
+        QTimer::singleShot(0, this, [completed, status] {
+            completed(status, {{QStringLiteral("ok"), status >= 200 && status < 300}});
         });
     }
 };
@@ -148,7 +163,7 @@ private slots:
         QTemporaryDir directory;
         OpsServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost));
-        server.reject = 422;
+        server.statusSequence = {422, 200};
         HttpTransport transport(server.serverPort());
         CardStore store;
         QVERIFY(store.open(directory.filePath("rejected.sqlite")));
@@ -171,8 +186,8 @@ private slots:
         QVERIFY(untouched.isValid());
         QCOMPARE(untouched.row(), 1);
         QCOMPARE(reset.size(), 0);
-        QTest::qWait(40);
-        QCOMPARE(server.received.size(), 1);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(server.received.size(), 2);
     }
     void reminderSemanticContract() {
         const QString proof = qEnvironmentVariable("R26_API_PROOF");
@@ -248,6 +263,61 @@ private slots:
         QVERIFY(!restored.applyRemoteCards({{"now",QVariantList{}}}));
         QCOMPARE(restored.rowCount(),1);
     }
+    void rejectedHeadDoesNotBlockPersistedTailOps() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("rejected-head.sqlite");
+        QString head, tail1, tail2;
+        {
+            CardStore seed;
+            QVERIFY(seed.open(path));
+            QVERIFY(seed.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Archive me"}}}},
+                {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            head = seed.enqueueOp(cardId, "archive");
+            tail1 = seed.saveNote(cardId, "Tail one");
+            tail2 = seed.enqueueOp(cardId, "pin");
+            QCOMPARE(seed.pendingOps(), 3);
+        }
+
+        CardStore store;
+        QVERIFY(store.open(path));
+        ScriptedTransport transport({422, 200, 200});
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        connect(&store, &CardStore::requestCards, &store, [&store](const QString &) {
+            store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Archive me"}}}},
+                {"later", QVariantList{}}, {"missed", QVariantList{}}});
+        });
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QTRY_COMPARE(transport.posted.size(), 3);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(transport.posted[0].value("op_id").toString(), head);
+        QCOMPARE(transport.posted[1].value("op_id").toString(), tail1);
+        QCOMPARE(transport.posted[2].value("op_id").toString(), tail2);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed[0][0].toString(), head);
+        QCOMPARE(failed[0][1].toInt(), 422);
+        QTRY_COMPARE(store.rowCount(), 1);
+        QCOMPARE(store.data(store.index(0), CardStore::CardIdRole).toString(), cardId);
+    }
+    void transientFailureRetriesSameHeadBeforeTail() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("transient.sqlite")));
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Card"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        const QString head = store.saveNote(cardId, "First");
+        const QString tail = store.enqueueOp(cardId, "pin");
+        ScriptedTransport transport({0, 200, 200});
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QTRY_COMPARE(transport.posted.size(), 3);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(transport.posted[0].value("op_id").toString(), head);
+        QCOMPARE(transport.posted[1].value("op_id").toString(), head);
+        QCOMPARE(transport.posted[2].value("op_id").toString(), tail);
+        QCOMPARE(failed.size(), 0);
+    }
     void queuedOpFlushedExactlyOnce() {
         QTemporaryDir directory;
         const QString path = directory.filePath("cache.sqlite");
@@ -289,27 +359,18 @@ private slots:
         QVERIFY(server.listen(QHostAddress::LocalHost));
         server.loseNextAck = true;
         HttpTransport transport(server.serverPort());
-        QString id;
-        {
-            CardStore store;
-            QVERIFY(store.open(path));
-            store.setTransport(&transport);
-            id = store.dismiss(cardId);
-            QSignalSpy failed(&store,&CardStore::operationFailed);
-            store.setOnline(true);
-            QTRY_COMPARE(failed.size(),1);
-            QCOMPARE(store.pendingOps(),1);
-            QCOMPARE(server.applied,1);
-        }
-        CardStore restored;
-        QVERIFY(restored.open(path));
-        restored.setTransport(&transport);
-        restored.setOnline(true);
-        QTRY_COMPARE(restored.pendingOps(),0);
-        QCOMPARE(server.received.size(),2);
-        QCOMPARE(server.received[0],server.received[1]);
-        QCOMPARE(server.received[1].value("op_id").toString(),id);
-        QCOMPARE(server.applied,1);
+        CardStore store;
+        QVERIFY(store.open(path));
+        store.setTransport(&transport);
+        const QString id = store.dismiss(cardId);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(failed.size(), 0);
+        QCOMPARE(server.received.size(), 2);
+        QCOMPARE(server.received[0], server.received[1]);
+        QCOMPARE(server.received[1].value("op_id").toString(), id);
+        QCOMPARE(server.applied, 1);
     }
     void snoozeAndPinOrderSurviveColdRestartAndAcknowledgement() {
         QTemporaryDir directory;
@@ -561,29 +622,6 @@ private slots:
         lock.close();
         lock = QSqlDatabase();
         QSqlDatabase::removeDatabase(connection);
-    }
-    void rejectionRetainsHeadAndBlocksLaterOps() {
-        QTemporaryDir directory;
-        OpsServer server;
-        QVERIFY(server.listen(QHostAddress::LocalHost));
-        server.reject = 422;
-        HttpTransport transport(server.serverPort());
-        CardStore store;
-        QVERIFY(store.open(directory.filePath("cache.sqlite")));
-        const QString first = store.enqueueOp(cardId,"pin");
-        store.enqueueOp(cardId,"unpin");
-        store.setTransport(&transport);
-        QSignalSpy failed(&store,&CardStore::operationFailed);
-        store.setOnline(true);
-        QTRY_COMPARE(failed.size(),1);
-        QCOMPARE(store.pendingOps(),2);
-        QCOMPARE(server.received.size(),1);
-        QCOMPARE(server.received[0].value("op_id").toString(),first);
-        server.reject = 0;
-        store.setOnline(false); store.setOnline(true);
-        QTRY_COMPARE(store.pendingOps(),0);
-        QCOMPARE(server.received[1].value("op_id").toString(),first);
-        QCOMPARE(server.received[2].value("type").toString(),QStringLiteral("unpin"));
     }
     void hasBodyAgentCardPrefetchesAndSurvivesRestart() {
         QTemporaryDir directory;
