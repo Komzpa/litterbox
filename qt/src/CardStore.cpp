@@ -107,15 +107,25 @@ void CardStore::replaceCards(QList<QVariantMap> cards) {
     static constexpr int kResetThreshold = 32;
     QSet<QString> ids;
     for (const auto &card : cards) ids.insert(card.value(QStringLiteral("id")).toString());
-    int removals = 0;
-    for (int row = m_cards.size() - 1; row >= 0; --row)
-        if (!ids.contains(m_cards[row].value(QStringLiteral("id")).toString())) ++removals;
     QStringList order = cardIds();
-    int structures = removals;
-    for (int row = 0; row < cards.size(); ++row) {
+    // Count the real row operations the fine-grained path would emit: removals,
+    // then one insert/move per operation on the post-removal order. A shift
+    // caused by a single archive or insert is one change, not one change per
+    // displaced row; role-only re-clusters count zero.
+    QStringList projected = order;
+    int structures = 0;
+    for (int row = projected.size() - 1; row >= 0; --row) {
+        if (ids.contains(projected[row])) continue;
+        projected.removeAt(row);
+        ++structures;
+    }
+    for (int row = 0; row < cards.size() && structures <= kResetThreshold; ++row) {
         const QString id = cards[row].value(QStringLiteral("id")).toString();
-        if (row < order.size() && order[row] == id) continue;
+        if (row < projected.size() && projected[row] == id) continue;
         ++structures;  // an insert or a move will be needed here
+        const int from = projected.indexOf(id, row);
+        if (from < 0) projected.insert(row, id);
+        else projected.move(from, row);
     }
     if (structures > kResetThreshold) {
         beginResetModel();
@@ -127,6 +137,10 @@ void CardStore::replaceCards(QList<QVariantMap> cards) {
         if (ids.contains(m_cards[row].value(QStringLiteral("id")).toString())) continue;
         beginRemoveRows({}, row, row);
         m_cards.removeAt(row);
+        // Keep order in lockstep with m_cards so the insert/move indexes below
+        // address the same rows in both; a stale order yields out-of-range
+        // beginMoveRows (and a crash on QList::move).
+        order.removeAt(row);
         endRemoveRows();
     }
     std::vector<char> dirty(cards.size(), 0);
