@@ -36,3 +36,11 @@ add_test(NAME bundleexpand COMMAND tst_bundleexpand
     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
 set_tests_properties(bundleexpand PROPERTIES ENVIRONMENT
     "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+
+# Same real CardStore runner, with the large-bundle timing and wheel oracle.
+add_test(NAME scrollresilience COMMAND tst_bundleexpand
+    -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_scrollresilience.qml
+    -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
+set_tests_properties(scrollresilience PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")

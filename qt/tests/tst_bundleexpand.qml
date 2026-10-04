@@ -87,7 +87,8 @@ TestCase {
         verify(!title.truncated, "Distinct sender names must remain readable at 520 px")
         mouseClick(toggle, toggle.width / 2, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, true)
-        verify(!latest.visible, "Expanded cards show their subjects instead of the collapsed preview")
+        const expandedLatest = findChild(list.itemAtIndex(0), "bundleLatestLabel-sender-0")
+        verify(!expandedLatest.visible, "Expanded cards show their subjects instead of the collapsed preview")
         inbox.close()
     }
     function test_nonAdjacentMembersExpandUnderLeader_data() {
@@ -164,7 +165,8 @@ TestCase {
                 "Expanded members must have no intervening cards or section headings")
         }
         compare(store.cardIds(), sourceIds, "Expansion is presentation-only, not a persistent reorder")
-        mouseClick(toggle, 12, toggle.height / 2)
+        const expandedToggle = findChild(list.itemAtIndex(ordered[0].index), "bundleToggle-" + leaderId)
+        mouseClick(expandedToggle, 12, expandedToggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, false)
         tryVerify(function() { list.forceLayout(); return snapshot(list, ids).filter(row => row.visible).length === 1 })
         for (const row of snapshot(list, ids).filter(row => row.id !== leaderId)) {

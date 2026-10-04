@@ -121,6 +121,26 @@ TestCase {
                row.tag + " body is squeezed to " + shown.body.width + "px")
     }
 
+    function test_longMessageWheelScroll() {
+        const html = "<html><body>" + "<p>Long cached message paragraph.</p>".repeat(100) + "</body></html>"
+        const shown = openMessage(html, 598)
+        let position = null
+        function readPosition() {
+            shown.body.runJavaScript("document.scrollingElement.scrollTop", WebEngineScript.ApplicationWorld,
+                function(value) { position = value })
+        }
+        readPosition()
+        tryVerify(function() { return position !== null })
+        compare(position, 0)
+        mouseWheel(shown.body, shown.body.width / 2, shown.body.height / 2, 0, -120, Qt.NoButton)
+        tryVerify(function() { readPosition(); return position > 0 }, 5000,
+                  "A wheel event must scroll the open long message")
+        console.log("MAIL_WHEEL", 0, "->", position)
+        mouseWheel(shown.body, shown.body.width / 2, shown.body.height / 2, 0, 120, Qt.NoButton)
+        tryVerify(function() { readPosition(); return position === 0 }, 5000,
+                  "Reverse wheel must return to the message start")
+    }
+
     function test_googleHeadingAndCallToActionStayReadable() {
         const shown = openMessage(mailFixtures.read("google"), 598)
         verify(shown.text.indexOf("Datasets structured data issues detected in") >= 0)
