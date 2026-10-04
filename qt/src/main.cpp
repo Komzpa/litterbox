@@ -30,11 +30,15 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QJsonArray>
-#include <QUrl>
-#include <QKeyEvent>
-#include <QMouseEvent>
-#include <QWheelEvent>
-#include <QQuickItem>
+#include <QHoverEvent>
+#include <QEventLoop>
+#include <QQmlExpression>
+ #include <QUrl>
+ #include <QKeyEvent>
+ #include <QMouseEvent>
+#include <QQmlExpression>
+ #include <QWheelEvent>
+ #include <QQuickItem>
 
 #include <memory>
 // QObject::findChild cannot see ListView delegates in Qt 6: they only exist as
@@ -50,6 +54,54 @@ static QQuickItem *findVisualItem(QQuickItem *root, const QString &objectName)
         if (QQuickItem *found = findVisualItem(child, objectName)) return found;
     }
     return nullptr;
+}
+static void findAllVisualItems(QQuickItem *root, const QString &objectName, QList<QQuickItem *> &out)
+{
+    if (!root) return;
+    if (root->objectName() == objectName) out.append(root);
+    const QList<QQuickItem *> children = root->childItems();
+    for (QQuickItem *child : children) findAllVisualItems(child, objectName, out);
+}
+static QQuickItem *pickVisibleScriptItem(QQuickItem *root, const QString &objectName, int index, QQuickWindow *window)
+{
+    QList<QQuickItem *> all;
+    findAllVisualItems(root, objectName, all);
+    if (all.isEmpty()) {
+        QObject *declared = window ? window->contentItem()->findChild<QObject *>(objectName) : nullptr;
+        if (QQuickItem *item = qobject_cast<QQuickItem *>(declared)) all.append(item);
+    }
+    if (all.isEmpty()) return nullptr;
+    QList<QQuickItem *> visible;
+    const QRectF frame(0, 0, window ? window->width() : 0, window ? window->height() : 0);
+    for (QQuickItem *item : all) {
+        if (!item || !item->isVisible() || item->width() <= 0 || item->height() <= 0 || item->opacity() <= 0.01) continue;
+        const QPointF topLeft = item->mapToScene(QPointF(0, 0));
+        if (window && !QRectF(topLeft, QSizeF(item->width(), item->height())).intersects(frame)) continue;
+        visible.append(item);
+    }
+    if (visible.isEmpty()) return nullptr;
+    if (index < 0 || index >= visible.size()) index = 0;
+    return visible.at(index);
+}
+static void settleScriptWindow(QQuickWindow *window)
+{
+    QCoreApplication::processEvents();
+    if (window) {
+        QEventLoop frameWait;
+        QObject::connect(window, &QQuickWindow::frameSwapped, &frameWait, &QEventLoop::quit);
+        QTimer::singleShot(800, &frameWait, &QEventLoop::quit);
+        frameWait.exec();
+        QThread::msleep(150);
+    } else {
+        QThread::msleep(150);
+    }
+    QCoreApplication::processEvents();
+}
+static int scriptStackDepth(QObject *root)
+{
+    if (!root) return -1;
+    QObject *stack = root->findChild<QObject *>(QStringLiteral("pageStack"));
+    return stack ? stack->property("depth").toInt() : -1;
 }
 
 #ifndef LB_DEFAULT_SERVER_URL
@@ -103,8 +155,10 @@ int main(int argc, char *argv[])
         arguments.at(1) == QStringLiteral("--capture-card-controls");
     const bool captureMode = captureScenario || captureScrollScenario || captureCardControls;
     const bool testProfileMode = arguments.size() == 3 && arguments.at(1) == QStringLiteral("--test-profile");
-    if (arguments.size() != 1 && !captureMode && !testProfileMode) {
-        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory> [--capture-viewport <width> <height>]|--test-profile <isolated-profile-directory>]");
+    const bool captureScriptMode = arguments.size() == 5 && arguments.at(1) == QStringLiteral("--capture-script");
+    const bool profileMode = testProfileMode || captureScriptMode;
+    if (arguments.size() != 1 && !captureMode && !testProfileMode && !captureScriptMode) {
+        qCritical("Usage: litterbox-qt [--capture-scenario|--capture-scroll-scenario|--capture-card-controls <fixture.sqlite> <output-directory> [--capture-viewport <width> <height>]|--test-profile <isolated-profile-directory>|--capture-script <test-profile-dir> <script.json> <output-dir>]\nCapture-script steps (JSON array, run in order, scene settles after each): {\"resize\":[w,h]} {\"shot\":\"name\"} {\"click\":\"objectName\"[,\"index\":n]} {\"rightClick\":\"objectName\"} {\"hover\":\"objectName\"} {\"key\":\"Escape|Tab|Return|Delete|End|Home|PageDown\"} {\"mouseButton\":\"Back\"} {\"openCard\":\"card-id\"} {\"scroll\":\"end|top\"|pixels} {\"wait\":ms} {\"eval\":\"qml expression\"}. Shots write <output-dir>/name.png plus name.json with window size and stack depth. Unknown objectName fails the step with exit 3. Prefer QT_QPA_PLATFORM=offscreen; QtWebEngine mail bodies render blank there, so rerun mail-body shots under an owned Xvfb with QT_QPA_PLATFORM=xcb (never the live desktop).");
         return 2;
     }
     QSize captureViewport;
@@ -120,10 +174,12 @@ int main(int argc, char *argv[])
     }
     QString captureOutput;
     QString captureDatabase;
+    QString captureScriptPath;
+    QString captureScriptOutput;
     QString testProfileDirectory;
     QString testServerUrl;
     QString testToken;
-    if (testProfileMode) {
+    if (profileMode) {
         testProfileDirectory = QFileInfo(arguments.at(2)).canonicalFilePath();
         const QString profileConfigPath = QDir(testProfileDirectory).filePath(QStringLiteral("profile.json"));
         QFile profileConfig(profileConfigPath);
@@ -152,6 +208,20 @@ int main(int argc, char *argv[])
         if (canonicalOrAbsolute(testDatabasePath) == canonicalOrAbsolute(normalDatabasePath) ||
             canonicalOrAbsolute(testSettingsPath) == canonicalOrAbsolute(normalSettings.fileName())) {
             qCritical("Test profile storage must not overlap normal application storage");
+            return 2;
+        }
+    }
+    if (captureScriptMode) {
+        captureScriptPath = QFileInfo(arguments.at(3)).canonicalFilePath();
+        captureScriptOutput = QFileInfo(arguments.at(4)).absoluteFilePath();
+        if (captureScriptPath.isEmpty() || !QFileInfo(captureScriptPath).isFile()) {
+            qCritical("Capture script requires an existing JSON script file");
+            return 2;
+        }
+        if (captureScriptOutput == testProfileDirectory ||
+            !QDir().mkpath(captureScriptOutput) ||
+            !QDir(captureScriptOutput).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
+            qCritical("Capture script output directory must be empty and separate from the test profile");
             return 2;
         }
     }
@@ -223,7 +293,7 @@ int main(int argc, char *argv[])
     }
 
     std::unique_ptr<QSettings> settings;
-    if (testProfileMode) {
+    if (profileMode) {
         settings = std::make_unique<QSettings>(QDir(testProfileDirectory).filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
         settings->setValue(QStringLiteral("token"), testToken);
         settings->sync();
@@ -237,10 +307,10 @@ int main(int argc, char *argv[])
     // LB_DEFAULT_SERVER_URL default. Android has no LB_SERVER, so the
     // compiled default is what the phone uses until enrollment saves one.
     const QString compiledDefaultServerUrl = QStringLiteral(LB_DEFAULT_SERVER_URL);
-    api.setBaseUrl(Api::resolveBaseUrl(testProfileMode, testServerUrl,
+    api.setBaseUrl(Api::resolveBaseUrl(profileMode, testServerUrl,
         qEnvironmentVariable("LB_SERVER"),
         settings->value(QStringLiteral("server_url")).toString(), compiledDefaultServerUrl));
-    api.setToken(testProfileMode ? testToken : qEnvironmentVariable("LB_TOKEN", settings->value(QStringLiteral("token")).toString()));
+    api.setToken(profileMode ? testToken : qEnvironmentVariable("LB_TOKEN", settings->value(QStringLiteral("token")).toString()));
     QObject::connect(&api, &Api::tokenChanged, &app, [&] { settings->setValue(QStringLiteral("token"), api.token()); });
     QObject::connect(&api, &Api::baseUrlChanged, &app, [&] { settings->setValue(QStringLiteral("server_url"), api.baseUrl()); });
     AndroidUpdater updater;
@@ -255,9 +325,9 @@ int main(int argc, char *argv[])
     CardStore store;
     CardStore::registerQml("litterbox", 1, 0);
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (!captureMode && !QDir().mkpath(testProfileMode ? testProfileDirectory : dataDir)) return 1;
+    if (!captureMode && !QDir().mkpath(profileMode ? testProfileDirectory : dataDir)) return 1;
     const QString databasePath = captureMode ? captureDatabase :
-        QDir(testProfileMode ? testProfileDirectory : dataDir).filePath(QStringLiteral("cards.sqlite"));
+        QDir(profileMode ? testProfileDirectory : dataDir).filePath(QStringLiteral("cards.sqlite"));
     if (!store.open(databasePath)) return 1;
     // Enrollment delivers its token through tokenChanged (the QML page sets
     // api.token on success and the connection above persists it). Use the
@@ -387,7 +457,7 @@ int main(int argc, char *argv[])
     // Window placement is persisted so an upgrade restart (UpdateWatcher)
     // comes back where the user left it. Capture harnesses resize their own
     // frames and must neither inherit nor record normal placement.
-    if (!captureMode) {
+    if (!captureMode && !captureScriptMode) {
         auto *restoredWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
         if (restoredWindow) {
             const QVariantMap geometry = settings->value(QStringLiteral("windowGeometry")).toMap();
@@ -413,6 +483,116 @@ int main(int argc, char *argv[])
         }
     }
 #endif
+    if (captureScriptMode) {
+        QTimer::singleShot(0, &app, [&] {
+            auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+            QObject *root = engine.rootObjects().constFirst();
+            QQuickItem *list = findVisualItem(window ? window->contentItem() : nullptr, QStringLiteral("inboxList"));
+            QFile scriptFile(captureScriptPath);
+            if (!window || !list || !scriptFile.open(QIODevice::ReadOnly)) {
+                qCritical("Capture script could not load window, inboxList, or script file"); app.exit(3); return;
+            }
+            QJsonParseError parseError;
+            const QJsonDocument scriptDoc = QJsonDocument::fromJson(scriptFile.readAll(), &parseError);
+            if (!scriptDoc.isArray()) {
+                qCritical("Capture script must be a JSON array: %s", qPrintable(parseError.errorString())); app.exit(2); return;
+            }
+            const QHash<QString, int> keys{
+                {QStringLiteral("Escape"), Qt::Key_Escape}, {QStringLiteral("Tab"), Qt::Key_Tab},
+                {QStringLiteral("Return"), Qt::Key_Return}, {QStringLiteral("Delete"), Qt::Key_Delete},
+                {QStringLiteral("End"), Qt::Key_End}, {QStringLiteral("Home"), Qt::Key_Home},
+                {QStringLiteral("PageDown"), Qt::Key_PageDown}};
+            const auto fail = [&](int index, const QString &why, int code = 4) {
+                qCritical("Capture script step %d failed: %s", index + 1, qPrintable(why)); app.exit(code);
+            };
+            int stepNumber = 0;
+            for (const QJsonValue &stepValue : scriptDoc.array()) {
+                const int step = stepNumber++;
+                const QJsonObject action = stepValue.toObject();
+                bool ok = !action.isEmpty();
+                if (action.contains(QStringLiteral("resize"))) {
+                    const QJsonArray size = action.value(QStringLiteral("resize")).toArray();
+                    ok = size.size() == 2 && size.at(0).toInt() > 0 && size.at(1).toInt() > 0;
+                    if (ok) window->resize(size.at(0).toInt(), size.at(1).toInt());
+                } else if (action.contains(QStringLiteral("shot"))) {
+                    const QString name = QFileInfo(action.value(QStringLiteral("shot")).toString()).fileName();
+                    const QString base = name.isEmpty() ? QString() : QDir(captureScriptOutput).filePath(name);
+                    const QImage frame = window->grabWindow();
+                    ok = !base.isEmpty() && !frame.isNull() && frame.save(base + QStringLiteral(".png"), "PNG");
+                    if (ok) {
+                        QFile metadata(base + QStringLiteral(".json"));
+                        ok = metadata.open(QIODevice::WriteOnly | QIODevice::Truncate);
+                        if (ok) {
+                            const QJsonObject info{{QStringLiteral("width"), window->width()},
+                                {QStringLiteral("height"), window->height()},
+                                {QStringLiteral("stack_depth"), scriptStackDepth(root)}};
+                            ok = metadata.write(QJsonDocument(info).toJson(QJsonDocument::Indented)) > 0;
+                        }
+                    }
+                } else if (action.contains(QStringLiteral("click")) || action.contains(QStringLiteral("rightClick")) || action.contains(QStringLiteral("hover"))) {
+                    const QString verb = action.contains(QStringLiteral("click")) ? QStringLiteral("click") : action.contains(QStringLiteral("rightClick")) ? QStringLiteral("rightClick") : QStringLiteral("hover");
+                    const QString objectName = action.value(verb).toString();
+                    QQuickItem *item = pickVisibleScriptItem(window->contentItem(), objectName, action.value(QStringLiteral("index")).toInt(), window);
+                    if (!item) { fail(step, QStringLiteral("unknown or non-visible objectName '%1'").arg(objectName), 3); return; }
+                    const QPointF point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+                    const bool right = verb == QStringLiteral("rightClick");
+                    if (verb == QStringLiteral("hover")) {
+                        QMouseEvent event(QEvent::MouseMove, point, window->mapToGlobal(point.toPoint()), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(window, &event);
+                    } else {
+                        const Qt::MouseButton button = right ? Qt::RightButton : Qt::LeftButton;
+                        QMouseEvent press(QEvent::MouseButtonPress, point, window->mapToGlobal(point.toPoint()), button, button, Qt::NoModifier);
+                        QCoreApplication::sendEvent(window, &press);
+                        QMouseEvent release(QEvent::MouseButtonRelease, point, window->mapToGlobal(point.toPoint()), button, Qt::NoButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(window, &release);
+                    }
+                } else if (action.contains(QStringLiteral("key"))) {
+                    const QString key = action.value(QStringLiteral("key")).toString();
+                    if (!keys.contains(key)) { fail(step, QStringLiteral("unsupported key '%1'").arg(key)); return; }
+                    QKeyEvent press(QEvent::KeyPress, keys.value(key), Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &press);
+                    QKeyEvent release(QEvent::KeyRelease, keys.value(key), Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &release);
+                } else if (action.contains(QStringLiteral("mouseButton"))) {
+                    if (action.value(QStringLiteral("mouseButton")).toString() != QStringLiteral("Back")) { fail(step, QStringLiteral("unsupported mouseButton")); return; }
+                    const QPointF point(window->width() / 2.0, window->height() / 2.0);
+                    QMouseEvent press(QEvent::MouseButtonPress, point, window->mapToGlobal(point.toPoint()), Qt::BackButton, Qt::BackButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &press);
+                    QMouseEvent release(QEvent::MouseButtonRelease, point, window->mapToGlobal(point.toPoint()), Qt::BackButton, Qt::NoButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &release);
+                } else if (action.contains(QStringLiteral("openCard"))) {
+                    const QString objectName = QStringLiteral("openCard-") + action.value(QStringLiteral("openCard")).toString();
+                    QQuickItem *item = pickVisibleScriptItem(window->contentItem(), objectName, 0, window);
+                    if (!item) { fail(step, QStringLiteral("unknown or non-visible objectName '%1'").arg(objectName), 3); return; }
+                    const QPointF point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+                    QMouseEvent press(QEvent::MouseButtonPress, point, window->mapToGlobal(point.toPoint()), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &press);
+                    QMouseEvent release(QEvent::MouseButtonRelease, point, window->mapToGlobal(point.toPoint()), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &release);
+                } else if (action.contains(QStringLiteral("scroll"))) {
+                    const QJsonValue value = action.value(QStringLiteral("scroll"));
+                    if (value.isString() && value.toString() == QStringLiteral("top")) list->setProperty("contentY", list->property("originY"));
+                    else if (value.isString() && value.toString() == QStringLiteral("end")) QMetaObject::invokeMethod(list, "positionViewAtEnd");
+                    else if (value.isDouble()) list->setProperty("contentY", list->property("originY").toReal() + value.toDouble());
+                    else ok = false;
+                } else if (action.contains(QStringLiteral("wait"))) {
+                    const int ms = action.value(QStringLiteral("wait")).toInt(-1);
+                    ok = ms >= 0 && ms <= 60000;
+                    if (ok) { QEventLoop wait; QTimer::singleShot(ms, &wait, &QEventLoop::quit); wait.exec(); }
+                } else if (action.contains(QStringLiteral("eval"))) {
+                    QQmlExpression expression(QQmlEngine::contextForObject(root), root, action.value(QStringLiteral("eval")).toString());
+                    const QVariant result = expression.evaluate();
+                    if (expression.hasError()) { fail(step, expression.error().toString()); return; }
+                    qInfo("Capture script eval step %d: %s", step + 1, qPrintable(result.toString()));
+                } else {
+                    ok = false;
+                }
+                if (!ok) { fail(step, QStringLiteral("invalid step or operation failed")); return; }
+                settleScriptWindow(window);
+            }
+            app.exit(0);
+        });
+    }
     if (captureScrollScenario) {
         QTimer::singleShot(0, &app, [&] {
             auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
@@ -879,7 +1059,7 @@ int main(int argc, char *argv[])
             qInfo("Capture proof: baseline.png, snoozed.png, reordered.png; persisted snooze and pin order verified");
             app.exit(0);
         });
-    } else {
+    } else if (!captureScriptMode) {
         store.setOnline(true);
         openStream();
     }
@@ -889,7 +1069,7 @@ int main(int argc, char *argv[])
     // ~CardStore drains queued commits (the outbox) before the replacement
     // instance opens the same database. Capture runs are harnesses and never
     // self-restart; a build-directory binary fails createForRunningApp.
-    if (!captureMode) {
+    if (!captureMode && !captureScriptMode) {
         if (UpdateWatcher *updateWatcher = UpdateWatcher::createForRunningApp(&app))
             QObject::connect(updateWatcher, &UpdateWatcher::replacementSpawned,
                              &app, &QCoreApplication::quit);
