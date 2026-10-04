@@ -533,15 +533,19 @@ ApplicationWindow {
                             }
                             sourceEntries = entries
                             window.bundleSections = sections
-                            window.bundleSummaries = summaries
                         }
                         const ordered = [].concat(...groups)
                         for (const bundle in summaries) summaries[bundle].lastId = ""
                         for (let i = 0; i < ordered.length; ++i) {
                             const entry = ordered[i]
-                            if (entry.card.bundle_id && (i + 1 === ordered.length || ordered[i + 1].card.bundle_id !== entry.card.bundle_id))
+                            if (entry.card.bundle_leader !== undefined && (i + 1 === ordered.length
+                                    || ordered[i + 1].card.bundle_leader === undefined
+                                    || ordered[i + 1].card.bundle_id !== entry.card.bundle_id))
                                 summaries[entry.card.bundle_id].lastId = entry.cardId
                         }
+                        // Publish only after lastId is ready: nested object writes
+                        // do not notify the delegates' bundleSummary bindings.
+                        if (refresh) window.bundleSummaries = summaries
                         const headings = {}
                         let previousSection = ""
                         for (const entry of ordered) {

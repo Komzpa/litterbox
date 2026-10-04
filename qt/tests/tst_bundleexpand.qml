@@ -222,6 +222,102 @@ TestCase {
         verify(!disclosure.visible)
         inbox.close()
     }
+    function test_expandedFrameEnclosesMembers_data() {
+        return [
+            {tag: "two-520", count: 2, width: 520, height: 900},
+            {tag: "three-520", count: 3, width: 520, height: 900},
+            {tag: "two-598", count: 2, width: 598, height: 1200},
+            {tag: "three-598", count: 3, width: 598, height: 1200},
+            {tag: "important-last-520", count: 3, width: 520, height: 900, importantLast: true},
+            {tag: "important-last-598", count: 3, width: 598, height: 1200, importantLast: true}
+        ]
+    }
+    function test_expandedFrameEnclosesMembers(data) {
+        const bundle = "topic:frame-" + data.tag
+        const cards = []
+        for (let i = 0; i < data.count; ++i)
+            cards.push(card("frame-" + i, bundle, "now", {important: !!data.importantLast && i === data.count - 1}))
+        verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.width, height: data.height
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(data.count - 1) !== null })
+        const toggle = findChild(list.itemAtIndex(0), "bundleToggle-frame-0")
+        verify(toggle && toggle.visible)
+        mouseClick(toggle, 12, toggle.height / 2)
+        tryCompare(inbox.expandedBundles, bundle, true)
+        wait(200)
+        list.forceLayout()
+        let frameBottom = -1
+        let lastMemberBottom = -1
+        for (let i = 0; i < list.count; ++i) {
+            const row = list.itemAtIndex(i)
+            verify(row && row.visible)
+            if (row.card.important) {
+                verify(!row.bundled && !row.bundleLeader, "Important card must remain standalone")
+                verify(row.card.bundle_leader === undefined, "Important card is not an ordinary bundle member")
+                continue
+            }
+            const frame = findChild(row, "inboxCard")
+            verify(frame)
+            const bottom = frame.mapToItem(inbox.contentItem, 0, frame.height).y
+            lastMemberBottom = Math.max(lastMemberBottom, bottom)
+            // Inspect the painted closing edge, not just the cached lastId.
+            for (const edge of frame.background.children) {
+                if (edge.visible && edge.height === 1 && edge.width === frame.width
+                        && Math.abs(edge.y + edge.height - frame.background.height) <= 1)
+                    frameBottom = Math.max(frameBottom, edge.mapToItem(inbox.contentItem, 0, edge.height).y)
+            }
+        }
+        console.log("BUNDLE_FRAME_GEOMETRY", JSON.stringify({count: data.count, width: data.width,
+            frameBottom: frameBottom, lastMemberBottom: lastMemberBottom}))
+        verify(frameBottom >= lastMemberBottom,
+            "The painted bundle frame must close at or below the last member's bottom")
+        inbox.close()
+    }
+    function test_archiveToastLeavesNoHeaderGap_data() {
+        return [{tag: "520", width: 520, height: 900}, {tag: "598", width: 598, height: 1200}]
+    }
+    function test_archiveToastLeavesNoHeaderGap(data) {
+        const bundle = "topic:archive-gap-" + data.tag
+        const leaderId = "gap-leader-" + data.tag
+        const memberId = "gap-member-" + data.tag
+        const survivorId = "gap-survivor-" + data.tag
+        verify(store.applyRemoteCards({now: [
+            card(leaderId, bundle, "now", {state: "open"}),
+            card(memberId, bundle, "now", {state: "open"}),
+            card(survivorId, "", "now", {state: "open"})
+        ], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.width, height: data.height
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const archive = findChild(list.itemAtIndex(0), "archiveBundle-" + leaderId)
+        verify(archive && archive.visible)
+        mouseClick(archive, archive.width / 2, archive.height / 2)
+        tryCompare(list, "count", 1)
+        const toast = findChild(inbox, "bundleArchiveUndoBar")
+        verify(toast && toast.visible, "Archive toast must be showing during the geometry check")
+        wait(200)
+        list.forceLayout()
+        const firstCard = list.itemAtIndex(0)
+        compare(firstCard.cardId, survivorId)
+        const firstCardTop = firstCard.mapToItem(inbox.contentItem, 0, 0).y
+        const headerBottom = inbox.header.mapToItem(inbox.contentItem, 0, inbox.header.height).y
+        console.log("ARCHIVE_HEADER_GEOMETRY", JSON.stringify({width: data.width,
+            firstCardTop: firstCardTop, headerBottom: headerBottom,
+            topMargin: list.topMargin, toastVisible: toast.visible}))
+        compare(list.topMargin, inbox.edgeSpacing, "Keep the normal ListView breathing room")
+        compare(firstCardTop, headerBottom + list.topMargin, "Archive toast must not add an extra gap below the header")
+        inbox.close()
+    }
     function test_archiveBundleUndoExpiresFromTokenDeadline() {
         const bundle = "sender:expiry@example.test"
         const ids = ["expiry-leader", "expiry-member"]
