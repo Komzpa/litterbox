@@ -77,8 +77,11 @@ ApplicationWindow {
         const next = Object.assign({}, expandedBundles)
         next[bundleId] = !next[bundleId]
         expandedBundles = next
-        bundleModel.groupBundles()
-        if (!next[bundleId] && bundleOpeners[bundleId]) bundleOpeners[bundleId].forceActiveFocus()
+        bundleModel.rebuildPresentation(false)
+        Qt.callLater(function() {
+            const opener = bundleOpeners[bundleId]
+            if (opener) opener.forceActiveFocus()
+        })
     }
     function archiveBundle(bundleId) {
         const result = store.archiveBundleNow(bundleId)
@@ -126,7 +129,7 @@ ApplicationWindow {
         return sourceIndex >= 0 && store.moveCardTo(cardId, sourceIndex)
     }
     function cardIdAt(row) {
-        return row >= 0 && row < bundleModel.items.count ? bundleModel.items.get(row).model.cardId : ""
+        return row >= 0 && row < bundleModel.rows.length ? bundleModel.rows[row].cardId : ""
     }
 
     // The card-controls capture opens the real dialog, records a frame while it is
@@ -415,24 +418,34 @@ ApplicationWindow {
                         event.accepted = true
                     }
                 }
-                model: bundleModel
+                // Stable slots preserve viewport delegates on both reordering
+                // and source removal; a numeric/array model resets them all.
+                model: presentationModel
+                ListModel { id: presentationModel }
                 // Hidden bundle members must contribute neither height nor spacing.
                 spacing: 0
                 DelegateModel {
                     id: bundleModel
+                    objectName: "bundlePresentation"
                     model: store
-                    // Reorder delegates, never the cache or server's card order.
-                    // CardStore remains the owner of leadership and exemptions.
-                    function groupBundles() {
-                        const entries = []
+                    property var rows: []
+                    property var sourceEntries: []
+                    // Read source roles without ever mutating DelegateModel's groups.
+                    // Publish one linear presentation snapshot; only source signals
+                    // and explicit expansion can rebuild it, never its own reset.
+                    function rebuildPresentation(refreshSource) {
+                        const refresh = refreshSource !== false
                         const members = {}
-                        const sections = {}
-                        const summaries = {}
-                        for (let i = 0; i < items.count; ++i) entries.push(items.get(i))
-                        entries.sort((a, b) => a.model.index - b.model.index)
-                        for (const entry of entries) {
-                            const card = entry.model.card
-                            if (card.bundle_id) {
+                        const sections = refresh ? {} : window.bundleSections
+                        const summaries = refresh ? {} : window.bundleSummaries
+                        const entries = refresh ? [] : sourceEntries
+                        const groups = []
+                        for (let i = 0; i < (refresh ? items.count : entries.length); ++i) {
+                            const source = refresh ? items.get(i).model : null
+                            const entry = refresh ? {card: source.card, cardId: source.cardId, title: source.title} : entries[i]
+                            if (refresh) entries.push(entry)
+                            const card = entry.card
+                            if (refresh && card.bundle_id) {
                                 const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], senders: [], important: 0, unpinned: 0, lastId: ""})
                                 if (card.account_name && summary.accounts.indexOf(card.account_name) < 0) summary.accounts.push(card.account_name)
                                 if (card.pinned_rank == null && card.section !== "pinned") {
@@ -440,57 +453,69 @@ ApplicationWindow {
                                     if (card.important) ++summary.important
                                 }
                                 if (card.bundle_leader !== undefined) {
-                                    summary.lastId = entry.model.cardId
+                                    summary.lastId = entry.cardId
                                     const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
                                     if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
                                 }
                             }
-                            if (card.bundle_leader === true) sections[card.bundle_id] = card.section
-                            else if (card.bundle_leader === false) {
-                                if (!members[card.bundle_id]) members[card.bundle_id] = []
-                                members[card.bundle_id].push(entry)
+                            if (card.bundle_leader === true) {
+                                sections[card.bundle_id] = card.section
+                                groups.push([entry])
+                                if (window.expandedBundles[card.bundle_id]) {
+                                    const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
+                                    groups.push(bucket)
+                                }
                             }
+                            else if (card.bundle_leader === false && window.expandedBundles[card.bundle_id]) {
+                                const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
+                                bucket.push(entry)
+                            } else groups.push([entry])
                         }
-                        for (const bundle in summaries) {
-                            const summary = summaries[bundle]
-                            summary.senderLabel = summary.senders.slice(0, 2).join(", ") + (summary.senders.length > 2 ? " +" + (summary.senders.length - 2) : "")
+                        if (refresh) {
+                            for (const bundle in summaries) {
+                                const summary = summaries[bundle]
+                                summary.senderLabel = summary.senders.slice(0, 2).join(", ") + (summary.senders.length > 2 ? " +" + (summary.senders.length - 2) : "")
+                            }
+                            sourceEntries = entries
+                            window.bundleSections = sections
+                            window.bundleSummaries = summaries
                         }
-                        const ordered = []
-                        for (const entry of entries) {
-                            const card = entry.model.card
-                            if (card.bundle_leader === false && window.expandedBundles[card.bundle_id]) continue
-                            ordered.push(entry)
-                            if (card.bundle_leader === true && window.expandedBundles[card.bundle_id])
-                                ordered.push(...(members[card.bundle_id] || []))
-                        }
-                        window.bundleSections = sections
-                        window.bundleSummaries = summaries
+                        const ordered = [].concat(...groups)
                         const headings = {}
                         let previousSection = ""
                         for (const entry of ordered) {
-                            const card = entry.model.card
+                            const card = entry.card
                             if (card.bundle_leader === false && !window.expandedBundles[card.bundle_id]) continue
                             const section = card.bundle_leader !== undefined ? sections[card.bundle_id] : card.section
-                            headings[entry.model.cardId] = section !== previousSection
+                            headings[entry.cardId] = section !== previousSection
                             previousSection = section
                         }
                         window.sectionStarts = headings
-                        for (let i = 0; i < ordered.length; ++i)
-                            if (ordered[i].itemsIndex !== i) items.move(ordered[i].itemsIndex, i)
+                        const position = inboxList.contentY - inboxList.originY
+                        if (presentationModel.count > ordered.length)
+                            presentationModel.remove(ordered.length, presentationModel.count - ordered.length)
+                        rows = ordered
+                        while (presentationModel.count < ordered.length)
+                            presentationModel.append({slot: presentationModel.count})
+                        inboxList.forceLayout()
+                        inboxList.contentY = inboxList.originY + position
                     }
-                    Component.onCompleted: groupBundles()
-                    onCountChanged: Qt.callLater(groupBundles)
+                    Component.onCompleted: rebuildPresentation()
+                    onCountChanged: Qt.callLater(rebuildPresentation)
                     Connections {
                         target: store
                         ignoreUnknownSignals: true
-                        function onDataChanged() { Qt.callLater(bundleModel.groupBundles) }
-                        function onRowsMoved() { Qt.callLater(bundleModel.groupBundles) }
-                        function onModelReset() { Qt.callLater(bundleModel.groupBundles) }
+                        function onDataChanged() { Qt.callLater(bundleModel.rebuildPresentation) }
+                        function onRowsMoved() { Qt.callLater(bundleModel.rebuildPresentation) }
+                        function onModelReset() { Qt.callLater(bundleModel.rebuildPresentation) }
                     }
+                }
                 delegate: Item {
-                    required property var card
-                    required property string cardId
-                    required property string title
+                    required property int slot
+                    readonly property var entry: bundleModel.rows[slot] || {card: {}, cardId: "", title: ""}
+                    readonly property var card: entry.card
+                    readonly property string cardId: entry.cardId
+                    readonly property string title: entry.title
                     id: cardRow
                     readonly property string displaySection: card.bundle_leader !== undefined
                         ? (window.bundleSections[card.bundle_id] || card.section) : card.section
@@ -502,6 +527,26 @@ ApplicationWindow {
                     readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], important: 0, unpinned: 0, lastId: cardId}
                     readonly property bool lastMember: bundleSummary.lastId === cardId
                     readonly property real bundleTextInset: bundleToggle.leftPadding + Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                    property string registeredCardId: ""
+                    property string registeredBundleId: ""
+                    function unregisterControls() {
+                        if (window.cardHandles[registeredCardId] === dragHandle) delete window.cardHandles[registeredCardId]
+                        if (window.captureActions[registeredCardId] === cardActions) delete window.captureActions[registeredCardId]
+                        if (window.bundleOpeners[registeredBundleId] === bundleToggle) delete window.bundleOpeners[registeredBundleId]
+                    }
+                    function registerControls() {
+                        unregisterControls()
+                        if (!cardId) return
+                        registeredCardId = cardId
+                        registeredBundleId = bundleLeader ? card.bundle_id : ""
+                        window.cardHandles[cardId] = dragHandle
+                        window.captureActions[cardId] = cardActions
+                        if (bundleLeader) window.bundleOpeners[card.bundle_id] = bundleToggle
+                    }
+                    onCardIdChanged: if (dragHandle && cardActions && bundleToggle) registerControls()
+                    onBundleLeaderChanged: if (dragHandle && cardActions && bundleToggle) registerControls()
+                    Component.onCompleted: registerControls()
+                    Component.onDestruction: unregisterControls()
                     Keys.onLeftPressed: function(event) {
                         if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
                         else event.accepted = false
@@ -640,8 +685,6 @@ ApplicationWindow {
                                     Keys.onRightPressed: { if (!cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                     Keys.onLeftPressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
-                                    Component.onCompleted: { if (cardRow.bundleLeader) window.bundleOpeners[card.bundle_id] = bundleToggle }
-                                    Component.onDestruction: { if (window.bundleOpeners[card.bundle_id] === bundleToggle) delete window.bundleOpeners[card.bundle_id] }
                                 }
                                 Button {
                                     objectName: "archiveBundle-" + cardId
@@ -708,8 +751,6 @@ ApplicationWindow {
                                     icon.width: Kirigami.Units.iconSizes.smallMedium
                                     icon.height: Kirigami.Units.iconSizes.smallMedium
                                     icon.color: window.ink
-                                    Component.onCompleted: window.cardHandles[cardId] = dragHandle
-                                    Component.onDestruction: delete window.cardHandles[cardId]
 
                                     Accessible.name: qsTr("Drag to reorder")
                                     Accessible.description: reorderable ? qsTr("Hold and drag to a new position") : qsTr("Position is fixed by pin or time")
@@ -796,8 +837,6 @@ ApplicationWindow {
                                             noteDialog.open()
                                         }
                                     })
-                                    Component.onCompleted: window.captureActions[cardId] = cardActions
-                                    Component.onDestruction: delete window.captureActions[cardId]
                                 }
                             }
                         }
@@ -813,7 +852,6 @@ ApplicationWindow {
                         color: Kirigami.Theme.highlightColor
                         z: 1
                     }
-                }
                 }
             }
 

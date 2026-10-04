@@ -69,9 +69,13 @@ TestCase {
             verify(expandedGap >= 0 && expandedGap <= inbox.edgeSpacing + 1,
                    "expanded bundle spacing differs at row " + i + ": " + expandedGap)
         }
-        verify(waitForRendering(toggle), "Expanded opener geometry must be rendered before the second center click")
-        mouseClick(toggle)
+        const expandedToggle = findChild(list.itemAtIndex(0), "bundleToggle-bundle-0")
+        verify(waitForRendering(expandedToggle), "Expanded opener geometry must be rendered before the second center click")
+        mouseClick(expandedToggle)
         tryVerify(function() { list.forceLayout(); return !list.itemAtIndex(1).visible })
-        compare(next.y - leader.y - frame.y - frame.height, gap)
+        const collapsedLeader = list.itemAtIndex(0)
+        const collapsedNext = list.itemAtIndex(4)
+        const collapsedFrame = findChild(collapsedLeader, "inboxCard")
+        compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
     }
 }
