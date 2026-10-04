@@ -367,6 +367,9 @@ ApplicationWindow {
         function onErrorOccurred(message) { window.updateStatus = message }
     }
     StackView {
+        id: stack
+        objectName: "pageStack"
+        focus: true
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
