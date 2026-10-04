@@ -83,11 +83,15 @@ ApplicationWindow {
             if (opener) opener.forceActiveFocus()
         })
     }
+    function emailCountText(count) {
+        const value = Number(count)
+        return qsTr("%1 %2").arg(value).arg(value === 1 ? qsTr("email") : qsTr("emails"))
+    }
     function archiveBundle(bundleId) {
         const result = store.archiveBundleNow(bundleId)
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
-        bundleArchiveStatus = qsTr("Archived %1 emails").arg(result.count)
+        bundleArchiveStatus = qsTr("Archived %1").arg(emailCountText(result.count))
         return true
     }
     function undoBundleArchive() {
@@ -646,7 +650,7 @@ ApplicationWindow {
                                                 implicitHeight: countLabel.implicitHeight + 8
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
-                                                Label { id: countLabel; anchors.centerIn: parent; text: qsTr("%1 emails").arg(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
+                                                Label { id: countLabel; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
                                             }
                                             Item { Layout.fillWidth: true }
                                         }
@@ -697,7 +701,7 @@ ApplicationWindow {
                                     Layout.maximumWidth: window.width < 640 ? 48 : -1
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
-                                    Accessible.description: qsTr("Archives all %1 unpinned emails; pinned cards stay open").arg(cardRow.bundleSummary.unpinned)
+                                    Accessible.description: qsTr("Archives all %1 unpinned %2; pinned cards stay open").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.unpinned === 1 ? qsTr("email") : qsTr("emails"))
                                     ToolTip.text: Accessible.name
                                     ToolTip.visible: hovered
                                     background: Rectangle {
