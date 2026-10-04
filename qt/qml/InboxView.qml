@@ -722,6 +722,7 @@ ApplicationWindow {
                                     onClicked: bundleDetails.open()
                                     Menu {
                                         id: bundleDetails
+                                        x: Math.max(window.edgeSpacing, window.width - implicitWidth - window.edgeSpacing)
                                         MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false }
                                         MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false }
                                     }
