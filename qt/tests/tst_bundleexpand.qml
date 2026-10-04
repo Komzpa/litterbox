@@ -336,6 +336,8 @@ TestCase {
         return [{tag: "520", width: 520, height: 900}, {tag: "598", width: 598, height: 1200}]
     }
     function test_archiveToastLeavesNoHeaderGap(data) {
+        store.online = false
+        store.setBundleArchiveUndoDurationForTest(8000)
         const bundle = "topic:archive-gap-" + data.tag
         const leaderId = "gap-leader-" + data.tag
         const memberId = "gap-member-" + data.tag
@@ -450,10 +452,10 @@ TestCase {
         verify(archive && archive.visible)
         mouseClick(archive, archive.width / 2, archive.height / 2)
         tryVerify(function() { return rejectedCards.indexOf(ids[0]) >= 0 && rejectedCards.indexOf(ids[1]) >= 0 }, 5000, "Stub server must reject both archive POSTs with 422")
-        tryCompare(inbox, "bundleArchiveStatus", "Couldn't archive now. Please try again.", 5000)
+        tryCompare(inbox, "bundleArchiveStatus", "Action failed (HTTP 422). The card was restored.", 5000)
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar && bar.visible, "Rejected archive must keep the error status visible")
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Couldn't archive now. Please try again.")
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Action failed (HTTP 422). The card was restored.")
         tryVerify(function() { return store.cardIds().indexOf(ids[0]) >= 0 && store.cardIds().indexOf(ids[1]) >= 0 }, 5000, "Rejected ops must restore both bundle members")
         store.requestPost.disconnect(stub)
         store.online = false
