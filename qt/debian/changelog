@@ -4,6 +4,8 @@ litterbox-qt (0.1-16) unstable; urgency=medium
     without per-member row moves or freeze.
   * Let the outbox progress past rejected actions; a rejected action is
     shown as failed on its card and never holds back later queued actions.
+  * Launch upgrade replacements in an independent user scope so desktop
+    application services can stop without killing the replacement.
 
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 14:10:00 +0400
 

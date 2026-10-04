@@ -4,10 +4,10 @@
 // /usr/bin/litterbox-qt by renaming a new inode over the path; this watcher
 // polls that identity, debounces until the replacement is stable and no
 // package manager transaction holds the dpkg locks, then starts the new
-// binary detached and lets the application quit normally (so CardStore's
-// destructor drains queued commits before the replacement opens the
-// database). Watching is armed only for an installed-style prefix; a build
-// directory run never restarts itself.
+// binary in an independent user scope before letting the application quit
+// normally (so CardStore's destructor drains queued commits before the
+// replacement opens the database). Watching is armed only for an
+// installed-style prefix; a build directory run never restarts itself.
 
 #include <QElapsedTimer>
 #include <QObject>

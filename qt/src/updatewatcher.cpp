@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QtGlobal>
 
@@ -97,19 +98,58 @@ bool UpdateWatcher::packageManagerIdle() const {
 }
 
 bool UpdateWatcher::spawnReplacement() {
-    QProcess process;
-    process.setProgram(m_binaryPath);
-    process.setArguments(m_arguments);
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("LB_RESTART_GENERATION"),
                        QString::number(restartGeneration() + 1));
-    process.setProcessEnvironment(environment);
-    if (!process.startDetached()) {
-        qWarning("UpdateWatcher: could not start replacement %s: %s",
-                 qPrintable(m_binaryPath), qPrintable(process.errorString()));
-        return false;
+
+    const QString systemdRun = QStandardPaths::findExecutable(QStringLiteral("systemd-run"));
+    if (!systemdRun.isEmpty()) {
+        const QString unit = QStringLiteral("litterbox-qt-restart-%1-%2")
+                                 .arg(QCoreApplication::applicationPid())
+                                 .arg(restartGeneration() + 1);
+        QStringList arguments{QStringLiteral("--user"), QStringLiteral("--scope"),
+                              QStringLiteral("--unit=%1").arg(unit),
+                              QStringLiteral("--"), m_binaryPath};
+        arguments.append(m_arguments);
+
+        QProcess process;
+        process.setProcessEnvironment(environment);
+        process.setProgram(systemdRun);
+        process.setArguments(arguments);
+        process.start();
+        if (!process.waitForStarted(3000)) {
+            qWarning("UpdateWatcher: could not start systemd-run: %s",
+                     qPrintable(process.errorString()));
+            return false;
+        }
+
+        QElapsedTimer startup;
+        startup.start();
+        QByteArray output;
+        while (!output.contains("Running as unit:") && startup.elapsed() < 5000) {
+            process.waitForReadyRead(100);
+            output += process.readAllStandardOutput();
+            output += process.readAllStandardError();
+            if (process.state() == QProcess::NotRunning) break;
+        }
+        if (!output.contains("Running as unit:")) {
+            qWarning("UpdateWatcher: systemd-run did not start replacement %s: %s",
+                     qPrintable(m_binaryPath), output.constData());
+            return false;
+        }
+    } else {
+        QProcess process;
+        process.setProgram(m_binaryPath);
+        process.setArguments(m_arguments);
+        process.setProcessEnvironment(environment);
+        if (!process.startDetached()) {
+            qWarning("UpdateWatcher: could not start replacement %s: %s",
+                     qPrintable(m_binaryPath), qPrintable(process.errorString()));
+            return false;
+        }
     }
-    qInfo("UpdateWatcher: binary replaced, starting %s detached and quitting",
+
+    qInfo("UpdateWatcher: binary replaced, starting %s in an independent scope and quitting",
           qPrintable(m_binaryPath));
     return true;
 }
