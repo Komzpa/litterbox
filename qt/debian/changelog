@@ -6,7 +6,9 @@ litterbox-qt (0.1-17) unstable; urgency=medium
   * Hide the empty Gmail account state when loading fails, so offline access
     does not report that no accounts are connected.
 
-  * Pin enrollment input controls and action colors to the light palette (R36).
+  * Restore the enrollment action's explicit light-palette background by
+    resolving pressed, hover, and focus states from its background parent (R36).
+  * Assert the enrollment action is visible, sized, and colored at rest (R36).
 
   * Center bounded Gmail accounts and enrollment page columns within their
     ScrollablePage layout without conflicting anchors.

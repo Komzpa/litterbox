@@ -177,6 +177,7 @@ Kirigami.ScrollablePage {
             text: root.busy ? qsTr("Enrolling…") : qsTr("Enroll")
             enabled: !root.busy
             implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+            Layout.fillWidth: true
             Material.theme: Material.Light
             Material.background: root.accent
             Material.foreground: root.surface
@@ -184,8 +185,8 @@ Kirigami.ScrollablePage {
             palette.buttonText: root.surface
             background: Rectangle {
                 radius: Kirigami.Units.cornerRadius
-                color: enrollButton.down ? "#286358" : enrollButton.hovered ? "#326f65" : root.accent
-                border.width: enrollButton.visualFocus ? 2 : 0
+                color: parent.down ? "#286358" : parent.hovered ? "#326f65" : root.accent
+                border.width: parent.visualFocus ? 2 : 0
                 border.color: root.ink
             }
             onClicked: root.enroll()
