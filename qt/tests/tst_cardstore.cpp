@@ -507,6 +507,31 @@ private slots:
         QCOMPARE(transport.posted.size(), 2);
         delete actions;
     }
+    void archivedMailStaysOutOfInboxAcrossStaleSnapshots() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("archive-stale-snapshot.sqlite")));
+        const QString id = QStringLiteral("66666666-6666-4666-8666-666666666666");
+        const QVariantMap card{{"id", id}, {"source", "mail"}, {"state", "open"}};
+        const QVariantMap stale{{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap absent{{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(stale));
+        ScriptedTransport transport({200});
+        QVERIFY(!store.enqueueOp(id, "archive").isEmpty());
+        QCOMPARE(store.rowCount(), 0);
+        QVERIFY(store.applyRemoteCards(stale));
+        QCOMPARE(store.rowCount(), 0);
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(transport.posted.size(), 1);
+        QCOMPARE(transport.posted.first().value("type").toString(), QStringLiteral("archive"));
+        QVERIFY(store.applyRemoteCards(stale));
+        QCOMPARE(store.rowCount(), 0);
+        QVERIFY(store.applyRemoteCards(absent));
+        QCOMPARE(store.rowCount(), 0);
+    }
     void qmlActionsReachDurableOutboxAndHttpAck() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
