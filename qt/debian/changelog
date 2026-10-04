@@ -1,7 +1,10 @@
 litterbox-qt (0.1-21) unstable; urgency=medium
 
-  * Show failed mail actions with their HTTP response and restore notification.
-  * Preserve HTTP error response details in operation-failure diagnostics.
+  * Keep the expanded bundle visible when it expands.
+  * Return Back to the exact previous position.
+  * Keep the bundle frame closed and fix the archive header gap.
+  * Show archive failures to the user.
+  * Log server errors separately from client diagnostics.
 
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 21:10:00 +0400
 
