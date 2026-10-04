@@ -1,3 +1,9 @@
+litterbox-qt (0.1-19) unstable; urgency=medium
+
+  * Return to the inbox after snoozing from the mail view.
+
+ -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 19:34:57 +0400
+
 litterbox-qt (0.1-18) unstable; urgency=medium
 
   * Show an "Archived …" toast with a working Undo after archiving a mail
