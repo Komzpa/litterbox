@@ -282,11 +282,16 @@ ApplicationWindow {
                     Menu {
                         id: headerMenu
                         x: -implicitWidth + parent.width
+                        padding: Kirigami.Units.smallSpacing
+                        Material.theme: Material.Light
+                        palette.window: window.surface
+                        palette.text: window.ink
+                        palette.buttonText: window.ink
                         background: Rectangle {
                             implicitWidth: 220
                             color: window.surface
-                            border.color: "#dce5e3"
                             radius: Kirigami.Units.cornerRadius
+                            border.color: "#dce5e3"
                         }
                         MenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
                         MenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
@@ -295,7 +300,7 @@ ApplicationWindow {
                     }
                 }
             }
-            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; Layout.bottomMargin: Kirigami.Units.smallSpacing; wrapMode: Text.Wrap }
             Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
             Rectangle {
                 id: bundleArchiveUndoBar

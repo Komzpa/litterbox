@@ -9,8 +9,9 @@ litterbox-qt (0.1-18) unstable; urgency=medium
     edge.
   * Make bundle taps respond clearly, use correct "1 email" wording for
     one-email bundles, and keep keyboard archive working on focused cards.
-  * Keep the accounts page honest when offline, fix the enrollment button's
-    look and visibility, and center settings and enrollment page columns.
+  * Keep the offline status clear of the header edge; make enrollment and Gmail
+    actions visibly labelled, give the app menu an opaque light surface, and
+    keep settings content within the centered 1200px column.
   * Never archive an empty bundle; the archive action is refused instead of
     saving an empty operation.
 
