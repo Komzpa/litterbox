@@ -92,7 +92,7 @@ Kirigami.ScrollablePage {
 
     ColumnLayout {
         width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+        Layout.alignment: Qt.AlignHCenter
         spacing: Kirigami.Units.largeSpacing
 
         QQC2.Button {

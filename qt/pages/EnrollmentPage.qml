@@ -96,7 +96,7 @@ Kirigami.ScrollablePage {
     Kirigami.FormLayout {
         visible: root.token === ""
         width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+        Layout.alignment: Qt.AlignHCenter
 
         QQC2.TextField {
             id: serverField
@@ -150,7 +150,7 @@ Kirigami.ScrollablePage {
     ColumnLayout {
         visible: root.token !== ""
         width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+        Layout.alignment: Qt.AlignHCenter
         spacing: Kirigami.Units.smallSpacing
 
         QQC2.Label {
