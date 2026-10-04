@@ -697,6 +697,18 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
     emit bundleArchiveUndoChanged();
     return {{QStringLiteral("token"), token}, {QStringLiteral("count"), archived.size()}};
 }
+void CardStore::undoQueuedOp(const QString &opId) {
+    if (!m_open || opId == m_inFlight || !m_mutations.contains(opId)) return;
+    const auto queued = std::any_of(m_outbox.cbegin(), m_outbox.cend(),
+        [&](const QVariantMap &op) { return op.value(QStringLiteral("op_id")).toString() == opId; });
+    if (!queued) return;
+    m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(),
+        [&](const QVariantMap &op) { return op.value(QStringLiteral("op_id")).toString() == opId; }), m_outbox.end());
+    m_durableOps.remove(opId);
+    persistCards(m_cards, m_cards, {}, {opId});
+    undoOp(opId);
+    emit pendingOpsChanged();
+}
 bool CardStore::undoBundleArchive(const QString &token) {
     if (!m_open || !m_bundleArchives.contains(token)) return false;
     const BundleArchive entry = m_bundleArchives.take(token);

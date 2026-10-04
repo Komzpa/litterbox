@@ -1,0 +1,72 @@
+[
+ {"resize":[1440,900]},{"wait":400},
+
+ {"scroll":1500},
+ {"eval":"(\"A1440-before rel=\" + (inboxList.contentY - inboxList.originY) + \" range=\" + JSON.stringify(inboxList.captureVisibleRange()))"},
+ {"shot":"a-1440-before"},
+ {"openCard":"354670cc-9d73-42bb-b9f6-c52b0ac339ce"},{"wait":800},{"shot":"a-1440-detail1"},
+ {"mouseButton":"Back"},{"wait":600},
+ {"eval":"(\"A1440-after1 rel=\" + (inboxList.contentY - inboxList.originY) + \" range=\" + JSON.stringify(inboxList.captureVisibleRange()))"},
+ {"shot":"a-1440-back1"},
+ {"openCard":"bd5bcfa0-ed4a-4c76-9b4b-3af7929cb58c"},{"wait":800},{"shot":"a-1440-detail2"},
+ {"mouseButton":"Back"},{"wait":600},
+ {"eval":"(\"A1440-after2 rel=\" + (inboxList.contentY - inboxList.originY) + \" range=\" + JSON.stringify(inboxList.captureVisibleRange()))"},
+ {"shot":"a-1440-back2"},
+
+ {"resize":[700,900]},{"wait":400},
+ {"scroll":1500},
+ {"eval":"(\"A700-before rel=\" + (inboxList.contentY - inboxList.originY) + \" range=\" + JSON.stringify(inboxList.captureVisibleRange()))"},
+ {"shot":"a-700-before"},
+ {"openCard":"354670cc-9d73-42bb-b9f6-c52b0ac339ce"},{"wait":800},{"shot":"a-700-detail1"},
+ {"mouseButton":"Back"},{"wait":600},
+ {"eval":"(\"A700-after1 rel=\" + (inboxList.contentY - inboxList.originY) + \" range=\" + JSON.stringify(inboxList.captureVisibleRange()))"},
+ {"shot":"a-700-back1"},
+ {"openCard":"bd5bcfa0-ed4a-4c76-9b4b-3af7929cb58c"},{"wait":800},{"shot":"a-700-detail2"},
+ {"mouseButton":"Back"},{"wait":600},
+ {"eval":"(\"A700-after2 rel=\" + (inboxList.contentY - inboxList.originY) + \" range=\" + JSON.stringify(inboxList.captureVisibleRange()))"},
+ {"shot":"a-700-back2"},
+
+ {"resize":[1440,900]},{"wait":400},
+ {"scroll":"end"},{"wait":400},
+ {"eval":"(\"D1440 range=\" + JSON.stringify(inboxList.captureVisibleRange()) + \" count=\" + inboxList.count)"},
+ {"shot":"d-1440-end"},
+
+ {"resize":[700,900]},{"wait":400},
+ {"scroll":"end"},{"wait":400},
+ {"eval":"(\"D700 range=\" + JSON.stringify(inboxList.captureVisibleRange()) + \" count=\" + inboxList.count)"},
+ {"shot":"d-700-end"},
+
+ {"resize":[1440,900]},{"wait":400},
+ {"scroll":1000},{"click":"inboxActions","index":2},{"wait":300},{"shot":"c-1440-plain-menu"},{"key":"Escape"},{"wait":200},
+ {"scroll":"end"},{"click":"inboxActions","index":0},{"wait":300},{"shot":"c-1440-last-menu"},{"key":"Escape"},{"wait":200},
+ {"rightClick":"openCard-fixture-long-80"},{"wait":300},{"shot":"c-1440-last-context"},{"key":"Escape"},{"wait":200},
+
+ {"resize":[700,900]},{"wait":400},
+ {"scroll":1000},{"click":"inboxActions","index":2},{"wait":300},{"shot":"c-700-plain-menu"},{"key":"Escape"},{"wait":200},
+ {"scroll":"end"},{"click":"inboxActions","index":0},{"wait":300},{"shot":"c-700-last-menu"},{"key":"Escape"},{"wait":200},
+ {"rightClick":"openCard-fixture-long-80"},{"wait":300},{"shot":"c-700-last-context"},{"key":"Escape"},{"wait":200},
+
+ {"resize":[1440,900]},{"wait":400},
+ {"scroll":"top"},{"wait":300},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},
+ {"scroll":600},{"wait":300},{"shot":"e-1440-scrolled600"},
+ {"scroll":0},{"wait":300},{"shot":"e-1440-back"},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},{"shot":"e-1440-collapsed"},
+
+ {"resize":[700,900]},{"wait":400},
+ {"scroll":"top"},{"wait":300},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},
+ {"scroll":600},{"wait":300},{"shot":"e-700-scrolled600"},
+ {"scroll":0},{"wait":300},{"shot":"e-700-back"},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},{"shot":"e-700-collapsed"},
+
+ {"resize":[1440,900]},{"wait":400},
+ {"scroll":1000},
+ {"openCard":"12924114-381e-464e-8001-9f5e8aa33367"},{"wait":800},{"shot":"b-1440-detail"},
+ {"click":"archiveMail"},{"wait":350},{"shot":"b-1440-toast"},
+
+ {"resize":[700,900]},{"wait":400},
+ {"scroll":1500},
+ {"openCard":"bd5bcfa0-ed4a-4c76-9b4b-3af7929cb58c"},{"wait":800},{"shot":"b-700-detail"},
+ {"click":"archiveMail"},{"wait":350},{"shot":"b-700-toast"}
+]

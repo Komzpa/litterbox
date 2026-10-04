@@ -118,7 +118,19 @@ ApplicationWindow {
         bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(result.count))
         return true
     }
+    function showArchiveUndo(opId) {
+        mailArchiveUndoOp = opId
+        bundleArchiveToken = ""
+        bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
+    }
     function undoBundleArchive() {
+        if (mailArchiveUndoOp.length > 0) {
+            const op = mailArchiveUndoOp
+            mailArchiveUndoOp = ""
+            store.undoQueuedOp(op)
+            bundleArchiveStatus = ""
+            return true
+        }
         const restored = bundleArchiveToken.length > 0 && store.undoBundleArchive(bundleArchiveToken)
         bundleArchiveToken = ""
         if (restored) {
@@ -132,6 +144,7 @@ ApplicationWindow {
     property string updateStatus: ""
     property string updateVersion: ""
     property string bundleArchiveToken: ""
+    property string mailArchiveUndoOp: ""
     property string bundleArchiveStatus: ""
     Connections {
         target: store
@@ -943,7 +956,8 @@ ApplicationWindow {
                                             noteDialog.cardId = detailCardId
                                             noteField.text = note
                                             noteDialog.open()
-                                        }
+                                        },
+                                        requestArchiveUndo: function(opId) { window.showArchiveUndo(opId) }
                                     })
                                 }
                             }

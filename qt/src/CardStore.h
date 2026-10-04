@@ -69,6 +69,8 @@ public:
     int bundleArchiveUndoRemainingMs() const;
     Q_INVOKABLE QVariantMap archiveBundleNow(const QString &bundleId);
     Q_INVOKABLE bool undoBundleArchive(const QString &token);
+    // Cancels a queued op before it is sent and restores its optimistic rows.
+    Q_INVOKABLE void undoQueuedOp(const QString &opId);
     Q_INVOKABLE void flush();
     Q_INVOKABLE void reportPostResult(const QString &opId, int status,
                                      const QVariantMap &response);
