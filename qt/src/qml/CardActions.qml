@@ -303,6 +303,12 @@ Controls.ToolButton {
         id: snoozeDialog
         objectName: "snoozeDialog"
         title: qsTr("Snooze until")
+        header: Controls.Label {
+            text: snoozeDialog.title
+            color: root.actionInk
+            font: Kirigami.Theme.defaultFont
+            padding: Kirigami.Units.largeSpacing
+        }
         modal: true
         // Explicit English buttons: StandardButton labels follow the system
         // locale while the app is English. accept()/reject() semantics unchanged.
@@ -343,6 +349,12 @@ Controls.ToolButton {
         Material.background: root.actionSurface
         Material.foreground: root.actionInk
         Material.accent: root.actionAccent
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.textColor: root.actionInk
+        Kirigami.Theme.backgroundColor: root.actionSurface
+        Kirigami.Theme.alternateBackgroundColor: root.actionCanvas
+        Kirigami.Theme.highlightColor: root.actionAccent
+        Kirigami.Theme.focusColor: root.actionAccent
         Material.primary: root.actionAccent
         palette.window: root.actionSurface
         palette.windowText: root.actionInk
@@ -357,7 +369,7 @@ Controls.ToolButton {
         background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
         onOpened: snoozeDateTime.forceActiveFocus()
         contentItem: ColumnLayout {
-            Controls.Label { text: qsTr("Local date and time (YYYY-MM-DD HH:MM)"); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Controls.Label { text: qsTr("Local date and time (YYYY-MM-DD HH:MM)"); color: root.actionInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
             Controls.TextField {
                 id: snoozeDateTime
                 objectName: "snoozeDateTime"

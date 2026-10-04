@@ -106,7 +106,7 @@ ApplicationWindow {
         const result = store.archiveBundleNow(bundleId)
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
-        bundleArchiveStatus = qsTr("Archived %1").arg(emailCountText(result.count))
+        bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(result.count))
         return true
     }
     function undoBundleArchive() {
@@ -115,7 +115,7 @@ ApplicationWindow {
         if (restored) {
             bundleArchiveStatus = ""
         } else {
-            bundleArchiveStatus = qsTr("Undo expired")
+            bundleArchiveStatus = qsTr("Undo has expired.")
             undoExpiredNoticeTimer.restart()
         }
         return restored
@@ -130,7 +130,7 @@ ApplicationWindow {
         function onBundleArchiveExpired(token) {
             if (token !== window.bundleArchiveToken) return
             window.bundleArchiveToken = ""
-            window.bundleArchiveStatus = qsTr("Undo expired")
+            window.bundleArchiveStatus = qsTr("Undo has expired.")
             undoExpiredNoticeTimer.restart()
         }
     }
@@ -138,7 +138,7 @@ ApplicationWindow {
         id: undoExpiredNoticeTimer
         interval: 2200
         repeat: false
-        onTriggered: if (window.bundleArchiveStatus === qsTr("Undo expired")) window.bundleArchiveStatus = ""
+        onTriggered: if (window.bundleArchiveStatus === qsTr("Undo has expired.")) window.bundleArchiveStatus = ""
     }
 
 
@@ -278,10 +278,17 @@ ApplicationWindow {
                     onClicked: headerMenu.open()
                     Menu {
                         id: headerMenu
-                        MenuItem { text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
-                        MenuItem { text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
-                        MenuItem { text: qsTr("Refresh"); icon.name: "view-refresh"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: store.refresh() }
-                        MenuItem { text: qsTr("Check updates"); icon.name: "system-software-update"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
+                        x: -implicitWidth + parent.width
+                        background: Rectangle {
+                            implicitWidth: 220
+                            color: window.surface
+                            border.color: "#dce5e3"
+                            radius: Kirigami.Units.cornerRadius
+                        }
+                        MenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
+                        MenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
+                        MenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: store.refresh() }
+                        MenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                     }
                 }
             }
@@ -306,9 +313,7 @@ ApplicationWindow {
                     spacing: 0
                     Label {
                         objectName: "bundleArchiveUndoMessage"
-                        text: window.bundleArchiveStatus === qsTr("Undo expired")
-                            ? window.bundleArchiveStatus
-                            : window.bundleArchiveStatus + " ·"
+                        text: window.bundleArchiveStatus
                         color: window.ink
                         font: Kirigami.Theme.defaultFont
                         Layout.fillWidth: true
@@ -317,7 +322,7 @@ ApplicationWindow {
                     Button {
                         id: bundleArchiveUndoButton
                         objectName: "bundleArchiveUndoButton"
-                        visible: window.bundleArchiveStatus !== qsTr("Undo expired")
+                        visible: window.bundleArchiveStatus !== qsTr("Undo has expired.")
                         text: qsTr("Undo")
                         implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
                         implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
@@ -354,10 +359,11 @@ ApplicationWindow {
         function onErrorOccurred(message) { window.updateStatus = message }
     }
     StackView {
-        id: stack
-        objectName: "pageStack"
-        anchors.fill: parent
-        focus: true
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.top: parent.top
+        anchors.topMargin: window.bundleArchiveStatus.length > 0 ? 64 : 0
         // Sliding the inbox moves its ListView viewport out of the window,
         // causing whole rows of Controls to be destroyed and recreated.
         pushExit: null
@@ -749,9 +755,11 @@ ApplicationWindow {
                                     onClicked: bundleDetails.open()
                                     Menu {
                                         id: bundleDetails
-                                        x: Math.max(window.edgeSpacing, window.width - implicitWidth - window.edgeSpacing)
-                                        MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false }
-                                        MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false }
+                                        width: 320
+                                        x: window.width - width - 3 * window.edgeSpacing
+                                        background: Rectangle { color: window.surface; border.color: "#dce5e3"; radius: Kirigami.Units.cornerRadius }
+                                        MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.ink; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
+                                        MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.mutedInk; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
                                     }
                                 }
                             }
