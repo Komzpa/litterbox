@@ -88,7 +88,7 @@ QUrl MailDocumentProfile::documentUrl(const QString &html)
         "frame-src 'none'; object-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'\">"
         "</head><body>") + html.toUtf8() + QByteArrayLiteral(
         "<style>html{color-scheme:light;background:white}"
-        "body{margin:0;overflow-wrap:anywhere}"
+        "body{margin:0;overflow-wrap:anywhere;font-family:sans-serif;font-size:medium;line-height:1.45;color:#263b3a;background-color:white}"
         // max-width is forced so no image leaves the column; height stays a
         // normal-priority rule so the sender's inline height (Google's 40px
         // logo) still wins while width/height attributes keep their aspect ratio.
