@@ -799,6 +799,8 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     if (opId != m_inFlight || m_inFlight.isEmpty()) return;
     const bool acknowledged = status >= 200 && status < 300 && response.value(QStringLiteral("ok")) == QVariant(true);
     if (!acknowledged) {
+        if (status == 422)
+            qWarning().noquote() << "Operation rejected:" << opId << status << QJsonDocument(QJsonObject::fromVariantMap(response)).toJson(QJsonDocument::Compact);
         if (status >= 400 && status < 500) {
             m_retryAttempt = 0;
             const bool canUndoLocally = m_mutations.contains(opId);
