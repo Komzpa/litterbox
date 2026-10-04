@@ -25,8 +25,9 @@ type Card struct {
 	// stays empty rather than fabricating a Gmail browser index.
 	AccountName string `json:"account_name,omitempty"`
 	BundleTitle string `json:"bundle_title,omitempty"`
-	SourceURL   string `json:"source_url,omitempty"`
+ SourceURL   string `json:"source_url,omitempty"`
  SenderName string `json:"sender_name"`
+ Snippet string `json:"snippet,omitempty"`
 	// ReceivedAt is the card's latest message arrival and SenderAddress the
 	// addr-spec of its stored From header; both are omitted for non-mail cards.
 	ReceivedAt    *time.Time `json:"received_at,omitempty"`
