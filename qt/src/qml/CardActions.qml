@@ -398,7 +398,7 @@ Controls.ToolButton {
             }
             root.snoozeError = ""
             if (root.store.enqueueOp(root.cardKey, "snooze", { until: until.toISOString() }))
-                root.cardHandled()
+                root.cardHandled("")
         }
     }
     Controls.Dialog {
