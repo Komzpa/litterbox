@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -25,18 +26,19 @@ func TestIngestUpsertCloseAndSourceTokenScope(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	for _, p := range migrations(t, db) {
+	for _, p := range migrations(t) {
 		body, e := os.ReadFile(p)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(string(body)); e != nil {
+		if _, e = db.Exec(tdb.Migration(string(body))); e != nil {
 			t.Fatalf("migration %s: %v", p, e)
 		}
 	}
@@ -50,7 +52,7 @@ func TestIngestUpsertCloseAndSourceTokenScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	h := Handler{DB: db}
@@ -125,18 +127,19 @@ func TestDoneCallbackRetries(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	for _, p := range migrations(t, db) {
+	for _, p := range migrations(t) {
 		body, e := os.ReadFile(p)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(string(body)); e != nil {
+		if _, e = db.Exec(tdb.Migration(string(body))); e != nil {
 			t.Fatalf("migration %s: %v", p, e)
 		}
 	}
@@ -159,7 +162,7 @@ func TestDoneCallbackRetries(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,title,state) VALUES($1,$2,'agent','result-9','Research','done')`, tenant, agentCard); err != nil {
 		t.Fatal(err)
 	}
-	conn, err := pgx.Connect(ctx, "")
+	conn, err := pgx.Connect(ctx, tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,18 +226,19 @@ func TestIngestRejectsNoiseCards(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	for _, p := range migrations(t, db) {
+	for _, p := range migrations(t) {
 		body, e := os.ReadFile(p)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(string(body)); e != nil {
+		if _, e = db.Exec(tdb.Migration(string(body))); e != nil {
 			t.Fatalf("migration %s: %v", p, e)
 		}
 	}
@@ -245,7 +249,7 @@ func TestIngestRejectsNoiseCards(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO source_tokens(tenant_id,source,token_hash) VALUES($1,'todo',$2)`, tenant, hashToken("todo-token")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	h := Handler{DB: db}
@@ -309,18 +313,19 @@ func TestIngestFilesAndCardBodies(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	for _, p := range migrations(t, db) {
+	for _, p := range migrations(t) {
 		body, e := os.ReadFile(p)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(string(body)); e != nil {
+		if _, e = db.Exec(tdb.Migration(string(body))); e != nil {
 			t.Fatalf("migration %s: %v", p, e)
 		}
 	}
@@ -331,7 +336,7 @@ func TestIngestFilesAndCardBodies(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO source_tokens(tenant_id,source,token_hash) VALUES($1,'agent',$2)`, tenant, hashToken("agent-secret")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	h := Handler{DB: db}
@@ -460,27 +465,8 @@ func TestIngestFilesAndCardBodies(t *testing.T) {
 	}
 }
 
-func migrations(t *testing.T, db *sql.DB) []string {
+func migrations(t *testing.T) []string {
 	t.Helper()
-	// Serialize shared-schema rebuilds: ingest, cards and mailbody tests all
-	// run against the one pg_virtualenv database concurrently and each drops
-	// and recreates the public schema and litterbox_app role. A session
-	// advisory lock keeps them sequential; it is released when db closes.
-	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
 	paths, err := filepath.Glob("../../db/0*.sql")
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("migration discovery: %v", err)

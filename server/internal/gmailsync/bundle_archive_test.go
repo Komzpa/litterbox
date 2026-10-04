@@ -34,7 +34,7 @@ func useTestOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (*
 // per-card archive op, i.e. remove INBOX in Gmail for each member's thread and
 // never touch pinned members.
 func TestBundleArchiveRemovesInboxForEveryUnpinnedMember(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account, bundle := uuid.New(), uuid.New(), uuid.New()
 	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {

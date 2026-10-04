@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/ops"
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -73,7 +74,7 @@ func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if i > 1 {
 				labels = []string{"INBOX"}
 			}
- 			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": "LinkedIn <messages-noreply@linkedin.com>"}}}})
+			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": "LinkedIn <messages-noreply@linkedin.com>"}}}})
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "thread-1", "historyId": f.history, "messages": msgs})
 	case strings.HasPrefix(r.URL.Path, "/gmail/v1/users/me/messages/"):
@@ -97,13 +98,14 @@ func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}
 }
-func testPool(t *testing.T) *pgxpool.Pool {
+func testPool(t *testing.T) (*pgxpool.Pool, *testdb.DB) {
 	t.Helper()
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("CARD_TEST_POSTGRES=1 required")
 	}
+	tdb := testdb.Setup(t)
 	ctx := context.Background()
-	cfg, e := pgxpool.ParseConfig("")
+	cfg, e := pgxpool.ParseConfig(tdb.DSN)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -112,31 +114,19 @@ func testPool(t *testing.T) *pgxpool.Pool {
 		t.Fatal(e)
 	}
 	t.Cleanup(db.Close)
-	if _, e := db.Exec(ctx, `DROP SCHEMA public CASCADE`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := db.Exec(ctx, `DROP ROLE IF EXISTS litterbox_app`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := db.Exec(ctx, `CREATE SCHEMA public`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := db.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); e != nil {
-		t.Fatal(e)
-	}
- 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql", "017_card_sender_name.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql", "017_card_sender_name.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(ctx, string(b)); e != nil {
+		if _, e = db.Exec(ctx, tdb.Migration(string(b))); e != nil {
 			t.Fatalf("migration %s: %v", name, e)
 		}
 	}
-	return db
+	return db, tdb
 }
 func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
-	db := testPool(t)
+	db, tdb := testPool(t)
 	ctx := context.Background()
 	tenant, account := uuid.New(), uuid.New()
 	if _, e := db.Exec(ctx, "INSERT INTO tenants(id) VALUES($1)", tenant); e != nil {
@@ -149,7 +139,7 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = roleTx.Exec(ctx, "SET LOCAL ROLE litterbox_app"); e != nil {
+	if _, e = roleTx.Exec(ctx, "SET LOCAL ROLE "+tdb.Role); e != nil {
 		t.Fatal(e)
 	}
 	var workerAccount uuid.UUID
@@ -175,16 +165,16 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 		t.Fatal(e)
 	}
 	var cardID uuid.UUID
- 	var state, senderName string
- 	if e := db.QueryRow(ctx, "SELECT id,state,sender_name FROM cards WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id='thread-1'", tenant, account).Scan(&cardID, &state, &senderName); e != nil {
+	var state, senderName string
+	if e := db.QueryRow(ctx, "SELECT id,state,sender_name FROM cards WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id='thread-1'", tenant, account).Scan(&cardID, &state, &senderName); e != nil {
 		t.Fatal(e)
 	}
 	if state != "open" {
 		t.Fatalf("initial card state=%s", state)
 	}
- 	if senderName != "LinkedIn" {
- 		t.Fatalf("sender_name=%q, want LinkedIn", senderName)
- 	}
+	if senderName != "LinkedIn" {
+		t.Fatalf("sender_name=%q, want LinkedIn", senderName)
+	}
 	fake.inbox = false
 	fake.history = "2"
 	if e := s.SyncAccount(ctx, a); e != nil {
@@ -263,7 +253,7 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 	_ = time.Second
 }
 func TestInitialSyncResumesFromPersistedPage(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account := uuid.New(), uuid.New()
 	if _, err := db.Exec(ctx, "INSERT INTO tenants(id) VALUES($1)", tenant); err != nil {
@@ -303,7 +293,7 @@ func TestClientFactoryUsesBoundedDefaultHTTPClient(t *testing.T) {
 func TestSenderDisplayName(t *testing.T) {
 	for _, tc := range []struct{ header, want string }{
 		{"LinkedIn <messages-noreply@linkedin.com>", "LinkedIn"},
- 		{"=?UTF-8?B?SmFuZSBEw7Y=?= <jane@example.com>", "Jane Dö"},
+		{"=?UTF-8?B?SmFuZSBEw7Y=?= <jane@example.com>", "Jane Dö"},
 		{"jane@example.com", ""},
 	} {
 		if got := senderDisplayName(tc.header); got != tc.want {
@@ -313,32 +303,47 @@ func TestSenderDisplayName(t *testing.T) {
 }
 
 func TestBackfillSenderNameFromGmailMetadata(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
-	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil { t.Fatal(err) }
-	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'legacy@example.test',$3)`, tenant, account, []byte("refresh")); err != nil { t.Fatal(err) }
-	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'legacy-thread','Old mail','legacy@example.test')`, tenant, card, account); err != nil { t.Fatal(err) }
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'legacy@example.test',$3)`, tenant, account, []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'legacy-thread','Old mail','legacy@example.test')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/token" { json.NewEncoder(w).Encode(map[string]any{"access_token":"test-access","expires_in":3600}); return }
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
+			return
+		}
 		if r.URL.Path != "/gmail/v1/users/me/threads/legacy-thread" || r.URL.Query().Get("format") != "metadata" || r.URL.Query().Get("metadataHeaders") != "From" {
 			t.Errorf("unexpected metadata request: %s", r.URL)
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"messages": []any{map[string]any{"payload":map[string]any{"headers":[]any{map[string]string{"name":"From","value":"LinkedIn <messages-noreply@linkedin.com>"}}}}}})
+		json.NewEncoder(w).Encode(map[string]any{"messages": []any{map[string]any{"payload": map[string]any{"headers": []any{map[string]string{"name": "From", "value": "LinkedIn <messages-noreply@linkedin.com>"}}}}}})
 	}))
 	defer srv.Close()
-	client := &Client{HTTP:srv.Client(), APIBase:srv.URL+"/gmail/v1/users/me", TokenURL:srv.URL+"/token", RefreshToken:"refresh", ClientID:"id", ClientSecret:"secret"}
-	syncer := &Syncer{DB:db}
-	if err := syncer.backfillSenderNames(ctx, Account{TenantID:tenant, ID:account}, client); err != nil { t.Fatal(err) }
+	client := &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret"}
+	syncer := &Syncer{DB: db}
+	if err := syncer.backfillSenderNames(ctx, Account{TenantID: tenant, ID: account}, client); err != nil {
+		t.Fatal(err)
+	}
 	var got string
-	if err := db.QueryRow(ctx, `SELECT sender_name FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&got); err != nil { t.Fatal(err) }
-	if got != "LinkedIn" { t.Fatalf("backfilled sender_name=%q, want LinkedIn", got) }
+	if err := db.QueryRow(ctx, `SELECT sender_name FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "LinkedIn" {
+		t.Fatalf("backfilled sender_name=%q, want LinkedIn", got)
+	}
 }
 
 func TestSyncSurvivesDeletedThreadDuringSenderBackfill(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account, gone, flaky := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
@@ -422,7 +427,7 @@ func TestSyncSurvivesDeletedThreadDuringSenderBackfill(t *testing.T) {
 }
 
 func TestBackfillCapsBatchPerSync(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account := uuid.New(), uuid.New()
 	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
@@ -471,7 +476,7 @@ func TestBackfillCapsBatchPerSync(t *testing.T) {
 }
 
 func TestSyncErrorLogsCarryBuildField(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
 	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
@@ -506,7 +511,7 @@ func TestSyncErrorLogsCarryBuildField(t *testing.T) {
 }
 
 func TestPollSkipsDeletedThreadFromHistory(t *testing.T) {
-	db := testPool(t)
+	db, _ := testPool(t)
 	ctx := context.Background()
 	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
 	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {

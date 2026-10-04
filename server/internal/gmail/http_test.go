@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -21,29 +22,18 @@ func webTestDB(t *testing.T) *sql.DB {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("CARD_TEST_POSTGRES=1 required")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec(string(b)); err != nil {
+		if _, err = db.Exec(tdb.Migration(string(b))); err != nil {
 			t.Fatalf("migration %s: %v", name, err)
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/sources/todos"
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -22,35 +23,19 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	// Serialize shared-schema rebuilds across concurrently-run test packages
-	// sharing one pg_virtualenv database (released when db closes).
-	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
- 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec(string(body)); err != nil {
+		if _, err = db.Exec(tdb.Migration(string(body))); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -59,7 +44,7 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES ($1),($2)`, tenant, other); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	rows := []todos.Card{{Source: "todo", ExternalID: "synthetic-task", Title: "Fix generated task", State: "open", Order: 0}}
@@ -218,13 +203,13 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if len(get(tenant).Now) != 0 || len(get(other).Now) != 1 {
 		t.Fatal("dismiss visibility or tenant isolation failed")
 	}
-	separate, err := sql.Open("pgx", "")
+	separate, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer separate.Close()
 	separate.SetMaxOpenConns(1)
-	if _, err = separate.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = separate.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = separate.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {
@@ -256,35 +241,19 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	// Serialize shared-schema rebuilds across concurrently-run test packages
-	// sharing one pg_virtualenv database (released when db closes).
-	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
- 	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../db", name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec(string(body)); err != nil {
+		if _, err = db.Exec(tdb.Migration(string(body))); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -295,7 +264,7 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES ($1)`, tenant); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {

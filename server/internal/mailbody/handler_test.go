@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -51,29 +52,13 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
 	}
-	db, err := sql.Open("pgx", "")
+	tdb := testdb.Setup(t)
+	db, err := sql.Open("pgx", tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	// Serialize shared-schema rebuilds across concurrently-run test packages
-	// sharing one pg_virtualenv database (released when db closes).
-	if _, err := db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`CREATE SCHEMA public`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
-		t.Fatal(err)
-	}
 	paths, err := filepath.Glob("../../db/0*.sql")
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("migration discovery: %v", err)
@@ -83,7 +68,7 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(string(body)); e != nil {
+		if _, e = db.Exec(tdb.Migration(string(body))); e != nil {
 			t.Fatalf("migration %s: %v", p, e)
 		}
 	}
@@ -92,7 +77,7 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES($1),($2)`, tenant, other); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+	if _, err = db.Exec(`SET ROLE ` + tdb.Role); err != nil {
 		t.Fatal(err)
 	}
 	// Establish the owning tenant before writing cards/accounts/card_bodies as
