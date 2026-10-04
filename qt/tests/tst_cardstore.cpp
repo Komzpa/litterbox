@@ -472,6 +472,41 @@ private slots:
         QCOMPARE(coldStart.pinnedCardIds(), QStringList({secondPin, firstPin}));
         QCOMPARE(coldStart.rowCount(), 2);
     }
+    void archiveRejectionNotifiesAndRestoresCard() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("archive-rejection.sqlite")));
+        const QString rejected = QStringLiteral("44444444-4444-4444-8444-444444444444");
+        const QString accepted = QStringLiteral("55555555-5555-4555-8555-555555555555");
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{
+            QVariantMap{{"id", rejected}, {"source", "mail"}, {"state", "open"}},
+            QVariantMap{{"id", accepted}, {"source", "mail"}, {"state", "open"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        ScriptedTransport transport({422, 200});
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QQmlEngine engine;
+        QQmlComponent component(&engine, QUrl::fromLocalFile(QStringLiteral(LB_SOURCE_ACTIONS_QML)));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        QObject *actions = component.createWithInitialProperties({
+            {"store", QVariant::fromValue(static_cast<QObject *>(&store))}, {"cardKey", rejected}, {"source", "mail"}});
+        QVERIFY2(actions, qPrintable(component.errorString()));
+        QVERIFY(QMetaObject::invokeMethod(actions, "primaryAction"));
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(1).toInt(), 422);
+        QCOMPARE(store.rowCount(), 2);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(transport.posted.first().value("type").toString(), QStringLiteral("archive"));
+        actions->setProperty("cardKey", accepted);
+        QVERIFY(QMetaObject::invokeMethod(actions, "primaryAction"));
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(store.rowCount(), 1);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(transport.posted.size(), 2);
+        delete actions;
+    }
     void qmlActionsReachDurableOutboxAndHttpAck() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
