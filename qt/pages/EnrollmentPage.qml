@@ -173,6 +173,7 @@ Kirigami.ScrollablePage {
         }
 
         QQC2.Button {
+            id: enrollButton
             objectName: "enrollButton"
             text: root.busy ? qsTr("Enrolling…") : qsTr("Enroll")
             enabled: !root.busy
@@ -188,6 +189,13 @@ Kirigami.ScrollablePage {
                 color: parent.down ? "#286358" : parent.hovered ? "#326f65" : root.accent
                 border.width: parent.visualFocus ? 2 : 0
                 border.color: root.ink
+            }
+            contentItem: QQC2.Label {
+                text: enrollButton.text
+                color: root.surface
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                font: enrollButton.font
             }
             onClicked: root.enroll()
         }

@@ -91,8 +91,10 @@ Kirigami.ScrollablePage {
     }
 
     ColumnLayout {
-        width: Math.min(parent.width, 1200)
-        Layout.alignment: Qt.AlignHCenter
+        width: parent.width
+        Layout.maximumWidth: 1200
+        anchors.leftMargin: Math.max(18, (parent.width - 1200) / 2)
+        anchors.rightMargin: Math.max(18, (parent.width - 1200) / 2)
         spacing: Kirigami.Units.largeSpacing
 
         QQC2.Button {
@@ -104,15 +106,34 @@ Kirigami.ScrollablePage {
             icon.height: Kirigami.Units.iconSizes.small
             icon.color: root.surface
             implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+            Layout.fillWidth: true
             leftPadding: Kirigami.Units.largeSpacing
             rightPadding: Kirigami.Units.largeSpacing
+            Material.theme: Material.Light
             Material.foreground: root.surface
+            palette.button: root.accent
             palette.buttonText: root.surface
             background: Rectangle {
                 radius: Kirigami.Units.cornerRadius
                 color: connectButton.down ? "#286358" : connectButton.hovered ? "#326f65" : root.accent
                 border.width: connectButton.visualFocus ? 2 : 0
                 border.color: root.ink
+            }
+            contentItem: RowLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Icon {
+                    source: connectButton.icon.name
+                    color: root.surface
+                    implicitWidth: connectButton.icon.width
+                    implicitHeight: connectButton.icon.height
+                }
+                QQC2.Label {
+                    text: connectButton.text
+                    color: root.surface
+                    font: connectButton.font
+                    Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                }
             }
             onClicked: root.connectAccount()
         }

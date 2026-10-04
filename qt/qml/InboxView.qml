@@ -278,6 +278,17 @@ ApplicationWindow {
                     onClicked: headerMenu.open()
                     Menu {
                         id: headerMenu
+                        padding: Kirigami.Units.smallSpacing
+                        Material.theme: Material.Light
+                        palette.window: window.surface
+                        palette.text: window.ink
+                        palette.buttonText: window.ink
+                        background: Rectangle {
+                            implicitWidth: 220
+                            color: window.surface
+                            radius: Kirigami.Units.cornerRadius
+                            border.color: "#dce5e3"
+                        }
                         MenuItem { text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
                         MenuItem { text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
                         MenuItem { text: qsTr("Refresh"); icon.name: "view-refresh"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: store.refresh() }
@@ -285,7 +296,7 @@ ApplicationWindow {
                     }
                 }
             }
-            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; Layout.bottomMargin: Kirigami.Units.smallSpacing; wrapMode: Text.Wrap }
             Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
             Rectangle {
                 id: bundleArchiveUndoBar
