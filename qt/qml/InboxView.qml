@@ -425,7 +425,6 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.top: parent.top
-        anchors.topMargin: window.bundleArchiveStatus.length > 0 ? 64 : 0
         // Sliding the inbox moves its ListView viewport out of the window,
         // causing whole rows of Controls to be destroyed and recreated.
         pushExit: null
@@ -548,11 +547,8 @@ ApplicationWindow {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
                                 }
-                                if (card.bundle_leader !== undefined) {
-                                    summary.lastId = entry.cardId
-                                    const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
-                                    if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
-                                }
+                                const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
+                                if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
                             }
                             if (card.bundle_leader === true) {
                                 sections[card.bundle_id] = card.section
@@ -574,9 +570,19 @@ ApplicationWindow {
                             }
                             sourceEntries = entries
                             window.bundleSections = sections
-                            window.bundleSummaries = summaries
                         }
                         const ordered = [].concat(...groups)
+                        for (const bundle in summaries) summaries[bundle].lastId = ""
+                        for (let i = 0; i < ordered.length; ++i) {
+                            const entry = ordered[i]
+                            if (entry.card.bundle_leader !== undefined && (i + 1 === ordered.length
+                                    || ordered[i + 1].card.bundle_leader === undefined
+                                    || ordered[i + 1].card.bundle_id !== entry.card.bundle_id))
+                                summaries[entry.card.bundle_id].lastId = entry.cardId
+                        }
+                        // Publish only after lastId is ready: nested object writes
+                        // do not notify the delegates' bundleSummary bindings.
+                        if (refresh) window.bundleSummaries = summaries
                         const headings = {}
                         let previousSection = ""
                         for (const entry of ordered) {
@@ -766,6 +772,7 @@ ApplicationWindow {
                                             wrapMode: Text.Wrap
                                         }
                                         Label {
+                                            visible: cardRow.bundleSummary.important > 0
                                             text: cardRow.bundleSummary.important === 1
                                                 ? qsTr("1 important email stays separate; archive includes all %1 unpinned emails").arg(cardRow.bundleSummary.unpinned)
                                                 : qsTr("%1 important emails stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
