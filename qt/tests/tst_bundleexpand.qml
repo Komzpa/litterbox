@@ -374,6 +374,41 @@ TestCase {
         verify(!bar.visible, "Undo hides the inline bar")
         inbox.close()
     }
+    function test_archiveBundleRejectionShowsError() {
+        const bundle = "sender:reject@example.test"
+        const ids = ["reject-leader", "reject-member"]
+        verify(store.applyRemoteCards({now: [card(ids[0], bundle, "now", {state: "open"}), card(ids[1], bundle, "now", {state: "open"})], later: [], missed: []}))
+        store.online = true
+        store.setBundleArchiveUndoDurationForTest(600)
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 520, height: 900
+        })
+        verify(inbox)
+        const rejectedCards = []
+        const stub = function(opId, path, body) {
+            rejectedCards.push(body.card_id)
+            store.reportPostResult(opId, 422, {})
+        }
+        store.requestPost.connect(stub)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const archive = findChild(list.itemAtIndex(0), "archiveBundle-" + ids[0])
+        verify(archive && archive.visible)
+        mouseClick(archive, archive.width / 2, archive.height / 2)
+        tryVerify(function() { return rejectedCards.indexOf(ids[0]) >= 0 && rejectedCards.indexOf(ids[1]) >= 0 }, 5000, "Stub server must reject both archive POSTs with 422")
+        tryCompare(inbox, "bundleArchiveStatus", "Couldn't archive now. Please try again.", 5000)
+        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        verify(bar && bar.visible, "Rejected archive must keep the error status visible")
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Couldn't archive now. Please try again.")
+        tryVerify(function() { return store.cardIds().indexOf(ids[0]) >= 0 && store.cardIds().indexOf(ids[1]) >= 0 }, 5000, "Rejected ops must restore both bundle members")
+        store.requestPost.disconnect(stub)
+        store.online = false
+        tryVerify(function() { return !store.bundleArchiveUndoActive }, 5000, "Rejected bundle entry must expire before later tests")
+        store.setBundleArchiveUndoDurationForTest(8000)
+        inbox.close()
+    }
+
     function test_cardKeyboardFocusAndDeleteArchivesFocusedCard() {
         const id = "keyboard-card"
         verify(store.applyRemoteCards({now: [card(id, "", "now", {state: "open", has_body: true})], later: [], missed: []}))
