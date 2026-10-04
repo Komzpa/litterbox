@@ -52,7 +52,7 @@ func AssignKey(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, senderKey
 			return err
 		}
 	}
-	_, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3, importance=COALESCE(NULLIF($4,''),'normal') WHERE tenant_id=$1 AND id=$2`, tenant, card, bundleID, importance)
+	_, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3, importance=COALESCE(NULLIF($4,''),'normal') WHERE tenant_id=$1 AND id=$2 AND (bundle_id IS DISTINCT FROM $3 OR importance IS DISTINCT FROM COALESCE(NULLIF($4,''),'normal'))`, tenant, card, bundleID, importance)
 	return err
 }
 
@@ -69,7 +69,7 @@ func TakeOut(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, card)
+	_, err = tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, card)
 	return err
 }
 
@@ -206,7 +206,8 @@ func TakeOutOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json
 }
 
 type ArchiveArgs struct {
-	Bundle uuid.UUID `json:"bundle_id"`
+	Bundle uuid.UUID   `json:"bundle_id"`
+	Cards  []uuid.UUID `json:"cards,omitempty"`
 }
 
 func CompleteOperation(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {

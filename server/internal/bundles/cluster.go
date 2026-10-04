@@ -162,7 +162,7 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 	for _, g := range groups {
 		if len(g.cards) < 2 {
 			for _, c := range g.cards {
-				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
 					return err
 				}
 			}
@@ -178,12 +178,12 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 				return err
 			}
 			if excluded {
-				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
 					return err
 				}
 				continue
 			}
-			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c.id, bundleID); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2 AND bundle_id IS DISTINCT FROM $3`, tenant, c.id, bundleID); err != nil {
 				return err
 			}
 		}
@@ -213,7 +213,7 @@ func assignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mai
 			continue
 		}
 		if route.Standalone {
-			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
 				return err
 			}
 			c.bundleKey = "standalone"
@@ -252,12 +252,12 @@ func assignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mai
 				return err
 			}
 			if excluded {
-				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
 					return err
 				}
 				continue
 			}
-			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c.id, bundleID); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2 AND bundle_id IS DISTINCT FROM $3`, tenant, c.id, bundleID); err != nil {
 				return err
 			}
 		}
@@ -272,7 +272,7 @@ func fallback(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mailCar
 		}
 		if route, ok := RouteGitHubMail(c.sender, c.subject, c.text); ok {
 			if route.Standalone {
-				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
 					return err
 				}
 				continue

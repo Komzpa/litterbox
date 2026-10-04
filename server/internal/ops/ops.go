@@ -156,10 +156,19 @@ func init() {
 		_, err := tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,$2,NULL,NULL,$3,$4,$5,$6,'open')`, tenant, card, source, card.String(), in.Title, in.Summary)
 		return err
 	})
-	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
 		ids, err := bundleOpenUnpinnedIDs(ctx, tx, tenant, args)
 		if err != nil {
 			return err
+		}
+		if len(ids) == 0 {
+			// The bundle may have dissolved between the client's snapshot
+			// and this op (recluster reassigns bundle_id). Archive the
+			// cards the client named instead of failing with 422.
+			ids, err = bundleFallbackIDs(ctx, tx, tenant, card, args)
+			if err != nil {
+				return err
+			}
 		}
 		if len(ids) == 0 {
 			return fmt.Errorf("bundle has no open unpinned cards")
@@ -192,6 +201,45 @@ func bundleOpenUnpinnedIDs(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw
 		return nil, err
 	}
 	rows, err := tx.Query(ctx, `SELECT id FROM cards WHERE tenant_id=$1 AND bundle_id=$2 AND state='open' AND pinned_rank IS NULL`, tenant, args.Bundle)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// bundleFallbackIDs resolves the cards a stale bundle_archive op should still
+// archive: the explicit card list in args, then the op's own card. Only open,
+// unpinned cards qualify, so pinned cards stay open per R22.
+func bundleFallbackIDs(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, raw json.RawMessage) ([]uuid.UUID, error) {
+	var args bundles.ArchiveArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return nil, err
+	}
+	seen := map[uuid.UUID]bool{}
+	var want []uuid.UUID
+	for _, id := range append(args.Cards, card) {
+		if id == uuid.Nil || seen[id] {
+			continue
+		}
+		seen[id] = true
+		want = append(want, id)
+	}
+	if len(want) == 0 {
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx, `SELECT id FROM cards WHERE tenant_id=$1 AND id=ANY($2) AND state='open' AND pinned_rank IS NULL`, tenant, want)
 	if err != nil {
 		return nil, err
 	}
