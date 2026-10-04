@@ -35,7 +35,8 @@ TestCase {
                 id: "bundle-" + i, title: "A bundled message " + i, source: "mail", section: "now",
                 bundle_id: "github", bundle_title: "sender:notifications@github.com", bundle_leader: i === 0,
                 bundle_member_count: 4, pinned_rank: null, important: false, timed: false,
-                has_body: false, summary: "", snippet: "Bundle member preview that must stay hidden", note: "", account_name: "owner@example.test"
+                has_body: false, summary: "", snippet: "Bundle member preview for sender context", note: "", account_name: "owner@example.test",
+                sender_name: "Bundle sender " + i, sender_address: "sender" + i + "@example.test", received_at: new Date().toISOString()
             }})
         }
         store.append({cardId: "standalone", title: "Next visible card", section: "now", card: {
@@ -71,8 +72,16 @@ TestCase {
         }
         const expandedToggle = findChild(list.itemAtIndex(0), "bundleToggle-bundle-0")
         for (let i = 0; i < 4; ++i) {
-            const memberSnippet = findChild(list.itemAtIndex(i), "mailSnippet-bundle-" + i)
-            verify(!memberSnippet || !memberSnippet.visible, "bundle rows must stay unchanged")
+            const row = list.itemAtIndex(i)
+            const memberContext = findChild(row, "mailContext-bundle-" + i)
+            const memberSender = findChild(row, "mailSender-bundle-" + i)
+            const memberDate = findChild(row, "mailDate-bundle-" + i)
+            const memberSnippet = findChild(row, "mailSnippet-bundle-" + i)
+            verify(memberContext && memberContext.visible, "expanded bundle mail context must be visible")
+            verify(memberSender && memberSender.visible, "expanded bundle sender must be visible")
+            verify(memberDate && memberDate.visible, "expanded bundle arrival date/time must be visible")
+            verify(memberSnippet && memberSnippet.visible && memberSnippet.text.indexOf("Bundle member preview") >= 0,
+                   "expanded bundle snippet must be visible")
         }
         verify(waitForRendering(expandedToggle), "Expanded opener geometry must be rendered before the second center click")
         mouseClick(expandedToggle)

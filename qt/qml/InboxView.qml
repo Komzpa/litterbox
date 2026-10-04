@@ -720,7 +720,7 @@ ApplicationWindow {
                                         }
                                         Label {
                                             objectName: "bundleLatestLabel-" + cardId
-                                            text: qsTr("Latest: %1").arg(title)
+                                            text: qsTr("Latest: %1").arg(title) + (window.mailArrival(card) ? " · " + window.mailArrival(card) : "")
                                             visible: !cardRow.bundleExpanded
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
@@ -857,7 +857,7 @@ ApplicationWindow {
                                     spacing: Kirigami.Units.smallSpacing
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
-                                        visible: card.source === "mail" && !cardRow.bundled
+                                        visible: card.source === "mail"
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing
                                         Label {
@@ -904,7 +904,7 @@ ApplicationWindow {
                                     }
                                     Label {
                                         objectName: "mailSnippet-" + cardId
-                                        text: card.source === "mail" && !cardRow.bundled ? (card.snippet || "") : (card.summary || "")
+                                        text: card.source === "mail" ? (card.snippet || card.summary || "") : (card.summary || "")
                                         visible: text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
