@@ -88,6 +88,18 @@ Kirigami.Page {
             Qt.openUrlExternally(sourceUrl)
     }
 
+    // Esc closes the mail view and returns to the inbox, matching the
+    // toolbar back button. Only the page root consumes Esc; inner controls
+    // keep their own Esc handling (e.g. dialogs) because unaccepted key
+    // events bubble up to this handler.
+    Keys.onEscapePressed: function(event) {
+        const view = root.QQC2.StackView.view
+        if (view && view.depth > 1) {
+            view.pop()
+            event.accepted = true
+        }
+    }
+
     // Sender and arrival line: "Name <address> · 11:43" for mail received
     // today, day + month + time this year, full date otherwise; no separator
     // without an arrival time.

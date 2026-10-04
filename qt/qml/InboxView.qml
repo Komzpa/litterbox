@@ -200,6 +200,12 @@ ApplicationWindow {
         stack.pop()
         return true
     }
+    // Mouse back/forward buttons navigate like the toolbar back button.
+    // Restricted to the extra buttons so ordinary clicks pass through.
+    TapHandler {
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onTapped: function(event) { window.handleBack() }
+    }
     property real inboxScrollPosition: 0
     property var mailDetailPage: null
     function openPage(name, properties) {
