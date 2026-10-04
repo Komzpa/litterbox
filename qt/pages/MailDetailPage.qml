@@ -46,6 +46,7 @@ Kirigami.Page {
     property string accountName: ""
     property var card: ({ source: "mail" })
     property var requestNote: null
+    property var requestArchiveUndo: null
     // Set to false in tests to avoid spawning an external browser.
     property bool openLinks: true
     // Pinned in tests so the today / this-year / older arrival branches are exact.
@@ -192,7 +193,10 @@ Kirigami.Page {
                 onOpenRequested: root.openInGmail()
                 onReadCachedRequested: root.reload()
                 onNoteRequested: { if (root.requestNote) root.requestNote(root.cardId, root.card.note || "") }
-                onCardHandled: root.QQC2.StackView.view.pop()
+                onCardHandled: function(operation) {
+                    root.QQC2.StackView.view.pop()
+                    if (operation && root.requestArchiveUndo) root.requestArchiveUndo(operation)
+                }
             }
         }
 

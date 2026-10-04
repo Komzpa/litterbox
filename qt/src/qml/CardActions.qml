@@ -25,12 +25,12 @@ Controls.ToolButton {
     signal openRequested()
     signal readCachedRequested()
     // Navigation follows the optimistic mutation, never its HTTP acknowledgement.
-    signal cardHandled()
+    signal cardHandled(string operation)
     readonly property string primaryName: source === "mail" ? qsTr("Archive in Gmail%1").arg(accountName ? " · " + accountName : "") : source === "journal" ? qsTr("Archive private note") : source === "home_assistant" ? qsTr("Dismiss Home Assistant notification") : qsTr("Done · dismiss in Litterbox only")
     function primaryAction() {
-        const operation = source === "mail" || source === "journal"
-            ? store.enqueueOp(cardKey, "archive", {}) : store.dismiss(cardKey)
-        if (operation) cardHandled()
+        const archive = source === "mail" || source === "journal"
+        const operation = archive ? store.enqueueOp(cardKey, "archive", {}) : store.dismiss(cardKey)
+        if (operation) cardHandled(archive ? operation : "")
     }
     readonly property bool pinStateKnown: pinnedRank !== undefined
     readonly property bool pinned: pinStateKnown && pinnedRank !== null

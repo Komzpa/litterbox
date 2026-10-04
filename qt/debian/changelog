@@ -1,5 +1,7 @@
 litterbox-qt (0.1-18) unstable; urgency=medium
 
+  * Show an "Archived …" toast with a working Undo after archiving a mail
+    from the mail view.
   * Stop the inbox freezing while large card lists rearrange, such as after
     archiving and restoring bundles.
   * Validate server URLs before enrollment and show an inline error.
