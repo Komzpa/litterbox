@@ -387,7 +387,6 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.top: parent.top
-        anchors.topMargin: window.bundleArchiveStatus.length > 0 ? 64 : 0
         // Sliding the inbox moves its ListView viewport out of the window,
         // causing whole rows of Controls to be destroyed and recreated.
         pushExit: null
@@ -511,11 +510,8 @@ ApplicationWindow {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
                                 }
-                                if (card.bundle_leader !== undefined) {
-                                    summary.lastId = entry.cardId
-                                    const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
-                                    if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
-                                }
+                                const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
+                                if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
                             }
                             if (card.bundle_leader === true) {
                                 sections[card.bundle_id] = card.section
@@ -540,6 +536,12 @@ ApplicationWindow {
                             window.bundleSummaries = summaries
                         }
                         const ordered = [].concat(...groups)
+                        for (const bundle in summaries) summaries[bundle].lastId = ""
+                        for (let i = 0; i < ordered.length; ++i) {
+                            const entry = ordered[i]
+                            if (entry.card.bundle_id && (i + 1 === ordered.length || ordered[i + 1].card.bundle_id !== entry.card.bundle_id))
+                                summaries[entry.card.bundle_id].lastId = entry.cardId
+                        }
                         const headings = {}
                         let previousSection = ""
                         for (const entry of ordered) {
