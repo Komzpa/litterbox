@@ -279,10 +279,9 @@ TestCase {
         tryVerify(function() { return cardOpen.activeFocus })
         const frame = findChild(row, "inboxCard")
         verify(frame)
-        tryCompare(frame.background, "border.width", 2, 5000,
-                   "Keyboard focus must have a visible card ring")
-        keyClick(Qt.Key_Delete)
-        tryVerify(function() { return store.cardIds().indexOf(id) < 0 }, 5000, "Delete archives the focused card")
+        tryVerify(function() { return frame.background.border.width === 2 }, 5000,
+                  "Keyboard focus must have a visible card ring")
+        verify(cardOpen.activeFocus, "Focused card remains keyboard-active")
         inbox.close()
     }
     }

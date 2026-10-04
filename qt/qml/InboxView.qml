@@ -785,6 +785,11 @@ ApplicationWindow {
                                             event.accepted = true
                                         }
                                     }
+                                    Shortcut {
+                                        sequence: StandardKey.Delete
+                                        enabled: cardText.activeFocus
+                                        onActivated: cardActions.primaryAction()
+                                    }
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
