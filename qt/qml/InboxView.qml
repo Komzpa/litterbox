@@ -227,9 +227,42 @@ ApplicationWindow {
         return true
     }
     property real inboxScrollPosition: 0
+    // Raw contentY drifts a few px when Back re-runs layout (rows re-estimated
+    // after delegates were culled). Anchor on the opened card's measured
+    // viewport y instead and correct contentY to restore that measurement.
+    property var inboxScrollAnchorId: ""
+    property real inboxScrollAnchorY: 0
+    function saveInboxScroll(cardId) {
+        inboxScrollPosition = inboxList.contentY - inboxList.originY
+        inboxScrollAnchorId = ""
+        for (let row = 0; row < inboxList.count; ++row) {
+            if (cardIdAt(row) !== cardId) continue
+            const item = inboxList.itemAtIndex(row)
+            if (!item) break
+            inboxScrollAnchorId = cardId
+            inboxScrollAnchorY = item.mapToItem(inboxList, 0, 0).y
+            break
+        }
+    }
+    function restoreInboxScroll() {
+        inboxList.forceLayout()
+        inboxList.contentY = inboxList.originY + inboxScrollPosition
+        if (!inboxScrollAnchorId) return
+        for (let row = 0; row < inboxList.count; ++row) {
+            if (cardIdAt(row) !== inboxScrollAnchorId) continue
+            const item = inboxList.itemAtIndex(row)
+            if (!item) break
+            for (let pass = 0; pass < 3; ++pass) {
+                const delta = item.mapToItem(inboxList, 0, 0).y - inboxScrollAnchorY
+                if (delta === 0) break
+                inboxList.contentY += delta
+            }
+            break
+        }
+    }
     property var mailDetailPage: null
     function openPage(name, properties) {
-        if (stack.depth === 1) inboxScrollPosition = inboxList.contentY - inboxList.originY
+        if (stack.depth === 1) saveInboxScroll((properties || {}).cardId || "")
         const page = pagesDir.toString() + name + ".qml"
         if (name === "MailDetailPage") {
             const values = Object.assign({store: window.cardStore, cardTitle: "", accountName: "", openLinks: true}, properties || {})
@@ -399,8 +432,7 @@ ApplicationWindow {
             StackView.visible: true
             enabled: StackView.status === StackView.Active
             StackView.onActivated: {
-                inboxList.forceLayout()
-                inboxList.contentY = inboxList.originY + window.inboxScrollPosition
+                window.restoreInboxScroll()
                 inboxList.forceActiveFocus()
             }
             ListView {

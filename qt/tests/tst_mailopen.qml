@@ -229,6 +229,68 @@ TestCase {
         inbox.close()
     }
 
+    function test_backRestoresExactCardPosition_data() {
+        return [{tag: "w1440", width: 1440},
+                {tag: "w598", width: 598}]
+    }
+    function test_backRestoresExactCardPosition(row) {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: row.width, height: 900
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryCompare(list, "count", 14)
+        list.forceLayout()
+        list.positionViewAtIndex(6, ListView.Beginning)
+        wait(200)
+        list.forceLayout()
+        verify(list.contentY - list.originY > 0)
+        // The reflow inserts a row above the opened card, so index lookups are
+        // stale afterwards; track the card by id throughout.
+        function rowOf(cardId) {
+            for (let i = 0; i < list.count; ++i) {
+                const item = list.itemAtIndex(i)
+                if (item && item.cardId === cardId) return item
+            }
+            return null
+        }
+        const openedCard = rowOf("mail-8")
+        verify(openedCard)
+        const beforeY = openedCard.mapToItem(list, 0, 0).y
+        const preview = findChild(openedCard, "openCard-mail-8")
+        verify(preview)
+        mouseClick(preview, preview.width / 2, preview.height / 2)
+        const stack = findChild(inbox, "pageStack")
+        tryCompare(stack, "depth", 2)
+        tryCompare(stack, "busy", false)
+        // The inbox reflows while the mail is open: a new row arrives above the
+        // opened card (a refresh can also re-estimate row heights), which
+        // invalidates the raw contentY that the old Back path restored.
+        store.insert(0, {cardId: "mail-reflow", title: "Message reflow", section: "now", card: {
+            id: "mail-reflow", source: "mail", section: "now", account_name: "fixture@example.test",
+            summary: "Arrived while reading", snippet: "Arrived while reading", has_body: true,
+            pinned_rank: null, bundle_id: "", important: false, timed: false,
+            note: "", source_url: ""
+        }})
+        tryCompare(list, "count", 15, 2000, "the inbox must relayout while the mail is open")
+        const back = findChild(stack.currentItem, "backToInbox")
+        verify(back)
+        mouseClick(back)
+        tryCompare(stack, "depth", 1)
+        tryCompare(stack, "busy", false)
+        wait(200)
+        list.forceLayout()
+        const restoredCard = rowOf("mail-8")
+        verify(restoredCard)
+        const afterY = restoredCard.mapToItem(list, 0, 0).y
+        verify(afterY === beforeY,
+               "Back must restore the opened card within 0 px: before=" + beforeY + " after=" + afterY)
+        compare(store.operations, [])
+        inbox.close()
+    }
+
     function test_bodylessCardDoesNotOpenEmptyDetail() {
         store.clear()
         store.append({cardId: "manual-1", title: "Plain task", section: "now", card: {
