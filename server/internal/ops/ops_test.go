@@ -1,9 +1,11 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -124,20 +126,37 @@ func TestManualCreateAndReorderOperationsAreTenantScoped(t *testing.T) {
 		}
 	}
 	api := API{DB: db, Identity: func(context.Context) (string, string, bool) { return tenant.String(), "", true }}
-	post := func(typ string, card uuid.UUID, args string) int {
+	postResponse := func(typ string, card uuid.UUID, args string) *httptest.ResponseRecorder {
 		t.Helper()
 		body := fmt.Sprintf(`{"op_id":%q,"card_id":%q,"type":%q,"args":%s}`, uuid.NewString(), card, typ, args)
 		req := httptest.NewRequest("POST", "/v1/ops", strings.NewReader(body))
 		response := httptest.NewRecorder()
 		api.ServeHTTP(response, req)
-		return response.Code
+		return response
+	}
+	post := func(typ string, card uuid.UUID, args string) int {
+		return postResponse(typ, card, args).Code
 	}
 	created := uuid.New()
 	if status := post("create_card", created, `{"title":"  Manual task ","summary":"Details"}`); status != 200 {
 		t.Fatalf("create status=%d, want 200", status)
 	}
-	if status := post("create_card", uuid.New(), `{"title":"   "}`); status != 422 {
-		t.Fatalf("blank-title status=%d, want 422", status)
+	var logs bytes.Buffer
+	previousLog := log.Writer()
+	log.SetOutput(&logs)
+	response := postResponse("create_card", uuid.New(), `{"title":"   "}`)
+	log.SetOutput(previousLog)
+	if response.Code != 422 || response.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("blank-title response status=%d content-type=%q, want 422 JSON", response.Code, response.Header().Get("Content-Type"))
+	}
+	var failure struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil || failure.Error != "title required" {
+		t.Fatalf("blank-title error=%q, decode error=%v; want title required", failure.Error, err)
+	}
+	if !strings.Contains(logs.String(), "type=create_card") || !strings.Contains(logs.String(), "error=title required") {
+		t.Fatalf("rejection log=%q, missing operation type or handler error", logs.String())
 	}
 	if status := post("reorder_cards", first, fmt.Sprintf(`{"cards":[%q,%q,%q]}`, second, created, first)); status != 200 {
 		t.Fatalf("complete reorder status=%d, want 200", status)

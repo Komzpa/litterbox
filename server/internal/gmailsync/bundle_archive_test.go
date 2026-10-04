@@ -173,3 +173,75 @@ func TestStaleBundleArchiveReturnsErrorWithoutRecordingOperation(t *testing.T) {
 		t.Fatalf("stale bundle left %d ops rows, want 0", count)
 	}
 }
+
+// A bundle_archive op whose bundle dissolved between the client's snapshot
+// and the op (recluster reassigned bundle_id) still archives the op's own
+// card instead of failing with 422.
+func TestStaleBundleArchiveFallsBackToOpCard(t *testing.T) {
+	db, _ := testPool(t)
+	ctx := context.Background()
+	tenant, account, card, stale := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'stale@example.test',$3)`, tenant, account, []byte("refresh")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,bundle_id,pinned_rank) VALUES($1,$2,$3,'thread-stale','mail',NULL,NULL)`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var threads []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
+			return
+		}
+		if !strings.HasSuffix(r.URL.Path, "/modify") {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+			return
+		}
+		thread := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/gmail/v1/users/me/threads/"), "/modify")
+		mu.Lock()
+		threads = append(threads, thread)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	useTestOps(func(ctx context.Context, tx pgx.Tx, tenantID, cardID uuid.UUID) (*Client, string, error) {
+		var thread string
+		if err := tx.QueryRow(ctx, `SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenantID, cardID).Scan(&thread); err != nil {
+			return nil, "", err
+		}
+		return &Client{HTTP: srv.Client(), APIBase: srv.URL + "/gmail/v1/users/me", TokenURL: srv.URL + "/token", RefreshToken: "refresh", ClientID: "id", ClientSecret: "secret"}, thread, nil
+	})
+	h, ok := ops.Lookup("bundle_archive")
+	if !ok {
+		t.Fatal("bundle_archive operation not registered")
+	}
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := json.RawMessage(`{"bundle_id":"` + stale.String() + `"}`)
+	if err = h(ctx, tx, tenant, card, args); err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("stale bundle with open op card returned error: %v", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(threads) != 1 || threads[0] != "thread-stale" {
+		t.Fatalf("Gmail modify threads = %v, want [thread-stale]", threads)
+	}
+	var state string
+	if err := db.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "archived" {
+		t.Fatalf("op card state = %q, want archived", state)
+	}
+}

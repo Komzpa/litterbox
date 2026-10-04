@@ -1,3 +1,12 @@
+litterbox-qt (0.1-22) unstable; urgency=medium
+
+  * Keep acknowledged archives out of the inbox across stale snapshots.
+  * Archive the named cards when a bundle dissolves before the archive arrives.
+  * Avoid rewriting unchanged bundle assignments and flooding card changes.
+  * Return rejected-operation reasons and log server-side rejection details.
+
+ -- Litterbox <litterbox@example.com>  Mon, 05 Oct 2026 02:06:00 +0400
+
 litterbox-qt (0.1-21) unstable; urgency=medium
 
   * Keep the expanded bundle visible when it expands.

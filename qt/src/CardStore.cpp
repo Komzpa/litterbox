@@ -362,6 +362,15 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
         if (leftPinned != rightPinned) return leftPinned;
         return leftPinned && leftRank.toLongLong() < rightRank.toLongLong();
     });
+    // An acknowledged archive remains optimistic until a snapshot confirms its absence.
+    for (auto it = m_archivedAwaitingSnapshot.begin(); it != m_archivedAwaitingSnapshot.end();) {
+        const QString id = *it;
+        const bool stillPresent = ids.contains(id);
+        cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
+            return stillPresent && card.value(QStringLiteral("id")).toString() == id;
+        }), cards.end());
+        it = stillPresent ? std::next(it) : m_archivedAwaitingSnapshot.erase(it);
+    }
     // A snapshot received while an operation is pending must not resurrect its
     // removed card or overwrite its local note/pin state.
     for (const auto &mutation : m_mutations) {
@@ -853,6 +862,11 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
                 return;
             }
             m_retryAttempt = 0;
+            const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
+                return op.value(QStringLiteral("op_id")).toString() == opId;
+            });
+            if (acknowledgedOp != m_outbox.cend() && acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("archive"))
+                m_archivedAwaitingSnapshot.insert(acknowledgedOp->value(QStringLiteral("card_id")).toString());
             if (!m_outbox.isEmpty() && m_outbox.first().value(QStringLiteral("op_id")).toString() == opId) m_outbox.removeFirst();
             m_durableOps.remove(opId);
             m_mutations.remove(opId);

@@ -137,6 +137,7 @@ private:
     };
     QHash<QString, BundleArchive> m_bundleArchives;
     void expireBundleArchives();
+    QSet<QString> m_archivedAwaitingSnapshot;
     int m_bundleUndoDurationMs = 8000;
     QTimer *m_bundleUndoTimer = nullptr;
     QHash<QString, QVariantMap> m_mailBodies;
