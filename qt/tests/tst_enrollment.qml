@@ -38,6 +38,18 @@ TestCase {
         compare(emitted.device_id, "dev-1")
     }
 
+    function test_enrollmentInputsUseLightPalette() {
+        var api = { baseUrl: "http://server:8081", post: function (path, body, cb) {} }
+        var page = createTemporaryObject(pageComponent, this, {api: api})
+        verify(page)
+        for (const name of ["serverField", "inviteField", "deviceNameField", "platformBox"]) {
+            const control = findChild(page, name)
+            verify(control, "missing enrollment control " + name)
+            verify(Qt.colorEqual(control.palette.base, "#ffffff"), name + " does not use a white base")
+            verify(Qt.colorEqual(control.palette.text, "#263b3a"), name + " does not use ink text")
+        }
+    }
+
     function test_emptyServerIsRequired() {
         var posted = false
         var api = { baseUrl: "", token: "", post: function (path, body, cb) { posted = true } }

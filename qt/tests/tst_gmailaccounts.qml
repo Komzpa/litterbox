@@ -41,6 +41,22 @@ TestCase {
         compare(page.accounts.length, 0)
     }
 
+    function test_failedReloadDoesNotClaimNoAccounts() {
+        var api = {
+            get: function (path, cb) { cb(new Error("offline"), null) },
+            post: function (path, body, cb) { },
+            del: function (path, cb) { }
+        }
+        var page = createTemporaryObject(pageComponent, this, {api: api, openLinks: false})
+        verify(page)
+        var emptyState = findChild(page, "emptyStateLabel")
+        verify(emptyState)
+        verify(!emptyState.visible)
+        page.reload()
+        compare(page.errorText, "Could not load the account list.")
+        verify(!emptyState.visible)
+    }
+
     function test_reloadListShowsAccounts() {
         var api = {
             get: function (path, cb) { cb(null, {status: 200, body: [{id: "x", address: "darafei@maumap.com"}]}) },

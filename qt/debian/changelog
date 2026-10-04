@@ -3,9 +3,13 @@ litterbox-qt (0.1-17) unstable; urgency=medium
   * Start package-upgrade replacements in an independent transient systemd
     user service and keep the old app running if systemd cannot start it.
   * Prove replacement survival when the original desktop service stops.
-  * Center bounded Gmail accounts and enrollment form columns within their
-    ScrollablePage layout without conflicting anchors.
+  * Hide the empty Gmail account state when loading fails, so offline access
+    does not report that no accounts are connected.
 
+  * Pin enrollment input controls and action colors to the light palette (R36).
+
+  * Center bounded Gmail accounts and enrollment page columns within their
+    ScrollablePage layout without conflicting anchors.
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 15:25:00 +0400
 
 litterbox-qt (0.1-16) unstable; urgency=medium

@@ -161,7 +161,8 @@ Kirigami.ScrollablePage {
 
             QQC2.Label {
                 anchors.centerIn: parent
-                visible: list.count === 0 && !root.loading
+                objectName: "emptyStateLabel"
+                visible: list.count === 0 && !root.loading && root.errorText === ""
                 text: qsTr("No accounts connected.")
             }
         }
