@@ -155,6 +155,12 @@ ApplicationWindow {
             window.bundleArchiveStatus = qsTr("Undo has expired.")
             undoExpiredNoticeTimer.restart()
         }
+        function onOperationFailed(opId, status) {
+            if (window.bundleArchiveToken.length === 0 && window.mailArchiveUndoOp.length === 0) return
+            window.bundleArchiveToken = ""
+            window.mailArchiveUndoOp = ""
+            window.bundleArchiveStatus = qsTr("Couldn't archive now. Please try again.")
+        }
     }
     Timer {
         id: undoExpiredNoticeTimer
