@@ -160,6 +160,9 @@ func init() {
 		if err != nil {
 			return err
 		}
+		if len(ids) == 0 {
+			return fmt.Errorf("bundle has no open unpinned cards")
+		}
 		// Reroute through the per-card archive op so every member leaves
 		// Gmail's INBOX exactly like a single-card archive.
 		for _, id := range ids {
@@ -200,7 +203,10 @@ func bundleOpenUnpinnedIDs(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw
 		}
 		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func enqueueBundleDone(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, raw json.RawMessage) error {
