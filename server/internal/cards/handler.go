@@ -146,7 +146,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
- rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),(SELECT max(m.received_at) FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id) FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant)
+ 	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),(SELECT max(m.received_at) FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id),COALESCE((SELECT m.text FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id ORDER BY m.received_at DESC LIMIT 1),'') FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant)
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -161,7 +161,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		var accountName, bundleTitle sql.NullString
 		var receivedAt sql.NullTime
 		var senderRaw string
-		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order, &bundleID, &pinnedRank, &accountName, &bundleTitle, &c.Important, &c.HasBody, &c.SourceKind, &c.SenderName, &senderRaw, &receivedAt); err != nil {
+ 		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order, &bundleID, &pinnedRank, &accountName, &bundleTitle, &c.Important, &c.HasBody, &c.SourceKind, &c.SenderName, &senderRaw, &receivedAt, &c.Snippet); err != nil {
 			http.Error(w, "internal server error", 500)
 			return
 		}

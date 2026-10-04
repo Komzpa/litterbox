@@ -11,7 +11,7 @@ TestCase {
     ListModel {
         id: store
         property bool online: false
-        function cardIds() { return ["bundle-0", "bundle-1", "bundle-2", "bundle-3", "standalone"] }
+        function cardIds() { const ids = []; for (let i = 0; i < count; ++i) ids.push(get(i).cardId); return ids }
         function pinnedCardIds() { return [] }
         function sourceLabel(card) { return card.source }
         function refresh() {}
@@ -35,7 +35,7 @@ TestCase {
                 id: "bundle-" + i, title: "A bundled message " + i, source: "mail", section: "now",
                 bundle_id: "github", bundle_title: "sender:notifications@github.com", bundle_leader: i === 0,
                 bundle_member_count: 4, pinned_rank: null, important: false, timed: false,
-                has_body: false, summary: "", note: "", account_name: "owner@example.test"
+                has_body: false, summary: "", snippet: "Bundle member preview that must stay hidden", note: "", account_name: "owner@example.test"
             }})
         }
         store.append({cardId: "standalone", title: "Next visible card", section: "now", card: {
@@ -70,6 +70,10 @@ TestCase {
                    "expanded bundle spacing differs at row " + i + ": " + expandedGap)
         }
         const expandedToggle = findChild(list.itemAtIndex(0), "bundleToggle-bundle-0")
+        for (let i = 0; i < 4; ++i) {
+            const memberSnippet = findChild(list.itemAtIndex(i), "mailSnippet-bundle-" + i)
+            verify(!memberSnippet || !memberSnippet.visible, "bundle rows must stay unchanged")
+        }
         verify(waitForRendering(expandedToggle), "Expanded opener geometry must be rendered before the second center click")
         mouseClick(expandedToggle)
         tryVerify(function() { list.forceLayout(); return !list.itemAtIndex(1).visible })
@@ -77,5 +81,31 @@ TestCase {
         const collapsedNext = list.itemAtIndex(4)
         const collapsedFrame = findChild(collapsedLeader, "inboxCard")
         compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
+    }
+    function test_singleMailShowsSenderDateAndSnippet() {
+        store.clear()
+        store.append({cardId: "mail-context", title: "Tree genealogy", section: "now", card: {
+            id: "mail-context", title: "Tree genealogy", source: "mail", section: "now",
+            bundle_id: "", pinned_rank: null, important: false, timed: false, has_body: true,
+            summary: "", snippet: "The family archive includes the latest branch and records.", note: "",
+            sender_name: "German Loiko", sender_address: "german@example.test",
+            received_at: new Date().toISOString(), account_name: "owner@example.test"
+        }})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 600
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        const sender = findChild(row, "mailSender-mail-context")
+        const date = findChild(row, "mailDate-mail-context")
+        const snippet = findChild(row, "mailSnippet-mail-context")
+        verify(sender && sender.visible && sender.text === "German Loiko", "sender must be visible")
+        verify(date && date.visible && date.text !== "", "mail arrival date/time must be visible")
+        verify(snippet && snippet.visible && snippet.text.indexOf("latest branch") >= 0, "body preview must be visible")
+        verify(findChild(row, "mailAccount-mail-context").text === "owner@example.test", "account must remain visible")
+        inbox.close()
     }
 }

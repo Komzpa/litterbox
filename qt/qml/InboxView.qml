@@ -73,6 +73,21 @@ ApplicationWindow {
         const domain = sender.slice(sender.lastIndexOf("@") + 1).replace(/[<>]/g, "")
         return domain || qsTr("Bundle")
     }
+    function mailSender(card) {
+        const name = String(card.sender_name || "").trim()
+        return name || String(card.sender_address || "").trim()
+    }
+    function mailArrival(card) {
+        if (!card.received_at) return ""
+        const arrived = new Date(card.received_at)
+        if (isNaN(arrived.getTime())) return ""
+        const now = new Date()
+        if (arrived.getFullYear() === now.getFullYear() && arrived.getMonth() === now.getMonth() && arrived.getDate() === now.getDate())
+            return Qt.formatDateTime(arrived, "HH:mm")
+        if (arrived.getFullYear() === now.getFullYear())
+            return Qt.formatDateTime(arrived, "d MMM HH:mm")
+        return Qt.formatDateTime(arrived, "d MMM yyyy HH:mm")
+    }
     function toggleBundle(bundleId) {
         const next = Object.assign({}, expandedBundles)
         next[bundleId] = !next[bundleId]
@@ -776,9 +791,41 @@ ApplicationWindow {
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
+                                    RowLayout {
+                                        objectName: "mailContext-" + cardId
+                                        visible: card.source === "mail" && !cardRow.bundled
+                                        Layout.fillWidth: true
+                                        spacing: Kirigami.Units.smallSpacing
+                                        Label {
+                                            objectName: "mailSender-" + cardId
+                                            text: window.mailSender(card)
+                                            visible: text.length > 0
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                        }
+                                        Label {
+                                            objectName: "mailDate-" + cardId
+                                            text: window.mailArrival(card)
+                                            visible: text.length > 0
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                        }
+                                        Label {
+                                            objectName: "mailAccount-" + cardId
+                                            text: card.account_name || ""
+                                            visible: text.length > 0
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            elide: Text.ElideLeft
+                                            Layout.maximumWidth: 180
+                                        }
+                                    }
                                     Label {
                                         text: cardRow.bundled ? (card.account_name || "") : window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : "")
-                                        visible: !cardRow.bundled || (!!card.account_name && (cardRow.bundleSummary.accounts.length > 1 || card.account_name !== cardRow.bundleSummary.accounts[0]))
+                                        visible: cardRow.bundled || card.source !== "mail"
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
                                         wrapMode: Text.Wrap
@@ -791,7 +838,17 @@ ApplicationWindow {
                                         wrapMode: Text.Wrap
                                         Layout.fillWidth: true
                                     }
-                                    Label { text: card.summary || ""; color: window.mutedInk; visible: text.length > 0; font: Kirigami.Theme.defaultFont; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label {
+                                        objectName: "mailSnippet-" + cardId
+                                        text: card.source === "mail" && !cardRow.bundled ? (card.snippet || "") : (card.summary || "")
+                                        visible: text.length > 0
+                                        color: window.mutedInk
+                                        font: Kirigami.Theme.defaultFont
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }

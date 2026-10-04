@@ -372,9 +372,9 @@ func TestCardArrivalAndSenderAddress(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,subject) VALUES($1,$2,'manual','arrival-task','Manual task')`, tenant, manualCard); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),'2026-10-04T07:43:00Z')`, tenant, mailCard); err != nil {
-		t.Fatal(err)
-	}
+ 	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,text,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],'old body',decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],'Latest thread preview',decode('00','hex'),'2026-10-04T07:43:00Z')`, tenant, mailCard); err != nil {
+ 		t.Fatal(err)
+ 	}
 	handler, err := NewHandler(db, "Asia/Tbilisi", filepath.Join(t.TempDir(), "feedback.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -406,9 +406,12 @@ func TestCardArrivalAndSenderAddress(t *testing.T) {
 	if got := mail["received_at"]; got != "2026-10-04T07:43:00Z" {
 		t.Fatalf("received_at=%v, want latest message arrival 2026-10-04T07:43:00Z as RFC3339 UTC", got)
 	}
-	if got := mail["sender_address"]; got != "welcome@cerebras.net" {
-		t.Fatalf("sender_address=%v, want welcome@cerebras.net", got)
-	}
+ 	if got := mail["sender_address"]; got != "welcome@cerebras.net" {
+ 		t.Fatalf("sender_address=%v, want welcome@cerebras.net", got)
+ 	}
+ 	if got := mail["snippet"]; got != "Latest thread preview" {
+ 		t.Fatalf("snippet=%v, want newest message text", got)
+ 	}
 	manual, ok := rows[manualCard]
 	if !ok {
 		t.Fatalf("manual card missing from response: %v", rows)
