@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "CardStore.h"
 #include <algorithm>
+#include <vector>
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
@@ -98,15 +99,37 @@ bool CardStore::open(const QString &path) {
 
 void CardStore::replaceCards(QList<QVariantMap> cards) {
     deriveBundles(cards);
+    // A live refresh can move or touch hundreds of rows at once; one model
+    // notification per row stalls the GUI thread (each wakes the QML view).
+    // Past a structural-churn threshold a single reset is cheaper and the
+    // view shows the same final rows. Small edits keep fine-grained signals
+    // so animations and persistent indexes survive.
+    static constexpr int kResetThreshold = 32;
     QSet<QString> ids;
     for (const auto &card : cards) ids.insert(card.value(QStringLiteral("id")).toString());
+    int removals = 0;
+    for (int row = m_cards.size() - 1; row >= 0; --row)
+        if (!ids.contains(m_cards[row].value(QStringLiteral("id")).toString())) ++removals;
+    QStringList order = cardIds();
+    int structures = removals;
+    for (int row = 0; row < cards.size(); ++row) {
+        const QString id = cards[row].value(QStringLiteral("id")).toString();
+        if (row < order.size() && order[row] == id) continue;
+        ++structures;  // an insert or a move will be needed here
+    }
+    if (structures > kResetThreshold) {
+        beginResetModel();
+        m_cards = std::move(cards);
+        endResetModel();
+        return;
+    }
     for (int row = m_cards.size() - 1; row >= 0; --row) {
         if (ids.contains(m_cards[row].value(QStringLiteral("id")).toString())) continue;
         beginRemoveRows({}, row, row);
         m_cards.removeAt(row);
         endRemoveRows();
     }
-    QStringList order = cardIds();
+    std::vector<char> dirty(cards.size(), 0);
     for (int row = 0; row < cards.size(); ++row) {
         const QString id = cards[row].value(QStringLiteral("id")).toString();
         if (row >= order.size() || order[row] != id) {
@@ -125,11 +148,18 @@ void CardStore::replaceCards(QList<QVariantMap> cards) {
         }
         if (m_cards[row] != cards[row]) {
             m_cards[row] = cards[row];
-            emit dataChanged(index(row), index(row));
+            dirty[row] = 1;
         }
     }
+    // One emission per contiguous run of changed rows, not one per row.
+    for (int row = 0; row < (int)cards.size();) {
+        if (!dirty[row]) { ++row; continue; }
+        int end = row;
+        while (end + 1 < (int)cards.size() && dirty[end + 1]) ++end;
+        emit dataChanged(index(row), index(end));
+        row = end + 1;
+    }
 }
-
 bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after) {
     // Derived bundle flags are presentation state, not durable card changes.
     const auto stored = [](QVariantMap card) {

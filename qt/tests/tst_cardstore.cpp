@@ -126,6 +126,49 @@ private slots:
         QCOMPARE(removed.size(), 1);
         QCOMPARE(store.rowCount(), 1499);
     }
+    void largeSnapshotCoalescesModelSignals() {
+        // Re-cluster: bundle ids change for hundreds of cards at once. The GUI
+        // thread must not process one model notification per row.
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("recluster.sqlite")));
+        QStringList ids;
+        QVariantList first;
+        for (int i = 0; i < 600; ++i) {
+            const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            ids.append(id);
+            first.append(QVariantMap{{"id", id}, {"title", QStringLiteral("Mail %1").arg(i)},
+                {"source", "mail"}, {"state", "open"}, {"bundle_id", QStringLiteral("bundle-%1").arg(i % 5)}});
+        }
+        QVERIFY(store.applyRemoteCards({{"now", first}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QVariantList second;
+        for (int i = 0; i < 600; ++i)
+            second.append(QVariantMap{{"id", ids[i]}, {"title", QStringLiteral("Mail %1").arg(i)},
+                {"source", "mail"}, {"state", "open"}, {"bundle_id", QStringLiteral("reclustered-%1").arg(i % 7)}});
+        QSignalSpy changed(&store, &QAbstractItemModel::dataChanged);
+        QSignalSpy moved(&store, &QAbstractItemModel::rowsMoved);
+        QSignalSpy inserted(&store, &QAbstractItemModel::rowsInserted);
+        QSignalSpy removed(&store, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy reset(&store, &QAbstractItemModel::modelReset);
+        QElapsedTimer timer;
+        timer.start();
+        QVERIFY(store.applyRemoteCards({{"now", second}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        qInfo("recluster 600 cards: %.3f ms; dataChanged=%lld moved=%lld inserted=%lld removed=%lld reset=%lld",
+            timer.nsecsElapsed() / 1000000.0, changed.size(), moved.size(), inserted.size(), removed.size(), reset.size());
+        QCOMPARE(store.rowCount(), 600);
+        // Adjacent flag-only changes coalesce into ranges, not one emission
+        // per row; a full reorder collapses into a single reset.
+        QVERIFY(changed.size() <= 5);
+        QVERIFY(moved.size() + inserted.size() + removed.size() + reset.size() <= 5);
+        QVariantList reversed;
+        for (int i = 599; i >= 0; --i) reversed.append(second[i]);
+        QSignalSpy moved2(&store, &QAbstractItemModel::rowsMoved);
+        QSignalSpy reset2(&store, &QAbstractItemModel::modelReset);
+        QVERIFY(store.applyRemoteCards({{"now", reversed}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        qInfo("reverse 600 cards: moved=%lld reset=%lld", moved2.size(), reset2.size());
+        QVERIFY(reset2.size() <= 1);
+        QVERIFY(moved2.size() <= 5);
+    }
     void archiveDoesNotWaitForDatabaseLock() {
         QTemporaryDir directory;
         const QString path = directory.filePath("locked.sqlite");

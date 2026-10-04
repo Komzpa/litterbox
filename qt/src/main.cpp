@@ -66,6 +66,24 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Litterbox"));
     app.setOrganizationName(QStringLiteral("Litterbox"));
+    // UI stall meter (opt-in via LITTERBOX_STALL_LOG=1, off by default):
+    // a precise 16 ms heartbeat on the GUI thread; any gap >100 ms means the
+    // event loop was blocked and is logged with a wall-clock timestamp.
+    QElapsedTimer uiHeartbeat;
+    QTimer uiHeartbeatTimer;
+    if (qEnvironmentVariableIsSet("LITTERBOX_STALL_LOG")) {
+        uiHeartbeat.start();
+        uiHeartbeatTimer.setTimerType(Qt::PreciseTimer);
+        uiHeartbeatTimer.setInterval(16);
+        QObject::connect(&uiHeartbeatTimer, &QTimer::timeout, &app, [&, last = qint64(0)]() mutable {
+            const qint64 now = uiHeartbeat.elapsed();
+            if (last != 0 && now - last > 100)
+                qInfo("UI_STALL %lld ms at %s", now - last,
+                      qPrintable(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)));
+            last = now;
+        });
+        uiHeartbeatTimer.start();
+    }
     // Bundled Breeze subset for named icons. Android ships no system Breeze
     // theme, so the APK carries the SVGs it needs as a qrc icon theme named
     // "litterbox" (qt/icons/litterbox, LGPL-3.0-or-later, see LICENSE.breeze).
