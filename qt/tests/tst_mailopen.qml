@@ -104,6 +104,70 @@ TestCase {
         compare(list.itemAtIndex(8).cardId, "mail-8")
         inbox.close()
     }
+    function test_escapeAndMouseBackRestoreInboxPosition_data() {
+        return [{tag: "escape", action: "escape"},
+                {tag: "mouse-back", action: "back"}]
+    }
+
+    function test_escapeAndMouseBackRestoreInboxPosition(row) {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 700, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryCompare(list, "count", 14)
+        list.forceLayout()
+        list.positionViewAtIndex(8, ListView.Beginning)
+        wait(100)
+        const before = list.contentY - list.originY
+        verify(before > 0)
+
+        const preview = findChild(list.itemAtIndex(8), "mailSnippet-mail-8")
+        verify(preview)
+        mouseClick(preview, preview.width / 2, preview.height / 2)
+        const stack = findChild(inbox, "pageStack")
+        tryCompare(stack, "depth", 2)
+        tryCompare(stack.currentItem, "html", "<p>Hello <b>reader</b></p>")
+
+        if (row.action === "escape") {
+            stack.currentItem.forceActiveFocus()
+            keyClick(Qt.Key_Escape)
+        } else {
+            mouseClick(inbox.contentItem, inbox.width / 2, inbox.height / 2, Qt.BackButton)
+        }
+        tryCompare(stack, "depth", 1)
+        tryCompare(list, "contentY", list.originY + before)
+        compare(list.itemAtIndex(8).cardId, "mail-8")
+        compare(store.operations, [])
+        inbox.close()
+    }
+
+    function test_keyboardOpensAndClosesMail() {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 700, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        list.forceLayout()
+        const card = findChild(list.itemAtIndex(0), "openCard-mail-0")
+        verify(card)
+        list.forceActiveFocus()
+        for (let i = 0; i < 20 && !card.activeFocus; ++i)
+            keyClick(Qt.Key_Tab)
+        tryVerify(function() { return card.activeFocus })
+        keyClick(Qt.Key_Return)
+        const stack = findChild(inbox, "pageStack")
+        tryCompare(stack, "depth", 2)
+        keyClick(Qt.Key_Escape)
+        tryCompare(stack, "depth", 1)
+        compare(store.operations, [])
+        inbox.close()
+    }
+
 
     function test_actionReturnsToSameInboxOffset_data() {
         return [{tag: "archive-button", action: "archive"},
