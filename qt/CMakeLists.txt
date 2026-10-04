@@ -132,6 +132,16 @@ target_link_libraries(tst_serverurl PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6:
 qt_add_executable(tst_updatewatcher tests/tst_updatewatcher.cpp src/updatewatcher.h src/updatewatcher.cpp)
 target_include_directories(tst_updatewatcher PRIVATE src)
 target_link_libraries(tst_updatewatcher PRIVATE Qt6::Core Qt6::Test)
+if(NOT ANDROID)
+    find_program(XVFB_RUN NAMES xvfb-run)
+    find_program(SYSTEMD_RUN NAMES systemd-run)
+    if(XVFB_RUN AND SYSTEMD_RUN)
+        add_test(NAME restart_service_survival
+            COMMAND ${XVFB_RUN} -a ${CMAKE_CURRENT_SOURCE_DIR}/tests/restart_service_survival.sh
+                    $<TARGET_FILE:litterbox-qt> ${CMAKE_CURRENT_BINARY_DIR}/restart-service-survival)
+        set_tests_properties(restart_service_survival PROPERTIES TIMEOUT 60)
+    endif()
+endif()
 add_test(NAME serverurl COMMAND tst_serverurl)
 add_test(NAME updatewatcher COMMAND tst_updatewatcher)
 add_test(NAME androidupdater COMMAND tst_androidupdater)
