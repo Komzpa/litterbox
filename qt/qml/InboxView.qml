@@ -652,7 +652,7 @@ ApplicationWindow {
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : window.surface
                             border.color: cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
-                            border.width: cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus ? 2 : cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
+                            border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus ? 2 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
                             // Adjacent delegates paint the sides of one group, not
                             // individual cards. Only its first/last row closes it.

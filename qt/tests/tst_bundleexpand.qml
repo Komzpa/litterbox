@@ -252,31 +252,84 @@ TestCase {
         tryCompare(inbox.expandedBundles, bundle, true)
         wait(200)
         list.forceLayout()
-        let frameBottom = -1
+        capture(inbox, "frame-" + data.tag)
+        const failures = []
+        const geometry = []
+        const ordinaryCount = data.count - (data.importantLast ? 1 : 0)
+        let previousSides = null
+        let frameTop = -1
         let lastMemberBottom = -1
+        let frameBottom = -1
+        function check(condition, message) {
+            if (!condition) failures.push(message)
+        }
         for (let i = 0; i < list.count; ++i) {
             const row = list.itemAtIndex(i)
             verify(row && row.visible)
+            const frame = findChild(row, "inboxCard")
+            verify(frame && frame.background)
+            const background = frame.background
+            const top = background.mapToItem(inbox.contentItem, 0, 0).y
+            const bottom = background.mapToItem(inbox.contentItem, 0, background.height).y
+            const sides = {left: null, right: null}
+            let topEdges = 0
+            let bottomEdges = 0
+            for (const edge of background.children) {
+                if (!edge.visible || edge.opacity === 0) continue
+                if (edge.width === 1 && edge.height === background.height) {
+                    const side = Math.abs(edge.x) <= 1 ? "left"
+                        : Math.abs(edge.x + edge.width - background.width) <= 1 ? "right" : ""
+                    if (side) sides[side] = {
+                        x: edge.mapToItem(inbox.contentItem, 0, 0).x,
+                        top: edge.mapToItem(inbox.contentItem, 0, 0).y,
+                        bottom: edge.mapToItem(inbox.contentItem, 0, edge.height).y
+                    }
+                }
+                if (edge.height === 1 && edge.width === background.width) {
+                    if (Math.abs(edge.y) <= 1) ++topEdges
+                    if (Math.abs(edge.y + edge.height - background.height) <= 1) {
+                        ++bottomEdges
+                        frameBottom = edge.mapToItem(inbox.contentItem, 0, edge.height).y
+                    }
+                }
+            }
+            geometry.push({id: row.cardId, top: top, bottom: bottom, sides: sides,
+                topEdges: topEdges, bottomEdges: bottomEdges, borderWidth: background.border.width})
             if (row.card.important) {
-                verify(!row.bundled && !row.bundleLeader, "Important card must remain standalone")
-                verify(row.card.bundle_leader === undefined, "Important card is not an ordinary bundle member")
+                check(background.visible && background.border.width > 0 && background.radius > 0,
+                    row.cardId + ": important member must paint its own standalone rounded border")
+                check(!sides.left && !sides.right && topEdges === 0 && bottomEdges === 0,
+                    row.cardId + ": important member must not paint bundle-frame edges")
+                check(top > lastMemberBottom,
+                    row.cardId + ": important standalone border must be separated from the ordinary frame")
                 continue
             }
-            const frame = findChild(row, "inboxCard")
-            verify(frame)
-            const bottom = frame.mapToItem(inbox.contentItem, 0, frame.height).y
-            lastMemberBottom = Math.max(lastMemberBottom, bottom)
-            // Inspect the painted closing edge, not just the cached lastId.
-            for (const edge of frame.background.children) {
-                if (edge.visible && edge.height === 1 && edge.width === frame.width
-                        && Math.abs(edge.y + edge.height - frame.background.height) <= 1)
-                    frameBottom = Math.max(frameBottom, edge.mapToItem(inbox.contentItem, 0, edge.height).y)
+            if (i === 0) frameTop = top
+            lastMemberBottom = bottom
+            for (const side of ["left", "right"]) {
+                const edge = sides[side]
+                check(edge && Math.abs(edge.top - top) <= 1 && Math.abs(edge.bottom - bottom) <= 1,
+                    row.cardId + ": painted " + side + " border must span the full member height")
+                if (edge && previousSides && previousSides[side]) {
+                    check(Math.abs(edge.x - previousSides[side].x) <= 1
+                            && Math.abs(edge.top - previousSides[side].bottom) <= 1,
+                        row.cardId + ": painted " + side + " border must continue without a gap from the preceding member")
+                }
             }
+            check(topEdges === (i === 0 ? 1 : 0),
+                row.cardId + ": only the first ordinary member may paint the frame's top edge")
+            check(bottomEdges === (i === ordinaryCount - 1 ? 1 : 0),
+                row.cardId + ": only the last ordinary member may paint a closing edge")
+            check(background.border.width === 0,
+                row.cardId + ": expanded ordinary members must not paint a standalone border, including focus outlines")
+            previousSides = sides
         }
+        check(Math.abs(frameBottom - lastMemberBottom) <= 1,
+            "The painted bundle frame must close at the last ordinary member's bottom")
         console.log("BUNDLE_FRAME_GEOMETRY", JSON.stringify({count: data.count, width: data.width,
-            frameBottom: frameBottom, lastMemberBottom: lastMemberBottom}))
-        verify(frameBottom >= lastMemberBottom,
-            "The painted bundle frame must close at or below the last member's bottom")
+            frameTop: frameTop, frameBottom: frameBottom, lastMemberBottom: lastMemberBottom,
+            rows: geometry, failures: failures}))
+        verify(failures.length === 0, failures.join("\n"))
         inbox.close()
     }
     function test_archiveToastLeavesNoHeaderGap_data() {
