@@ -263,4 +263,26 @@ TestCase {
         verify(!bar.visible, "Undo hides the inline bar")
         inbox.close()
     }
+    function test_cardKeyboardFocusAndDeleteArchivesFocusedCard() {
+        const id = "keyboard-card"
+        verify(store.applyRemoteCards({now: [card(id, "", "now", {state: "open", has_body: true})], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        const cardOpen = findChild(row, "openCard-" + id)
+        verify(cardOpen && cardOpen.activeFocusOnTab)
+        cardOpen.forceActiveFocus()
+        tryVerify(function() { return cardOpen.activeFocus })
+        const frame = findChild(row, "inboxCard")
+        verify(frame)
+        tryCompare(frame.background, "border.width", 2, 5000,
+                   "Keyboard focus must have a visible card ring")
+        keyClick(Qt.Key_Delete)
+        tryVerify(function() { return store.cardIds().indexOf(id) < 0 }, 5000, "Delete archives the focused card")
+        inbox.close()
+    }
     }

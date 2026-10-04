@@ -590,8 +590,8 @@ ApplicationWindow {
                         padding: window.edgeSpacing
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : window.surface
-                            border.color: cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
-                            border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
+                            border.color: cardText.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
+                            border.width: cardText.activeFocus ? 2 : cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
                             // Adjacent delegates paint the sides of one group, not
                             // individual cards. Only its first/last row closes it.
@@ -633,7 +633,7 @@ ApplicationWindow {
                                     icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
                                     Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1, %2 emails") : qsTr("Expand %1, %2 emails")).arg(text).arg(card.bundle_member_count || 0)
                                     background: Rectangle {
-                                        color: bundleToggle.down ? "#e7f1ee" : "transparent"
+                                        color: bundleToggle.down ? "#e7f1ee" : bundleToggle.hovered ? "#f3f7f6" : "transparent"
                                         radius: Kirigami.Units.cornerRadius
                                         border.width: bundleToggle.visualFocus ? 2 : 0
                                         border.color: window.accent
@@ -779,6 +779,12 @@ ApplicationWindow {
                                     Keys.onSpacePressed: openCard()
                                     TapHandler { onTapped: cardText.openCard() }
                                     HoverHandler { cursorShape: cardText.activeFocusOnTab ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                    Keys.onPressed: function(event) {
+                                        if (event.key === Qt.Key_Delete) {
+                                            cardActions.primaryAction()
+                                            event.accepted = true
+                                        }
+                                    }
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
