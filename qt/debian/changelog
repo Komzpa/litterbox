@@ -1,5 +1,7 @@
 litterbox-qt (0.1-16) unstable; urgency=medium
 
+  * Fix desktop inbox and open-mail scrolling, including large expanded bundles
+    without per-member row moves or freeze.
   * Let the outbox progress past rejected actions; a rejected action is
     shown as failed on its card and never holds back later queued actions.
 
