@@ -128,7 +128,8 @@ Kirigami.Page {
     ColumnLayout {
         id: messageColumn
         width: Math.min(parent.width, 1200)
-        height: parent.height
+        height: root.html !== "" ? parent.height : implicitHeight
+        anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
 
         spacing: Kirigami.Units.largeSpacing
@@ -239,8 +240,7 @@ Kirigami.Page {
             visible: root.html !== ""
             padding: Math.max(18, Kirigami.Units.largeSpacing)
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumWidth: 0
+            Layout.fillHeight: root.html !== ""
             Layout.preferredWidth: 0
             background: Rectangle { color: root.surface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
             contentItem: Loader {
