@@ -34,13 +34,21 @@ func Assign(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, sender, doma
 	} else if domain != "" {
 		key = "domain:" + strings.ToLower(domain)
 	}
+	return AssignKey(ctx, tx, tenant, card, senderKey, key, key, importance)
+}
+
+// AssignKey assigns a card to an explicit bundle key with a human title (never
+// a raw key for user-facing bundles), unless the sender was explicitly
+// corrected out of that bundle. Take-out exclusions keep working: they match
+// the sender against the same key the card would join.
+func AssignKey(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, senderKey, key, title, importance string) error {
 	var excluded bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM bundle_exclusions WHERE tenant_id=$1 AND sender_key=$2 AND bundle_key=$3)`, tenant, senderKey, key).Scan(&excluded); err != nil {
 		return err
 	}
 	var bundleID any
 	if !excluded {
-		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, key, key).Scan(&bundleID); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, title, key).Scan(&bundleID); err != nil {
 			return err
 		}
 	}
@@ -57,7 +65,7 @@ func TakeOut(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID) error {
 	if key == "" {
 		return nil
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO bundle_exclusions (tenant_id,sender_key,bundle_key) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, tenant, SenderKey(sender), key)
+	_, err := tx.Exec(ctx, `INSERT INTO bundle_exclusions (tenant_id,sender_key,bundle_key) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, tenant, BundleSenderKey(sender), key)
 	if err != nil {
 		return err
 	}
