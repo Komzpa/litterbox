@@ -88,6 +88,15 @@ ApplicationWindow {
             return Qt.formatDateTime(arrived, "d MMM HH:mm")
         return Qt.formatDateTime(arrived, "d MMM yyyy HH:mm")
     }
+    function cardKindLabel(card) {
+        const kind = String(card.source_kind || card.source || "")
+        const labels = {
+            manual: qsTr("Task"), journal: qsTr("Journal"), todo: qsTr("To-do"),
+            reminder: qsTr("Reminder"), meeting: qsTr("Meeting"), research_result: qsTr("Agent"),
+            agent: qsTr("Agent"), home_assistant: qsTr("Home Assistant"), dating_app: qsTr("Dating")
+        }
+        return labels[kind] || (kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : "")
+    }
     function toggleBundle(bundleId) {
         const next = Object.assign({}, expandedBundles)
         next[bundleId] = !next[bundleId]
@@ -378,6 +387,8 @@ ApplicationWindow {
                 objectName: "inboxList"
                 anchors.fill: parent
                 clip: true
+                topMargin: window.edgeSpacing
+                bottomMargin: window.edgeSpacing
                 Component.onCompleted: forceActiveFocus()
                 function captureLayoutMetrics() {
                     function find(item, name) {
@@ -750,7 +761,7 @@ ApplicationWindow {
                                     Menu {
                                         id: bundleDetails
                                         x: Math.max(window.edgeSpacing, window.width - implicitWidth - window.edgeSpacing)
-                                        MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false }
+                                        MenuItem { text: window.bundleTitle(card); enabled: false }
                                         MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false }
                                     }
                                 }
@@ -770,7 +781,9 @@ ApplicationWindow {
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
                                     readonly property bool reorderable: pinned || !card.timed
-                                    opacity: reorderable ? 1.0 : 0.4
+                                    // Timed rows stay visible but cannot be dragged;
+                                    // their position is fixed by R30, not manual order.
+                                    opacity: 1.0
 
                                     // The list-level surface keeps the pointer throughout
                                     // the drag, beyond this handle's hit target.
@@ -848,7 +861,7 @@ ApplicationWindow {
                                         }
                                     }
                                     Label {
-                                        text: cardRow.bundled ? (card.account_name || "") : window.cardStore.sourceLabel(card) + (card.account_name ? " · " + card.account_name : "")
+                                        text: cardRow.bundled ? (card.account_name || "") : window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
                                         visible: cardRow.bundled || card.source !== "mail"
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
@@ -936,6 +949,45 @@ ApplicationWindow {
                 }
             }
 
+            Item {
+                objectName: "inboxEmptyState"
+                anchors.fill: parent
+                visible: inboxList.count === 0
+                z: 2
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 2 * window.edgeSpacing, 420)
+                    spacing: Kirigami.Units.mediumSpacing
+                    Kirigami.Icon {
+                        source: "mail-mark-read"
+                        color: window.accent
+                        implicitWidth: Kirigami.Units.iconSizes.large
+                        implicitHeight: implicitWidth
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Kirigami.Heading {
+                        text: qsTr("You're all caught up")
+                        color: window.ink
+                        level: 3
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: qsTr("New cards will appear here. Add a private note or task whenever you need one.")
+                        color: window.mutedInk
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                    }
+                    Button {
+                        text: qsTr("Add card")
+                        icon.name: "list-add"
+                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                        Layout.alignment: Qt.AlignHCenter
+                        onClicked: createDialog.open()
+                    }
+                }
+            }
             // The accepting surface for the reorder drag. It must be as tall as the drag
             // travel: under delivered pointer events a pressed item stops receiving the
             // pointer as soon as it leaves its own 32px bounds, so a handle-sized press
