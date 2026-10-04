@@ -146,3 +146,30 @@ func TestBundleArchiveRemovesInboxForEveryUnpinnedMember(t *testing.T) {
 		}
 	}
 }
+
+
+func TestStaleBundleArchiveReturnsErrorWithoutRecordingOperation(t *testing.T) {
+	db, _ := testPool(t)
+	ctx := context.Background()
+	tenant, device, opID, cardID, bundleID := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO devices(tenant_id,id,token_hash) VALUES($1,$2,$3)`, tenant, device, []byte("token")); err != nil {
+		t.Fatal(err)
+	}
+	api := ops.API{DB: db, Identity: func(context.Context) (string, string, bool) { return tenant.String(), device.String(), true }}
+	body := `{"op_id":"` + opID.String() + `","card_id":"` + cardID.String() + `","type":"bundle_archive","args":{"bundle_id":"` + bundleID.String() + `"}}`
+	w := httptest.NewRecorder()
+	api.ServeHTTP(w, httptest.NewRequest("POST", "/v1/ops", strings.NewReader(body)))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("stale bundle status=%d, want 422", w.Code)
+	}
+	var count int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM ops WHERE tenant_id=$1 AND op_id=$2`, tenant, opID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("stale bundle left %d ops rows, want 0", count)
+	}
+}
