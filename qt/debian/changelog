@@ -1,19 +1,26 @@
+litterbox-qt (0.1-18) unstable; urgency=medium
+
+  * Stop the inbox freezing while large card lists rearrange, such as after
+    archiving and restoring bundles.
+  * Show sender, time and snippet on mail cards.
+  * Mouse back and forward buttons navigate back from a mail, and Esc closes
+    the mail view back to the inbox.
+  * Keep the bundle menu inside the window when the bundle sits at the right
+    edge.
+  * Make bundle taps respond clearly, use correct "1 email" wording for
+    one-email bundles, and keep keyboard archive working on focused cards.
+  * Keep the accounts page honest when offline, fix the enrollment button's
+    look and visibility, and center settings and enrollment page columns.
+  * Never archive an empty bundle; the archive action is refused instead of
+    saving an empty operation.
+
+ -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 17:35:00 +0400
+
 litterbox-qt (0.1-17) unstable; urgency=medium
 
   * Start package-upgrade replacements in an independent transient systemd
     user service and keep the old app running if systemd cannot start it.
   * Prove replacement survival when the original desktop service stops.
-  * Fix singular important-message grammar in bundle summaries and retain the
-    singular `1 email` count for one-member bundles (R36).
-  * Hide the empty Gmail account state when loading fails, so offline access
-    does not report that no accounts are connected.
-
-  * Restore the enrollment action's explicit light-palette background by
-    resolving pressed, hover, and focus states from its background parent (R36).
-  * Assert the enrollment action is visible, sized, and colored at rest (R36).
-
-  * Center bounded Gmail accounts and enrollment page columns within their
-    ScrollablePage layout without conflicting anchors.
 
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 15:25:00 +0400
 
