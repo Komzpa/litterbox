@@ -48,6 +48,8 @@ Kirigami.Page {
     property var requestNote: null
     // Set to false in tests to avoid spawning an external browser.
     property bool openLinks: true
+    // Pinned in tests so the today / this-year / older arrival branches are exact.
+    property double arrivalNow: Date.now()
 
     property bool loading: false
     property string errorText: ""
@@ -84,6 +86,26 @@ Kirigami.Page {
     function openInGmail() {
         if (sourceUrl && openLinks)
             Qt.openUrlExternally(sourceUrl)
+    }
+
+    // Sender and arrival line: "Name <address> · 11:43" for mail received
+    // today, day + month + time this year, full date otherwise; no separator
+    // without an arrival time.
+    function arrivalLine() {
+        const c = root.card || {}
+        const name = String(c.sender_name || "").trim()
+        const addr = String(c.sender_address || "").trim()
+        let sender = name
+        if (addr) sender = name ? name + " <" + addr + ">" : "<" + addr + ">"
+        const arrived = c.received_at ? new Date(c.received_at) : null
+        if (!arrived || isNaN(arrived.getTime())) return sender
+        const now = new Date(root.arrivalNow)
+        let stamp = Qt.formatDateTime(arrived, "HH:mm")
+        if (arrived.getFullYear() !== now.getFullYear())
+            stamp = Qt.formatDateTime(arrived, "d MMM yyyy HH:mm")
+        else if (arrived.getDate() !== now.getDate() || arrived.getMonth() !== now.getMonth())
+            stamp = Qt.formatDateTime(arrived, "d MMM HH:mm")
+        return sender ? sender + " · " + stamp : stamp
     }
 
     Component.onCompleted: {
@@ -166,6 +188,15 @@ Kirigami.Page {
             textFormat: Text.PlainText
             color: root.ink
             level: 2
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+        QQC2.Label {
+            objectName: "mailArrival"
+            text: root.arrivalLine()
+            textFormat: Text.PlainText
+            color: root.mutedInk
+            visible: text !== ""
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }

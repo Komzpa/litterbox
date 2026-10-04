@@ -246,7 +246,7 @@ private slots:
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         const QString path = directory.filePath("cache.sqlite");
-        const QVariantMap card{{"id",cardId},{"title","Offline card"},{"note","Durable note"}};
+        const QVariantMap card{{"id",cardId},{"title","Offline card"},{"note","Durable note"},{"received_at","2026-10-04T07:43:00Z"},{"sender_address","welcome@cerebras.net"}};
         const QVariantMap sections{{"now",QVariantList{card}},{"later",QVariantList{}},{"missed",QVariantList{}}};
         {
             CardStore store;
@@ -258,6 +258,8 @@ private slots:
         QVERIFY(restored.open(path));
         QVERIFY(!restored.online());
         QCOMPARE(restored.data(restored.index(0),CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Durable note"));
+        QCOMPARE(restored.data(restored.index(0),CardStore::CardRole).toMap().value("received_at").toString(), QStringLiteral("2026-10-04T07:43:00Z"));
+        QCOMPARE(restored.data(restored.index(0),CardStore::CardRole).toMap().value("sender_address").toString(), QStringLiteral("welcome@cerebras.net"));
         QCOMPARE(restored.data(restored.index(0),CardStore::TitleRole).toString(), QStringLiteral("Offline card"));
         // A malformed response cannot destroy the offline snapshot.
         QVERIFY(!restored.applyRemoteCards({{"now",QVariantList{}}}));

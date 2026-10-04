@@ -6,12 +6,14 @@
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QLocale>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTimer>
 #include <QVariantList>
 #include <QtQuickTest/quicktest.h>
 #include <QtWebEngineQuick>
+#include <stdlib.h>
 #include <time.h>
 
 class MailFixtures : public QObject
@@ -85,6 +87,11 @@ private:
 
 int main(int argc, char **argv)
 {
+    // Deterministic arrival stamps in the mail-date oracle: a pinned zone and
+    // locale make the rendered text independent of the test host.
+    qputenv("TZ", "Asia/Tbilisi");
+    tzset();
+    QLocale::setDefault(QLocale::c());
     MailDocumentProfile::initialize();
     MailTestSetup setup;
     return quick_test_main_with_setup(argc, argv, "maildetail", nullptr, &setup);
