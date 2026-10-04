@@ -73,13 +73,10 @@ Each requirement is **decided** or **open** and names its source.
   cards stay open, and their mail stays in the Gmail Inbox.
 - **R23 Bundles formed by Litterbox** (decided, owner 2026-09-28). Litterbox
   forms bundles from the start; using tags or labels like Simplify Gmail's
-  bundles is not enough. Litterbox forms bundles by clustering messages from
-  all accounts (e.g. by embeddings) with a local model on the home server;
-  the model can create new topics. Gmail categories are not bundles. Every
+  bundles is not enough. Litterbox forms bundles from structured thread identity when the source provides one (GitHub: owner/repo from the subject; mailing lists: List-Id), stripping provider boilerplate such as unsubscribe footers; remaining mail is clustered across all accounts by embeddings with a local model on the home server, and the model can create new topics. If the local model is unavailable, Litterbox falls back to structured keys (repository, list), never to the sender address alone, and reports the missing model; unrelated threads are never merged into one bundle just because they share a sender. Gmail categories are not bundles. Every
   card has an action "take out of this bundle" for a wrong assignment, and
   the correction is kept: the card stays out, and similar later mail learns
-  from it. Importance is detected separately from topic: an important
-  message is not hidden inside a bundle. Bundles appear in the list
+  from it. Importance is detected separately from topic: an important message is not hidden inside a bundle, and a message that needs the human to answer or decide is shown as its own card. Bot and CI traffic on the human's own changes may form an agents-handle-this bundle; subscription-only traffic may form a quiet bundle. Bundles appear in the list
   immediately; there is no daily or weekly schedule for forming them.
 - **R24 Mail cards close on archive elsewhere** (decided, owner 2026-09-27).
   A mail card closes by itself on every client when, in another Gmail client,

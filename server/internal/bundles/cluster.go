@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -91,8 +92,14 @@ type cluster struct {
 	cards    []*mailCard
 }
 
-// Cluster immediately assigns open mail cards to semantic bundles across accounts.
-// Any embedding failure falls back to the established sender-key assignment.
+// Cluster immediately assigns open mail cards to bundles across accounts.
+// GitHub mail is routed deterministically by repo and who must act (see
+// RouteGitHubMail) without embeddings. Remaining mail is clustered by
+// embeddings; provider boilerplate is stripped before embedding. Any
+// embedding failure falls back to structured keys: GitHub mail keeps its
+// routed keys and is never keyed by sender alone. The embed error is logged
+// once per run so a missing local model is visible instead of silently
+// reshaping the inbox.
 func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder) error {
 	if embedder == nil {
 		return errors.New("nil bundle embedder")
@@ -115,9 +122,20 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 		return err
 	}
 	rows.Close()
+	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
+		return err
+	}
+	var rest []*mailCard
 	for _, c := range cards {
-		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+c.text))
+		if c.bundleKey != "" {
+			continue
+		}
+		rest = append(rest, c)
+	}
+	for _, c := range rest {
+		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+StripGitHubFooter(c.text)))
 		if err != nil {
+			log.Printf("bundles: embedding failed, using structured fallback: %v", err)
 			return fallback(ctx, tx, tenant, cards)
 		}
 		c.vector = v
@@ -156,7 +174,7 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 		}
 		for _, c := range g.cards {
 			var excluded bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bundle_exclusions WHERE tenant_id=$1 AND sender_key=$2 AND bundle_key=$3)`, tenant, SenderKey(c.sender), g.key).Scan(&excluded); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bundle_exclusions WHERE tenant_id=$1 AND sender_key=$2 AND bundle_key=$3)`, tenant, BundleSenderKey(c.sender), g.key).Scan(&excluded); err != nil {
 				return err
 			}
 			if excluded {
@@ -181,8 +199,89 @@ func AfterIngest(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embe
 	return Cluster(ctx, tx, tenant, embedder)
 }
 
+// assignGitHub routes GitHub mail deterministically before any embedding.
+// Standalone cards (mentions, human replies on his own threads) get no
+// bundle; bundled cards are grouped by their structured key with a human
+// title. Routed cards carry c.bundleKey so the semantic path skips them.
+// Take-out exclusions are honored per (sender, key).
+func assignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mailCard) error {
+	groups := map[string][]*mailCard{}
+	var order []string
+	for _, c := range cards {
+		route, ok := RouteGitHubMail(c.sender, c.subject, c.text)
+		if !ok {
+			continue
+		}
+		if route.Standalone {
+			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+				return err
+			}
+			c.bundleKey = "standalone"
+			continue
+		}
+		c.bundleKey = route.Key
+		if _, dup := groups[route.Key]; !dup {
+			order = append(order, route.Key)
+		}
+		groups[route.Key] = append(groups[route.Key], c)
+	}
+	titles := map[string]string{}
+	for _, c := range cards {
+		if c.bundleKey == "" || c.bundleKey == "standalone" {
+			continue
+		}
+		if _, done := titles[c.bundleKey]; done {
+			continue
+		}
+		if route, ok := RouteGitHubMail(c.sender, c.subject, c.text); ok && !route.Standalone {
+			titles[c.bundleKey] = route.Title
+		}
+	}
+	for _, key := range order {
+		title := titles[key]
+		if title == "" {
+			title = key
+		}
+		var bundleID uuid.UUID
+		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, title, key).Scan(&bundleID); err != nil {
+			return err
+		}
+		for _, c := range groups[key] {
+			var excluded bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bundle_exclusions WHERE tenant_id=$1 AND sender_key=$2 AND bundle_key=$3)`, tenant, BundleSenderKey(c.sender), key).Scan(&excluded); err != nil {
+				return err
+			}
+			if excluded {
+				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c.id, bundleID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func fallback(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mailCard) error {
 	for _, c := range cards {
+		if c.bundleKey != "" {
+			continue
+		}
+		if route, ok := RouteGitHubMail(c.sender, c.subject, c.text); ok {
+			if route.Standalone {
+				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c.id); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := AssignKey(ctx, tx, tenant, c.id, BundleSenderKey(c.sender), route.Key, route.Title, "normal"); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := Assign(ctx, tx, tenant, c.id, c.sender, "", "", "normal"); err != nil {
 			return err
 		}
