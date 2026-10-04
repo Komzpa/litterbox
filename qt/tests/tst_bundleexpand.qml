@@ -207,6 +207,21 @@ TestCase {
             "1 important email stays separate; archive includes all 2 unpinned emails")
         inbox.close()
     }
+    function test_noImportantDisclosureWhenCountIsZero() {
+        const bundle = "topic:quiet"
+        const cards = [card("quiet-leader", bundle, "now"), card("quiet-member", bundle, "now")]
+        verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const disclosure = findChild(list.itemAtIndex(0), "importantDisclosure-quiet-leader")
+        verify(disclosure)
+        verify(!disclosure.visible)
+        inbox.close()
+    }
     function test_archiveBundleUndoExpiresFromTokenDeadline() {
         const bundle = "sender:expiry@example.test"
         const ids = ["expiry-leader", "expiry-member"]

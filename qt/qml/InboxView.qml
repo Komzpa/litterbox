@@ -729,6 +729,7 @@ ApplicationWindow {
                                             wrapMode: Text.Wrap
                                         }
                                         Label {
+                                            visible: cardRow.bundleSummary.important > 0
                                             text: cardRow.bundleSummary.important === 1
                                                 ? qsTr("1 important email stays separate; archive includes all %1 unpinned emails").arg(cardRow.bundleSummary.unpinned)
                                                 : qsTr("%1 important emails stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
