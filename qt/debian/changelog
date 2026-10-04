@@ -22,6 +22,7 @@ litterbox-qt (0.1-18) unstable; urgency=medium
   * Make menus and snooze text readable and keep action messages in view.
   * Label enrollment and Gmail actions clearly and space the offline status.
   * Use a larger, more readable default font for email bodies.
+  * Keep the default email typography without forcing a CSS font size that blanks some WebEngine mail bodies.
   * Show a focus outline around a bundle card when its controls are selected.
 
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 17:35:00 +0400
