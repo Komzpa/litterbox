@@ -299,13 +299,15 @@ TestCase {
         verify(inbox)
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(12) !== null })
-        list.positionViewAtIndex(12, ListView.Beginning)
+        list.positionViewAtIndex(12, ListView.End)
+        list.contentY += 40
         wait(200)
         const row = list.itemAtIndex(12)
         compare(row.cardId, "scroll-leader")
         const toggle = findChild(row, "bundleToggle-scroll-leader")
         verify(toggle)
         const before = toggle.mapToItem(list, 0, 0).y
+        console.log("HEADER_Y_BEFORE", before, "listHeight", list.height, "toggleHeight", toggle.height)
         verify(before >= 0 && before + toggle.height <= list.height, "Header must start inside the viewport")
         capture(inbox, "before-expand-1440")
         mouseClick(toggle, 12, toggle.height / 2)
@@ -314,9 +316,12 @@ TestCase {
         list.forceLayout()
         capture(inbox, "after-expand-1440")
         const after = toggle.mapToItem(list, 0, 0).y
+        console.log("HEADER_Y_AFTER", after)
         verify(after >= 0 && after + toggle.height <= list.height, "Header must remain in viewport after expand")
-        verify(Math.abs(after - before) <= row.height,
-               "Header viewport y must stay within one delegate height after expand")
+        // Acceptance is literally "same y"; the proposed one-delegate-height
+        // tolerance was unsourced and hides real drift, so allow rounding only.
+        verify(Math.abs(after - before) <= 2,
+               "Header must keep its viewport y after expand (before " + before + ", after " + after + ")")
         inbox.close()
     }
     }
