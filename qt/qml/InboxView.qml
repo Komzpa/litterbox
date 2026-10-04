@@ -611,8 +611,8 @@ ApplicationWindow {
                         padding: window.edgeSpacing
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : window.surface
-                            border.color: cardText.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
-                            border.width: cardText.activeFocus ? 2 : cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
+                            border.color: cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
+                            border.width: cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus ? 2 : cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
                             // Adjacent delegates paint the sides of one group, not
                             // individual cards. Only its first/last row closes it.
@@ -714,6 +714,7 @@ ApplicationWindow {
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
                                 Button {
+                                    id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
                                     text: qsTr("Archive bundle")
                                     icon.name: "mail-mark-read-symbolic"
@@ -736,6 +737,7 @@ ApplicationWindow {
                                     onClicked: window.archiveBundle(card.bundle_id)
                                 }
                                 ToolButton {
+                                    id: bundleOptions
                                     objectName: "bundleOptions-" + cardId
                                     text: qsTr("Bundle details")
                                     icon.name: "overflow-menu"
