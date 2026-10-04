@@ -14,6 +14,7 @@ litterbox-qt (0.1-18) unstable; urgency=medium
     keep settings content within the centered 1200px column.
   * Never archive an empty bundle; the archive action is refused instead of
     saving an empty operation.
+  * Keep missing cached-mail details compact while showing the cache placeholder.
   * Capture inbox and mail interactions from a script using an isolated profile.
   * Show card kind labels, a useful empty inbox, and clear timed-card handles;
     keep mouse wheel scrolling reversible across the inbox margins.
