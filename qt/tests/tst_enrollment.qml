@@ -99,4 +99,23 @@ TestCase {
         page.enroll()
         compare(page.errorText, "Can't reach the server at http://wrong-address:8081. Check the address and that you're on the home Wi-Fi.")
     }
+    function test_invalidServerUrlIsBlockedAndValidUrlClearsMessage() {
+        var posted = false
+        var page = createTemporaryObject(pageComponent, this, {
+            api: { baseUrl: "https://server.example", post: function () { posted = true } }
+        })
+        var server = findChild(page, "serverField")
+        var message = findChild(page, "serverUrlError")
+        var button = findChild(page, "enrollButton")
+        for (const value of ["not a url", "http://", "ftp://x"]) {
+            server.text = value
+            verify(message.visible, value + " must show URL validation")
+            verify(!button.enabled, value + " must disable enrollment")
+            verify(!page.enroll(), value + " must not enroll")
+        }
+        verify(!posted)
+        server.text = "https://server.example:8081/path"
+        verify(!message.visible, "valid URL must clear validation")
+        verify(button.enabled, "valid URL must enable enrollment")
+    }
 }

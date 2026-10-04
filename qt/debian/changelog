@@ -2,6 +2,7 @@ litterbox-qt (0.1-18) unstable; urgency=medium
 
   * Stop the inbox freezing while large card lists rearrange, such as after
     archiving and restoring bundles.
+  * Validate server URLs before enrollment and show an inline error.
   * Show sender, time and snippet on mail cards.
   * Mouse back and forward buttons navigate back from a mail, and Esc closes
     the mail view back to the inbox.

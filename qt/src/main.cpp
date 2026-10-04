@@ -529,6 +529,15 @@ int main(int argc, char *argv[])
                             ok = metadata.write(QJsonDocument(info).toJson(QJsonDocument::Indented)) > 0;
                         }
                     }
+                } else if (action.contains(QStringLiteral("setText"))) {
+                    const QString objectName = action.value(QStringLiteral("setText")).toString();
+                    QQuickItem *item = findVisualItem(window->contentItem(), objectName);
+                    const QString text = action.value(QStringLiteral("text")).toString();
+                    ok = item && item->metaObject()->indexOfProperty("text") >= 0;
+                    if (ok) {
+                        item->setProperty("text", text);
+                        QCoreApplication::processEvents();
+                    }
                 } else if (action.contains(QStringLiteral("click")) || action.contains(QStringLiteral("rightClick")) || action.contains(QStringLiteral("hover"))) {
                     const QString verb = action.contains(QStringLiteral("click")) ? QStringLiteral("click") : action.contains(QStringLiteral("rightClick")) ? QStringLiteral("rightClick") : QStringLiteral("hover");
                     const QString objectName = action.value(verb).toString();
