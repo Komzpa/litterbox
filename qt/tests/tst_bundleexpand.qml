@@ -284,4 +284,39 @@ TestCase {
         verify(cardOpen.activeFocus, "Focused card remains keyboard-active")
         inbox.close()
     }
+    function test_scrollThenExpandKeepsHeaderInView() {
+        const bundle = "sender:messages-noreply@linkedin.com"
+        const cards = []
+        for (let i = 0; i < 12; ++i) cards.push(card("filler-" + i, "", "now", {title: "Filler " + i}))
+        cards.push(card("scroll-leader", bundle, "now"))
+        cards.push(card("scroll-member-1", bundle, "now"))
+        cards.push(card("scroll-member-2", bundle, "now"))
+        for (let i = 0; i < 12; ++i) cards.push(card("tail-" + i, "", "now", {title: "Tail " + i}))
+        verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 1000
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(12) !== null })
+        list.positionViewAtIndex(12, ListView.Beginning)
+        wait(200)
+        const row = list.itemAtIndex(12)
+        compare(row.cardId, "scroll-leader")
+        const toggle = findChild(row, "bundleToggle-scroll-leader")
+        verify(toggle)
+        const before = toggle.mapToItem(list, 0, 0).y
+        verify(before >= 0 && before + toggle.height <= list.height, "Header must start inside the viewport")
+        capture(inbox, "before-expand-1440")
+        mouseClick(toggle, 12, toggle.height / 2)
+        tryCompare(inbox.expandedBundles, bundle, true)
+        wait(200)
+        list.forceLayout()
+        capture(inbox, "after-expand-1440")
+        const after = toggle.mapToItem(list, 0, 0).y
+        verify(after >= 0 && after + toggle.height <= list.height, "Header must remain in viewport after expand")
+        verify(Math.abs(after - before) <= row.height,
+               "Header viewport y must stay within one delegate height after expand")
+        inbox.close()
+    }
     }

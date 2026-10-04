@@ -98,13 +98,18 @@ ApplicationWindow {
         return labels[kind] || (kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : "")
     }
     function toggleBundle(bundleId) {
+        const opener = bundleOpeners[bundleId]
+        const headerY = opener ? opener.mapToItem(inboxList, 0, 0).y : 0
         const next = Object.assign({}, expandedBundles)
         next[bundleId] = !next[bundleId]
         expandedBundles = next
         bundleModel.rebuildPresentation(false)
         Qt.callLater(function() {
-            const opener = bundleOpeners[bundleId]
-            if (opener) opener.forceActiveFocus()
+            const currentOpener = bundleOpeners[bundleId]
+            if (currentOpener) {
+                inboxList.contentY += currentOpener.mapToItem(inboxList, 0, 0).y - headerY
+                currentOpener.forceActiveFocus()
+            }
         })
     }
     function emailCountText(count) {
