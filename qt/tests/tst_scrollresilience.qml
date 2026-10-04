@@ -94,4 +94,55 @@ TestCase {
         verify(collapsedMs < 100, "308-member collapse took " + collapsedMs + " ms (limit <100 ms)")
         inbox.close()
     }
+    function test_reclusterPreservesScrollAndExpansion() {
+        const cards = []
+        for (let i = 0; i < 1100; ++i) {
+            const bundle = i >= 55 && i <= 70 ? "anchor" : i >= 500 && i < 900 ? "old-cluster" : ""
+            cards.push(card("scroll-" + i, bundle))
+        }
+        verify(bundleStore.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: bundleStore, api: api, updater: updater, timeRules: timeRules,
+            width: 520, height: 800
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.count === 1100 })
+        list.contentY = 5000
+        list.forceLayout()
+        wait(100)
+        const topIndex = list.indexAt(20, list.contentY + 20)
+        verify(topIndex >= 0)
+        const topItem = list.itemAtIndex(topIndex)
+        verify(topItem)
+        const rowHeight = topItem.height
+        inbox.toggleBundle("anchor")
+        wait(0)
+        list.forceLayout()
+        verify(inbox.expandedBundles.anchor)
+        const scrollBeforeRefresh = list.contentY
+        const visibleIndexBeforeRefresh = list.indexAt(20, list.contentY + 20)
+        const visibleIdBeforeRefresh = inbox.cardIdAt(visibleIndexBeforeRefresh)
+        const reclustered = cards.map(function(value, index) {
+            return index >= 500 && index < 900
+                ? Object.assign({}, value, {bundle_id: "new-cluster"}) : value
+        })
+        verify(bundleStore.applyRemoteCards({now: reclustered, later: [], missed: []}))
+        wait(100)
+        list.forceLayout()
+        verify(visibleIndexBeforeRefresh >= 0)
+        verify(visibleIdBeforeRefresh.length > 0)
+        verify(Math.abs(list.contentY - scrollBeforeRefresh) <= rowHeight,
+               "Refresh must retain viewport position within one row height")
+        const visibleIndexAfterRefresh = list.indexAt(20, list.contentY + 20)
+        verify(visibleIndexAfterRefresh >= 0)
+        compare(inbox.cardIdAt(visibleIndexAfterRefresh), visibleIdBeforeRefresh,
+                "Same top card must remain at the viewport top")
+        compare(inbox.expandedBundles.anchor, true)
+        let anchorVisible = false
+        for (let i = 0; i < list.count; ++i)
+            if (inbox.cardIdAt(i) === "scroll-60") { anchorVisible = true; break }
+        verify(anchorVisible, "Expanded bundle remains in the presentation")
+        inbox.close()
+    }
 }
