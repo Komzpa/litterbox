@@ -650,7 +650,7 @@ ApplicationWindow {
                                                 implicitHeight: countLabel.implicitHeight + 8
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
-                                                Label { id: countLabel; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
+                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
                                             }
                                             Item { Layout.fillWidth: true }
                                         }
@@ -674,8 +674,10 @@ ApplicationWindow {
                                             wrapMode: Text.Wrap
                                         }
                                         Label {
-                                            text: qsTr("%1 important stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
-                                            visible: cardRow.bundleSummary.important > 0
+                                            text: cardRow.bundleSummary.important === 1
+                                                ? qsTr("1 important email stays separate; archive includes all %1 unpinned emails").arg(cardRow.bundleSummary.unpinned)
+                                                : qsTr("%1 important emails stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
+                                            objectName: "importantDisclosure-" + cardId
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true

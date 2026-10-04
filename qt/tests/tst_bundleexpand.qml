@@ -184,6 +184,29 @@ TestCase {
         }
         inbox.close()
     }
+    function test_singleImportantMemberDisclosureAndCount() {
+        const bundle = "topic:security"
+        const leader = card("single-leader", bundle, "now", {
+            bundle_id: bundle, bundle_title: "Security alerts", bundle_leader: true,
+            bundle_member_count: 1, important: false
+        })
+        const important = card("single-important", bundle, "now", {
+            bundle_id: bundle, bundle_title: "Security alerts", bundle_leader: false,
+            bundle_member_count: 1, important: true
+        })
+        verify(store.applyRemoteCards({now: [leader, important], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        compare(findChild(row, "bundleMemberCount-single-leader").text, "1 email")
+        compare(findChild(row, "importantDisclosure-single-leader").text,
+            "1 important email stays separate; archive includes all 2 unpinned emails")
+        inbox.close()
+    }
     function test_archiveBundleUndoExpiresFromTokenDeadline() {
         const bundle = "sender:expiry@example.test"
         const ids = ["expiry-leader", "expiry-member"]
