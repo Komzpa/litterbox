@@ -47,26 +47,26 @@
  {"rightClick":"openCard-fixture-long-80"},{"wait":300},{"shot":"c-700-last-context"},{"key":"Escape"},{"wait":200},
 
  {"resize":[1440,900]},{"wait":400},
- {"scroll":"top"},{"wait":300},
- {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},
- {"scroll":600},{"wait":300},{"shot":"e-1440-scrolled600"},
- {"scroll":0},{"wait":300},{"shot":"e-1440-back"},
- {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},{"shot":"e-1440-collapsed"},
-
- {"resize":[700,900]},{"wait":400},
- {"scroll":"top"},{"wait":300},
- {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},
- {"scroll":600},{"wait":300},{"shot":"e-700-scrolled600"},
- {"scroll":0},{"wait":300},{"shot":"e-700-back"},
- {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":400},{"shot":"e-700-collapsed"},
-
- {"resize":[1440,900]},{"wait":400},
- {"scroll":1000},
- {"openCard":"12924114-381e-464e-8001-9f5e8aa33367"},{"wait":800},{"shot":"b-1440-detail"},
+ {"scroll":1500},
+ {"openCard":"354670cc-9d73-42bb-b9f6-c52b0ac339ce"},{"wait":800},{"shot":"b-1440-detail"},
  {"click":"archiveMail"},{"wait":350},{"shot":"b-1440-toast"},
 
  {"resize":[700,900]},{"wait":400},
  {"scroll":1500},
  {"openCard":"bd5bcfa0-ed4a-4c76-9b4b-3af7929cb58c"},{"wait":800},{"shot":"b-700-detail"},
- {"click":"archiveMail"},{"wait":350},{"shot":"b-700-toast"}
+ {"click":"archiveMail"},{"wait":350},{"shot":"b-700-toast"},
+
+ {"resize":[1440,900]},{"wait":400},
+ {"scroll":1500},{"wait":400},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":500},{"shot":"e-1440-expanded"},
+ {"scroll":2100},{"wait":400},{"shot":"e-1440-scrolled600"},
+ {"scroll":1500},{"wait":400},{"shot":"e-1440-back"},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":500},{"shot":"e-1440-collapsed"},
+
+ {"resize":[700,900]},{"wait":400},
+ {"scroll":1500},{"wait":400},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":500},{"shot":"e-700-expanded"},
+ {"scroll":2100},{"wait":400},{"shot":"e-700-scrolled600"},
+ {"scroll":1500},{"wait":400},{"shot":"e-700-back"},
+ {"click":"bundleToggle-228568aa-636a-4698-9d0b-094011f99b49"},{"wait":500},{"shot":"e-700-collapsed"}
 ]
