@@ -52,7 +52,8 @@ TestCase {
             const id = "mail-" + i
             store.append({cardId: id, title: "Message " + i, section: "now", card: {
                 id: id, source: source, section: "now", account_name: "fixture@example.test",
-                summary: "Click this preview to read the message", has_body: true,
+                summary: "Click this preview to read the message",
+                snippet: "Click this preview to read the message", has_body: true,
                 pinned_rank: null, bundle_id: "", important: false, timed: false,
                 note: "", source_url: ""
             }})
