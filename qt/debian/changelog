@@ -1,3 +1,11 @@
+litterbox-qt (0.1-17) unstable; urgency=medium
+
+  * Start package-upgrade replacements in an independent transient systemd
+    user service and keep the old app running if systemd cannot start it.
+  * Prove replacement survival when the original desktop service stops.
+
+ -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 15:25:00 +0400
+
 litterbox-qt (0.1-16) unstable; urgency=medium
 
   * Fix desktop inbox and open-mail scrolling, including large expanded bundles
