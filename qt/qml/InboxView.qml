@@ -458,7 +458,9 @@ ApplicationWindow {
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     onWheel: function(event) {
                         const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y * 3 : event.angleDelta.y / 120 * 48
-                        inboxList.contentY = Math.max(0, Math.min(inboxList.contentHeight - inboxList.height, inboxList.contentY - delta))
+                        const top = inboxList.originY - inboxList.topMargin
+                        const bottom = Math.max(top, inboxList.originY + inboxList.contentHeight - inboxList.height + inboxList.bottomMargin)
+                        inboxList.contentY = Math.max(top, Math.min(bottom, inboxList.contentY - delta))
                         event.accepted = true
                     }
                 }
