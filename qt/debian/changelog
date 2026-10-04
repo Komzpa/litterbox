@@ -1,5 +1,7 @@
 litterbox-qt (0.1-20) unstable; urgency=medium
 
+  * Keep a bundle header and its expand toggle at the same place in the
+    inbox viewport after expanding or collapsing the bundle.
   * Show sender and arrival time on bundled mail.
 
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 19:58:00 +0400
