@@ -240,4 +240,63 @@ TestCase {
         verify(!bar.visible, "Undo hides the inline bar")
         inbox.close()
     }
+    function test_archiveBundleKeepsClickedBundleAfterRemoval_data() {
+        return [{tag: "collapsed", expanded: false}, {tag: "expanded", expanded: true}]
+    }
+    function test_archiveBundleKeepsClickedBundleAfterRemoval(data) {
+        const suffix = data.expanded ? "-exp" : "-col"
+        const bundleA = "bundle-a" + suffix
+        const bundleB = "bundle-b" + suffix
+        const idsA = ["a-leader" + suffix, "a-member" + suffix]
+        const idsB = ["b-leader" + suffix, "b-member" + suffix, "b-important" + suffix]
+        verify(store.applyRemoteCards({now: [
+            card(idsA[0], bundleA, "now", {state: "open", account_name: "first@example.test"}),
+            card(idsA[1], bundleA, "now", {state: "open", account_name: "first@example.test"}),
+            card(idsB[0], bundleB, "now", {state: "open", account_name: "first@example.test"}),
+            card(idsB[1], bundleB, "now", {state: "open", account_name: "second@example.test"}),
+            card(idsB[2], bundleB, "now", {state: "open", account_name: "second@example.test", important: true})
+        ], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 900, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        tryVerify(function() { list.forceLayout(); return findChild(list.itemAtIndex(0), "archiveBundle-" + idsA[0]) !== null })
+        mouseClick(findChild(list.itemAtIndex(0), "archiveBundle-" + idsA[0]), 24, 24)
+        tryVerify(function() { return idsA.every(id => store.cardIds().indexOf(id) < 0) })
+        const tokenA = inbox.bundleArchiveToken
+        verify(tokenA.length > 0)
+        tryVerify(function() {
+            list.forceLayout()
+            return list.itemAtIndex(0) && findChild(list.itemAtIndex(0), "archiveBundle-" + idsB[0]) !== null
+        })
+        let clickedDelegate = list.itemAtIndex(0)
+        compare(clickedDelegate.card.bundle_id, bundleB)
+        if (data.expanded) {
+            mouseClick(findChild(clickedDelegate, "bundleToggle-" + idsB[0]), 24, 24)
+            tryCompare(inbox.expandedBundles, bundleB, true)
+            tryVerify(function() {
+                list.forceLayout()
+                return findChild(list.itemAtIndex(0), "archiveBundle-" + idsB[0]) !== null
+            })
+            clickedDelegate = list.itemAtIndex(0)
+        }
+        const archive = findChild(clickedDelegate, "archiveBundle-" + idsB[0])
+        verify(archive && archive.visible)
+        console.log("BUNDLE_ARCHIVE_CLICK", JSON.stringify({bundleId: clickedDelegate.card.bundle_id, cardId: clickedDelegate.cardId, leader: idsB[0]}))
+        mouseClick(archive, archive.width / 2, archive.height / 2)
+        tryVerify(function() { return idsB[0] && store.cardIds().indexOf(idsB[0]) < 0 && store.cardIds().indexOf(idsB[1]) < 0 })
+        const remaining = store.cardIds()
+        console.log("BUNDLE_ARCHIVE_RESULT", JSON.stringify({clickedBundle: bundleB, remaining: remaining}))
+        verify(remaining.indexOf(idsB[0]) < 0 && remaining.indexOf(idsB[1]) < 0, "Clicked bundle B members must be archived, not bundle A")
+        verify(remaining.indexOf(idsB[2]) < 0, "Hidden important member is unpinned and must archive with its bundle")
+        tryCompare(inbox, "bundleArchiveStatus", "Archived 3 emails")
+        const tokenB = inbox.bundleArchiveToken
+        verify(tokenB.length > 0 && tokenB !== tokenA)
+        verify(store.undoBundleArchive(tokenB))
+        verify(store.undoBundleArchive(tokenA))
+        tryCompare(store, "bundleArchiveUndoActive", false, 5000)
+        inbox.close()
+    }
     }
