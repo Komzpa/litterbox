@@ -1,3 +1,10 @@
+litterbox-qt (0.1-20) unstable; urgency=medium
+
+  * Show sender and arrival time on bundled mail.
+
+ -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 19:58:00 +0400
+
+
 litterbox-qt (0.1-19) unstable; urgency=medium
 
   * Return to the inbox after snoozing from the mail view.
