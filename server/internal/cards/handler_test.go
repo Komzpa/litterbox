@@ -344,3 +344,110 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 		t.Fatalf("ordinary card must surface Important=false, got %+v", c)
 	}
 }
+
+func TestCardArrivalAndSenderAddress(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("run under pg_virtualenv with CARD_TEST_POSTGRES=1")
+	}
+	db, err := sql.Open("pgx", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	// Serialize shared-schema rebuilds across concurrently-run test packages
+	// sharing one pg_virtualenv database (released when db closes).
+	if _, err = db.Exec(`SELECT pg_advisory_lock(7809932747080954929)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`DROP SCHEMA public CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`DROP ROLE IF EXISTS litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`CREATE SCHEMA public`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "015_card_note_updated.sql", "017_card_sender_name.sql"} {
+		body, err := os.ReadFile(filepath.Join("../../db", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(string(body)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	tenant := "11111111-1111-4111-8111-111111111111"
+	account := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	mailCard := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	manualCard := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES ($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SET ROLE litterbox_app`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SELECT set_config('litterbox.tenant_id',$1,false)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'user@example.com',decode('00','hex'))`, tenant, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'thread-arrival','Cerebras report','Cerebras Systems <welcome@cerebras.net>')`, tenant, mailCard, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,subject) VALUES($1,$2,'manual','arrival-task','Manual task')`, tenant, manualCard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),'2026-10-04T07:43:00Z')`, tenant, mailCard); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(db, "Asia/Tbilisi", filepath.Join(t.TempDir(), "feedback.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	handler.Routes(mux)
+	req := httptest.NewRequest("GET", "/v1/cards?now=2026-10-04T12:00:00%2B04:00", nil)
+	req = req.WithContext(WithTenant(req.Context(), tenant))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET: %d %s", w.Code, w.Body.String())
+	}
+	var data map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]map[string]any{}
+	for _, section := range []string{"now", "later", "missed"} {
+		for _, row := range data[section].([]any) {
+			card := row.(map[string]any)
+			rows[card["id"].(string)] = card
+		}
+	}
+	mail, ok := rows[mailCard]
+	if !ok {
+		t.Fatalf("mail card missing from response: %v", rows)
+	}
+	if got := mail["received_at"]; got != "2026-10-04T07:43:00Z" {
+		t.Fatalf("received_at=%v, want latest message arrival 2026-10-04T07:43:00Z as RFC3339 UTC", got)
+	}
+	if got := mail["sender_address"]; got != "welcome@cerebras.net" {
+		t.Fatalf("sender_address=%v, want welcome@cerebras.net", got)
+	}
+	manual, ok := rows[manualCard]
+	if !ok {
+		t.Fatalf("manual card missing from response: %v", rows)
+	}
+	if got, exists := manual["received_at"]; exists {
+		t.Fatalf("non-mail card must omit received_at, got %v", got)
+	}
+	if got, exists := manual["sender_address"]; exists {
+		t.Fatalf("non-mail card must omit sender_address, got %v", got)
+	}
+}

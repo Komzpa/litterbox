@@ -151,4 +151,41 @@ TestCase {
         compare(page.html, "<p>Keep reading while offline.</p>")
         compare(page.errorText, "")
     }
+
+    // Fixed arrival instant 2026-10-04T07:43:00Z rendered in the pinned test
+    // zone (Asia/Tbilisi, UTC+4): 11:43. Branches cover today, this year and
+    // older mail.
+    function test_arrivalLineShowsSenderAndLocalArrival() {
+        storeStub.cached = {"card": {html: "<p>Hi</p>"}}
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "card", openLinks: false,
+            card: {source: "mail", sender_name: "Cerebras Systems",
+                   sender_address: "welcome@cerebras.net", received_at: "2026-10-04T07:43:00Z"},
+            arrivalNow: new Date("2026-10-04T08:00:00Z").getTime()
+        })
+        verify(page)
+        const line = findChild(page, "mailArrival")
+        verify(line, "arrival line missing under the subject")
+        compare(line.text, "Cerebras Systems <welcome@cerebras.net> · 11:43")
+        // Same year, another day: day + month + time.
+        page.arrivalNow = new Date("2026-11-20T08:00:00Z").getTime()
+        compare(line.text, "Cerebras Systems <welcome@cerebras.net> · 4 Oct 11:43")
+        // Another year: full date.
+        page.arrivalNow = new Date("2027-01-02T08:00:00Z").getTime()
+        compare(line.text, "Cerebras Systems <welcome@cerebras.net> · 4 Oct 2026 11:43")
+    }
+
+    function test_missingArrivalShowsNoStraySeparator() {
+        storeStub.cached = {"card": {html: "<p>Hi</p>"}}
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "card", openLinks: false,
+            card: {source: "mail", sender_name: "Cerebras Systems",
+                   sender_address: "welcome@cerebras.net"}
+        })
+        verify(page)
+        const line = findChild(page, "mailArrival")
+        verify(line, "sender line missing under the subject")
+        compare(line.text, "Cerebras Systems <welcome@cerebras.net>")
+        verify(line.text.indexOf("·") < 0, "stray separator without arrival time: " + line.text)
+    }
 }

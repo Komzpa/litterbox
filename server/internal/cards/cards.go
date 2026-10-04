@@ -1,7 +1,9 @@
 package cards
 
 import (
+	"net/mail"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -25,6 +27,10 @@ type Card struct {
 	BundleTitle string `json:"bundle_title,omitempty"`
 	SourceURL   string `json:"source_url,omitempty"`
  SenderName string `json:"sender_name"`
+	// ReceivedAt is the card's latest message arrival and SenderAddress the
+	// addr-spec of its stored From header; both are omitted for non-mail cards.
+	ReceivedAt    *time.Time `json:"received_at,omitempty"`
+	SenderAddress string     `json:"sender_address,omitempty"`
 	// Important marks a thread that carries Gmail's IMPORTANT label; the
 	// client renders it standalone, never concealed inside a bundle.
 	Important bool `json:"important,omitempty"`
@@ -41,6 +47,19 @@ type Sections struct {
 	Now    []Card `json:"now"`
 	Later  []Card `json:"later"`
 	Missed []Card `json:"missed"`
+}
+
+// senderAddress returns the addr-spec of a raw From header, falling back to
+// the trimmed header when it does not parse.
+func senderAddress(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if parsed, err := mail.ParseAddress(raw); err == nil {
+		return parsed.Address
+	}
+	return raw
 }
 
 // Section classifies open timed tasks into slots and leaves untimed and agent
