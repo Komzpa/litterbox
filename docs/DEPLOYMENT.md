@@ -12,6 +12,8 @@ DATABASE_URL='postgresql://litterbox_app:...@127.0.0.1:5435/litterbox?sslmode=pr
 
 The unit passes no `-dev-tenant-id` and no `LITTERBOX_DEV_TENANT_ID`, so every `/v1` route requires a valid bearer token and unauthenticated requests fail closed with `401`; `GET /healthz` and `GET /v1/version` remain unauthenticated. The server listens on `127.0.0.1:8081` (loopback only), distinct from the development server's `8080`, and never binds a public address. Verify with `systemctl is-active litterbox-server.service`, the installed executable's SHA-256, `GET /healthz` returning `200`, and an unauthenticated `/v1/cards` returning `401`.
 
+Failed operation handlers log the operation type, card UUID, and underlying error to the server journal before returning `422`. The response remains generic and the database transaction rolls back; inspect `journalctl -u litterbox-server.service` for Gmail error details. No request body or credential is logged. Successful operations do not emit error logs.
+
 ## LAN access
 
 The loopback-only listener is kept as the server's only bind. To reach clients on a trusted LAN (for example `192.168.100.0/24`), install `deploy/systemd/litterbox-lan-proxy.socket` and `deploy/systemd/litterbox-lan-proxy.service`: the socket listens on the host's LAN address (`192.168.100.74:8081`) and `systemd-socket-proxyd` forwards accepted connections to `127.0.0.1:8081`. Enable with `systemctl enable --now litterbox-lan-proxy.socket`. This exposes the API only on the specified LAN address; docker bridges and other interfaces stay closed. Authentication is unchanged, so every `/v1` route still requires a bearer token. Rollback with `systemctl disable --now litterbox-lan-proxy.socket litterbox-lan-proxy.service` and remove the two unit files.

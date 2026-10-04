@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -316,6 +317,7 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err = handler(r.Context(), tx, mustUUID(tenant), in.CardID, in.Args); err != nil {
+			log.Printf("operation failed: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
 			http.Error(w, "operation failed", http.StatusUnprocessableEntity)
 			return
 		}
