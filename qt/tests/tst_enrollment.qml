@@ -4,8 +4,11 @@ import "../pages" as Pages
 
 TestCase {
     name: "EnrollmentPage"
-    width: 500
-    height: 500
+    // Match the application window; hidden TestCases do not lay out FormLayout.
+    width: 1440
+    height: 900
+    visible: true
+    when: windowShown
     Component { id: pageComponent; Pages.EnrollmentPage {} }
 
     function test_enrollAndEmitToken() {
@@ -41,12 +44,11 @@ TestCase {
 
     function test_enrollButtonIsVisibleAndSized() {
         const page = createTemporaryObject(pageComponent, this, {
-            api: { baseUrl: "http://server:8081", post: function (path, body, cb) {} }
+            api: { baseUrl: "http://server:8081", post: function (path, body, cb) {} },
+            width: 1440, height: 900
         })
-        page.visible = true
-        page.width = width
-        page.height = height
         verify(page)
+        verify(waitForRendering(page), "enrollment page must render before measuring controls")
         const button = findChild(page, "enrollButton")
         verify(button, "missing enrollment button")
         verify(button.width >= 48, "enrollment button must have a non-zero usable width")
