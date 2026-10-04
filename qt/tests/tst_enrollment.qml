@@ -38,6 +38,34 @@ TestCase {
         compare(emitted.device_id, "dev-1")
     }
 
+
+    function test_enrollButtonIsVisibleAndSized() {
+        const page = createTemporaryObject(pageComponent, this, {
+            api: { baseUrl: "http://server:8081", post: function (path, body, cb) {} }
+        })
+        page.visible = true
+        page.width = width
+        page.height = height
+        verify(page)
+        const button = findChild(page, "enrollButton")
+        verify(button, "missing enrollment button")
+        verify(button.width >= 48, "enrollment button must have a non-zero usable width")
+        verify(button.height >= 48, "enrollment button must meet the 48px touch target")
+        verify(Qt.colorEqual(button.background.color, "#397d73"),
+               "enrollment button background must be visible at rest")
+    }
+    function test_enrollmentInputsUseLightPalette() {
+        var api = { baseUrl: "http://server:8081", post: function (path, body, cb) {} }
+        var page = createTemporaryObject(pageComponent, this, {api: api})
+        verify(page)
+        for (const name of ["serverField", "inviteField", "deviceNameField", "platformBox"]) {
+            const control = findChild(page, name)
+            verify(control, "missing enrollment control " + name)
+            verify(Qt.colorEqual(control.palette.base, "#ffffff"), name + " does not use a white base")
+            verify(Qt.colorEqual(control.palette.text, "#263b3a"), name + " does not use ink text")
+        }
+    }
+
     function test_emptyServerIsRequired() {
         var posted = false
         var api = { baseUrl: "", token: "", post: function (path, body, cb) { posted = true } }

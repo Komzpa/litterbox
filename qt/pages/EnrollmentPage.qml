@@ -96,7 +96,7 @@ Kirigami.ScrollablePage {
     Kirigami.FormLayout {
         visible: root.token === ""
         width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+        Layout.alignment: Qt.AlignHCenter
 
         QQC2.TextField {
             id: serverField
@@ -104,6 +104,13 @@ Kirigami.ScrollablePage {
             Kirigami.FormData.label: qsTr("Server:")
             text: api && api.baseUrl ? api.baseUrl : ""
             Layout.fillWidth: true
+            Material.theme: Material.Light
+            Material.background: root.surface
+            Material.foreground: root.ink
+            palette.base: root.surface
+            palette.text: root.ink
+            color: root.ink
+            background: Rectangle { radius: 4; color: root.surface; border.color: "#879b99" }
             // A committed "http" suggestion would silently corrupt the URL.
             inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
         }
@@ -114,6 +121,13 @@ Kirigami.ScrollablePage {
             // Invite codes are exact secrets: never autocorrect or uppercase them.
             inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
             Layout.fillWidth: true
+            Material.theme: Material.Light
+            Material.background: root.surface
+            Material.foreground: root.ink
+            palette.base: root.surface
+            color: root.ink
+            background: Rectangle { radius: 4; color: root.surface; border.color: "#879b99" }
+            palette.text: root.ink
         }
         QQC2.TextField {
             id: deviceNameField
@@ -121,6 +135,13 @@ Kirigami.ScrollablePage {
             Kirigami.FormData.label: qsTr("Device name:")
             text: Qt.platform.os === "android" ? qsTr("Phone") : qsTr("Desktop")
             Layout.fillWidth: true
+            Material.theme: Material.Light
+            Material.background: root.surface
+            Material.foreground: root.ink
+            palette.base: root.surface
+            color: root.ink
+            background: Rectangle { radius: 4; color: root.surface; border.color: "#879b99" }
+            palette.text: root.ink
         }
         QQC2.ComboBox {
             id: platformBox
@@ -128,6 +149,19 @@ Kirigami.ScrollablePage {
             Kirigami.FormData.label: qsTr("Platform:")
             model: ["linux", "android"]
             Component.onCompleted: currentIndex = Qt.platform.os === "android" ? 1 : 0
+            Material.theme: Material.Light
+            Material.background: root.surface
+            Material.foreground: root.ink
+            palette.base: root.surface
+            background: Rectangle { radius: 4; color: root.surface; border.color: "#879b99" }
+            palette.text: root.ink
+            contentItem: QQC2.Label {
+                text: platformBox.displayText
+                color: root.ink
+                leftPadding: 8
+                verticalAlignment: Text.AlignVCenter
+            }
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
         }
 
         QQC2.Label {
@@ -143,6 +177,18 @@ Kirigami.ScrollablePage {
             text: root.busy ? qsTr("Enrolling…") : qsTr("Enroll")
             enabled: !root.busy
             implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+            Layout.fillWidth: true
+            Material.theme: Material.Light
+            Material.background: root.accent
+            Material.foreground: root.surface
+            palette.button: root.accent
+            palette.buttonText: root.surface
+            background: Rectangle {
+                radius: Kirigami.Units.cornerRadius
+                color: parent.down ? "#286358" : parent.hovered ? "#326f65" : root.accent
+                border.width: parent.visualFocus ? 2 : 0
+                border.color: root.ink
+            }
             onClicked: root.enroll()
         }
     }
@@ -150,7 +196,7 @@ Kirigami.ScrollablePage {
     ColumnLayout {
         visible: root.token !== ""
         width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+        Layout.alignment: Qt.AlignHCenter
         spacing: Kirigami.Units.smallSpacing
 
         QQC2.Label {

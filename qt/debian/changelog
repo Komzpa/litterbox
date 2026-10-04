@@ -5,6 +5,16 @@ litterbox-qt (0.1-17) unstable; urgency=medium
   * Prove replacement survival when the original desktop service stops.
   * Fix singular important-message grammar in bundle summaries and retain the
     singular `1 email` count for one-member bundles (R36).
+  * Hide the empty Gmail account state when loading fails, so offline access
+    does not report that no accounts are connected.
+
+  * Restore the enrollment action's explicit light-palette background by
+    resolving pressed, hover, and focus states from its background parent (R36).
+  * Assert the enrollment action is visible, sized, and colored at rest (R36).
+
+  * Center bounded Gmail accounts and enrollment page columns within their
+    ScrollablePage layout without conflicting anchors.
+
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 15:25:00 +0400
 
 litterbox-qt (0.1-16) unstable; urgency=medium

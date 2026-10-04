@@ -92,7 +92,7 @@ Kirigami.ScrollablePage {
 
     ColumnLayout {
         width: Math.min(parent.width, 1200)
-        anchors.horizontalCenter: parent.horizontalCenter
+        Layout.alignment: Qt.AlignHCenter
         spacing: Kirigami.Units.largeSpacing
 
         QQC2.Button {
@@ -161,7 +161,8 @@ Kirigami.ScrollablePage {
 
             QQC2.Label {
                 anchors.centerIn: parent
-                visible: list.count === 0 && !root.loading
+                objectName: "emptyStateLabel"
+                visible: list.count === 0 && !root.loading && root.errorText === ""
                 text: qsTr("No accounts connected.")
             }
         }
