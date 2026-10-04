@@ -1,0 +1,22 @@
+[
+  {"resize":[1440,900]},
+  {"shot":"inbox-1440"},
+  {"resize":[700,900]},
+  {"shot":"inbox-700"},
+  {"scroll":"end"},
+  {"shot":"inbox-end"},
+  {"scroll":"top"},
+  {"scroll":1300},
+  {"openCard":"354670cc-9d73-42bb-b9f6-c52b0ac339ce"},
+  {"shot":"mail-detail"},
+  {"key":"Escape"},
+  {"shot":"mail-closed"},
+  {"scroll":"top"},
+  {"scroll":1500},
+  {"click":"bundleOptions-228568aa-636a-4698-9d0b-094011f99b49"},
+  {"shot":"bundle-menu"},
+  {"key":"Escape"},
+  {"key":"Tab"},
+  {"key":"Tab"},
+  {"shot":"tab-twice"}
+]
