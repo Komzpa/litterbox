@@ -71,6 +71,16 @@ func (c *Client) token(ctx context.Context) (string, error) {
 	c.tokenExpiry = time.Now().Add(time.Duration(t.ExpiresIn) * time.Second)
 	return t.AccessToken, nil
 }
+// APIError is a non-2xx Gmail API response.
+type APIError struct {
+	StatusCode               int
+	Method, Path, Status, Body string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("gmail API %s %s: %s: %s", e.Method, e.Path, e.Status, e.Body)
+}
+
 func (c *Client) request(ctx context.Context, method, path string, body any, out any) error {
 	var payload []byte
 	if body != nil {
@@ -137,7 +147,7 @@ func (c *Client) try(ctx context.Context, method, path string, payload []byte, o
 	defer res.Body.Close()
 	if res.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-		err := fmt.Errorf("gmail API %s %s: %s: %s", method, path, res.Status, b)
+		err := &APIError{StatusCode: res.StatusCode, Method: method, Path: path, Status: res.Status, Body: string(b)}
 		switch {
 		case res.StatusCode >= 500:
 			// Gmail serves transient 5xx (observed: 500 Internal error on a
