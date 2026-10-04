@@ -1,3 +1,10 @@
+litterbox-qt (0.1-21) unstable; urgency=medium
+
+  * Show failed mail actions with their HTTP response and restore notification.
+  * Preserve HTTP error response details in operation-failure diagnostics.
+
+ -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 21:10:00 +0400
+
 litterbox-qt (0.1-20) unstable; urgency=medium
 
   * Keep a bundle header and its expand toggle at the same place in the

@@ -120,19 +120,28 @@ ApplicationWindow {
         const result = store.archiveBundleNow(bundleId)
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
+        archiveUndoAvailable = true
         bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(result.count))
         return true
     }
     function showArchiveUndo(opId) {
         mailArchiveUndoOp = opId
+        archiveUndoAvailable = true
         bundleArchiveToken = ""
         bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
+    }
+    function showOperationFailure(opId, status) {
+        mailArchiveUndoOp = ""
+        bundleArchiveToken = ""
+        archiveUndoAvailable = false
+        bundleArchiveStatus = qsTr("Action failed (HTTP %1). The card was restored.").arg(status)
     }
     function undoBundleArchive() {
         if (mailArchiveUndoOp.length > 0) {
             const op = mailArchiveUndoOp
             mailArchiveUndoOp = ""
             store.undoQueuedOp(op)
+            archiveUndoAvailable = false
             bundleArchiveStatus = ""
             return true
         }
@@ -151,6 +160,7 @@ ApplicationWindow {
     property string bundleArchiveToken: ""
     property string mailArchiveUndoOp: ""
     property string bundleArchiveStatus: ""
+    property bool archiveUndoAvailable: false
     Connections {
         target: store
         ignoreUnknownSignals: true
@@ -160,12 +170,7 @@ ApplicationWindow {
             window.bundleArchiveStatus = qsTr("Undo has expired.")
             undoExpiredNoticeTimer.restart()
         }
-        function onOperationFailed(opId, status) {
-            if (window.bundleArchiveToken.length === 0 && window.mailArchiveUndoOp.length === 0) return
-            window.bundleArchiveToken = ""
-            window.mailArchiveUndoOp = ""
-            window.bundleArchiveStatus = qsTr("Couldn't archive now. Please try again.")
-        }
+        function onOperationFailed(opId, status) { window.showOperationFailure(opId, status) }
     }
     Timer {
         id: undoExpiredNoticeTimer
@@ -387,7 +392,7 @@ ApplicationWindow {
                     Button {
                         id: bundleArchiveUndoButton
                         objectName: "bundleArchiveUndoButton"
-                        visible: window.bundleArchiveStatus !== qsTr("Undo has expired.")
+                        visible: window.archiveUndoAvailable
                         text: qsTr("Undo")
                         implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
                         implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)

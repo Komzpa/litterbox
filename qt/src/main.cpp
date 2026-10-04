@@ -395,10 +395,13 @@ int main(int argc, char *argv[])
             }
         });
     QObject::connect(&api, &Api::requestFailed, &app,
-        [&](int id, int status, const QString &) {
+        [&](int id, int status, const QString &error) {
             cardsRequests.remove(id);
             if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id));
-            if (operationRequests.contains(id)) store.reportPostResult(operationRequests.take(id), status, {});
+            if (operationRequests.contains(id)) {
+                qWarning().noquote() << "Operation request failed:" << status << error;
+                store.reportPostResult(operationRequests.take(id), status, {});
+            }
             if (status == 0) store.setOnline(false);
         });
 
