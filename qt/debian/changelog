@@ -14,6 +14,12 @@ litterbox-qt (0.1-18) unstable; urgency=medium
     keep settings content within the centered 1200px column.
   * Never archive an empty bundle; the archive action is refused instead of
     saving an empty operation.
+  * Capture inbox and mail interactions from a script using an isolated profile.
+  * Show card kind labels, a useful empty inbox, and clear timed-card handles.
+  * Make mouse Back, Escape, and keyboard navigation work in the mail reader.
+  * Make menus and snooze text readable and keep action messages in view.
+  * Label enrollment and Gmail actions clearly and space the offline status.
+  * Use a larger, more readable default font for email bodies.
 
  -- Litterbox <litterbox@example.com>  Sun, 04 Oct 2026 17:35:00 +0400
 
