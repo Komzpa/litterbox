@@ -98,11 +98,15 @@ ApplicationWindow {
             if (opener) opener.forceActiveFocus()
         })
     }
+    function emailCountText(count) {
+        const value = Number(count)
+        return qsTr("%1 %2").arg(value).arg(value === 1 ? qsTr("email") : qsTr("emails"))
+    }
     function archiveBundle(bundleId) {
         const result = store.archiveBundleNow(bundleId)
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
-        bundleArchiveStatus = qsTr("Archived %1 emails").arg(result.count)
+        bundleArchiveStatus = qsTr("Archived %1").arg(emailCountText(result.count))
         return true
     }
     function undoBundleArchive() {
@@ -607,8 +611,8 @@ ApplicationWindow {
                         padding: window.edgeSpacing
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : window.surface
-                            border.color: cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
-                            border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
+                            border.color: cardText.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
+                            border.width: cardText.activeFocus ? 2 : cardRow.bundled && cardRow.bundleExpanded ? 0 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
                             // Adjacent delegates paint the sides of one group, not
                             // individual cards. Only its first/last row closes it.
@@ -650,7 +654,7 @@ ApplicationWindow {
                                     icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
                                     Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1, %2 emails") : qsTr("Expand %1, %2 emails")).arg(text).arg(card.bundle_member_count || 0)
                                     background: Rectangle {
-                                        color: bundleToggle.down ? "#e7f1ee" : "transparent"
+                                        color: bundleToggle.down ? "#e7f1ee" : bundleToggle.hovered ? "#f3f7f6" : "transparent"
                                         radius: Kirigami.Units.cornerRadius
                                         border.width: bundleToggle.visualFocus ? 2 : 0
                                         border.color: window.accent
@@ -667,7 +671,7 @@ ApplicationWindow {
                                                 implicitHeight: countLabel.implicitHeight + 8
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
-                                                Label { id: countLabel; anchors.centerIn: parent; text: qsTr("%1 emails").arg(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
+                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
                                             }
                                             Item { Layout.fillWidth: true }
                                         }
@@ -691,8 +695,10 @@ ApplicationWindow {
                                             wrapMode: Text.Wrap
                                         }
                                         Label {
-                                            text: qsTr("%1 important stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
-                                            visible: cardRow.bundleSummary.important > 0
+                                            text: cardRow.bundleSummary.important === 1
+                                                ? qsTr("1 important email stays separate; archive includes all %1 unpinned emails").arg(cardRow.bundleSummary.unpinned)
+                                                : qsTr("%1 important emails stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
+                                            objectName: "importantDisclosure-" + cardId
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
@@ -718,7 +724,7 @@ ApplicationWindow {
                                     Layout.maximumWidth: window.width < 640 ? 48 : -1
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
-                                    Accessible.description: qsTr("Archives all %1 unpinned emails; pinned cards stay open").arg(cardRow.bundleSummary.unpinned)
+                                    Accessible.description: qsTr("Archives all %1 unpinned %2; pinned cards stay open").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.unpinned === 1 ? qsTr("email") : qsTr("emails"))
                                     ToolTip.text: Accessible.name
                                     ToolTip.visible: hovered
                                     background: Rectangle {
@@ -795,6 +801,17 @@ ApplicationWindow {
                                     Keys.onSpacePressed: openCard()
                                     TapHandler { onTapped: cardText.openCard() }
                                     HoverHandler { cursorShape: cardText.activeFocusOnTab ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                    Keys.onPressed: function(event) {
+                                        if (event.key === Qt.Key_Delete) {
+                                            cardActions.primaryAction()
+                                            event.accepted = true
+                                        }
+                                    }
+                                    Shortcut {
+                                        sequence: StandardKey.Delete
+                                        enabled: cardText.activeFocus
+                                        onActivated: cardActions.primaryAction()
+                                    }
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing

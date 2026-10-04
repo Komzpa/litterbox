@@ -184,6 +184,29 @@ TestCase {
         }
         inbox.close()
     }
+    function test_singleImportantMemberDisclosureAndCount() {
+        const bundle = "topic:security"
+        const leader = card("single-leader", bundle, "now", {
+            bundle_id: bundle, bundle_title: "Security alerts", bundle_leader: true,
+            bundle_member_count: 1, important: false
+        })
+        const important = card("single-important", bundle, "now", {
+            bundle_id: bundle, bundle_title: "Security alerts", bundle_leader: false,
+            bundle_member_count: 1, important: true
+        })
+        verify(store.applyRemoteCards({now: [leader, important], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        compare(findChild(row, "bundleMemberCount-single-leader").text, "1 email")
+        compare(findChild(row, "importantDisclosure-single-leader").text,
+            "1 important email stays separate; archive includes all 2 unpinned emails")
+        inbox.close()
+    }
     function test_archiveBundleUndoExpiresFromTokenDeadline() {
         const bundle = "sender:expiry@example.test"
         const ids = ["expiry-leader", "expiry-member"]
@@ -238,6 +261,27 @@ TestCase {
         tryCompare(inbox, "bundleArchiveStatus", "")
         compare(store.cardIds(), before, "Undo restores every bundle member to its original order")
         verify(!bar.visible, "Undo hides the inline bar")
+        inbox.close()
+    }
+    function test_cardKeyboardFocusAndDeleteArchivesFocusedCard() {
+        const id = "keyboard-card"
+        verify(store.applyRemoteCards({now: [card(id, "", "now", {state: "open", has_body: true})], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        const cardOpen = findChild(row, "openCard-" + id)
+        verify(cardOpen && cardOpen.activeFocusOnTab)
+        cardOpen.forceActiveFocus()
+        tryVerify(function() { return cardOpen.activeFocus })
+        const frame = findChild(row, "inboxCard")
+        verify(frame)
+        tryVerify(function() { return frame.background.border.width === 2 }, 5000,
+                  "Keyboard focus must have a visible card ring")
+        verify(cardOpen.activeFocus, "Focused card remains keyboard-active")
         inbox.close()
     }
     }
