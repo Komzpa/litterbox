@@ -92,6 +92,34 @@ type cluster struct {
 	cards    []*mailCard
 }
 
+func loadMailCards(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, openOnly bool) ([]*mailCard, error) {
+	rows, err := tx.Query(ctx, `SELECT c.id,c.sender,c.subject,COALESCE(m.text,'') FROM cards c LEFT JOIN LATERAL (SELECT text FROM messages WHERE tenant_id=c.tenant_id AND card_id=c.id ORDER BY received_at DESC LIMIT 1) m ON true WHERE c.tenant_id=$1 AND c.source='mail' AND (NOT $2::boolean OR c.state='open') ORDER BY c.created_at,c.id`, tenant, openOnly)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var cards []*mailCard
+	for rows.Next() {
+		c := new(mailCard)
+		if err := rows.Scan(&c.id, &c.sender, &c.subject, &c.text); err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+// ReassignGitHub repairs legacy sender bundles in every card state, using the
+// same deterministic router and exclusions as ingestion. No embeddings or
+// Gmail access are needed; unchanged memberships produce no card changes.
+func ReassignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID) error {
+	cards, err := loadMailCards(ctx, tx, tenant, false)
+	if err != nil {
+		return err
+	}
+	return assignGitHub(ctx, tx, tenant, cards)
+}
+
 // Cluster immediately assigns open mail cards to bundles across accounts.
 // GitHub mail is routed deterministically by repo and who must act (see
 // RouteGitHubMail) without embeddings. Remaining mail is clustered by
@@ -104,24 +132,10 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 	if embedder == nil {
 		return errors.New("nil bundle embedder")
 	}
-	rows, err := tx.Query(ctx, `SELECT c.id,c.sender,c.subject,COALESCE(m.text,'') FROM cards c LEFT JOIN LATERAL (SELECT text FROM messages WHERE tenant_id=c.tenant_id AND card_id=c.id ORDER BY received_at DESC LIMIT 1) m ON true WHERE c.tenant_id=$1 AND c.source='mail' AND c.state='open' ORDER BY c.created_at,c.id`, tenant)
+	cards, err := loadMailCards(ctx, tx, tenant, true)
 	if err != nil {
 		return err
 	}
-	var cards []*mailCard
-	for rows.Next() {
-		c := new(mailCard)
-		if err := rows.Scan(&c.id, &c.sender, &c.subject, &c.text); err != nil {
-			rows.Close()
-			return err
-		}
-		cards = append(cards, c)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
 	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
 		return err
 	}
@@ -141,7 +155,7 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 		c.vector = v
 	}
 	var groups []*cluster
-	for _, c := range cards {
+	for _, c := range rest {
 		best, score := -1, 0.82
 		for i, g := range groups {
 			if s := cosine(c.vector, g.centroid); s > score {

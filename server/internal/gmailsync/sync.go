@@ -51,6 +51,12 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
 		tx.Rollback(ctx)
 		return e
 	}
+	// Run on the startup sync pass, before Gmail access, and idempotently on
+	// subsequent polls so archived legacy notifications are repaired too.
+	if e = bundles.ReassignGitHub(ctx, tx, a.TenantID); e != nil {
+		tx.Rollback(ctx)
+		return e
+	}
 	if e = tx.Commit(ctx); e != nil {
 		return e
 	}
