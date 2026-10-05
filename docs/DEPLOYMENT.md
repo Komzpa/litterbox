@@ -102,18 +102,23 @@ to a private local `enroll.json` (do not commit or print its real contents):
 {"server":"https://komzpa.net:9443","invite_code":"SHORT_LIVED_INVITE","device_name":"Samsung SM-F766B","platform":"android"}
 ```
 
-Push the file and start only the dedicated component; no taps or unlock are needed:
+Force-stop before each operator bootstrap to cold-start Qt (this preserves all
+app data), then push the file and start only the dedicated component; no taps or
+PIN unlock are needed:
 
 ```sh
+adb -s 192.168.100.36:43451 shell am force-stop org.qtproject.example.litterbox_qt
 adb -s 192.168.100.36:43451 push enroll.json /sdcard/Android/data/org.qtproject.example.litterbox_qt/files/enroll.json
 adb -s 192.168.100.36:43451 shell am start -W -n org.qtproject.example.litterbox_qt/net.komzpa.litterbox.EnrollmentActivity
 ```
 
 Only this activity reads `getExternalFilesDir(null)/enroll.json`. It runs in a
-separate `:enrollment` process, may run over the PIN lock without turning the
-screen on, and never creates a QML window, opens CardStore, or shows inbox/mail
-content. The ordinary launcher activity is unchanged and has no lock-screen
-visibility permission. The exported component takes no invite or token extras;
+separate `:enrollment` process and wakes the screen to run its blank activity over
+the PIN lock: screen-off/AOD can otherwise prevent native Qt startup. It does not
+unlock the phone and never creates a QML window, opens CardStore, or shows
+inbox/mail content. The ordinary launcher activity is unchanged and has neither
+lock-screen visibility nor screen-waking permission. The exported component takes
+no invite or token extras;
 enrollment still requires a valid server-issued invite and HTTPS URL with a host.
 Missing/invalid files and existing tokens refuse enrollment without overwriting
 settings or deleting the file. HTTP failures and malformed enrollment replies

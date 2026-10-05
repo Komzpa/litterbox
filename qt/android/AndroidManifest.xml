@@ -63,6 +63,7 @@
             android:launchMode="singleTop"
             android:screenOrientation="unspecified"
             android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:exported="true">
             <meta-data
                 android:name="android.app.lib_name"
