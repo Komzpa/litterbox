@@ -8,6 +8,8 @@
 #endif
 
 #include <QDir>
+#include <QCryptographicHash>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
@@ -40,6 +42,10 @@
  #include <QWheelEvent>
  #include <QQuickItem>
 
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
 #include <memory>
 // QObject::findChild cannot see ListView delegates in Qt 6: they only exist as
 // visual children of the list's content item (probe: declared item found,
@@ -103,6 +109,132 @@ static int scriptStackDepth(QObject *root)
     QObject *stack = root->findChild<QObject *>(QStringLiteral("pageStack"));
     return stack ? stack->property("depth").toInt() : -1;
 }
+
+#ifdef Q_OS_ANDROID
+static int enrollFromFile(QGuiApplication &app, Api &api, QSettings &settings,
+                          const QJniObject &activity)
+{
+    // No CardStore or QML engine exists in this process. Keep all request state
+    // alive until the asynchronous enrollment and authenticated probe finish.
+    int enrollmentRequest = 0;
+    int cardsRequest = 0;
+    QString enrollmentPath;
+    QString enrolledDeviceId;
+    const auto fail = [&app](int status) {
+        qWarning() << "ENROLL_FILE status=" << status;
+        app.exit(1);
+    };
+    QObject::connect(&api, &Api::requestFailed, &app,
+        [&](int id, int status, const QString &) {
+            if (id == enrollmentRequest || id == cardsRequest) fail(status);
+        });
+    QObject::connect(&api, &Api::requestFinished, &app,
+        [&](int id, const QJsonValue &data, int status) {
+            if (id == cardsRequest) {
+                const QJsonObject sections = data.toObject();
+                qsizetype count = 0;
+                for (const QString &section : {QStringLiteral("now"), QStringLiteral("later"), QStringLiteral("missed")}) {
+                    if (status != 200 || !sections.value(section).isArray()) {
+                        fail(status);
+                        return;
+                    }
+                    count += sections.value(section).toArray().size();
+                }
+                qInfo() << "ENROLL_FILE cards_status=" << status << "card_count=" << count
+                        << "server=" << api.baseUrl() << "device_id=" << enrolledDeviceId
+                        << "token_sha256=" << QCryptographicHash::hash(
+                            api.token().toUtf8(), QCryptographicHash::Sha256).toHex();
+                app.exit(0);
+                return;
+            }
+            if (id != enrollmentRequest) return;
+            const QJsonObject reply = data.toObject();
+            const QString token = reply.value(QStringLiteral("token")).toString();
+            const QString deviceId = reply.value(QStringLiteral("device_id")).toString();
+            const QString tenantId = reply.value(QStringLiteral("tenant_id")).toString();
+            if (status != 201 || token.trimmed().isEmpty() || deviceId.trimmed().isEmpty() || tenantId.trimmed().isEmpty()) {
+                fail(status);
+                return;
+            }
+            // Use the normal settings owner, but do not persist the temporary
+            // network endpoint or token until the complete reply is validated.
+            const bool hadToken = settings.contains(QStringLiteral("token"));
+            const bool hadServer = settings.contains(QStringLiteral("server_url"));
+            const QVariant oldToken = settings.value(QStringLiteral("token"));
+            const QVariant oldServer = settings.value(QStringLiteral("server_url"));
+            settings.setValue(QStringLiteral("token"), token);
+            settings.setValue(QStringLiteral("server_url"), api.baseUrl());
+            settings.sync();
+            if (settings.status() != QSettings::NoError) {
+                if (hadToken) settings.setValue(QStringLiteral("token"), oldToken);
+                else settings.remove(QStringLiteral("token"));
+                if (hadServer) settings.setValue(QStringLiteral("server_url"), oldServer);
+                else settings.remove(QStringLiteral("server_url"));
+                settings.sync();
+                fail(0);
+                return;
+            }
+            api.setToken(token);
+            enrolledDeviceId = deviceId;
+            const bool fileRemoved = QFile::remove(enrollmentPath);
+            qInfo() << "ENROLL_FILE server=" << api.baseUrl() << "device_id=" << deviceId
+                    << "token_saved=" << true << "file_removed=" << fileRemoved;
+            cardsRequest = api.get(QStringLiteral("/v1/cards"));
+        });
+    QTimer::singleShot(30000, &app, [&] { fail(0); });
+    QTimer::singleShot(0, &app, [&] {
+        if (!api.token().isEmpty() || !settings.value(QStringLiteral("token")).toString().isEmpty()) {
+            fail(0);
+            return;
+        }
+        const QJniObject directory = activity.callObjectMethod(
+            "getExternalFilesDir", "(Ljava/lang/String;)Ljava/io/File;", jobject(nullptr));
+        if (!directory.isValid()) {
+            fail(0);
+            return;
+        }
+        const QJniObject absolutePath = directory.callObjectMethod(
+            "getAbsolutePath", "()Ljava/lang/String;");
+        if (!absolutePath.isValid() || absolutePath.toString().isEmpty()) {
+            fail(0);
+            return;
+        }
+        enrollmentPath = QDir(absolutePath.toString()).filePath(QStringLiteral("enroll.json"));
+        QFile file(enrollmentPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            fail(0);
+            return;
+        }
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+        file.close();
+        const QJsonObject enrollment = document.object();
+        const QUrl server(enrollment.value(QStringLiteral("server")).toString());
+        const QString invite = enrollment.value(QStringLiteral("invite_code")).toString();
+        const QString name = enrollment.value(QStringLiteral("device_name")).toString();
+        const QString platform = enrollment.value(QStringLiteral("platform")).toString();
+        if (parseError.error != QJsonParseError::NoError || !document.isObject() ||
+            !server.isValid() || server.scheme() != QStringLiteral("https") || server.host().isEmpty() ||
+            !server.userInfo().isEmpty() || server.hasQuery() || server.hasFragment() ||
+            invite.trimmed().isEmpty() || name.trimmed().isEmpty() || platform.trimmed().isEmpty()) {
+            fail(0);
+            return;
+        }
+        QString baseUrl = server.toString();
+        while (baseUrl.endsWith(QLatin1Char('/'))) baseUrl.chop(1);
+        api.setBaseUrl(baseUrl);
+        enrollmentRequest = api.post(QStringLiteral("/v1/devices/enroll"), {
+            {QStringLiteral("invite_code"), invite},
+            {QStringLiteral("device_name"), name},
+            {QStringLiteral("platform"), platform}});
+    });
+    const int result = app.exec();
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([activity] {
+        activity.callMethod<void>("finish");
+    });
+    return result;
+}
+#endif
 
 #ifndef LB_DEFAULT_SERVER_URL
 // Compile-time fallback only; the real value comes from the CMake cache
@@ -311,6 +443,15 @@ int main(int argc, char *argv[])
         qEnvironmentVariable("LB_SERVER"),
         settings->value(QStringLiteral("server_url")).toString(), compiledDefaultServerUrl));
     api.setToken(profileMode ? testToken : qEnvironmentVariable("LB_TOKEN", settings->value(QStringLiteral("token")).toString()));
+#ifdef Q_OS_ANDROID
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    const QJniObject activityClass = activity.isValid() ? activity.callObjectMethod(
+        "getClass", "()Ljava/lang/Class;") : QJniObject();
+    const QJniObject activityName = activityClass.isValid() ? activityClass.callObjectMethod(
+        "getName", "()Ljava/lang/String;") : QJniObject();
+    if (activityName.toString() == QStringLiteral("net.komzpa.litterbox.EnrollmentActivity"))
+        return enrollFromFile(app, api, *settings, activity);
+#endif
     QObject::connect(&api, &Api::tokenChanged, &app, [&] { settings->setValue(QStringLiteral("token"), api.token()); });
     QObject::connect(&api, &Api::baseUrlChanged, &app, [&] { settings->setValue(QStringLiteral("server_url"), api.baseUrl()); });
     AndroidUpdater updater;

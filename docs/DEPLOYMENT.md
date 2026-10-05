@@ -91,3 +91,43 @@ In **Connect to Server**, **Save server** persists the URL while retaining the
 existing device token; it never submits an enrollment request. Use **Enroll**
 only for a device that actually needs a new enrollment. If switching a saved
 endpoint while offline, reopening the app uses that endpoint immediately.
+
+## Android enrollment without unlocking
+
+For an unenrolled phone, install a same-package, same-signature candidate with
+`adb install -r`; never uninstall or clear app data. Write a short-lived invite
+to a private local `enroll.json` (do not commit or print its real contents):
+
+```json
+{"server":"https://komzpa.net:9443","invite_code":"SHORT_LIVED_INVITE","device_name":"Samsung SM-F766B","platform":"android"}
+```
+
+Push the file and start only the dedicated component; no taps or unlock are needed:
+
+```sh
+adb -s 192.168.100.36:43451 push enroll.json /sdcard/Android/data/org.qtproject.example.litterbox_qt/files/enroll.json
+adb -s 192.168.100.36:43451 shell am start -W -n org.qtproject.example.litterbox_qt/net.komzpa.litterbox.EnrollmentActivity
+```
+
+Only this activity reads `getExternalFilesDir(null)/enroll.json`. It runs in a
+separate `:enrollment` process, may run over the PIN lock without turning the
+screen on, and never creates a QML window, opens CardStore, or shows inbox/mail
+content. The ordinary launcher activity is unchanged and has no lock-screen
+visibility permission. The exported component takes no invite or token extras;
+enrollment still requires a valid server-issued invite and HTTPS URL with a host.
+Missing/invalid files and existing tokens refuse enrollment without overwriting
+settings or deleting the file. HTTP failures and malformed enrollment replies
+likewise leave existing settings and the file intact; there are no retries.
+
+Only HTTP 201 with nonempty `token`, `device_id`, and `tenant_id` is accepted.
+The existing QSettings owner saves `token` and `server_url`, synchronizes and
+checks `NoError`, then deletes the invite file and makes an authenticated
+`GET /v1/cards`. `ENROLL_FILE` logs contain only status, server, device ID,
+token-saved/file-removed flags, card count, and a SHA-256 token verifier after
+HTTP 200 (never the invite, raw token, or card/mail contents). The bootstrap
+finishes after the probe or failure, with a 30-second total timeout. Confirm
+`file_removed=true`, `token_saved=true`, and `cards_status=200`; match the
+token SHA-256 to the server's device-token hash if exact enrollment proof is needed.
+Delete the private local invite copy after use. This operator-only workflow does
+not change or prove the user-consent flow of the in-app APK updater.
+

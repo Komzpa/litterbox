@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <!--
-  Minimal package-source overlay for the app-initiated update flow. It is a
-  byte-for-byte copy of Qt 6.7.3's default Android package template
-  ($QT/android_arm64_v8a/src/android/templates/AndroidManifest.xml) with one
-  addition: the android.permission.REQUEST_INSTALL_PACKAGES permission.
+  Package-source overlay for app-initiated updates and file enrollment.
+  Based on Qt 6.7.3's default Android package template; additions are the
+  REQUEST_INSTALL_PACKAGES permission and a separate, headless enrollment
+  activity. The ordinary inbox activity never displays over the lock screen.
 
   That permission is required only so Android can ask the user, at platform
   level, whether this app may install packages ("install unknown apps").
@@ -51,6 +51,23 @@
                 android:value="-- %%INSERT_APP_LIB_NAME%% --" />
 
           <meta-data
+                android:name="android.app.arguments"
+                android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
+        </activity>
+
+        <!-- Separate Qt runtime: an already-running inbox cannot be reused here. -->
+        <activity
+            android:name="net.komzpa.litterbox.EnrollmentActivity"
+            android:process=":enrollment"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:launchMode="singleTop"
+            android:screenOrientation="unspecified"
+            android:showWhenLocked="true"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="-- %%INSERT_APP_LIB_NAME%% --" />
+            <meta-data
                 android:name="android.app.arguments"
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
         </activity>
