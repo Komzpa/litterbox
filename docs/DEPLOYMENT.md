@@ -80,6 +80,19 @@ Android navigation loads every page from `qrc:/qt/qml/litterbox/qml/pages/`.
 can still override `LB_PAGES`. CMake embeds the Android pages and sibling components
 as raw resources, and excludes the desktop-only WebEngine body on Android.
 
+Android HTTPS requires packaged OpenSSL 3 runtimes for the target ABI
+(`arm64-v8a` for this phone), not host Linux libraries. Pass both absolute paths
+as one quoted CMake list when configuring the Android build:
+
+```sh
+-DQT_ANDROID_EXTRA_LIBS="/absolute/path/arm64-v8a/libssl_3.so;/absolute/path/arm64-v8a/libcrypto_3.so"
+```
+
+CMake forwards this list to the application's `QT_ANDROID_EXTRA_LIBS` target
+property so Qt's Android packaging includes both runtimes in the APK. Without
+them, Qt's OpenSSL TLS backend reports `Failed to load libssl/libcrypto` and HTTPS
+cannot proceed. Never disable TLS or certificate verification to bypass this.
+
 Before installing an Android candidate, run
 `python3 qt/tests/check_android_pages_apk.py CANDIDATE.apk qt/pages` from its own
 source checkout/export. This rejects build-host page paths and verifies the

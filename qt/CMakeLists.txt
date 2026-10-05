@@ -37,6 +37,9 @@ if(NOT ANDROID)
     target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 endif()
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
+if(ANDROID AND QT_ANDROID_EXTRA_LIBS)
+    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_EXTRA_LIBS "${QT_ANDROID_EXTRA_LIBS}")
+endif()
 # Compiled-in default server URL. Android has no LB_SERVER environment, so
 # the phone uses this until enrollment saves a server_url to QSettings.
 # R17: the repo default stays empty (a LAN address is a deployment detail);
