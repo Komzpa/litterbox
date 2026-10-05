@@ -21,7 +21,7 @@ def resource_payloads(data):
                 yield payload
         except zlib.error:
             pass
-    positions = list(re.finditer(b"\x28\xb5\x2f\xfd", data))
+    positions = list(re.finditer(re.escape(b"\x28\xb5\x2f\xfd"), data))
     if not positions:
         return
     library = ctypes.util.find_library("zstd")
@@ -34,8 +34,14 @@ def resource_payloads(data):
     zstd.ZSTD_decompress.restype = ctypes.c_size_t
     zstd.ZSTD_isError.argtypes = [ctypes.c_size_t]
     zstd.ZSTD_isError.restype = ctypes.c_uint
+    zstd.ZSTD_findFrameCompressedSize.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    zstd.ZSTD_findFrameCompressedSize.restype = ctypes.c_size_t
     for match in positions:
         source = data[match.start():]
+        compressed_size = zstd.ZSTD_findFrameCompressedSize(source, len(source))
+        if zstd.ZSTD_isError(compressed_size):
+            continue
+        source = source[:compressed_size]
         size = zstd.ZSTD_getFrameContentSize(source, len(source))
         if not 0 < size <= 2 * 1024 * 1024:
             continue
