@@ -33,7 +33,9 @@ if(NOT ANDROID)
         src/updatewatcher.h src/updatewatcher.cpp)
     target_link_libraries(litterbox-qt PRIVATE Qt6::WebEngineQuick)
 endif()
-target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
+if(NOT ANDROID)
+    target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
+endif()
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
 # Compiled-in default server URL. Android has no LB_SERVER environment, so
 # the phone uses this until enrollment saves a server_url to QSettings.
@@ -42,11 +44,8 @@ set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE
 set(LB_DEFAULT_SERVER_URL "" CACHE STRING "Compiled-in default Litterbox server URL")
 target_compile_definitions(litterbox-qt PRIVATE LB_DEFAULT_SERVER_URL="${LB_DEFAULT_SERVER_URL}")
 
-# Page content under qt/pages is owned by the QML slice; the shell only loads
-# it when present. Embed the same files as raw resources as well: on Android
-# the compile-time LB_SOURCE_PAGES_DIR path does not exist, so the app falls
-# back to this qrc prefix there. Raw resources, not QML_FILES, so page code
-# stays owned by its slice (no type registration or lint of it here).
+# Pages use raw resources so relative sibling imports work unchanged. Android
+# always loads this prefix; desktop retains its source-page override for development.
 qt_add_resources(litterbox-qt "lb_pages"
     PREFIX "/qt/qml/litterbox/qml"
     FILES

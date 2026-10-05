@@ -52,6 +52,17 @@ Kirigami.ScrollablePage {
 
     title: qsTr("Connect to Server")
 
+    function saveServer() {
+        errorText = ""
+        if (!serverUrlValid) {
+            errorText = qsTr("Enter a valid HTTP or HTTPS server URL.")
+            return false
+        }
+        // Only change the persisted endpoint; keep the enrolled bearer token.
+        api.baseUrl = serverField.text.trim()
+        return true
+    }
+
     function enroll() {
         errorText = ""
         const server = serverField.text.trim()
@@ -182,6 +193,15 @@ Kirigami.ScrollablePage {
             color: Kirigami.Theme.negativeTextColor
             wrapMode: Text.Wrap
             Kirigami.FormData.isSection: true
+        }
+
+        QQC2.Button {
+            objectName: "saveServerButton"
+            text: qsTr("Save server")
+            enabled: !root.busy && root.serverUrlValid
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+            Layout.fillWidth: true
+            onClicked: root.saveServer()
         }
 
         QQC2.Button {

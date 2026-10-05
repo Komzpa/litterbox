@@ -72,3 +72,22 @@ LOCAL_PORT=8080
 ```
 
 Provision the VPS account with key-only auth and a forced reverse-forward policy bound to loopback; firewall its listener and expose it only through an authenticated TLS reverse proxy. Configure that public proxy to limit each client IP to 60 requests per minute: the reverse tunnel hides the original client address from the home server, whose middleware can only apply the same limit to its observed remote address. Install and enable the instance after configuring pinned host keys: `systemctl enable --now litterbox-reverse-ssh@prod.service`. Values and VPS are intentionally placeholders; this repository does not open firewall ports or create remote accounts.
+
+## Android page packaging
+
+Android navigation loads every page from `qrc:/qt/qml/litterbox/qml/pages/`.
+`LB_PAGES` and the build-host source path are desktop-only; desktop development
+can still override `LB_PAGES`. CMake embeds the Android pages and sibling components
+as raw resources, and excludes the desktop-only WebEngine body on Android.
+
+Before installing an Android candidate, run
+`python3 qt/tests/check_android_pages_apk.py CANDIDATE.apk qt/pages` from its own
+source checkout/export. This rejects build-host page paths and verifies the
+resource names and exact QML payloads in the packaged application library.
+Build out of tree, sign with the installed app's key, and use only `adb install -r`
+to preserve settings and enrollment. Never uninstall or clear app data.
+
+In **Connect to Server**, **Save server** persists the URL while retaining the
+existing device token; it never submits an enrollment request. Use **Enroll**
+only for a device that actually needs a new enrollment. If switching a saved
+endpoint while offline, reopening the app uses that endpoint immediately.

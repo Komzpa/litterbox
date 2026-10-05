@@ -432,13 +432,11 @@ int main(int argc, char *argv[])
 
     // Pages are owned by the QML slice; load their entrypoint if present.
 #ifdef Q_OS_ANDROID
-    // The desktop LB_SOURCE_PAGES_DIR path does not exist on device; the
-    // same page files are embedded as raw qrc resources by CMake (lb_pages).
-    const QString defaultPagesDir = QStringLiteral("qrc:/qt/qml/litterbox/qml/pages");
+    // Android pages must never resolve to a build-host file URL.
+    const QString pages = QStringLiteral("qrc:/qt/qml/litterbox/qml/pages");
 #else
-    const QString defaultPagesDir = QStringLiteral(LB_SOURCE_PAGES_DIR);
+    const QString pages = qEnvironmentVariable("LB_PAGES", QStringLiteral(LB_SOURCE_PAGES_DIR));
 #endif
-    const QString pages = qEnvironmentVariable("LB_PAGES", defaultPagesDir);
     const bool qrcPages = pages.startsWith(QStringLiteral("qrc:/"));
     engine.rootContext()->setContextProperty(QStringLiteral("pagesDir"),
         qrcPages ? QUrl(pages + QStringLiteral("/")) : QUrl::fromLocalFile(pages + QStringLiteral("/")));

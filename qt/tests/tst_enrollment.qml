@@ -11,6 +11,26 @@ TestCase {
     when: windowShown
     Component { id: pageComponent; Pages.EnrollmentPage {} }
 
+    function test_saveServerPreservesEnrollmentWithoutPost() {
+        var posted = false
+        var api = { baseUrl: "http://home.example:8081", token: "existing-token",
+                    post: function () { posted = true } }
+        var page = createTemporaryObject(pageComponent, this, {api: api})
+        verify(page)
+        var button = findChild(page, "saveServerButton")
+        verify(button, "missing token-preserving Save server action")
+        findChild(page, "serverField").text = " https://komzpa.net:9443 "
+        verify(page.saveServer())
+        compare(page.api.baseUrl, "https://komzpa.net:9443")
+        compare(page.api.token, "existing-token")
+        verify(!posted, "saving a URL must never enroll or POST")
+        findChild(page, "serverField").text = "not a url"
+        verify(!page.saveServer())
+        compare(page.api.baseUrl, "https://komzpa.net:9443")
+        compare(page.api.token, "existing-token")
+        verify(!posted)
+    }
+
     function test_enrollAndEmitToken() {
         var call = null
         var api = { baseUrl: "http://compiled-default:8081", token: "", post: function (path, body, cb) {
