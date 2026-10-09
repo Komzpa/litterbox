@@ -726,14 +726,17 @@ ApplicationWindow {
                         }
                         contentItem: ColumnLayout {
                             spacing: 0
-                            RowLayout {
+                            GridLayout {
                                 visible: cardRow.bundleLeader
                                 Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
+                                columnSpacing: Kirigami.Units.smallSpacing
+                                rowSpacing: Kirigami.Units.smallSpacing
+                                columns: 3
                                 Button {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
                                     Layout.fillWidth: true
+                                    Layout.columnSpan: window.width < 640 ? 3 : 1
                                     Layout.minimumWidth: 48
                                     implicitHeight: Math.max(48, contentItem.implicitHeight + 12)
                                     padding: 6
@@ -749,19 +752,23 @@ ApplicationWindow {
                                     }
                                     contentItem: ColumnLayout {
                                         spacing: Kirigami.Units.smallSpacing
-                                        RowLayout {
+                                        GridLayout {
                                             Layout.fillWidth: true
-                                            spacing: Kirigami.Units.smallSpacing
+                                            columnSpacing: Kirigami.Units.smallSpacing
+                                            rowSpacing: Kirigami.Units.smallSpacing
+                                            columns: window.width < 640 ? 2 : 4
                                             Kirigami.Icon { source: bundleToggle.icon.name; color: window.ink; isMask: true; implicitWidth: Kirigami.Units.iconSizes.smallMedium; implicitHeight: implicitWidth }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.width < 640 ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.width < 640 ? Infinity : implicitWidth }
                                             Rectangle {
+                                                Layout.row: window.width < 640 ? 1 : 0
+                                                Layout.column: window.width < 640 ? 1 : 2
                                                 implicitWidth: countLabel.implicitWidth + 16
                                                 implicitHeight: countLabel.implicitHeight + 8
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
                                                 Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
                                             }
-                                            Item { Layout.fillWidth: true }
+                                            Item { visible: window.width >= 640; Layout.fillWidth: true }
                                         }
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
@@ -802,6 +809,7 @@ ApplicationWindow {
                                     Keys.onLeftPressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
+                                Item { visible: window.width < 640; Layout.fillWidth: true }
                                 Button {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
