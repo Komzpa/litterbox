@@ -91,6 +91,41 @@ TestCase {
         verify(!expandedLatest.visible, "Expanded cards show their subjects instead of the collapsed preview")
         inbox.close()
     }
+    function test_receiptTitleUsesNarrowCardWidth() {
+        const bundle = "topic:receipts"
+        const titleText = "Your receipt from NOVA SCENT PRIVATE LIMITED #2547-5714"
+        verify(store.applyRemoteCards({now: [
+            card("receipt-leader", bundle, "now", {bundle_title: titleText}),
+            card("receipt-member", bundle, "now", {bundle_title: titleText})
+        ], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        function checkGeometry() {
+            const row = list.itemAtIndex(0)
+            const frame = findChild(row, "inboxCard")
+            const title = findChild(row, "bundleTitleLabel-receipt-leader")
+            const badge = findChild(row, "bundleMemberCount-receipt-leader").parent
+            verify(title.width >= frame.width * 0.6, "At 412 px the title must use at least 60% of the card width")
+            compare(title.wrapMode, Text.WordWrap, "Narrow titles must never wrap mid-word")
+            const titleTop = title.mapToItem(frame, 0, 0)
+            const badgeTop = badge.mapToItem(frame, 0, 0)
+            verify(badgeTop.y >= titleTop.y + title.height || badgeTop.y + badge.height <= titleTop.y
+                || badgeTop.x >= titleTop.x + title.width || badgeTop.x + badge.width <= titleTop.x,
+                "The count badge must not overlap the title")
+        }
+        wait(100)
+        checkGeometry()
+        inbox.toggleBundle(bundle)
+        tryCompare(inbox.expandedBundles, bundle, true)
+        wait(100)
+        list.forceLayout()
+        checkGeometry()
+        inbox.close()
+    }
     function test_nonAdjacentMembersExpandUnderLeader_data() {
         return [{tag: "1440", width: 1440, height: 1000}, {tag: "598", width: 598, height: 1200}, {tag: "520", width: 520, height: 900}]
     }
