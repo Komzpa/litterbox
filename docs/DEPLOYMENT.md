@@ -12,6 +12,13 @@ DATABASE_URL='postgresql://litterbox_app:...@127.0.0.1:5435/litterbox?sslmode=pr
 
 The unit passes no `-dev-tenant-id` and no `LITTERBOX_DEV_TENANT_ID`, so every `/v1` route requires a valid bearer token and unauthenticated requests fail closed with `401`; `GET /healthz` and `GET /v1/version` remain unauthenticated. The server listens on `127.0.0.1:8081` (loopback only), distinct from the development server's `8080`, and never binds a public address. Verify with `systemctl is-active litterbox-server.service`, the installed executable's SHA-256, `GET /healthz` returning `200`, and an unauthenticated `/v1/cards` returning `401`.
 
+Release binaries support a source stamp through the existing `main.buildSHA`
+variable. Build from the committed release checkout with
+`go build -ldflags="-X main.buildSHA=$(git rev-parse HEAD)" -o <binary> ./cmd/litterbox`
+in `server/`, then pass that exact binary and release version to
+`deploy/server/debian/build.sh`. Read back `GET /v1/version` after cutover:
+`server_build` must equal the recorded release commit, not `unknown`.
+
 GitHub notifications are routed by repository and reaction before semantic clustering; the semantic pass must process only the remaining non-GitHub cards, even when Ollama is healthy. On the first Gmail synchronization pass after startup (and idempotently on subsequent account polls), `SyncAccount` calls `bundles.ReassignGitHub` inside its tenant-scoped transaction before any Gmail network access. This reuses the ingestion router and take-out exclusions to repair legacy sender-bundled notifications, including archived, done, and snoozed cards, without changing their state or requiring manual SQL or embeddings. Unchanged memberships write no card changes. This repair requires the existing Gmail sync worker to be configured and the tenant to have a connected account; restart the packaged server normally, then verify card membership keys and preserved states through the application or a read-only tenant-scoped query.
 
 LinkedIn topic isolation is repaired by the ordinary `AfterIngest`/`Cluster` pass over open mail cards on the next successful Gmail thread save (or another existing ingest trigger), not by the GitHub-only startup repair. That pass replaces existing memberships and clears unmatched cards; no one-off SQL migration is needed for an open wrong bundle. Empty historical bundle rows may remain, but without member cards they do not group anything. Embedding failure also detaches non-structured open mail rather than sender-bundling it. Archived/done/snoozed non-GitHub cards are outside this pass and are reconsidered when reopened; restarting with no subsequent ingestion alone does not run this repair.

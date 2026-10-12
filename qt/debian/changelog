@@ -1,3 +1,12 @@
+litterbox-qt (0.1-23) unstable; urgency=medium
+
+  * Add durable mail and bundle spam actions with Undo.
+  * Keep unrelated LinkedIn topics out of shared sender bundles.
+  * Explain Gmail reconnect failures with the affected account address.
+  * Wrap narrow bundle titles without obscuring actions.
+
+ -- Litterbox <litterbox@example.com>  Mon, 12 Oct 2026 14:40:00 +0400
+
 litterbox-qt (0.1-22) unstable; urgency=medium
 
   * Keep acknowledged archives out of the inbox across stale snapshots.
