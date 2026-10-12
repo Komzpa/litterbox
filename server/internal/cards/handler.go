@@ -165,6 +165,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal server error", 500)
 			return
 		}
+		c.Snippet = cleanSnippet(c.Snippet, c.SenderName)
 		if at.Valid {
 			v := at.Time.In(loc)
 			c.At = &v
