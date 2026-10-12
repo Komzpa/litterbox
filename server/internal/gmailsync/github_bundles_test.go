@@ -98,9 +98,6 @@ func TestGitHubMailSyncKeepsRepositoryBundle(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantPlain := ""
-			if !embeddingWorks {
-				wantPlain = "sender:jane@example.test"
-			}
 			if plainKey != wantPlain {
 				t.Fatalf("non-GitHub control key=%q, want %q", plainKey, wantPlain)
 			}
