@@ -77,6 +77,10 @@ ApplicationWindow {
         const name = String(card.sender_name || "").trim()
         return name || String(card.sender_address || "").trim()
     }
+    function mailPreview(card) {
+        const preview = String(card.snippet || card.summary || "").replace(/\s+/g, " ").trim()
+        return preview === mailSender(card) || /^[.…\s]*$/.test(preview) ? "" : preview
+    }
     function mailArrival(card) {
         if (!card.received_at) return ""
         const arrived = new Date(card.received_at)
@@ -642,7 +646,7 @@ ApplicationWindow {
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
                     readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], important: 0, unpinned: 0, lastId: cardId}
                     readonly property bool lastMember: bundleSummary.lastId === cardId
-                    readonly property real bundleTextInset: bundleToggle.leftPadding + Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                    readonly property real bundleTextInset: Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
                     function unregisterControls() {
@@ -732,17 +736,22 @@ ApplicationWindow {
                             GridLayout {
                                 visible: cardRow.bundleLeader
                                 Layout.fillWidth: true
+                                Layout.minimumHeight: window.width >= 640 ? 84 : 0
                                 columnSpacing: Kirigami.Units.smallSpacing
                                 rowSpacing: Kirigami.Units.smallSpacing
-                                columns: 3
+                                columns: 2
                                 Button {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
                                     Layout.fillWidth: true
-                                    Layout.columnSpan: window.width < 640 ? 3 : 1
+                                    Layout.columnSpan: window.width < 640 ? 2 : 1
                                     Layout.minimumWidth: 48
-                                    implicitHeight: Math.max(48, contentItem.implicitHeight + 12)
-                                    padding: 6
+                                    implicitHeight: Math.max(48, contentItem.implicitHeight)
+                                    padding: 0
+                                    leftPadding: 0
+                                    rightPadding: 0
+                                    topPadding: 0
+                                    bottomPadding: 0
                                     focusPolicy: Qt.StrongFocus
                                     text: window.bundleTitle(card)
                                     icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
@@ -755,12 +764,25 @@ ApplicationWindow {
                                     }
                                     contentItem: ColumnLayout {
                                         spacing: Kirigami.Units.smallSpacing
+                                        Label {
+                                            objectName: "bundleAccountLabel-" + cardId
+                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            Layout.fillWidth: true
+                                            leftPadding: cardRow.bundleTextInset
+                                            wrapMode: Text.Wrap
+                                        }
                                         GridLayout {
                                             Layout.fillWidth: true
                                             columnSpacing: Kirigami.Units.smallSpacing
                                             rowSpacing: Kirigami.Units.smallSpacing
                                             columns: window.width < 640 ? 2 : 4
-                                            Kirigami.Icon { source: bundleToggle.icon.name; color: window.ink; isMask: true; implicitWidth: Kirigami.Units.iconSizes.smallMedium; implicitHeight: implicitWidth }
+                                            Item {
+                                                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                                implicitHeight: Kirigami.Units.iconSizes.smallMedium
+                                                Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
+                                            }
                                             Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.width < 640 ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.width < 640 ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: window.width < 640 ? 1 : 0
@@ -774,22 +796,13 @@ ApplicationWindow {
                                             Item { visible: window.width >= 640; Layout.fillWidth: true }
                                         }
                                         Label {
-                                            objectName: "bundleAccountLabel-" + cardId
-                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
-                                            color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
-                                            Layout.fillWidth: true
-                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
-                                            wrapMode: Text.Wrap
-                                        }
-                                        Label {
                                             objectName: "bundleLatestLabel-" + cardId
-                                            text: qsTr("Latest: %1").arg(title) + (window.mailArrival(card) ? " · " + window.mailArrival(card) : "")
+                                            text: qsTr("Latest: %1").arg(title)
                                             visible: !cardRow.bundleExpanded
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
-                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                                            leftPadding: cardRow.bundleTextInset
                                             wrapMode: Text.Wrap
                                         }
                                         Label {
@@ -801,7 +814,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
-                                            leftPadding: Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                                            leftPadding: cardRow.bundleTextInset
                                             wrapMode: Text.Wrap
                                         }
                                     }
@@ -812,17 +825,33 @@ ApplicationWindow {
                                     Keys.onLeftPressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
-                                Item { visible: window.width < 640; Layout.fillWidth: true }
+                                ColumnLayout {
+                                    Layout.preferredWidth: window.width >= 640 ? 230 : -1
+                                    Layout.minimumWidth: window.width >= 640 ? 230 : 0
+                                    Layout.maximumWidth: window.width >= 640 ? 230 : Infinity
+                                    spacing: Kirigami.Units.smallSpacing
+                                    Label {
+                                        objectName: "bundleDate-" + cardId
+                                        text: window.mailArrival(card)
+                                        visible: text.length > 0
+                                        color: window.mutedInk
+                                        font: Kirigami.Theme.defaultFont
+                                        Layout.fillWidth: true
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                    RowLayout {
+                                        Layout.alignment: Qt.AlignRight
+                                        spacing: Kirigami.Units.smallSpacing
                                 Button {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
                                     text: qsTr("Archive bundle")
                                     icon.name: "mail-mark-read-symbolic"
                                     icon.color: window.ink
-                                    display: window.width < 640 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                                    Layout.minimumWidth: 48
-                                    Layout.preferredWidth: window.width < 640 ? 48 : -1
-                                    Layout.maximumWidth: window.width < 640 ? 48 : -1
+                                    display: AbstractButton.IconOnly
+                                    Layout.minimumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.preferredWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.maximumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
                                     Accessible.description: qsTr("Archives all %1 unpinned %2; pinned cards stay open").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.unpinned === 1 ? qsTr("email") : qsTr("emails"))
@@ -869,12 +898,15 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                    }
+                                }
                             }
                             Rectangle { id: bundleDivider; Layout.fillWidth: true; implicitHeight: 1; color: "#e0e9e6"; visible: cardRow.bundleLeader && cardRow.bundleExpanded }
                             RowLayout {
                                 Layout.leftMargin: cardRow.bundled ? cardRow.bundleTextInset : 0
                                 visible: !cardRow.bundleLeader || cardRow.bundleExpanded
                                 Layout.fillWidth: true
+                                Layout.minimumHeight: window.width >= 640 ? 84 : 0
                                 Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
                                 spacing: Kirigami.Units.smallSpacing
                                 ToolButton {
@@ -944,15 +976,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             elide: Text.ElideRight
-                                            Layout.fillWidth: true
                                             Layout.minimumWidth: 0
-                                        }
-                                        Label {
-                                            objectName: "mailDate-" + cardId
-                                            text: window.mailArrival(card)
-                                            visible: text.length > 0
-                                            color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
                                         }
                                         Label {
                                             objectName: "mailAccount-" + cardId
@@ -973,6 +997,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                     }
                                     Kirigami.Heading {
+                                        objectName: "mailTitle-" + cardId
                                         text: title
                                         color: window.ink
                                         level: 4
@@ -981,18 +1006,36 @@ ApplicationWindow {
                                     }
                                     Label {
                                         objectName: "mailSnippet-" + cardId
-                                        text: card.source === "mail" ? (card.snippet || card.summary || "") : (card.summary || "")
+                                        text: card.source === "mail" ? window.mailPreview(card) : (card.summary || "")
                                         visible: text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
-                                        wrapMode: Text.Wrap
-                                        maximumLineCount: 2
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.NoWrap
+                                        maximumLineCount: 1
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
+                                ColumnLayout {
+                                    Layout.preferredWidth: window.width >= 640 ? 230 : -1
+                                    Layout.minimumWidth: window.width >= 640 ? 230 : 0
+                                    Layout.maximumWidth: window.width >= 640 ? 230 : Infinity
+                                    spacing: Kirigami.Units.smallSpacing
+                                    Label {
+                                        objectName: "mailDate-" + cardId
+                                        text: window.mailArrival(card)
+                                        visible: card.source === "mail" && text.length > 0
+                                        color: window.mutedInk
+                                        font: Kirigami.Theme.defaultFont
+                                        Layout.fillWidth: true
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                    RowLayout {
+                                        Layout.alignment: Qt.AlignRight
+                                        spacing: Kirigami.Units.smallSpacing
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
                                     text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
@@ -1037,6 +1080,8 @@ ApplicationWindow {
                                         },
                                         requestArchiveUndo: function(opId, action) { window.showArchiveUndo(opId, action) }
                                     })
+                                }
+                                    }
                                 }
                             }
                         }
