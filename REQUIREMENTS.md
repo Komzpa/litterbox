@@ -35,9 +35,20 @@ Each requirement is **decided** or **open** and names its source.
 
 ## Mail
 
-- **R7 Archive goes to Gmail** (decided, owner 2026-09-27). Archiving a mail
-  card or a whole bundle archives those messages in the Gmail account they
-  came from. A user can connect several Gmail accounts.
+- **R7 Archive and spam go to Gmail** (decided, owner 2026-09-27;
+  spam added 2026-10-12). Archiving a mail card or a whole bundle archives
+  its threads in their originating Gmail accounts. Mark as spam uses the
+  same operation path and thread targets, adding SPAM and removing INBOX
+  with the existing gmail.modify scope. Bundle actions skip pinned cards.
+  Success leaves cards archived across refresh, history polling and full
+  reconciliation and publishes the existing card changes to other devices;
+  Gmail failure rejects the operation and rolls back local card state.
+  Replaying the same operation ID makes no second Gmail call; a new ID may
+  harmlessly repeat the label change. Before transmission, cancelling the
+  client's queued operation makes no Gmail call. A user can connect several
+  Gmail accounts. Oracle: isolated fake-Gmail server tests exercise success,
+  failure, replay, bundle members, tenant isolation and both resync paths;
+  the Qt lane separately proves enqueue/Undo/flush and menu availability.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.
 - **R18 Gmail app published unverified** (decided, owner 2026-09-27).
@@ -90,20 +101,21 @@ Each requirement is **decided** or **open** and names its source.
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
   open card with its content, not only titles. Reading needs no network.
-- **R10 Offline actions** (decided, owner 2026-09-27). Archive, bundle
-  archive, snooze, pin, done and writing journal notes work with no network.
-  They apply locally at once and sync when the connection returns. Gmail
-  changes for archive and snooze (R7, R20), and star changes for pin (R21),
-  run then; other source actions run on sync through R12.
+- **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12).
+  Archive, bundle archive, mark as spam, snooze, pin, done and writing journal
+  notes work with no network. They apply locally at once and sync when the
+  connection returns. Gmail changes for archive, spam and snooze (R7, R20),
+  and star changes for pin (R21), run then; other source actions run on sync
+  through R12.
   A rejected action never holds back later queued actions; it is shown as failed on its card.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not
   break in the elevator"). Losing the network mid-use never blocks the
   interface or shows an error screen.
-- **R29 Live propagation across clients** (decided, owner 2026-09-28).
-  While online, an action on one client — archive, bundle archive, snooze,
-  pin, done, take out of a bundle, or a new card arriving — shows on every
-  other open client live, without refresh or reopen, within 2 s (owner
-  accepted 2026-09-28).
+- **R29 Live propagation across clients** (decided, owner 2026-09-28;
+  spam added 2026-10-12). While online, an action on one client — archive,
+  bundle archive, mark as spam, snooze, pin, done, take out of a bundle, or a
+  new card arriving — shows on every other open client live, without refresh
+  or reopen, within 2 s (owner accepted 2026-09-28).
 
 ## Sources
 

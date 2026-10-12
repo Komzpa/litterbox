@@ -56,21 +56,31 @@ func init() {
 		}
 		return ingest.OnDone(ctx, tx, tenant, card)
 	})
-	Register("archive", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
-		var source string
-		if err := tx.QueryRow(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2 RETURNING source`, tenant, card).Scan(&source); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return fmt.Errorf("card not found")
-			}
-			return err
-		}
-		if source == "mail" {
-			if err := CallIfRegistered(ctx, tx, tenant, card, "gmail.archive", args); err != nil {
+	for _, kind := range []string{"archive", "spam"} {
+		Register(kind, func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
+			var source string
+			if err := tx.QueryRow(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2 RETURNING source`, tenant, card).Scan(&source); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return fmt.Errorf("card not found")
+				}
 				return err
 			}
-		}
-		return ingest.OnDone(ctx, tx, tenant, card)
-	})
+			if kind == "spam" && source != "mail" {
+				return fmt.Errorf("spam requires a mail card")
+			}
+			if source == "mail" {
+				if kind == "spam" {
+					if _, ok := Lookup("gmail.spam"); !ok {
+						return fmt.Errorf("Gmail connector unavailable")
+					}
+				}
+				if err := CallIfRegistered(ctx, tx, tenant, card, "gmail."+kind, args); err != nil {
+					return err
+				}
+			}
+			return ingest.OnDone(ctx, tx, tenant, card)
+		})
+	}
 	Register("note", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
 		var v struct {
 			Note string `json:"note"`
@@ -156,32 +166,31 @@ func init() {
 		_, err := tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,external_id,title,summary,state) VALUES($1,$2,NULL,NULL,$3,$4,$5,$6,'open')`, tenant, card, source, card.String(), in.Title, in.Summary)
 		return err
 	})
-	Register("bundle_archive", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
-		ids, err := bundleOpenUnpinnedIDs(ctx, tx, tenant, args)
-		if err != nil {
-			return err
-		}
-		if len(ids) == 0 {
-			// The bundle may have dissolved between the client's snapshot
-			// and this op (recluster reassigns bundle_id). Archive the
-			// cards the client named instead of failing with 422.
-			ids, err = bundleFallbackIDs(ctx, tx, tenant, card, args)
+	for _, kind := range []string{"archive", "spam"} {
+		Register("bundle_"+kind, func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
+			ids, err := bundleOpenUnpinnedIDs(ctx, tx, tenant, args)
 			if err != nil {
 				return err
 			}
-		}
-		if len(ids) == 0 {
-			return fmt.Errorf("bundle has no open unpinned cards")
-		}
-		// Reroute through the per-card archive op so every member leaves
-		// Gmail's INBOX exactly like a single-card archive.
-		for _, id := range ids {
-			if err := CallIfRegistered(ctx, tx, tenant, id, "archive", args); err != nil {
-				return err
+			if len(ids) == 0 {
+				// A dissolved bundle still targets the client's named cards.
+				ids, err = bundleFallbackIDs(ctx, tx, tenant, card, args)
+				if err != nil {
+					return err
+				}
 			}
-		}
-		return nil
-	})
+			if len(ids) == 0 {
+				return fmt.Errorf("bundle has no open unpinned cards")
+			}
+			// Every member uses the same per-card action and originating account.
+			for _, id := range ids {
+				if err := CallIfRegistered(ctx, tx, tenant, id, kind, args); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
 	Register("bundle_done", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		if err := enqueueBundleDone(ctx, tx, tenant, args); err != nil {
 			return err
