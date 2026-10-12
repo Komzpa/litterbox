@@ -38,7 +38,16 @@ type Syncer struct {
 	Build string
 }
 
-func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
+func (s *Syncer) SyncAccount(ctx context.Context, a Account) (err error) {
+	defer func() {
+		if !errors.Is(err, ErrInvalidGrant) { return }
+		health, e := s.beginTenant(ctx, a.TenantID)
+		if e != nil { err = errors.Join(err, e); return }
+		defer health.Rollback(ctx)
+		_, e = health.Exec(ctx, `UPDATE accounts SET status='reauth_required' WHERE tenant_id=$1 AND id=$2`, a.TenantID, a.ID)
+		if e == nil { e = health.Commit(ctx) }
+		err = errors.Join(err, e)
+	}()
 	c := s.Client(a)
 	var cursor, pageToken, initialHistory string
 	var initialStarted bool
