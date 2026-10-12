@@ -38,6 +38,7 @@ Each requirement is **decided** or **open** and names its source.
 - **R7 Archive goes to Gmail** (decided, owner 2026-09-27). Archiving a mail
   card or a whole bundle archives those messages in the Gmail account they
   came from. A user can connect several Gmail accounts.
+- **R47 Qt mark as spam** (decided, owner 2026-10-12). Each mail card's More actions menu places **Mark as spam · <account address>** directly after Archive in Gmail, with a named icon, accessible name and a 48px minimum row. The bundle details menu offers the matching spam action for open, unpinned members. The existing durable outbox queues `spam` or `bundle_spam`, removes the selected cards immediately, and shows Undo. Undo before transmission cancels the queued operation and sends no HTTP request; HTTP 422 restores the cards and shows an error. Repeating the same spam click before acknowledgement queues only one operation per card. Oracle: `cardstore` spam tests and `markspam` real-store UI tests, plus open-menu screenshots at 1440×900 and 412×915; all network proofs use disposable local transport, never real Gmail.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.
 - **R18 Gmail app published unverified** (decided, owner 2026-09-27).

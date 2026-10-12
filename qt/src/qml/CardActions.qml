@@ -25,7 +25,7 @@ Controls.ToolButton {
     signal openRequested()
     signal readCachedRequested()
     // Navigation follows the optimistic mutation, never its HTTP acknowledgement.
-    signal cardHandled(string operation)
+    signal cardHandled(string operation, string action)
     readonly property string primaryName: source === "mail" ? qsTr("Archive in Gmail%1").arg(accountName ? " · " + accountName : "") : source === "journal" ? qsTr("Archive private note") : source === "home_assistant" ? qsTr("Dismiss Home Assistant notification") : qsTr("Done · dismiss in Litterbox only")
     function primaryAction() {
         const archive = source === "mail" || source === "journal"
@@ -183,6 +183,30 @@ Controls.ToolButton {
                 Controls.ToolTip.text: text
                 Controls.ToolTip.visible: hovered
                 onClicked: { actionSheet.close(); root.primaryAction() }
+            }
+            Controls.ItemDelegate {
+                objectName: "actionRow-spam-" + root.cardKey
+                text: qsTr("Mark as spam%1").arg(root.accountName ? " · " + root.accountName : "")
+                Accessible.name: text
+                icon.name: "mail-mark-junk"
+                icon.width: Kirigami.Units.iconSizes.smallMedium
+                icon.height: Kirigami.Units.iconSizes.smallMedium
+                icon.color: root.actionInk
+                visible: root.source === "mail"
+                Layout.fillWidth: true
+                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                Material.foreground: root.actionInk
+                palette.text: root.actionInk
+                palette.buttonText: root.actionInk
+                background: Rectangle { color: down ? "#e8eeed" : hovered ? "#eef3f2" : root.actionSurface }
+                contentItem: RowLayout { spacing: Kirigami.Units.smallSpacing; Kirigami.Icon { source: parent.parent.icon.name; isMask: true; color: root.actionInk; implicitWidth: parent.parent.icon.width; implicitHeight: parent.parent.icon.height } Controls.Label { text: parent.parent.text; color: root.actionInk; Layout.fillWidth: true; elide: Text.ElideRight } }
+                Controls.ToolTip.text: text
+                Controls.ToolTip.visible: hovered
+                onClicked: {
+                    actionSheet.close()
+                    const operation = root.store.enqueueOp(root.cardKey, "spam", {})
+                    if (operation) root.cardHandled(operation, "spam")
+                }
             }
             Controls.ItemDelegate {
                 objectName: "actionRow-open-" + root.cardKey

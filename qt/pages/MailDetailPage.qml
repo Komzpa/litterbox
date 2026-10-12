@@ -193,9 +193,9 @@ Kirigami.Page {
                 onOpenRequested: root.openInGmail()
                 onReadCachedRequested: root.reload()
                 onNoteRequested: { if (root.requestNote) root.requestNote(root.cardId, root.card.note || "") }
-                onCardHandled: function(operation) {
+                onCardHandled: function(operation, action) {
                     root.QQC2.StackView.view.pop()
-                    if (operation && root.requestArchiveUndo) root.requestArchiveUndo(operation)
+                    if (operation && root.requestArchiveUndo) root.requestArchiveUndo(operation, action)
                 }
             }
         }

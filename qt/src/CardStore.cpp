@@ -511,9 +511,16 @@ bool CardStore::createCard(const QString &title, const QString &summary, const Q
 }
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_open || QUuid(cardId).isNull()) return {};
-    static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
-        QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
+    static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
+        QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_spam"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
+    if (type == QStringLiteral("spam") || type == QStringLiteral("bundle_spam")) {
+        for (const QVariantMap &op : m_outbox)
+            if (op.value(QStringLiteral("card_id")).toString() == cardId &&
+                op.value(QStringLiteral("type")).toString() == type &&
+                op.value(QStringLiteral("args")).toMap() == args)
+                return op.value(QStringLiteral("op_id")).toString();
+    }
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QVariantMap payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
         {QStringLiteral("type"), type}, {QStringLiteral("args"), args}};
@@ -524,13 +531,13 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         return card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
     };
     bool changed = false;
-    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("snooze")) {
+    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze")) {
         const auto oldSize = cards.size();
         cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
             return card.value(QStringLiteral("id")).toString() == cardId;
         }), cards.end());
         changed = cards.size() != oldSize;
-    } else if (type == QStringLiteral("bundle_archive") || type == QStringLiteral("bundle_done")) {
+    } else if (type == QStringLiteral("bundle_archive") || type == QStringLiteral("bundle_spam") || type == QStringLiteral("bundle_done")) {
         const QString bundle = args.value(QStringLiteral("bundle_id")).toString();
         if (!bundle.isEmpty()) {
             const auto oldSize = cards.size();

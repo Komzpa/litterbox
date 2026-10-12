@@ -99,6 +99,53 @@ public:
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void spamUndoRepeatAndRejection() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("spam.sqlite")));
+        const QVariantMap card{{"id", cardId}, {"source", "mail"}, {"state", "open"}};
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        ScriptedTransport transport({422});
+        store.setTransport(&transport);
+        const QString op = store.enqueueOp(cardId, "spam");
+        QVERIFY(!op.isEmpty());
+        QCOMPARE(store.rowCount(), 0);
+        QCOMPARE(store.enqueueOp(cardId, "spam"), op);
+        QCOMPARE(store.pendingOps(), 1);
+        store.undoQueuedOp(op);
+        QCOMPARE(store.rowCount(), 1);
+        QCOMPARE(store.pendingOps(), 0);
+        store.setOnline(true);
+        QTest::qWait(100);
+        QCOMPARE(transport.posted.size(), 0);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        QVERIFY(!store.enqueueOp(cardId, "spam").isEmpty());
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(1).toInt(), 422);
+        QCOMPARE(store.rowCount(), 1);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(transport.posted.size(), 1);
+        QCOMPARE(transport.posted.first().value("type").toString(), QStringLiteral("spam"));
+    }
+    void bundleSpamSkipsPinnedAndUndoRestores() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("bundle-spam.sqlite")));
+        const QString pin = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"source", "mail"}, {"state", "open"}, {"bundle_id", "bundle"}},
+            QVariantMap{{"id", pin}, {"source", "mail"}, {"state", "open"}, {"bundle_id", "bundle"}, {"pinned_rank", 1}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        const QVariantMap args{{"bundle_id", "bundle"}};
+        const QString op = store.enqueueOp(cardId, "bundle_spam", args);
+        QVERIFY(!op.isEmpty());
+        QCOMPARE(store.cardIds(), QStringList{pin});
+        QCOMPARE(store.enqueueOp(cardId, "bundle_spam", args), op);
+        QCOMPARE(store.pendingOps(), 1);
+        store.undoQueuedOp(op);
+        QCOMPARE(store.rowCount(), 2);
+        QCOMPARE(store.pendingOps(), 0);
+    }
     void archiveKeepsModelIndexes() {
         QTemporaryDir directory;
         CardStore store;
