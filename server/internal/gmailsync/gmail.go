@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 
 const gmailAPI = "https://gmail.googleapis.com/gmail/v1/users/me"
 var defaultGmailHTTPClient = &http.Client{Timeout: 90 * time.Second}
+
+var ErrInvalidGrant = errors.New("gmail refresh token expired or revoked")
 
 type Client struct {
 	HTTP                                                    *http.Client
@@ -58,6 +61,10 @@ func (c *Client) token(ctx context.Context) (string, error) {
 	defer res.Body.Close()
 	if res.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+		var failure struct { Error string `json:"error"` }
+		if json.Unmarshal(b, &failure) == nil && failure.Error == "invalid_grant" {
+			return "", fmt.Errorf("%w: %s", ErrInvalidGrant, res.Status)
+		}
 		return "", fmt.Errorf("gmail token refresh: %s: %s", res.Status, b)
 	}
 	var t tokenResponse

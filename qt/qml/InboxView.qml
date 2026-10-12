@@ -130,11 +130,14 @@ ApplicationWindow {
         bundleArchiveToken = ""
         bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
     }
-    function showOperationFailure(opId, status) {
+    function showOperationFailure(opId, status, response) {
         mailArchiveUndoOp = ""
         bundleArchiveToken = ""
         archiveUndoAvailable = false
-        bundleArchiveStatus = qsTr("Action failed (HTTP %1). The card was restored.").arg(status)
+        if (response && response.code === "gmail_reconnect_required" && response.account_address)
+            bundleArchiveStatus = qsTr("Gmail access for %1 expired. Reconnect it in Accounts → Connect account…").arg(response.account_address)
+        else
+            bundleArchiveStatus = qsTr("Action failed (HTTP %1). The card was restored.").arg(status)
     }
     function undoBundleArchive() {
         if (mailArchiveUndoOp.length > 0) {
@@ -170,7 +173,7 @@ ApplicationWindow {
             window.bundleArchiveStatus = qsTr("Undo has expired.")
             undoExpiredNoticeTimer.restart()
         }
-        function onOperationFailed(opId, status) { window.showOperationFailure(opId, status) }
+        function onOperationFailed(opId, status, response) { window.showOperationFailure(opId, status, response) }
     }
     Timer {
         id: undoExpiredNoticeTimer

@@ -464,6 +464,44 @@ TestCase {
         inbox.close()
     }
 
+    function test_gmailReconnectMessage() {
+        const ids = ["expired-first", "expired-second"]
+        const bundle = "expired-bundle"
+        verify(store.applyRemoteCards({now: ids.map(id => card(id, bundle, "now", {state: "open"})), later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 900
+        })
+        verify(inbox)
+        let notifications = 0
+        const failed = function() { ++notifications }
+        store.operationFailed.connect(failed)
+        const stub = function(opId, path, body) {
+            if (ids.indexOf(body.card_id) >= 0)
+                store.reportPostResult(opId, 422, {code: "gmail_reconnect_required", account_address: "darafei@maumap.com"})
+            else
+                store.reportPostResult(opId, 200, {ok: true})
+        }
+        store.requestPost.connect(stub)
+        store.online = true
+        verify(inbox.archiveBundle(bundle))
+        tryCompare(store, "pendingOps", 0, 5000)
+        compare(notifications, 1)
+        compare(store.cardIds().length, 2)
+        compare(inbox.bundleArchiveStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
+        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        verify(bar.visible)
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.bundleArchiveStatus)
+        capture(inbox, "gmail-reconnect-toast-1440x900")
+        inbox.showOperationFailure("single", 422, {code: "gmail_reconnect_required", account_address: "other@example.test"})
+        compare(inbox.bundleArchiveStatus, "Gmail access for other@example.test expired. Reconnect it in Accounts → Connect account…")
+        inbox.showOperationFailure("generic", 422, {})
+        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422). The card was restored.")
+        store.requestPost.disconnect(stub)
+        store.operationFailed.disconnect(failed)
+        store.online = false
+        inbox.close()
+    }
+
     function test_cardKeyboardFocusAndDeleteArchivesFocusedCard() {
         const id = "keyboard-card"
         verify(store.applyRemoteCards({now: [card(id, "", "now", {state: "open", has_body: true})], later: [], missed: []}))

@@ -76,7 +76,7 @@ func (h *WebHandler) listAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	rows, e := tx.QueryContext(r.Context(), "SELECT id,address FROM accounts WHERE tenant_id=$1 AND status='active' ORDER BY address", tenant)
+	rows, e := tx.QueryContext(r.Context(), "SELECT id,address FROM accounts WHERE tenant_id=$1 AND status IN ('active','reconnect_required') ORDER BY address", tenant)
 	if e != nil {
 		http.Error(w, "could not list accounts", 500)
 		return

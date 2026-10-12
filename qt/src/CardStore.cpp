@@ -682,10 +682,12 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
     // cannot resurrect a card while its op is pending.
     BundleArchive entry{before, {}, QDeadlineTimer(m_bundleUndoDurationMs)};
     QList<QVariantMap> ops;
+    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
     for (const QVariantMap &card : before) {
         const QString cardId = card.value(QStringLiteral("id")).toString();
         if (!archived.contains(cardId)) continue;
         const QString opId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        m_bundleFailureGroups.insert(opId, token);
         ops.append({{QStringLiteral("op_id"), opId}, {QStringLiteral("card_id"), cardId},
             {QStringLiteral("type"), QStringLiteral("archive")}, {QStringLiteral("args"), QVariantMap{}}});
         QList<QVariantMap> withCard;
@@ -700,7 +702,6 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
     m_outbox.append(ops);
     persistCards(before, after, ops);
     emit pendingOpsChanged();
-    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_bundleArchives.insert(token, std::move(entry));
     m_bundleUndoTimer->start(std::max(1, bundleArchiveUndoRemainingMs()));
     emit bundleArchiveUndoChanged();
@@ -807,6 +808,12 @@ void CardStore::flushNext() {
 void CardStore::reportPostResult(const QString &opId, int status, const QVariantMap &response) {
     if (opId != m_inFlight || m_inFlight.isEmpty()) return;
     const bool acknowledged = status >= 200 && status < 300 && response.value(QStringLiteral("ok")) == QVariant(true);
+    const bool terminal = acknowledged || (status >= 400 && status < 500);
+    const QString failureGroup = terminal ? m_bundleFailureGroups.take(opId) : QString();
+    const bool notifyFailure = failureGroup.isEmpty() || !m_reportedBundleFailures.contains(failureGroup);
+    if (!failureGroup.isEmpty() && !acknowledged) m_reportedBundleFailures.insert(failureGroup);
+    if (!failureGroup.isEmpty() && !m_bundleFailureGroups.values().contains(failureGroup))
+        m_reportedBundleFailures.remove(failureGroup);
     if (!acknowledged) {
         if (status == 422)
             qWarning().noquote() << "Operation rejected:" << opId << status << QJsonDocument(QJsonObject::fromVariantMap(response)).toJson(QJsonDocument::Compact);
@@ -814,7 +821,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             m_retryAttempt = 0;
             const bool canUndoLocally = m_mutations.contains(opId);
             undoOp(opId);
-            emit operationFailed(opId, status);
+            if (notifyFailure) emit operationFailed(opId, status, response);
             QMetaObject::invokeMethod(m_storage, [this, opId, canUndoLocally] {
                 QSqlQuery q(m_db);
                 q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);

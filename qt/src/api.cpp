@@ -103,6 +103,8 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
             QJsonValue data(QJsonValue::Undefined);
             if (status < 200 || status >= 300) {
                 error = status != 0 ? QStringLiteral("HTTP %1: %2").arg(status).arg(QString::fromUtf8(body.left(200))) : transportError;
+                const QJsonDocument doc = QJsonDocument::fromJson(body);
+                if (doc.isObject()) data = doc.object();
             } else if (!body.trimmed().isEmpty()) {
                 QJsonParseError parseError{};
                 const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
@@ -117,7 +119,7 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
                 if (!error.isEmpty()) {
                     if (callback.isCallable() && m_engine)
                         callback.call({m_engine->newErrorObject(QJSValue::GenericError, error), QJSValue(QJSValue::NullValue)});
-                    emit requestFailed(id, status, error);
+                    emit requestFailed(id, status, error, data);
                     return;
                 }
                 if (callback.isCallable() && m_engine) {

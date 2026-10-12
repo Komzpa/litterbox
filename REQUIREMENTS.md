@@ -35,9 +35,17 @@ Each requirement is **decided** or **open** and names its source.
 
 ## Mail
 
-- **R7 Archive goes to Gmail** (decided, owner 2026-09-27). Archiving a mail
+- **R7 Archive goes to Gmail** (decided, owner 2026-09-27; reconnect failures clarified 2026-10-12). Archiving a mail
   card or a whole bundle archives those messages in the Gmail account they
-  came from. A user can connect several Gmail accounts.
+  came from. A user can connect several Gmail accounts. An OAuth refresh
+  `invalid_grant` rejects the action with HTTP 422 and JSON
+  `code=gmail_reconnect_required` plus `account_address`; the existing account
+  `status` becomes `reconnect_required` and remains listed in Accounts. The
+  rejected operation records no receipt and restores every affected card.
+  Qt displays the account address and directs the user to Accounts → Connect
+  account…, once per bundle action. Other errors retain their generic message.
+  Oracle: isolated invalid-grant token endpoint tests for individual and bundle
+  archive, non-grant negative controls, and Qt transport/message mapping tests.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.
 - **R18 Gmail app published unverified** (decided, owner 2026-09-27).
