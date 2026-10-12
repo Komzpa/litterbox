@@ -160,4 +160,36 @@ TestCase {
         compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
         inbox.close()
     }
+    function test_additionalScreenshot_data() { return test_cleanPreviewGrid_data() }
+    function test_additionalScreenshot(data) {
+        store.clear()
+        const cards = Previews.additionalCards()
+        for (const card of cards)
+            store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: 1250
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(7) !== null })
+        wait(200)
+        const phase = typeof inbox.mailPreview === "function" ? "after" : "before"
+        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-clean-previews/additional-" + phase + "-" + data.viewWidth + ".png")
+        for (const id of ["postgis6143", "sleep", "confirmation", "maproulette", "hosting"]) {
+            let label = null
+            for (let i = 0; i < list.count && !label; ++i)
+                label = findChild(list.itemAtIndex(i), "mailSnippet-" + id)
+            verify(label)
+            verify(label.text.indexOf("\n") < 0 && label.text.indexOf("\r") < 0, id + " must not render an ellipsis-only line")
+            compare(label.lineCount, 1)
+        }
+        const mail = findChild(list.itemAtIndex(0), "mailTitle-postgis6144")
+        const bundle = findChild(list.itemAtIndex(2), "bundleTitleLabel-miles")
+        compare(mail.mapToItem(list, 0, 0).x, bundle.mapToItem(list, 0, 0).x)
+        // ⁰ж is literal source text; table filtering and filler removal belong to the server.
+        compare(findChild(list.itemAtIndex(1), "mailSnippet-postgis6143").text, "⁰ж")
+        inbox.close()
+    }
 }
