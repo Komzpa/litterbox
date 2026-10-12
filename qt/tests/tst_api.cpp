@@ -8,6 +8,29 @@
 class ApiTest : public QObject {
     Q_OBJECT
 private slots:
+    void structuredFailureBodySurvivesTransport() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+                socket->readAll();
+                const QByteArray payload = "{\"code\":\"gmail_reconnect_required\",\"account_address\":\"expired@example.test\"}";
+                socket->write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: application/json\r\nContent-Length: "
+                    + QByteArray::number(payload.size()) + "\r\nConnection: close\r\n\r\n" + payload);
+                socket->disconnectFromHost();
+            });
+        });
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        QSignalSpy failed(&api, &Api::requestFailed);
+        api.post(QStringLiteral("/v1/ops"), {});
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(1).toInt(), 422);
+        const QJsonObject body = qvariant_cast<QJsonValue>(failed.first().at(3)).toObject();
+        QCOMPARE(body.value("code").toString(), QString("gmail_reconnect_required"));
+        QCOMPARE(body.value("account_address").toString(), QString("expired@example.test"));
+    }
     void bearerAndEmptySuccessResponses() {
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));

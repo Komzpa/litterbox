@@ -3,6 +3,7 @@ package gmailsync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Komzpa/litterbox/server/internal/ops"
@@ -17,7 +18,15 @@ type actionArgs struct {
 // RegisterOps binds mail actions to account/thread ownership stored on the card.
 func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (*Client, string, error)) {
 	register := func(name string, add, remove []string) {
-		ops.Register("gmail."+name, func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID, args json.RawMessage) error {
+		ops.Register("gmail."+name, func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID, args json.RawMessage) (err error) {
+			defer func() {
+				if !errors.Is(err, ErrInvalidGrant) { return }
+				var account uuid.UUID
+				var address string
+				if e := tx.QueryRow(ctx, `SELECT a.id,a.address FROM accounts a JOIN cards c ON c.tenant_id=a.tenant_id AND c.account_id=a.id WHERE c.tenant_id=$1 AND c.id=$2`, tenant, cardID).Scan(&account, &address); e == nil {
+					err = &ops.GmailReconnectError{AccountID: account, Address: address}
+				}
+			}()
 			c, thread, e := clientFor(ctx, tx, tenant, cardID)
 			if e != nil {
 				return e

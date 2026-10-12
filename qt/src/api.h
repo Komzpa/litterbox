@@ -54,7 +54,7 @@ signals:
     void baseUrlChanged();
     void tokenChanged();
     void requestFinished(int requestId, const QJsonValue &data, int statusCode);
-    void requestFailed(int requestId, int statusCode, const QString &error);
+    void requestFailed(int requestId, int statusCode, const QString &error, const QJsonValue &data = QJsonValue());
     void streamLine(int requestId, const QString &line);
     void streamFinished(int requestId, const QString &error);
 

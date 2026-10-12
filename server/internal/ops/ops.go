@@ -29,6 +29,14 @@ import (
 // canonical string UUIDs, matching internal/cards' representation.
 type Handler func(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cardID uuid.UUID, args json.RawMessage) error
 
+// GmailReconnectError identifies the account whose refresh grant was revoked.
+type GmailReconnectError struct {
+	AccountID uuid.UUID
+	Address string
+}
+
+func (e *GmailReconnectError) Error() string { return "Gmail access expired; reconnect the account" }
+
 var registry = struct {
 	sync.RWMutex
 	handlers map[string]Handler
@@ -375,9 +383,30 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if err = handler(r.Context(), tx, mustUUID(tenant), in.CardID, in.Args); err != nil {
 			log.Printf("operation rejected: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
+			response := map[string]string{"error": err.Error()}
+			var reconnect *GmailReconnectError
+			if errors.As(err, &reconnect) {
+				// Restore the complete operation before persisting account health.
+				if rollbackErr := tx.Rollback(r.Context()); rollbackErr != nil {
+					http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				health, healthErr := a.DB.Begin(r.Context())
+				if healthErr == nil {
+					defer health.Rollback(r.Context())
+					_, healthErr = health.Exec(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant)
+					if healthErr == nil {
+						_, healthErr = health.Exec(r.Context(), `UPDATE accounts SET status='reconnect_required' WHERE tenant_id=$1 AND id=$2`, tenant, reconnect.AccountID)
+					}
+					if healthErr == nil { healthErr = health.Commit(r.Context()) }
+				}
+				if healthErr != nil { log.Printf("Gmail account health update: %v", healthErr) }
+				response["code"] = "gmail_reconnect_required"
+				response["account_address"] = reconnect.Address
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnprocessableEntity)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			_ = json.NewEncoder(w).Encode(response)
 			return
 		}
 	default:

@@ -105,7 +105,7 @@ signals:
     void requestMailBodyGet(const QString &cardId, const QString &path);
     void mailBodyChanged(const QString &cardId);
     void mailBodyFailed(const QString &cardId);
-    void operationFailed(const QString &opId, int status);
+    void operationFailed(const QString &opId, int status, const QVariantMap &response);
     void storageError(const QString &message);
     void flushFinished();
 private:
@@ -136,6 +136,8 @@ private:
         QDeadlineTimer deadline;
     };
     QHash<QString, BundleArchive> m_bundleArchives;
+    QHash<QString, QString> m_bundleFailureGroups;
+    QSet<QString> m_reportedBundleFailures;
     void expireBundleArchives();
     QSet<QString> m_archivedAwaitingSnapshot;
     int m_bundleUndoDurationMs = 8000;

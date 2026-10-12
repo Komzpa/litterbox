@@ -36,19 +36,28 @@ Each requirement is **decided** or **open** and names its source.
 ## Mail
 
 - **R7 Archive and spam go to Gmail** (decided, owner 2026-09-27;
-  spam added 2026-10-12). Archiving a mail card or a whole bundle archives
-  its threads in their originating Gmail accounts. Mark as spam uses the
-  same operation path and thread targets, adding SPAM and removing INBOX
-  with the existing gmail.modify scope. Bundle actions skip pinned cards.
-  Success leaves cards archived across refresh, history polling and full
-  reconciliation and publishes the existing card changes to other devices;
-  Gmail failure rejects the operation and rolls back local card state.
-  Replaying the same operation ID makes no second Gmail call; a new ID may
-  harmlessly repeat the label change. Before transmission, cancelling the
-  client's queued operation makes no Gmail call. A user can connect several
-  Gmail accounts. Oracle: isolated fake-Gmail server tests exercise success,
-  failure, replay, bundle members, tenant isolation and both resync paths;
-  the Qt lane separately proves enqueue/Undo/flush and menu availability.
+  spam added and reconnect failures clarified 2026-10-12). Archiving a mail
+  card or a whole bundle archives its threads in their originating Gmail
+  accounts. Mark as spam uses the same operation path and thread targets,
+  adding SPAM and removing INBOX with the existing gmail.modify scope.
+  Bundle actions skip pinned cards. Success leaves cards archived across
+  refresh, history polling and full reconciliation and publishes the
+  existing card changes to other devices; Gmail failure rejects the
+  operation and rolls back local card state. Replaying the same operation
+  ID makes no second Gmail call; a new ID may harmlessly repeat the label
+  change. Before transmission, cancelling the client's queued operation
+  makes no Gmail call. A user can connect several Gmail accounts. An OAuth
+  refresh `invalid_grant` rejects the action with HTTP 422 and JSON
+  `code=gmail_reconnect_required` plus `account_address`; the existing account
+  `status` becomes `reconnect_required` and remains listed in Accounts. The
+  rejected operation records no receipt and restores every affected card.
+  Qt displays the account address and directs the user to Accounts → Connect
+  account…, once per bundle action. Other errors retain their generic message.
+  Oracle: isolated fake-Gmail server tests exercise success, failure, replay,
+  bundle members, tenant isolation and both resync paths; isolated invalid-grant
+  token endpoint tests cover individual and bundle archive with non-grant
+  negative controls. The Qt lane proves enqueue/Undo/flush, menu availability
+  and transport/message mapping.
 - **R47 Qt mark as spam** (decided, owner 2026-10-12). Each mail card's More actions menu places **Mark as spam · <account address>** directly after Archive in Gmail, with a named icon, accessible name and a 48px minimum row. The bundle details menu offers the matching spam action for open, unpinned members. The existing durable outbox queues `spam` or `bundle_spam`, removes the selected cards immediately, and shows Undo. Undo before transmission cancels the queued operation and sends no HTTP request; HTTP 422 restores the cards and shows an error. Repeating the same spam click before acknowledgement queues only one operation per card. Oracle: `cardstore` spam tests and `markspam` real-store UI tests, plus open-menu screenshots at 1440×900 and 412×915; all network proofs use disposable local transport, never real Gmail.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.
