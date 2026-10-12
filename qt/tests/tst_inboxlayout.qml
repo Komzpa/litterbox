@@ -174,6 +174,8 @@ TestCase {
         const jasmine = findChild(list.itemAtIndex(3), "mailSnippet-jasmine")
         const qgis = findChild(list.itemAtIndex(4), "mailSnippet-qgis")
         compare(flying.visible, false, "sender-only preview must not repeat the sender")
+        compare(inbox.mailPreview({snippet: " . … ... ", sender_name: "Sender"}), "",
+                "punctuation-only preview must stay hidden")
         compare(qgis.text, "Hi list")
         verify(jasmine.text.indexOf("\n") < 0 && jasmine.text.indexOf("\r") < 0,
                "preview whitespace must not create an ellipsis-only line")
@@ -188,7 +190,17 @@ TestCase {
         compare(x(mailRow, "mailTitle-jasmine"), x(bundleRow, "bundleTitleLabel-odm"))
         compare(findChild(mailRow, "doneButton-jasmine").mapToItem(list, 0, 0).x,
                 findChild(bundleRow, "archiveBundle-odm").mapToItem(list, 0, 0).x)
-        compare(x(mailRow, "mailDate-jasmine"), x(bundleRow, "bundleDate-odm"))
+        // The date stays inline between sender and account, not in the bundle action column.
+        const sender = findChild(mailRow, "mailSender-jasmine")
+        const date = findChild(mailRow, "mailDate-jasmine")
+        const account = findChild(mailRow, "mailAccount-jasmine")
+        const senderRect = sender.mapToItem(list, 0, 0, sender.width, sender.height)
+        const dateRect = date.mapToItem(list, 0, 0, date.width, date.height)
+        const accountRect = account.mapToItem(list, 0, 0, account.width, account.height)
+        verify(senderRect.x + senderRect.width <= dateRect.x, "inline date must follow the sender")
+        verify(dateRect.x + dateRect.width <= accountRect.x, "inline date must precede the account")
+        compare(senderRect.y + senderRect.height / 2, dateRect.y + dateRect.height / 2)
+        verify(date.width >= date.implicitWidth, "inline date must retain its natural width")
         compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
         inbox.close()
     }

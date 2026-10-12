@@ -849,9 +849,9 @@ ApplicationWindow {
                                     icon.name: "mail-mark-read-symbolic"
                                     icon.color: window.ink
                                     display: AbstractButton.IconOnly
-                                    Layout.minimumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    Layout.preferredWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    Layout.maximumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.minimumWidth: 48
+                                    Layout.preferredWidth: 48
+                                    Layout.maximumWidth: 48
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
                                     Accessible.description: qsTr("Archives all %1 unpinned %2; pinned cards stay open").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.unpinned === 1 ? qsTr("email") : qsTr("emails"))
@@ -1053,7 +1053,7 @@ ApplicationWindow {
                                     icon.height: Kirigami.Units.iconSizes.smallMedium
                                     icon.color: window.ink
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: 48
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     opacity: 1
                                     Accessible.name: cardActions.primaryName
