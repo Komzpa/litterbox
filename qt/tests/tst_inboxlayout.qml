@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import litterbox 1.0 as App
+import "previewcards.js" as Previews
 
 TestCase {
     name: "InboxLayout"
@@ -30,6 +31,7 @@ TestCase {
     Component { id: inboxComponent; App.InboxView {} }
 
     function test_collapsedMembersLeaveNoHolesAndExpandInPlace() {
+        store.clear()
         for (let i = 0; i < 4; ++i) {
             store.append({cardId: "bundle-" + i, title: "A bundled message " + i, section: "now", card: {
                 id: "bundle-" + i, title: "A bundled message " + i, source: "mail", section: "now",
@@ -147,6 +149,79 @@ TestCase {
         verify(senderRect.x + senderRect.width <= dateRect.x,
                "sender and date rectangles must not intersect: " + JSON.stringify(senderRect) + " / " + JSON.stringify(dateRect))
         compare(sender.elide, Text.ElideRight)
+        inbox.close()
+    }
+    function test_cleanPreviewGrid_data() {
+        return [{tag: "1440", viewWidth: 1440}, {tag: "1200", viewWidth: 1200}]
+    }
+    function test_cleanPreviewGrid(data) {
+        store.clear()
+        const cards = Previews.cards()
+        for (const card of cards)
+            store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: 1100
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(6) !== null })
+        wait(200)
+        const phase = typeof inbox.mailPreview === "function" ? "after" : "before"
+        grabImage(inbox.contentItem).save("/tmp/litterbox-clean-previews/" + phase + "-" + data.viewWidth + ".png")
+        const flying = findChild(list.itemAtIndex(0), "mailSnippet-flying")
+        const jasmine = findChild(list.itemAtIndex(3), "mailSnippet-jasmine")
+        const qgis = findChild(list.itemAtIndex(4), "mailSnippet-qgis")
+        compare(flying.visible, false, "sender-only preview must not repeat the sender")
+        compare(qgis.text, "Hi list")
+        verify(jasmine.text.indexOf("\n") < 0 && jasmine.text.indexOf("\r") < 0,
+               "preview whitespace must not create an ellipsis-only line")
+        compare(jasmine.lineCount, 1)
+        const mailRow = list.itemAtIndex(3)
+        const bundleRow = list.itemAtIndex(1)
+        function x(row, name) {
+            const item = findChild(row, name)
+            return item.mapToItem(list, 0, 0).x + (item.leftPadding || 0)
+        }
+        compare(x(mailRow, "mailSender-jasmine"), x(bundleRow, "bundleAccountLabel-odm"))
+        compare(x(mailRow, "mailTitle-jasmine"), x(bundleRow, "bundleTitleLabel-odm"))
+        compare(findChild(mailRow, "doneButton-jasmine").mapToItem(list, 0, 0).x,
+                findChild(bundleRow, "archiveBundle-odm").mapToItem(list, 0, 0).x)
+        compare(x(mailRow, "mailDate-jasmine"), x(bundleRow, "bundleDate-odm"))
+        compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
+        inbox.close()
+    }
+    function test_additionalScreenshot_data() { return test_cleanPreviewGrid_data() }
+    function test_additionalScreenshot(data) {
+        store.clear()
+        const cards = Previews.additionalCards()
+        for (const card of cards)
+            store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: 1250
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(7) !== null })
+        wait(200)
+        const phase = typeof inbox.mailPreview === "function" ? "after" : "before"
+        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-clean-previews/additional-" + phase + "-" + data.viewWidth + ".png")
+        for (const id of ["postgis6143", "sleep", "confirmation", "maproulette", "hosting"]) {
+            let label = null
+            for (let i = 0; i < list.count && !label; ++i)
+                label = findChild(list.itemAtIndex(i), "mailSnippet-" + id)
+            verify(label)
+            verify(label.text.indexOf("\n") < 0 && label.text.indexOf("\r") < 0, id + " must not render an ellipsis-only line")
+            compare(label.lineCount, 1)
+        }
+        const mail = findChild(list.itemAtIndex(0), "mailTitle-postgis6144")
+        const bundle = findChild(list.itemAtIndex(2), "bundleTitleLabel-miles")
+        compare(mail.mapToItem(list, 0, 0).x, bundle.mapToItem(list, 0, 0).x)
+        // ⁰ж is literal source text; table filtering and filler removal belong to the server.
+        compare(findChild(list.itemAtIndex(1), "mailSnippet-postgis6143").text, "⁰ж")
         inbox.close()
     }
 }
