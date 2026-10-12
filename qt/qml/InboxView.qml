@@ -955,11 +955,20 @@ ApplicationWindow {
                                             font: Kirigami.Theme.defaultFont
                                             Layout.minimumWidth: implicitWidth
                                         }
+                                        Label {
+                                            objectName: window.width >= 640 ? "mailAccount-" + cardId : ""
+                                            text: card.account_name || ""
+                                            visible: window.width >= 640 && text.length > 0
+                                            color: window.mutedInk
+                                            font: Kirigami.Theme.defaultFont
+                                            elide: Text.ElideLeft
+                                            Layout.maximumWidth: 180
+                                        }
                                     }
                                     Label {
-                                        objectName: "mailAccount-" + cardId
+                                        objectName: window.width < 640 ? "mailAccount-" + cardId : ""
                                         text: card.account_name || ""
-                                        visible: card.source === "mail" && !cardRow.bundled && text.length > 0
+                                        visible: window.width < 640 && card.source === "mail" && !cardRow.bundled && text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
                                         elide: Text.ElideLeft

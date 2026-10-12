@@ -46,3 +46,5 @@ Bundle archive, spam and done are separate actions: each changes only open, unpi
 - The inbox stays visible but disabled behind the opaque reader, and its stack exit/return does not slide the ListView viewport outside the window. This preserves the current delegates and scroll position instead of paying to destroy/rebuild Controls on every open/close. The opt-in `mailresize.qml` open/close oracle exercises Google, NYT, LinkedIn and a mid-list card with unchanged card IDs and scroll position; `mailresize_driver.py` records load average and swap usage for paired baseline/candidate runs.
 - Mail card headers reserve the arrival date's natural width and elide the sender in the remaining space. The account address uses its own eliding line so phone-width headers cannot collapse the sender to zero width or paint it over the date. `tst_inboxlayout.qml` checks the header rectangles at 360 and 400 logical pixels.
 
+
+The narrow phone mail header places the account below sender/date; desktop widths (640px and above) keep the account inline to preserve card height and inbox click/scroll geometry.
