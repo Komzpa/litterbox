@@ -136,7 +136,7 @@ TestCase {
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(6) !== null })
         wait(200)
-        const phase = typeof inbox.mailPreview === "function" ? "after" : "before"
+        const phase = "after"
         grabImage(inbox.contentItem).save("/tmp/litterbox-clean-previews/" + phase + "-" + data.viewWidth + ".png")
         const flying = findChild(list.itemAtIndex(0), "mailSnippet-flying")
         const jasmine = findChild(list.itemAtIndex(3), "mailSnippet-jasmine")
@@ -175,9 +175,9 @@ TestCase {
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(7) !== null })
         wait(200)
-        const phase = typeof inbox.mailPreview === "function" ? "after" : "before"
+        const phase = "after"
         grabImage(inbox.contentItem.parent).save("/tmp/litterbox-clean-previews/additional-" + phase + "-" + data.viewWidth + ".png")
-        for (const id of ["postgis6143", "sleep", "confirmation", "maproulette", "hosting"]) {
+        for (const id of ["postgis6144", "sleep", "confirmation", "maproulette", "hosting"]) {
             let label = null
             for (let i = 0; i < list.count && !label; ++i)
                 label = findChild(list.itemAtIndex(i), "mailSnippet-" + id)
@@ -188,8 +188,8 @@ TestCase {
         const mail = findChild(list.itemAtIndex(0), "mailTitle-postgis6144")
         const bundle = findChild(list.itemAtIndex(2), "bundleTitleLabel-miles")
         compare(mail.mapToItem(list, 0, 0).x, bundle.mapToItem(list, 0, 0).x)
-        // ⁰ж is literal source text; table filtering and filler removal belong to the server.
-        compare(findChild(list.itemAtIndex(1), "mailSnippet-postgis6143").text, "⁰ж")
+        compare(findChild(list.itemAtIndex(0), "mailSnippet-postgis6144").text, "PostgreSQL and POSTGIS version:")
+        compare(findChild(list.itemAtIndex(1), "mailSnippet-postgis6143").visible, false, "signature-only reply has no server snippet")
         inbox.close()
     }
 }

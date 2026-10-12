@@ -77,10 +77,6 @@ ApplicationWindow {
         const name = String(card.sender_name || "").trim()
         return name || String(card.sender_address || "").trim()
     }
-    function mailPreview(card) {
-        const preview = String(card.snippet || card.summary || "").replace(/\s+/g, " ").trim()
-        return preview === mailSender(card) || /^[.…\s]*$/.test(preview) ? "" : preview
-    }
     function mailArrival(card) {
         if (!card.received_at) return ""
         const arrived = new Date(card.received_at)
@@ -1006,7 +1002,7 @@ ApplicationWindow {
                                     }
                                     Label {
                                         objectName: "mailSnippet-" + cardId
-                                        text: card.source === "mail" ? window.mailPreview(card) : (card.summary || "")
+                                        text: card.source === "mail" ? (card.snippet || "") : (card.summary || "")
                                         visible: text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont

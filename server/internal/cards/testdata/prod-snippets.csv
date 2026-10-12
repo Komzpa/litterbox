@@ -1,0 +1,111 @@
+card_id,message_id,subject,sender,text,received_at
+da564676-2918-46d7-9eb0-2e5decb4f43b,2c1a71f3-8a4a-48a2-bf11-b78a011b558d,[PostGIS] #6144: ST_CreateOverview function errors,PostGIS <trac@osgeo.org>,"#6144: ST_CreateOverview function errors
+-------------------------+---------------------------
+ Reporter:  amorevosgeo  |      Owner:  pramsey
+     Type:  defect       |     Status:  new
+ Priority:  medium       |  Milestone:  PostGIS 3.6.5
+Component:  postgis      |    Version:  3.5.x
+ Keywords:               |
+-------------------------+---------------------------
+ PostgreSQL and POSTGIS version:
+
+ PostgreSQL 16.10 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 11.5.0
+ 20240719 (Red Hat 11.5.0-5), 64-bit
+ POSTGIS=""3.5.0 d2c3ca4"" [EXTENSION] PGSQL=""160"" GEOS=""3.12.2-CAPI-1.18.2""
+ SFCGAL=""SFCGAL 2.2.0, CGAL 5.6.2, BOOST 1.75.0"" PROJ=""9.6.2
+ NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org
+ USER_WRITABLE_DIRECTORY=/var/lib/pgsql/.local/share/proj
+ DATABASE_PATH=/usr/proj96/share/proj/proj.db"" (compiled against PROJ
+ 9.12.2) GDAL=""GDAL 3.8.5, released 2024/04/02"" LIBXML=""2.9.13""
+ LIBJSON=""0.14"" RASTER
+
+
+ 1. IF block:
+ {{{
+ IF sinfo.tw IS NULL or sinfo.tw IS NULL THEN
+     RAISE EXCEPTION 'cannot create overview without tilesize constraint,
+ try select AddRasterConstraints(''%'', ''%'');', tab::text, col;
+   END IF;
+ }}}
+ Here, ""sinfo.**tw**"" is compared with NULL twice. In the second case, it
+ should be ""sinfo.**th**"".
+
+
+ 2. sql block:
+ {{{
+ sql := 'CREATE TABLE ' || quote_ident(sinfo.sch)
+       || '.' || quote_ident(ttab)
+       || ' AS SELECT ST_Retile($1, $2, $3, $4, $5, $6, $7) '
+       || quote_ident(col);
+   EXECUTE sql USING tab, col, sinfo.ext,
+                     sinfo.sfx * factor, sinfo.sfy * factor,
+                     sinfo.tw, sinfo.th, algo;
+ }}}
+
+ Here, ST_Retile() has 7 args but USING has 8 args:
+
+ $1 => tab,[[BR]]
+ $2 => col,[[BR]]
+ $3 => sinfo.ext,[[BR]]
+ $4 => sinfo.sfx * factor,[[BR]]
+ $5 => sinfo.sfy * factor,[[BR]]
+ $6 => sinfo.tw,[[BR]]
+ $7 => sinfo.th,[[BR]]
+ $8 => algo
+
+ Without the eighth argument (""algo""), ST_Retile() will always use the
+ default value (text algo='NearestNeighbor').
+
+
+ These errors are also found in earlier versions (PostGIS 3.2.0 and
+ newest).
+
+ These errors are also found in current PostGIS repository:
+ https://gitea.osgeo.org/postgis/postgis/src/branch/master/raster/rt_pg/rtpostgis.sql.in
+
+ 1. Row 8858.
+ 2. Row 8869.
+-- 
+Ticket URL: <https://trac.osgeo.org/postgis/ticket/6144>
+PostGIS <http://trac.osgeo.org/postgis/>
+The PostGIS Trac is used for bug, enhancement & task tracking, a user and developer wiki, and a view into the subversion code repository of PostGIS project.
+",2026-10-09 12:11:58+04
+7d850907-adad-4965-8fdb-da4e0799fac7,7a5df38c-755d-4dce-bd5e-5050c165c1d4,[QGIS-Developer] QEP 429: Add exception to the AI policy for trusted contributors,Martin Dobias via QGIS-Developer <qgis-developer@lists.osgeo.org>,"Hi list
+
+We have just submitted ""QEP 429: Add exception to the AI policy for trusted
+contributors""
+
+Please keep the discussion on the github page:
+https://github.com/qgis/QGIS-Enhancement-Proposals/pull/388
+
+Cheers
+Martin & Denis
+",2026-10-09 17:03:48+04
+f9f80804-f018-4004-a09e-1b7dece1ebb6,60df7edd-402c-43e2-8b63-0940fb26c9c7,Re: [PostGIS] #6143: [topology] False edge crossing detected,"""Darafei \""Komяpa\"" Praliaskouski"" <me@komzpa.net>","⁰ж
+
+Darafei ""Komяpa"" Praliaskouski
+OSM BY Team - http://openstreetmap.by/
+
+
+пт, 9 кас 2026, 10:35 карыстальнік PostGIS <trac@osgeo.org> напісаў:
+
+> #6143: [topology] False edge crossing detected
+> -----------------------+---------------------------
+>   Reporter:  strk      |      Owner:  strk
+>       Type:  defect    |     Status:  new
+>   Priority:  blocker   |  Milestone:  PostGIS 3.7.0
+>  Component:  topology  |    Version:  master
+> Resolution:            |   Keywords:
+> -----------------------+---------------------------
+> Comment (by strk):
+>
+>  NOTE: this is only in the current master branch, with recent ""fix"" for
+>  issues #6138 and #6140
+> -- 
+> Ticket URL: <https://trac.osgeo.org/postgis/ticket/6143#comment:1>
+> PostGIS <http://trac.osgeo.org/postgis/>
+> The PostGIS Trac is used for bug, enhancement & task tracking, a user and 
+> developer wiki, and a view into the subversion code repository of PostGIS 
+> project.
+>
+",2026-10-09 14:48:50+04

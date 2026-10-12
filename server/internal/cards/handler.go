@@ -174,6 +174,13 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			c.ReceivedAt = &v
 		}
 		c.SenderAddress = senderAddress(senderRaw)
+		if c.Source == "mail" {
+			sender := c.SenderName
+			if sender == "" {
+				sender = c.SenderAddress
+			}
+			c.Snippet = mailSnippet(c.Snippet, c.Title, sender)
+		}
 		if bundleID.Valid {
 			v := bundleID.String
 			c.BundleID = &v
