@@ -55,6 +55,7 @@ qt_add_resources(litterbox-qt "lb_pages"
         pages/McpTokensPage.qml
         pages/MailDetailPage.qml
         pages/MailActionButton.qml
+        pages/BackToInboxBar.qml
         pages/MailBodyAndroid.qml
         pages/ReminderDialog.qml
 )

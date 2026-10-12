@@ -37,6 +37,7 @@ Kirigami.ScrollablePage {
     palette.highlightedText: surface
     padding: Math.max(18, Kirigami.Units.largeSpacing)
     background: Rectangle { color: canvas }
+    header: BackToInboxBar { stackPage: root }
 
     // Contract: callbacks receive (error, {status, body}).
     property var api

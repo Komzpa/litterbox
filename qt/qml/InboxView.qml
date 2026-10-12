@@ -517,6 +517,20 @@ ApplicationWindow {
         Keys.onBackPressed: function(event) {
             if (window.handleBack()) event.accepted = true
         }
+        // Esc and Alt+Left leave any pushed page; focused controls keep their
+        // own handling because unaccepted keys bubble up to here (a focused
+        // text field consumes Alt+Left itself; Esc and the Back button still work).
+        Keys.onEscapePressed: function(event) {
+            if (window.handleBack()) event.accepted = true
+        }
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier) && window.handleBack())
+                event.accepted = true
+        }
+        onCurrentItemChanged: {
+            if (depth > 1 && currentItem && currentItem !== window.mailDetailPage)
+                currentItem.forceActiveFocus()
+        }
         initialItem: Item {
             StackView.visible: true
             enabled: StackView.status === StackView.Active

@@ -98,6 +98,63 @@ TestCase {
     }
     function test_before() { capture("before") }
     function test_after() { capture("after") }
+    function test_backExit_data() {
+        const cases = []
+        for (const width of [1440, 900]) {
+            for (const page of ["GmailAccountsPage", "EnrollmentPage", "McpTokensPage", "MailDetailPage"]) {
+                for (const exit of ["button", "escape", "alt-left"]) {
+                    cases.push({tag: page + "-" + exit + "-" + width, page: page, exit: exit, width: width})
+                }
+            }
+        }
+        return cases
+    }
+    function test_backExit(data) {
+        const cards = seed()
+        const inbox = createTemporaryObject(inboxComponent, proof, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 1000
+        })
+        verify(inbox)
+        inbox.show()
+        inbox.requestActivate()
+        const stack = findChild(inbox, "pageStack")
+        compare(stack.depth, 1)
+        const values = data.page === "MailDetailPage" ? {
+            store: store, cardId: id(0), cardTitle: cards[0].title, card: cards[0], openLinks: false
+        } : {api: api, openLinks: false}
+        // Enrollment and MCP do not expose openLinks.
+        if (data.page === "EnrollmentPage" || data.page === "McpTokensPage") delete values.openLinks
+        inbox.openPage(data.page, values)
+        tryCompare(stack, "busy", false)
+        compare(stack.depth, 2)
+        const back = findChild(stack.currentItem, "backToInbox")
+        verify(back && back.visible, "Every pushed page needs a visible Back to inbox")
+        verify(back.width >= 48 && back.height >= 48)
+        const menuButton = findChild(inbox, "inboxCommands")
+        verify(menuButton.visible && menuButton.enabled)
+        mouseClick(menuButton)
+        const menu = findChild(inbox, "headerMenu")
+        tryCompare(menu, "opened", true)
+        keyClick(Qt.Key_Escape)
+        tryCompare(menu, "opened", false)
+        compare(stack.depth, 2, "Escape dismisses an open menu before leaving the page")
+        if (data.exit === "button") {
+            if (data.page === "GmailAccountsPage" || data.page === "EnrollmentPage")
+                shot(inbox, "back", data.page === "GmailAccountsPage" ? "accounts" : "enroll", data.width)
+            mouseClick(back)
+        } else {
+            // Escape must also work from a focused text field; Alt+Left is
+            // the text field's own cursor key there, so it is checked from the page.
+            const field = data.exit === "escape" ? findChild(stack.currentItem, "serverField") : null
+            if (field) field.forceActiveFocus()
+            else back.forceActiveFocus()
+            keyClick(data.exit === "escape" ? Qt.Key_Escape : Qt.Key_Left,
+                     data.exit === "alt-left" ? Qt.AltModifier : Qt.NoModifier)
+        }
+        tryCompare(stack, "depth", 1)
+        tryCompare(stack, "busy", false)
+        inbox.close()
+    }
     function test_reconnectLifecycle_data() { return [{tag: "1440", width: 1440}, {tag: "900", width: 900}] }
     function test_reconnectLifecycle(data) {
         seed()

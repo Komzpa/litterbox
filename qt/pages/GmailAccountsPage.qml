@@ -37,6 +37,7 @@ Kirigami.ScrollablePage {
     palette.highlightedText: surface
     padding: Math.max(18, Kirigami.Units.largeSpacing)
     background: Rectangle { color: canvas }
+    header: BackToInboxBar { stackPage: root }
 
     // Contract: { get(path, cb), post(path, body, cb), del(path, cb) }.
     // Set openLinks to false in tests to avoid spawning a browser.
