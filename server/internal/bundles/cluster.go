@@ -147,7 +147,14 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 		rest = append(rest, c)
 	}
 	for _, c := range rest {
-		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+StripGitHubFooter(c.text)))
+		text := StripGitHubFooter(c.text)
+		// LinkedIn network digests put the topic in the subject; their plain
+		// body contains only account statistics and recipient/provider boilerplate.
+		// Embedding that shared body makes unrelated notifications look alike.
+		if SenderKey(c.sender) == "messages-noreply@linkedin.com" && strings.Contains(text, "You are receiving LinkedIn network update digest email.") {
+			text = ""
+		}
+		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+text))
 		if err != nil {
 			log.Printf("bundles: embedding failed, using structured fallback: %v", err)
 			return fallback(ctx, tx, tenant, cards)
@@ -284,19 +291,9 @@ func fallback(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mailCar
 		if c.bundleKey != "" {
 			continue
 		}
-		if route, ok := RouteGitHubMail(c.sender, c.subject, c.text); ok {
-			if route.Standalone {
-				if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
-					return err
-				}
-				continue
-			}
-			if err := AssignKey(ctx, tx, tenant, c.id, BundleSenderKey(c.sender), route.Key, route.Title, "normal"); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := Assign(ctx, tx, tenant, c.id, c.sender, "", "", "normal"); err != nil {
+		// Without a topic vector or a structured route there is no evidence
+		// of a shared topic. Never replace that evidence with a sender key.
+		if _, err := tx.Exec(ctx, `UPDATE cards SET bundle_id=NULL WHERE tenant_id=$1 AND id=$2 AND bundle_id IS NOT NULL`, tenant, c.id); err != nil {
 			return err
 		}
 	}
