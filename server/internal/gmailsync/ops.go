@@ -59,6 +59,7 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 		})
 	}
 	register("archive", nil, []string{"INBOX"})
+	register("spam", []string{"SPAM"}, []string{"INBOX"})
 	register("star", []string{"STARRED"}, nil)
 	register("unstar", nil, []string{"STARRED"})
 	register("label_add", nil, nil)
