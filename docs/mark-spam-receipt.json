@@ -1,0 +1,88 @@
+{
+  "lane": "MarkSpamServerOp",
+  "branch": "fix/mark-spam-20261012",
+  "base_commit": "647e167beac804138d5fb27284161bb6baec7dab",
+  "implementation_commit": "b8e09d7c56e6818e4209e01a7862b93957d1a408",
+  "changed_paths": [
+    "server/internal/ops/ops.go",
+    "server/internal/gmailsync/ops.go",
+    "server/internal/gmailsync/spam_test.go",
+    "REQUIREMENTS.md",
+    "docs/ARCHITECTURE.md"
+  ],
+  "canonical_path": "Qt durable outbox -> POST /v1/ops -> transactional card update -> originating-account ClientForCard -> Gmail threads.modify -> transaction commit and existing card event triggers. The current server does not flush archive through gmail_effects.",
+  "tests": [
+    {
+      "phase": "base full server suite",
+      "cwd": "server",
+      "command": "pg_virtualenv sh -c 'CARD_TEST_POSTGRES=1 DATABASE_URL=\"postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE\" go test -p 2 ./...'",
+      "exit_status": 0,
+      "result": "All server packages passed at base 647e167; no base test failures. PostgreSQL printed a non-fatal locale/text-search warning."
+    },
+    {
+      "phase": "first focused fixture attempt",
+      "cwd": "server",
+      "command": "pg_virtualenv sh -c 'CARD_TEST_POSTGRES=1 DATABASE_URL=\"postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE\" go test -p 2 ./internal/gmailsync -run \"Test(Spam|BundleSpam)\" -count=1 -v'",
+      "exit_status": 1,
+      "result": "New fixture omitted a device required by its migration subset; corrected fixture identity. This was not a base failure."
+    },
+    {
+      "phase": "second focused fixture attempt",
+      "cwd": "server",
+      "command": "pg_virtualenv sh -c 'CARD_TEST_POSTGRES=1 DATABASE_URL=\"postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE\" go test -p 2 ./internal/gmailsync -run \"Test(Spam|BundleSpam)\" -count=1 -v'",
+      "exit_status": 1,
+      "result": "Shared Gmail test helper did not install card change triggers. New fixture now explicitly installs existing 005_card_notify.sql and 007_offline_ops.sql. This was not a base failure."
+    },
+    {
+      "phase": "corrected focused regressions",
+      "cwd": "server",
+      "command": "pg_virtualenv sh -c 'CARD_TEST_POSTGRES=1 DATABASE_URL=\"postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE\" go test -p 2 ./internal/gmailsync -run \"Test(Spam|BundleSpam)\" -count=1 -v'",
+      "exit_status": 0,
+      "result": "Success, originating token/thread/labels, same-ID replay, harmless new-ID repeat, payload conflict, incremental and full resync, durable archived changes, Gmail failure/retry like archive, unpinned bundle members, non-mail/foreign-card rejection, and no writes during sync without a submitted op passed."
+    },
+    {
+      "phase": "reverted runtime fix and neighboring archive control",
+      "cwd": "server",
+      "command": "pg_virtualenv sh -c 'CARD_TEST_POSTGRES=1 DATABASE_URL=\"postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE\" go test -p 2 ./internal/gmailsync -run \"TestSpamSuccessDuplicateAndResync|TestBundleArchiveRemovesInboxForEveryUnpinnedMember\" -count=1 -v'",
+      "exit_status": 1,
+      "result": "Both modified runtime files were restored exactly to their original snapshot contents for this run. Spam failed with HTTP 400 unknown operation instead of 200; neighboring bundle archive passed. Runtime fix was restored afterward."
+    },
+    {
+      "phase": "final full server suite after restoring fix",
+      "cwd": "server",
+      "command": "pg_virtualenv sh -c 'CARD_TEST_POSTGRES=1 DATABASE_URL=\"postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE\" go test -p 2 ./... -count=1'",
+      "exit_status": 0,
+      "result": "All server packages passed; no new failures compared with base. PostgreSQL printed the same non-fatal locale/text-search warning."
+    }
+  ],
+  "op_contract": {
+    "method": "POST",
+    "path": "/v1/ops",
+    "request": {"op_id": "<new UUID>", "card_id": "<mail card UUID>", "type": "spam", "args": {}},
+    "bundle_request": {"op_id": "<new UUID>", "card_id": "<member UUID>", "type": "bundle_spam", "args": {"bundle_id": "<bundle UUID>"}},
+    "success": {"http_status": 200, "body": {"ok": true}},
+    "errors": {
+      "400": "Malformed or unknown operation (plain text)",
+      "401": "Unauthenticated (plain text)",
+      "409": "op_id reused with different payload (plain text)",
+      "422": "Handler/Gmail rejection: JSON {error: reason}; card and receipt roll back",
+      "503": "API/database unavailable (plain text)"
+    },
+    "gmail_write": {"target": "originating account's stored Gmail thread", "addLabelIds": ["SPAM"], "removeLabelIds": ["INBOX"]},
+    "scopes": "Existing gmail.modify only",
+    "cancellation": "Qt undoQueuedOp removes a not-yet-sent outbox item. No request means no Gmail write. The server has no flush/cancel endpoint or post-confirmation spam Undo."
+  },
+  "production_identifiers_verified": [],
+  "production_access": "None. No real Gmail calls, production SQL, ingest, OAuth changes, desktop access, deployment or service restarts.",
+  "remaining_gaps": [
+    "Qt menu, optimistic spam overlay, persistent local queue and real enqueue/Undo/flush proof belong to the later Qt row; no qt files were edited.",
+    "No live two-device latency measurement; server proof checks the existing durable archived-card changes.",
+    "Existing synchronous archive limitations remain: if a later member or DB commit fails after an earlier remote Gmail modify, the remote write cannot be transactionally rolled back. No parallel worker or unrelated retry machinery was added."
+  ],
+  "retro": [
+    "Repeat tracing the real client-to-Gmail path and using the production account resolver against isolated fixtures.",
+    "Ban assuming old architecture prose describes runtime ownership; the existing Gmail test helper also omitted event migrations.",
+    "Boundary: actual pre-flush Undo proof is client-owned and requires the later Qt lane.",
+    "Receipt: docs/mark-spam-receipt.json"
+  ]
+}
