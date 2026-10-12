@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"html"
 	"io"
 	"net/http"
 )
@@ -16,6 +17,13 @@ func publicPage(page string) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		io.WriteString(w, page)
 	}
+}
+
+// MessagePage uses the public homepage shell and escapes all dynamic text.
+func MessagePage(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	io.WriteString(w, pageStart+"<title>Litterbox</title>\n"+pageStyle+"<h1>Litterbox</h1>\n<p>"+html.EscapeString(message)+"</p>\n</main>\n</body>\n</html>\n")
 }
 
 const pageStart = `<!doctype html>

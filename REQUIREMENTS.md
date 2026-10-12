@@ -49,8 +49,8 @@ Each requirement is **decided** or **open** and names its source.
   makes no Gmail call. A user can connect several Gmail accounts. An OAuth
   refresh `invalid_grant` rejects the action with HTTP 422 and JSON
   `code=gmail_reconnect_required` plus `account_address`; the existing account
-  `status` becomes `reconnect_required` and remains listed in Accounts. The
-  rejected operation records no receipt and restores every affected card.
+  `status` becomes `reauth_required` and remains listed in Accounts (2026-10-12 correction).
+  The rejected operation records no receipt and restores every affected card.
   Qt displays the account address and directs the user to Accounts → Connect
   account…, once per bundle action. Other errors retain their generic message.
   Oracle: isolated fake-Gmail server tests exercise success, failure, replay,
@@ -66,6 +66,7 @@ Each requirement is **decided** or **open** and names its source.
   Connecting a Gmail account shows Google's unverified-app warning, and the
   app serves at most 100 users. A connected account keeps working without
   weekly reconnection.
+- **R48 Gmail callback and account health** (decided, owner 2026-10-12). The Gmail account list returns id, address and status (`active` or `reauth_required`). Refresh invalid_grant in sync and operations persists `reauth_required`; OAuth callback reconnect restores `active`. Success and error callback pages reuse the homepage/privacy shell and CSS, title Litterbox, escaped account email, and readable reconnect guidance for denied authorization, expired state and exchange failure. Success says “Gmail connected: <email>. You can close this tab and return to Litterbox.” Oracle: Go callback/list/status-transition tests and invalid-grant operation/sync tests, with non-grant errors leaving status active.
 - **R19 Rich mail readable offline** (decided, owner 2026-09-28). Synced mail
   renders its full HTML and images properly, including when read offline.
   The home server fetches remote images during sync, so mail reads offline.

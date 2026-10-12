@@ -396,7 +396,7 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					defer health.Rollback(r.Context())
 					_, healthErr = health.Exec(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant)
 					if healthErr == nil {
-						_, healthErr = health.Exec(r.Context(), `UPDATE accounts SET status='reconnect_required' WHERE tenant_id=$1 AND id=$2`, tenant, reconnect.AccountID)
+						_, healthErr = health.Exec(r.Context(), `UPDATE accounts SET status='reauth_required' WHERE tenant_id=$1 AND id=$2`, tenant, reconnect.AccountID)
 					}
 					if healthErr == nil { healthErr = health.Commit(r.Context()) }
 				}

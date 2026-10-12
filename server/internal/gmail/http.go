@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Komzpa/litterbox/server/internal/httpapi"
 	"github.com/google/uuid"
 )
 
@@ -76,7 +77,7 @@ func (h *WebHandler) listAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	rows, e := tx.QueryContext(r.Context(), "SELECT id,address FROM accounts WHERE tenant_id=$1 AND status IN ('active','reconnect_required') ORDER BY address", tenant)
+	rows, e := tx.QueryContext(r.Context(), "SELECT id,address,status FROM accounts WHERE tenant_id=$1 AND status IN ('active','reauth_required') ORDER BY address", tenant)
 	if e != nil {
 		http.Error(w, "could not list accounts", 500)
 		return
@@ -85,12 +86,12 @@ func (h *WebHandler) listAccounts(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]string, 0)
 	for rows.Next() {
 		var id uuid.UUID
-		var address string
-		if e = rows.Scan(&id, &address); e != nil {
+		var address, status string
+		if e = rows.Scan(&id, &address, &status); e != nil {
 			http.Error(w, "could not list accounts", 500)
 			return
 		}
-		out = append(out, map[string]string{"id": id.String(), "address": address})
+		out = append(out, map[string]string{"id": id.String(), "address": address, "status": status})
 	}
 	if e = rows.Err(); e != nil {
 		http.Error(w, "could not list accounts", 500)
@@ -183,33 +184,33 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	tenant, e := stateTenant(state, h.Config.StateSecret)
 	if e != nil {
-		http.Error(w, "invalid OAuth state", 400)
+		httpapi.MessagePage(w, 400, "invalid OAuth state. Start connecting Gmail again from Litterbox.")
 		return
 	}
 	tx, e := h.dbTx(r.Context(), tenant)
 	if e != nil {
-		http.Error(w, "database unavailable", 500)
+		httpapi.MessagePage(w, 500, "Database unavailable. Try connecting Gmail again from Litterbox.")
 		return
 	}
 	defer tx.Rollback()
 	var verifier, redirect string
 	e = tx.QueryRowContext(r.Context(), `DELETE FROM gmail_oauth_states WHERE tenant_id=$1 AND state_hash=$2 AND expires_at>now() RETURNING code_verifier,redirect_uri`, tenant, stateHash(state)).Scan(&verifier, &redirect)
 	if e != nil {
-		http.Error(w, "invalid or expired OAuth state", 400)
+		httpapi.MessagePage(w, 400, "Invalid or expired OAuth state. Start connecting Gmail again from Litterbox.")
 		return
 	}
 	if providerErr := r.URL.Query().Get("error"); providerErr != "" {
 		_ = tx.Commit()
-		http.Error(w, "Google authorization was denied", 400)
+		httpapi.MessagePage(w, 400, "Google authorization was denied. Start connecting Gmail again from Litterbox to grant access.")
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		http.Error(w, "missing authorization code", 400)
+		httpapi.MessagePage(w, 400, "Missing authorization code. Start connecting Gmail again from Litterbox.")
 		return
 	}
 	if e = tx.Commit(); e != nil {
-		http.Error(w, "could not consume OAuth state", 500)
+		httpapi.MessagePage(w, 500, "Could not consume OAuth state. Start connecting Gmail again from Litterbox.")
 		return
 	}
 	tokenURL := h.Config.TokenURL
@@ -222,7 +223,7 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	tok, e := exchangeCode(r.Context(), client, tokenURL, h.Config.Credentials, redirect, code, verifier)
 	if e != nil || tok.RefreshToken == "" {
-		http.Error(w, "Gmail token exchange failed", 502)
+		httpapi.MessagePage(w, 502, "Gmail token exchange failed. Start connecting Gmail again from Litterbox.")
 		return
 	}
 	profileURL := h.Config.ProfileURL
@@ -231,27 +232,26 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	email, e := fetchEmail(r.Context(), client, profileURL, tok.AccessToken)
 	if e != nil {
-		http.Error(w, "could not read Gmail account", 502)
+		httpapi.MessagePage(w, 502, "Could not read Gmail account. Try connecting Gmail again from Litterbox.")
 		return
 	}
 	accountID := uuid.New()
 	store, e := h.dbTx(r.Context(), tenant)
 	if e != nil {
-		http.Error(w, "database unavailable", 500)
+		httpapi.MessagePage(w, 500, "Database unavailable. Try connecting Gmail again from Litterbox.")
 		return
 	}
 	defer store.Rollback()
 	_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active'`, tenant, accountID, email, []byte(tok.RefreshToken))
 	if e != nil {
-		http.Error(w, "could not save Gmail account", 500)
+		httpapi.MessagePage(w, 500, "Could not save Gmail account. Try connecting Gmail again from Litterbox.")
 		return
 	}
 	if e = store.Commit(); e != nil {
-		http.Error(w, "could not save Gmail account", 500)
+		httpapi.MessagePage(w, 500, "Could not save Gmail account. Try connecting Gmail again from Litterbox.")
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprint(w, "<!doctype html><title>Gmail connected</title><p>Gmail connected. Return to Litterbox.</p>")
+	httpapi.MessagePage(w, 200, "Gmail connected: "+email+". You can close this tab and return to Litterbox.")
 }
 func (h *WebHandler) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	tenant, e := tenantFrom(r.Context())

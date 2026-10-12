@@ -59,7 +59,7 @@ func TestArchiveGrantError(t *testing.T) {
     if err := db.QueryRow(ctx,`SELECT count(*) FROM cards WHERE tenant_id=$1 AND state='open'`,tenant).Scan(&open);err != nil {t.Fatal(err)}
     if err := db.QueryRow(ctx,`SELECT count(*) FROM ops WHERE tenant_id=$1`,tenant).Scan(&recorded);err != nil {t.Fatal(err)}
     if err := db.QueryRow(ctx,`SELECT status FROM accounts WHERE tenant_id=$1 AND id=$2`,tenant,account).Scan(&status);err != nil {t.Fatal(err)}
-    wantStatus := "active"; if grant {wantStatus = "reconnect_required"}
+    wantStatus := "active"; if grant {wantStatus = "reauth_required"}
     if open != 2 || recorded != 0 || status != wantStatus || calls != 1 {t.Fatalf("open=%d ops=%d health=%s token calls=%d",open,recorded,status,calls)}
    })
   }
