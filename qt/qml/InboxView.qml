@@ -745,12 +745,8 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Layout.columnSpan: window.width < 640 ? 3 : 1
                                     Layout.minimumWidth: 48
-                                    implicitHeight: Math.max(48, contentItem.implicitHeight)
-                                    padding: 0
-                                    leftPadding: 0
-                                    rightPadding: 0
-                                    topPadding: 0
-                                    bottomPadding: 0
+                                    implicitHeight: Math.max(48, contentItem.implicitHeight + 12)
+                                    padding: 6
                                     focusPolicy: Qt.StrongFocus
                                     text: window.bundleTitle(card)
                                     icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
@@ -769,7 +765,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
-                                            leftPadding: cardRow.bundleTextInset
+                                            leftPadding: cardRow.bundleTextInset - bundleToggle.leftPadding
                                             wrapMode: Text.Wrap
                                         }
                                         GridLayout {
@@ -777,7 +773,7 @@ ApplicationWindow {
                                             columnSpacing: Kirigami.Units.smallSpacing
                                             rowSpacing: Kirigami.Units.smallSpacing
                                             columns: window.width < 640 ? 2 : 4
-                                            Item { implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3); implicitHeight: Kirigami.Units.iconSizes.smallMedium; Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width } }
+                                            Item { implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3) - bundleToggle.leftPadding; implicitHeight: Kirigami.Units.iconSizes.smallMedium; Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width } }
                                             Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.width < 640 ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.width < 640 ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: window.width < 640 ? 1 : 0
@@ -797,7 +793,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
-                                            leftPadding: cardRow.bundleTextInset
+                                            leftPadding: cardRow.bundleTextInset - bundleToggle.leftPadding
                                             wrapMode: Text.Wrap
                                         }
                                         Label {
@@ -809,7 +805,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
-                                            leftPadding: cardRow.bundleTextInset
+                                            leftPadding: cardRow.bundleTextInset - bundleToggle.leftPadding
                                             wrapMode: Text.Wrap
                                         }
                                     }
@@ -952,6 +948,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
                                             Layout.minimumWidth: 0
                                         }
                                         Label {
