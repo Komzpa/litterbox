@@ -66,8 +66,8 @@ Controls.ToolButton {
 
     text: qsTr("More actions")
     icon.name: "overflow-menu"
-    icon.width: Kirigami.Units.iconSizes.smallMedium
-    icon.height: Kirigami.Units.iconSizes.smallMedium
+    icon.width: 20
+    icon.height: 20
     icon.color: actionInk
     display: Controls.AbstractButton.IconOnly
     implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)

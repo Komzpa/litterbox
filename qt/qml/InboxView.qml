@@ -21,6 +21,43 @@ ApplicationWindow {
     readonly property color canvas: "#f3f7f6"
     readonly property color accent: "#397d73"
     readonly property real edgeSpacing: Math.max(18, Kirigami.Units.largeSpacing)
+    readonly property int actionIconSize: 20
+    component InboxMenuItem: MenuItem {
+        id: entry
+        implicitWidth: Math.max(200, contentItem.implicitWidth + leftPadding + rightPadding)
+        implicitHeight: visible ? Math.max(48, contentItem.implicitHeight + 16) : 0
+        height: implicitHeight
+        leftPadding: 12
+        rightPadding: 12
+        topPadding: 8
+        bottomPadding: 8
+        icon.width: window.actionIconSize
+        icon.height: window.actionIconSize
+        contentItem: RowLayout {
+            spacing: 12
+            Kirigami.Icon {
+                source: entry.icon.name
+                visible: source.length > 0
+                color: window.ink
+                Layout.preferredWidth: window.actionIconSize
+                Layout.preferredHeight: window.actionIconSize
+            }
+            Label {
+                text: entry.text
+                color: entry.enabled ? window.ink : window.mutedInk
+                font: Kirigami.Theme.defaultFont
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+        background: Rectangle {
+            radius: 4
+            color: entry.highlighted || entry.down ? "#e7f1ee" : "transparent"
+            border.width: entry.visualFocus ? 1 : 0
+            border.color: window.accent
+        }
+    }
     color: canvas
     Material.theme: Material.Light
     Material.background: canvas
@@ -53,6 +90,7 @@ ApplicationWindow {
     required property var store
     required property var timeRules
     property var cardStore: store
+    property string reconnectAddress: ""
     property var captureActions: ({})
     property var cardHandles: ({})
     property string dragCardId: ""
@@ -134,6 +172,7 @@ ApplicationWindow {
         mailArchiveUndoOp = ""
         bundleArchiveToken = ""
         archiveUndoAvailable = false
+        reconnectAddress = response && response.code === "gmail_reconnect_required" ? response.account_address || "" : ""
         if (response && response.code === "gmail_reconnect_required" && response.account_address)
             bundleArchiveStatus = qsTr("Gmail access for %1 expired. Reconnect it in Accounts → Connect account…").arg(response.account_address)
         else
@@ -295,7 +334,7 @@ ApplicationWindow {
             }
             stack.push(mailDetailPage)
         } else {
-            stack.push(page, properties || { api: api })
+            stack.push(page, properties || (name === "GmailAccountsPage" ? {api: api, reconnectAddress: window.reconnectAddress} : {api: api}))
         }
     }
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
@@ -334,9 +373,10 @@ ApplicationWindow {
                     TapHandler { onTapped: createDialog.open() }
                 }
                 ToolButton {
+                    objectName: "inboxCommands"
                     icon.name: "application-menu"
-                    icon.width: Kirigami.Units.iconSizes.smallMedium
-                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                    icon.width: window.actionIconSize
+                    icon.height: window.actionIconSize
                     text: qsTr("Inbox commands")
                     display: AbstractButton.IconOnly
                     implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
@@ -346,8 +386,10 @@ ApplicationWindow {
                     onClicked: headerMenu.open()
                     Menu {
                         id: headerMenu
-                        x: -implicitWidth + parent.width
-                        padding: Kirigami.Units.smallSpacing
+                        objectName: "headerMenu"
+                        x: parent.width - width
+                        y: parent.height + 8
+                        padding: 6
                         Material.theme: Material.Light
                         palette.window: window.surface
                         palette.text: window.ink
@@ -358,10 +400,10 @@ ApplicationWindow {
                             radius: Kirigami.Units.cornerRadius
                             border.color: "#dce5e3"
                         }
-                        MenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("GmailAccountsPage") }
-                        MenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: openPage("EnrollmentPage") }
-                        MenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); onTriggered: store.refresh() }
-                        MenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3); visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
+                        InboxMenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; onTriggered: openPage("GmailAccountsPage") }
+                        InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; onTriggered: openPage("EnrollmentPage") }
+                        InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; onTriggered: store.refresh() }
+                        InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                     }
                 }
             }
@@ -372,18 +414,18 @@ ApplicationWindow {
                 objectName: "bundleArchiveUndoBar"
                 visible: window.bundleArchiveStatus.length > 0
                 Layout.fillWidth: true
-                implicitHeight: undoBarRow.implicitHeight + Kirigami.Units.smallSpacing * 2
+                implicitHeight: Math.max(48, undoBarRow.implicitHeight) + 12
                 radius: Kirigami.Units.cornerRadius
-                color: window.surface
-                border.color: "#dce5e3"
+                color: window.reconnectAddress.length > 0 ? "#fff4df" : window.surface
+                border.color: window.reconnectAddress.length > 0 ? "#e2c993" : "#dce5e3"
                 RowLayout {
                     id: undoBarRow
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: Kirigami.Units.smallSpacing
-                    anchors.rightMargin: Kirigami.Units.smallSpacing
-                    spacing: 0
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 12
                     Label {
                         objectName: "bundleArchiveUndoMessage"
                         text: window.bundleArchiveStatus
@@ -411,6 +453,15 @@ ApplicationWindow {
                             border.color: window.accent
                         }
                         onClicked: window.undoBundleArchive()
+                    }
+                    Button {
+                        objectName: "reconnectBannerButton"
+                        text: qsTr("Reconnect")
+                        visible: window.reconnectAddress.length > 0
+                        implicitHeight: 48
+                        contentItem: Label { text: parent.text; color: window.ink; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                        background: Rectangle { radius: 4; color: "#ffffff"; border.color: "#e2c993" }
+                        onClicked: window.openPage("GmailAccountsPage")
                     }
                 }
             }
@@ -822,9 +873,9 @@ ApplicationWindow {
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
                                 ColumnLayout {
-                                    Layout.preferredWidth: window.width >= 640 ? 230 : -1
-                                    Layout.minimumWidth: window.width >= 640 ? 230 : 0
-                                    Layout.maximumWidth: window.width >= 640 ? 230 : Infinity
+                                    Layout.preferredWidth: window.width >= 640 ? 120 : -1
+                                    Layout.minimumWidth: window.width >= 640 ? 120 : 0
+                                    Layout.maximumWidth: window.width >= 640 ? 120 : Infinity
                                     spacing: Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "bundleDate-" + cardId
@@ -844,6 +895,8 @@ ApplicationWindow {
                                     text: qsTr("Archive bundle")
                                     icon.name: "mail-mark-read-symbolic"
                                     icon.color: window.ink
+                                    icon.width: window.actionIconSize
+                                    icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
                                     Layout.minimumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Layout.preferredWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
@@ -867,6 +920,8 @@ ApplicationWindow {
                                     text: qsTr("Bundle details")
                                     icon.name: "overflow-menu"
                                     icon.color: window.ink
+                                    icon.width: window.actionIconSize
+                                    icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
                                     implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
@@ -981,7 +1036,7 @@ ApplicationWindow {
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             elide: Text.ElideLeft
-                                            Layout.maximumWidth: 180
+                                            Layout.maximumWidth: Math.min(180, cardText.width / 2)
                                         }
                                     }
                                     Label {
@@ -1016,9 +1071,9 @@ ApplicationWindow {
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
                                 ColumnLayout {
-                                    Layout.preferredWidth: window.width >= 640 ? 230 : -1
-                                    Layout.minimumWidth: window.width >= 640 ? 230 : 0
-                                    Layout.maximumWidth: window.width >= 640 ? 230 : Infinity
+                                    Layout.preferredWidth: window.width >= 640 ? 120 : -1
+                                    Layout.minimumWidth: window.width >= 640 ? 120 : 0
+                                    Layout.maximumWidth: window.width >= 640 ? 120 : Infinity
                                     spacing: Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "mailDate-" + cardId
@@ -1036,8 +1091,8 @@ ApplicationWindow {
                                     objectName: "doneButton-" + cardId
                                     text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
                                     icon.name: card.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
-                                    icon.width: Kirigami.Units.iconSizes.smallMedium
-                                    icon.height: Kirigami.Units.iconSizes.smallMedium
+                                    icon.width: window.actionIconSize
+                                    icon.height: window.actionIconSize
                                     icon.color: window.ink
                                     display: AbstractButton.IconOnly
                                     implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)

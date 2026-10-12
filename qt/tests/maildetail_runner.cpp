@@ -35,6 +35,10 @@ public:
         if (!file.open(QIODevice::ReadOnly)) qFatal("Missing mail fixture");
         return QString::fromUtf8(file.readAll());
     }
+    Q_INVOKABLE QString screenshotPath(const QString &name) const
+    {
+        return qEnvironmentVariable("LB_UI_PROOF_DIR") + QLatin1Char('/') + name;
+    }
     Q_INVOKABLE void startHeartbeat()
     {
         m_longest = m_last = 0;

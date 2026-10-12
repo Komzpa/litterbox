@@ -99,12 +99,19 @@ Kirigami.ScrollablePage {
         width: Math.min(parent.width, 1200)
         Layout.alignment: Qt.AlignHCenter
 
+        Kirigami.Heading {
+            text: root.title
+            level: 2
+            color: root.ink
+            Kirigami.FormData.isSection: true
+        }
         QQC2.TextField {
             id: serverField
             objectName: "serverField"
             Kirigami.FormData.label: qsTr("Server:")
             text: api && api.baseUrl ? api.baseUrl : ""
             Layout.fillWidth: true
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             Material.theme: Material.Light
             Material.background: root.surface
             Material.foreground: root.ink
@@ -130,6 +137,7 @@ Kirigami.ScrollablePage {
             // Invite codes are exact secrets: never autocorrect or uppercase them.
             inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
             Layout.fillWidth: true
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             Material.theme: Material.Light
             Material.background: root.surface
             Material.foreground: root.ink
@@ -144,6 +152,7 @@ Kirigami.ScrollablePage {
             Kirigami.FormData.label: qsTr("Device name:")
             text: Qt.platform.os === "android" ? qsTr("Phone") : qsTr("Desktop")
             Layout.fillWidth: true
+            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
             Material.theme: Material.Light
             Material.background: root.surface
             Material.foreground: root.ink

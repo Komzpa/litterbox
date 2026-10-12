@@ -16,10 +16,11 @@ QQC2.Button {
         spacing: Kirigami.Units.smallSpacing
         Kirigami.Icon {
             source: root.icon.name
+            visible: root.icon.name.length > 0
             isMask: true
             color: "#263b3a"
-            implicitWidth: Kirigami.Units.iconSizes.small
-            implicitHeight: Kirigami.Units.iconSizes.small
+            implicitWidth: 20
+            implicitHeight: 20
         }
         QQC2.Label { text: root.text; color: "#263b3a" }
     }

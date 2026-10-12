@@ -34,13 +34,14 @@ Kirigami.ScrollablePage {
     palette.buttonText: ink
     palette.highlight: accent
     palette.highlightedText: surface
-    padding: Kirigami.Units.largeSpacing
+    padding: Math.max(18, Kirigami.Units.largeSpacing)
     background: Rectangle { color: canvas }
 
     // Contract: { get(path, cb), post(path, body, cb), del(path, cb) }.
     // Set openLinks to false in tests to avoid spawning a browser.
     property var api
     property bool openLinks: true
+    property string reconnectAddress: ""
 
     property var accounts: [] // { id, address }
     property bool loading: false
@@ -90,13 +91,16 @@ Kirigami.ScrollablePage {
             reload()
     }
 
+    Item {
+        implicitHeight: accountColumn.implicitHeight
     ColumnLayout {
-        width: parent.width
-        Layout.maximumWidth: 1200
-        anchors.leftMargin: Math.max(18, (parent.width - 1200) / 2)
-        anchors.rightMargin: Math.max(18, (parent.width - 1200) / 2)
-        spacing: Kirigami.Units.largeSpacing
+        id: accountColumn
+        objectName: "accountsColumn"
+        width: Math.min(parent.width, 720)
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 18
 
+        Kirigami.Heading { text: root.title; level: 2; color: root.ink; Layout.fillWidth: true }
         QQC2.Button {
             id: connectButton
             objectName: "connectButton"
@@ -106,7 +110,7 @@ Kirigami.ScrollablePage {
             icon.height: Kirigami.Units.iconSizes.small
             icon.color: root.surface
             implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignLeft
             leftPadding: Kirigami.Units.largeSpacing
             rightPadding: Kirigami.Units.largeSpacing
             Material.theme: Material.Light
@@ -156,25 +160,35 @@ Kirigami.ScrollablePage {
             objectName: "accountsList"
             Layout.fillWidth: true
             Layout.preferredHeight: Math.max(160, contentHeight)
+            spacing: 12
             clip: true
             keyNavigationEnabled: true
             model: root.accounts
             activeFocusOnTab: true
 
             delegate: QQC2.ItemDelegate {
+                id: accountRow
                 width: list.width
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                implicitHeight: 84
+                padding: 12
+                readonly property bool expired: modelData.status === "reconnect_required" || modelData.address === root.reconnectAddress
+                background: Rectangle { color: root.surface; radius: 6; border.color: "#dce5e3" }
                 contentItem: RowLayout {
-                    spacing: Kirigami.Units.smallSpacing
-                    QQC2.Label {
-                        text: modelData.address
+                    spacing: 12
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        elide: Text.ElideRight
+                        QQC2.Label { text: modelData.address; color: root.ink; Layout.fillWidth: true; elide: Text.ElideRight }
+                        QQC2.Label { text: accountRow.expired ? qsTr("Access expired") : qsTr("Connected"); color: root.mutedInk; font: Kirigami.Theme.smallFont }
                     }
-                    QQC2.Button {
+                    MailActionButton {
+                        objectName: "reconnectButton"
+                        text: qsTr("Reconnect")
+                        visible: accountRow.expired
+                        onClicked: root.connectAccount()
+                    }
+                    MailActionButton {
                         objectName: "disconnectButton"
                         text: qsTr("Disconnect")
-                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                         onClicked: root.disconnect(modelData.id)
                     }
                 }
@@ -187,5 +201,6 @@ Kirigami.ScrollablePage {
                 text: qsTr("No accounts connected.")
             }
         }
+    }
     }
 }

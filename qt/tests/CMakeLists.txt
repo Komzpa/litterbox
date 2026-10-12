@@ -24,6 +24,11 @@ if(NOT ANDROID)
     target_compile_definitions(tst_mailresize PRIVATE LB_RESIZE_STORE
                               LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(tst_mailresize PRIVATE Qt6::QuickTest Qt6::WebEngineQuick Qt6::Sql KF6::Kirigami)
+    add_test(NAME uipolish COMMAND tst_mailresize
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/uipolish.qml
+        -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports UiPolish::test_geometry)
+    set_tests_properties(uipolish PROPERTIES ENVIRONMENT
+        "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 endif()
 
 # Real CardStore consumer proof; optionally load a copied desktop cache.
