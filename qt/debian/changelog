@@ -1,3 +1,12 @@
+litterbox-qt (0.1-24) unstable; urgency=medium
+
+  * Tidy the inbox: roomier mail cards with aligned icons and a compact, evenly padded More actions menu.
+  * Redesign the Gmail Accounts page: a compact Connect button, readable account rows and visible Disconnect buttons.
+  * Show the "Gmail access expired" banner and Reconnect button only when the server reports the account needs reconnecting, so it clears after you reconnect.
+  * Add a Back to inbox button to every page, plus Escape and Alt+Left, so no screen is a dead end.
+
+ -- Litterbox <litterbox@example.com>  Mon, 12 Oct 2026 23:50:00 +0400
+
 litterbox-qt (0.1-23) unstable; urgency=medium
 
   * Add durable mail and bundle spam actions with Undo.
