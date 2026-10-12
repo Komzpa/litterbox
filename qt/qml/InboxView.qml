@@ -953,16 +953,18 @@ ApplicationWindow {
                                             visible: text.length > 0
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
+                                            Layout.minimumWidth: implicitWidth
                                         }
-                                        Label {
-                                            objectName: "mailAccount-" + cardId
-                                            text: card.account_name || ""
-                                            visible: text.length > 0
-                                            color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
-                                            elide: Text.ElideLeft
-                                            Layout.maximumWidth: 180
-                                        }
+                                    }
+                                    Label {
+                                        objectName: "mailAccount-" + cardId
+                                        text: card.account_name || ""
+                                        visible: card.source === "mail" && !cardRow.bundled && text.length > 0
+                                        color: window.mutedInk
+                                        font: Kirigami.Theme.defaultFont
+                                        elide: Text.ElideLeft
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
                                     }
                                     Label {
                                         text: cardRow.bundled ? (card.account_name || "") : window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
