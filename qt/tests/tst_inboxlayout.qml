@@ -117,4 +117,36 @@ TestCase {
         verify(findChild(row, "mailAccount-mail-context").text === "owner@example.test", "account must remain visible")
         inbox.close()
     }
+    function test_phoneMailHeaderDoesNotOverlap_data() {
+        return [{tag: "phone", width: 360}, {tag: "neighbor", width: 400}]
+    }
+    function test_phoneMailHeaderDoesNotOverlap(data) {
+        store.clear()
+        store.append({cardId: "flying-blue", title: "Выиграйте аренду автомобиля в Hertz", section: "now", card: {
+            id: "flying-blue", title: "Выиграйте аренду автомобиля в Hertz", source: "mail", section: "now",
+            bundle_id: "", pinned_rank: null, important: false, timed: false, has_body: true,
+            summary: "", snippet: "Flying Blue", note: "", sender_name: "Flying Blue",
+            sender_address: "flyingblue@example.test", received_at: "2026-10-09T18:33:00",
+            account_name: "komzpa@gmail.com"
+        }})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        const sender = findChild(row, "mailSender-flying-blue")
+        const date = findChild(row, "mailDate-flying-blue")
+        verify(waitForRendering(sender))
+        verify(sender.width > 0, "sender must retain space to elide at phone width")
+        verify(date.width >= date.implicitWidth, "date must retain its natural width")
+        const senderRect = sender.mapToItem(row, 0, 0, sender.width, sender.height)
+        const dateRect = date.mapToItem(row, 0, 0, date.width, date.height)
+        verify(senderRect.x + senderRect.width <= dateRect.x,
+               "sender and date rectangles must not intersect: " + JSON.stringify(senderRect) + " / " + JSON.stringify(dateRect))
+        compare(sender.elide, Text.ElideRight)
+        inbox.close()
+    }
 }
