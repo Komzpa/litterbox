@@ -91,10 +91,10 @@ Each requirement is **decided** or **open** and names its source.
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
   open card with its content, not only titles. Reading needs no network.
-- **R10 Offline actions** (decided, owner 2026-09-27). Archive, bundle
-  archive, snooze, pin, done and writing journal notes work with no network.
+- **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12). Archive, bundle
+  archive, spam, bundle spam, snooze, pin, done and writing journal notes work with no network.
   They apply locally at once and sync when the connection returns. Gmail
-  changes for archive and snooze (R7, R20), and star changes for pin (R21),
+  changes for archive, spam and snooze (R7, R47, R20), and star changes for pin (R21),
   run then; other source actions run on sync through R12.
   A rejected action never holds back later queued actions; it is shown as failed on its card.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not

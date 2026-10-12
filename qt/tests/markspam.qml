@@ -7,6 +7,14 @@ TestCase {
     when: windowShown
     property url pagesDir: Qt.resolvedUrl("../pages/")
     readonly property string mailId: "11111111-1111-4111-8111-111111111111"
+    property var posted: []
+    Connections {
+        target: bundleStore
+        function onRequestPost(opId, path, body) {
+            posted = posted.concat([{opId: opId, path: path, body: body}])
+            bundleStore.reportPostResult(opId, 422, {error: "Fixture rejection"})
+        }
+    }
     QtObject { id: api; property string baseUrl: ""; property string token: "" }
     QtObject {
         id: updater
@@ -26,9 +34,10 @@ TestCase {
     }
     function test_menu(row) {
         bundleStore.online = false
+        posted = []
         verify(bundleStore.applyRemoteCards({now: [{id: mailId, source: "mail", state: "open",
             title: "Выиграйте аренду автомобиля в Hertz", sender_name: "Flying Blue",
-            account_name: "fixture@example.test", summary: "Flying Blue", has_body: true}], later: [], missed: []}))
+            account_name: "fixture@example.test", pinned_rank: null, summary: "Flying Blue", has_body: true}], later: [], missed: []}))
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: bundleStore, api: api, updater: updater, timeRules: timeRules,
             width: row.width, height: row.height, x: 0, y: 0
@@ -59,7 +68,16 @@ TestCase {
         verify(inbox.undoBundleArchive())
         compare(bundleStore.cardIds().length, 1)
         compare(bundleStore.pendingOps, 0)
-        inbox.showOperationFailure("fixture-op", 422)
+        bundleStore.online = true
+        wait(100)
+        compare(posted.length, 0, "Undo before flush sends nothing")
+        const rejectedOp = bundleStore.enqueueOp(mailId, "spam", {})
+        verify(rejectedOp.length > 0)
+        tryVerify(function() { return bundleStore.pendingOps === 0 })
+        compare(posted.length, 1)
+        compare(posted[0].path, "/v1/ops")
+        compare(posted[0].body.type, "spam")
+        compare(bundleStore.cardIds().length, 1)
         compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422). The card was restored.")
         verify(!inbox.archiveUndoAvailable)
         inbox.close()

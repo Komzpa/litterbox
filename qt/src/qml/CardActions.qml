@@ -30,7 +30,7 @@ Controls.ToolButton {
     function primaryAction() {
         const archive = source === "mail" || source === "journal"
         const operation = archive ? store.enqueueOp(cardKey, "archive", {}) : store.dismiss(cardKey)
-        if (operation) cardHandled(archive ? operation : "")
+        if (operation) cardHandled(archive ? operation : "", archive ? "archive" : "done")
     }
     readonly property bool pinStateKnown: pinnedRank !== undefined
     readonly property bool pinned: pinStateKnown && pinnedRank !== null
@@ -422,7 +422,7 @@ Controls.ToolButton {
             }
             root.snoozeError = ""
             if (root.store.enqueueOp(root.cardKey, "snooze", { until: until.toISOString() }))
-                root.cardHandled("")
+                root.cardHandled("", "snooze")
         }
     }
     Controls.Dialog {
