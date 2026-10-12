@@ -736,15 +736,14 @@ ApplicationWindow {
                             GridLayout {
                                 visible: cardRow.bundleLeader
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: window.width >= 640 ? 84 : 0
                                 columnSpacing: Kirigami.Units.smallSpacing
                                 rowSpacing: Kirigami.Units.smallSpacing
-                                columns: 2
+                                columns: 3
                                 Button {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
                                     Layout.fillWidth: true
-                                    Layout.columnSpan: window.width < 640 ? 2 : 1
+                                    Layout.columnSpan: window.width < 640 ? 3 : 1
                                     Layout.minimumWidth: 48
                                     implicitHeight: Math.max(48, contentItem.implicitHeight)
                                     padding: 0
@@ -778,11 +777,7 @@ ApplicationWindow {
                                             columnSpacing: Kirigami.Units.smallSpacing
                                             rowSpacing: Kirigami.Units.smallSpacing
                                             columns: window.width < 640 ? 2 : 4
-                                            Item {
-                                                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                                implicitHeight: Kirigami.Units.iconSizes.smallMedium
-                                                Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
-                                            }
+                                            Item { implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3); implicitHeight: Kirigami.Units.iconSizes.smallMedium; Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width } }
                                             Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.width < 640 ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.width < 640 ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: window.width < 640 ? 1 : 0
@@ -825,23 +820,7 @@ ApplicationWindow {
                                     Keys.onLeftPressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
-                                ColumnLayout {
-                                    Layout.preferredWidth: window.width >= 640 ? 230 : -1
-                                    Layout.minimumWidth: window.width >= 640 ? 230 : 0
-                                    Layout.maximumWidth: window.width >= 640 ? 230 : Infinity
-                                    spacing: Kirigami.Units.smallSpacing
-                                    Label {
-                                        objectName: "bundleDate-" + cardId
-                                        text: window.mailArrival(card)
-                                        visible: text.length > 0
-                                        color: window.mutedInk
-                                        font: Kirigami.Theme.defaultFont
-                                        Layout.fillWidth: true
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                    RowLayout {
-                                        Layout.alignment: Qt.AlignRight
-                                        spacing: Kirigami.Units.smallSpacing
+                                Item { visible: window.width < 640; Layout.fillWidth: true }
                                 Button {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
@@ -898,15 +877,12 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                    }
-                                }
                             }
                             Rectangle { id: bundleDivider; Layout.fillWidth: true; implicitHeight: 1; color: "#e0e9e6"; visible: cardRow.bundleLeader && cardRow.bundleExpanded }
                             RowLayout {
                                 Layout.leftMargin: cardRow.bundled ? cardRow.bundleTextInset : 0
                                 visible: !cardRow.bundleLeader || cardRow.bundleExpanded
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: window.width >= 640 ? 84 : 0
                                 Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
                                 spacing: Kirigami.Units.smallSpacing
                                 ToolButton {
@@ -1037,14 +1013,6 @@ ApplicationWindow {
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
-                                ColumnLayout {
-                                    Layout.preferredWidth: window.width >= 640 ? 230 : -1
-                                    Layout.minimumWidth: window.width >= 640 ? 230 : 0
-                                    Layout.maximumWidth: window.width >= 640 ? 230 : Infinity
-                                    spacing: Kirigami.Units.smallSpacing
-                                    RowLayout {
-                                        Layout.alignment: Qt.AlignRight
-                                        spacing: Kirigami.Units.smallSpacing
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
                                     text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
@@ -1089,8 +1057,6 @@ ApplicationWindow {
                                         },
                                         requestArchiveUndo: function(opId, action) { window.showArchiveUndo(opId, action) }
                                     })
-                                }
-                                    }
                                 }
                             }
                         }

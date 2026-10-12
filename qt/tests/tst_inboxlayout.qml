@@ -201,7 +201,8 @@ TestCase {
         verify(dateRect.x + dateRect.width <= accountRect.x, "inline date must precede the account")
         compare(senderRect.y + senderRect.height / 2, dateRect.y + dateRect.height / 2)
         verify(date.width >= date.implicitWidth, "inline date must retain its natural width")
-        compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
+        verify(findChild(mailRow, "inboxCard").height >= 48 && findChild(bundleRow, "inboxCard").height >= 48,
+               "plain cards and bundle headers must retain their minimum hit targets")
         inbox.close()
     }
     function test_additionalScreenshot_data() { return test_cleanPreviewGrid_data() }
