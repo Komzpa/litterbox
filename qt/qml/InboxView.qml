@@ -90,7 +90,21 @@ ApplicationWindow {
     required property var store
     required property var timeRules
     property var cardStore: store
-    property string reconnectAddress: ""
+    property var gmailAccounts: []
+    readonly property string reconnectAddress: gmailAccounts.filter(account => account.status === "reauth_required").map(account => account.address).join(", ")
+    readonly property string reconnectStatus: reconnectAddress ? qsTr("Gmail access for %1 expired. Reconnect it in Accounts → Connect account…").arg(reconnectAddress) : ""
+    function reloadGmailAccounts() {
+        if (stack.currentItem && stack.currentItem.objectName === "gmailAccountsPage") {
+            stack.currentItem.reload()
+            return
+        }
+        if (!api || typeof api.get !== "function") return
+        api.get("/v1/gmail/accounts", function(error, response) {
+            if (!error && response && Array.isArray(response.body)) gmailAccounts = response.body
+        })
+    }
+    Component.onCompleted: reloadGmailAccounts()
+    onActiveChanged: if (active) reloadGmailAccounts()
     property var captureActions: ({})
     property var cardHandles: ({})
     property string dragCardId: ""
@@ -172,11 +186,13 @@ ApplicationWindow {
         mailArchiveUndoOp = ""
         bundleArchiveToken = ""
         archiveUndoAvailable = false
-        reconnectAddress = response && response.code === "gmail_reconnect_required" ? response.account_address || "" : ""
-        if (response && response.code === "gmail_reconnect_required" && response.account_address)
-            bundleArchiveStatus = qsTr("Gmail access for %1 expired. Reconnect it in Accounts → Connect account…").arg(response.account_address)
-        else
+        // Reconnect state belongs exclusively to the current account list.
+        if (response && response.code === "gmail_reconnect_required") {
+            bundleArchiveStatus = ""
+            reloadGmailAccounts()
+        } else {
             bundleArchiveStatus = qsTr("Action failed (HTTP %1). The card was restored.").arg(status)
+        }
     }
     function undoBundleArchive() {
         if (mailArchiveUndoOp.length > 0) {
@@ -213,6 +229,8 @@ ApplicationWindow {
             undoExpiredNoticeTimer.restart()
         }
         function onOperationFailed(opId, status, response) { window.showOperationFailure(opId, status, response) }
+        function onRequestCards(path) { window.reloadGmailAccounts() }
+        function onFlushFinished() { window.reloadGmailAccounts() }
     }
     Timer {
         id: undoExpiredNoticeTimer
@@ -334,7 +352,9 @@ ApplicationWindow {
             }
             stack.push(mailDetailPage)
         } else {
-            stack.push(page, properties || (name === "GmailAccountsPage" ? {api: api, reconnectAddress: window.reconnectAddress} : {api: api}))
+            const values = Object.assign({api: api}, properties || {})
+            if (name === "GmailAccountsPage") values.accountsLoaded = function(accounts) { window.gmailAccounts = accounts }
+            stack.push(page, values)
         }
     }
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
@@ -412,7 +432,7 @@ ApplicationWindow {
             Rectangle {
                 id: bundleArchiveUndoBar
                 objectName: "bundleArchiveUndoBar"
-                visible: window.bundleArchiveStatus.length > 0
+                visible: window.reconnectStatus.length > 0 || window.bundleArchiveStatus.length > 0
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, undoBarRow.implicitHeight) + 12
                 radius: Kirigami.Units.cornerRadius
@@ -428,7 +448,7 @@ ApplicationWindow {
                     spacing: 12
                     Label {
                         objectName: "bundleArchiveUndoMessage"
-                        text: window.bundleArchiveStatus
+                        text: window.reconnectStatus || window.bundleArchiveStatus
                         color: window.ink
                         font: Kirigami.Theme.defaultFont
                         Layout.fillWidth: true

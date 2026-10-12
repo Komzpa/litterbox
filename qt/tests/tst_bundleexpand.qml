@@ -8,7 +8,13 @@ TestCase {
     when: windowShown
     property url pagesDir: Qt.resolvedUrl("../pages/")
     property var store: bundleStore
-    QtObject { id: api; property string baseUrl: ""; property string token: "" }
+    QtObject {
+        id: api
+        property string baseUrl: ""
+        property string token: ""
+        property var accounts: []
+        function get(path, callback) { callback(null, {body: accounts}) }
+    }
     QtObject {
         id: updater
         property bool supported: false
@@ -502,6 +508,7 @@ TestCase {
     function test_gmailReconnectMessage() {
         const ids = ["expired-first", "expired-second"]
         const bundle = "expired-bundle"
+        api.accounts = [{id: "expired", address: "darafei@maumap.com", status: "reauth_required"}]
         verify(store.applyRemoteCards({now: ids.map(id => card(id, bundle, "now", {state: "open"})), later: [], missed: []}))
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 900
@@ -522,18 +529,19 @@ TestCase {
         tryCompare(store, "pendingOps", 0, 5000)
         compare(notifications, 1)
         compare(store.cardIds().length, 2)
-        compare(inbox.bundleArchiveStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
+        compare(inbox.reconnectStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar.visible)
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.bundleArchiveStatus)
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.reconnectStatus)
         capture(inbox, "gmail-reconnect-toast-1440x900")
         inbox.showOperationFailure("single", 422, {code: "gmail_reconnect_required", account_address: "other@example.test"})
-        compare(inbox.bundleArchiveStatus, "Gmail access for other@example.test expired. Reconnect it in Accounts → Connect account…")
+        compare(inbox.reconnectStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
         inbox.showOperationFailure("generic", 422, {})
         compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422). The card was restored.")
         store.requestPost.disconnect(stub)
         store.operationFailed.disconnect(failed)
         store.online = false
+        api.accounts = []
         inbox.close()
     }
 

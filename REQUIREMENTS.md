@@ -49,15 +49,16 @@ Each requirement is **decided** or **open** and names its source.
   makes no Gmail call. A user can connect several Gmail accounts. An OAuth
   refresh `invalid_grant` rejects the action with HTTP 422 and JSON
   `code=gmail_reconnect_required` plus `account_address`; the existing account
-  `status` becomes `reconnect_required` and remains listed in Accounts. The
+  `status` becomes `reauth_required` and remains listed in Accounts. The
   rejected operation records no receipt and restores every affected card.
-  Qt displays the account address and directs the user to Accounts → Connect
-  account…, once per bundle action. Other errors retain their generic message.
+  Qt derives expired-access messaging solely from the account list (R52).
+  Other errors retain their generic message.
   Oracle: isolated fake-Gmail server tests exercise success, failure, replay,
   bundle members, tenant isolation and both resync paths; isolated invalid-grant
   token endpoint tests cover individual and bundle archive with non-grant
   negative controls. The Qt lane proves enqueue/Undo/flush, menu availability
   and transport/message mapping.
+- **R52 Stale Gmail-expired banner clears after reconnect** (decided, owner 2026-10-12). The Inbox expired banner and Accounts Access expired / Reconnect controls derive only from `/v1/gmail/accounts` status `reauth_required`. Status `active`, or an omitted status on an older server, shows no expired warning even after a remembered `gmail_reconnect_required` operation failure. The list reloads on each refresh, returning to the app, and during the OAuth connect flow. Operation results are not stored as reconnect state; successful operations reload the list. Oracle: `UiPolish::test_reconnectLifecycle` at 1440×1000 and 900×1000, including active-after-connect, stale error, missing status, and fresh Inbox/Accounts PNGs.
 - **R47 Qt mark as spam** (decided, owner 2026-10-12). Each mail card's More actions menu places **Mark as spam · <account address>** directly after Archive in Gmail, with a named icon, accessible name and a 48px minimum row. The bundle details menu offers the matching spam action for open, unpinned members. The existing durable outbox queues `spam` or `bundle_spam`, removes the selected cards immediately, and shows Undo. Undo before transmission cancels the queued operation and sends no HTTP request; HTTP 422 restores the cards and shows an error. Repeating the same spam click before acknowledgement queues only one operation per card. Oracle: `cardstore` spam tests and `markspam` real-store UI tests, plus open-menu screenshots at 1440×900 and 412×915; all network proofs use disposable local transport, never real Gmail.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.

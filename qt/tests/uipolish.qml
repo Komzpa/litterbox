@@ -13,7 +13,9 @@ TestCase {
         id: api
         property string baseUrl: "https://inbox.example.test"
         property string token: ""
-        function get(path, callback) { callback(null, {body: [{id: "account", address: "owner@example.test", status: "reconnect_required"}, {id: "other", address: "other@example.test", status: "active"}]}) }
+        property var accounts: [{id: "account", address: "owner@example.test", status: "reauth_required"}, {id: "other", address: "other@example.test", status: "active"}]
+        function get(path, callback) { callback(null, {body: accounts}) }
+        function post(path, body, callback) { callback(null, {body: {authorization_url: "https://accounts.example.test/connect"}}) }
     }
     QtObject {
         id: updater
@@ -75,7 +77,7 @@ TestCase {
             stack.pop()
             tryCompare(stack, "busy", false)
             inbox.showOperationFailure("", 409, {code: "gmail_reconnect_required", account_address: "owner@example.test"})
-            inbox.openPage("GmailAccountsPage", {api: api, openLinks: false, reconnectAddress: "owner@example.test"})
+            inbox.openPage("GmailAccountsPage", {api: api, openLinks: false})
             tryCompare(stack, "busy", false)
             shot(inbox, phase, "accounts", width)
             stack.pop()
@@ -96,6 +98,43 @@ TestCase {
     }
     function test_before() { capture("before") }
     function test_after() { capture("after") }
+    function test_reconnectLifecycle_data() { return [{tag: "1440", width: 1440}, {tag: "900", width: 900}] }
+    function test_reconnectLifecycle(data) {
+        seed()
+        api.accounts = [{id: "account", address: "owner@example.test", status: "reauth_required"}]
+        const inbox = createTemporaryObject(inboxComponent, proof, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 1000
+        })
+        verify(inbox)
+        inbox.show()
+        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        tryCompare(bar, "visible", true)
+        shot(inbox, "banner", "inbox-expired", data.width)
+        inbox.openPage("GmailAccountsPage", {api: api, openLinks: false})
+        const stack = findChild(inbox, "pageStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        const list = findChild(page, "accountsList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const reconnect = findChild(list.itemAtIndex(0), "reconnectButton")
+        verify(reconnect.visible)
+        shot(inbox, "banner", "accounts-expired", data.width)
+        page.connectAccount()
+        api.accounts = [{id: "account", address: "owner@example.test", status: "active"}]
+        // The connect-flow timer obtains the callback's new account state.
+        tryCompare(bar, "visible", false, 5000)
+        tryVerify(function() { list.forceLayout(); return !findChild(list.itemAtIndex(0), "reconnectButton").visible })
+        shot(inbox, "banner", "accounts-active", data.width)
+        stack.pop()
+        tryCompare(stack, "busy", false)
+        inbox.showOperationFailure("stale", 422, {code: "gmail_reconnect_required", account_address: "owner@example.test"})
+        verify(!bar.visible, "Stale reconnect errors must not override active status")
+        shot(inbox, "banner", "inbox-active", data.width)
+        api.accounts = [{id: "account", address: "owner@example.test"}]
+        inbox.showOperationFailure("legacy", 422, {code: "gmail_reconnect_required", account_address: "owner@example.test"})
+        verify(!bar.visible, "Old servers without status must not show stale banners")
+        inbox.close()
+    }
     function test_geometry_data() { return [{tag: "1440", width: 1440}, {tag: "900", width: 900}, {tag: "572", width: 572}] }
     function test_geometry(data) {
         seed()

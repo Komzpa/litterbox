@@ -29,6 +29,11 @@ if(NOT ANDROID)
         -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports UiPolish::test_geometry)
     set_tests_properties(uipolish PROPERTIES ENVIRONMENT
         "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    add_test(NAME gmailreconnect COMMAND tst_mailresize
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/uipolish.qml
+        -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports UiPolish::test_reconnectLifecycle)
+    set_tests_properties(gmailreconnect PROPERTIES ENVIRONMENT
+        "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 endif()
 
 # Real CardStore consumer proof; optionally load a copied desktop cache.

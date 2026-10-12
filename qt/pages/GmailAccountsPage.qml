@@ -8,6 +8,7 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
     id: root
+    objectName: "gmailAccountsPage"
     readonly property color ink: "#263b3a"
     readonly property color mutedInk: "#586d70"
     readonly property color surface: "#ffffff"
@@ -41,9 +42,9 @@ Kirigami.ScrollablePage {
     // Set openLinks to false in tests to avoid spawning a browser.
     property var api
     property bool openLinks: true
-    property string reconnectAddress: ""
-
-    property var accounts: [] // { id, address }
+    property var accountsLoaded: function(accounts) {}
+    property bool connecting: false
+    property var accounts: [] // { id, address, status }
     property bool loading: false
     property string errorText: ""
     property string lastConnectUrl: ""
@@ -60,6 +61,8 @@ Kirigami.ScrollablePage {
                 return
             }
             accounts = response.body
+            accountsLoaded(accounts)
+            if (accounts.every(account => account.status === "active")) connecting = false
         })
     }
 
@@ -71,6 +74,8 @@ Kirigami.ScrollablePage {
                 return
             }
             lastConnectUrl = response.body.authorization_url
+            connecting = true
+            reload()
             if (root.openLinks)
                 Qt.openUrlExternally(response.body.authorization_url)
         })
@@ -89,6 +94,17 @@ Kirigami.ScrollablePage {
     Component.onCompleted: {
         if (api)
             reload()
+    }
+
+    Connections {
+        target: root.Window.window
+        function onActiveChanged() { if (root.Window.window.active) root.reload() }
+    }
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.connecting
+        onTriggered: root.reload()
     }
 
     Item {
@@ -171,14 +187,14 @@ Kirigami.ScrollablePage {
                 width: list.width
                 implicitHeight: 84
                 padding: 12
-                readonly property bool expired: modelData.status === "reconnect_required" || modelData.address === root.reconnectAddress
+                readonly property bool expired: modelData.status === "reauth_required"
                 background: Rectangle { color: root.surface; radius: 6; border.color: "#dce5e3" }
                 contentItem: RowLayout {
                     spacing: 12
                     ColumnLayout {
                         Layout.fillWidth: true
                         QQC2.Label { text: modelData.address; color: root.ink; Layout.fillWidth: true; elide: Text.ElideRight }
-                        QQC2.Label { text: accountRow.expired ? qsTr("Access expired") : qsTr("Connected"); color: root.mutedInk; font: Kirigami.Theme.smallFont }
+                        QQC2.Label { text: accountRow.expired ? qsTr("Access expired") : modelData.status === "active" ? qsTr("Connected") : ""; visible: text.length > 0; color: root.mutedInk; font: Kirigami.Theme.smallFont }
                     }
                     MailActionButton {
                         objectName: "reconnectButton"
