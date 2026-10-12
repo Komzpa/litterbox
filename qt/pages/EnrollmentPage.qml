@@ -52,6 +52,15 @@ Kirigami.ScrollablePage {
     signal enrolled(var device) // { token, device_id, tenant_id }
 
     title: qsTr("Connect to Server")
+    // Text inputs otherwise consume Alt+Left as cursor movement before it
+    // can bubble to the inbox stack's navigation handler.
+    function handleFieldNavigation(event) {
+        const view = root.QQC2.StackView.view
+        if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier) && view && view.depth > 1) {
+            view.pop()
+            event.accepted = true
+        }
+    }
 
     function enroll() {
         errorText = ""
@@ -109,6 +118,7 @@ Kirigami.ScrollablePage {
         QQC2.TextField {
             id: serverField
             objectName: "serverField"
+            Keys.onPressed: event => root.handleFieldNavigation(event)
             Kirigami.FormData.label: qsTr("Server:")
             text: api && api.baseUrl ? api.baseUrl : ""
             Layout.fillWidth: true
@@ -134,6 +144,7 @@ Kirigami.ScrollablePage {
         QQC2.TextField {
             id: inviteField
             objectName: "inviteField"
+            Keys.onPressed: event => root.handleFieldNavigation(event)
             Kirigami.FormData.label: qsTr("Invite code:")
             // Invite codes are exact secrets: never autocorrect or uppercase them.
             inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
@@ -150,6 +161,7 @@ Kirigami.ScrollablePage {
         QQC2.TextField {
             id: deviceNameField
             objectName: "deviceNameField"
+            Keys.onPressed: event => root.handleFieldNavigation(event)
             Kirigami.FormData.label: qsTr("Device name:")
             text: Qt.platform.os === "android" ? qsTr("Phone") : qsTr("Desktop")
             Layout.fillWidth: true

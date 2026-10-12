@@ -143,9 +143,7 @@ TestCase {
                 shot(inbox, "back", data.page === "GmailAccountsPage" ? "accounts" : "enroll", data.width)
             mouseClick(back)
         } else {
-            // Escape must also work from a focused text field; Alt+Left is
-            // the text field's own cursor key there, so it is checked from the page.
-            const field = data.exit === "escape" ? findChild(stack.currentItem, "serverField") : null
+            const field = findChild(stack.currentItem, "serverField")
             if (field) field.forceActiveFocus()
             else back.forceActiveFocus()
             keyClick(data.exit === "escape" ? Qt.Key_Escape : Qt.Key_Left,

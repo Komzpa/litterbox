@@ -517,9 +517,8 @@ ApplicationWindow {
         Keys.onBackPressed: function(event) {
             if (window.handleBack()) event.accepted = true
         }
-        // Esc and Alt+Left leave any pushed page; focused controls keep their
-        // own handling because unaccepted keys bubble up to here (a focused
-        // text field consumes Alt+Left itself; Esc and the Back button still work).
+        // Esc and Alt+Left leave any pushed page; open menus and dialogs
+        // keep their own Escape handling before keys bubble up to here.
         Keys.onEscapePressed: function(event) {
             if (window.handleBack()) event.accepted = true
         }
