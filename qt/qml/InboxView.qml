@@ -124,11 +124,11 @@ ApplicationWindow {
         bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(result.count))
         return true
     }
-    function showArchiveUndo(opId) {
+    function showArchiveUndo(opId, action) {
         mailArchiveUndoOp = opId
         archiveUndoAvailable = true
         bundleArchiveToken = ""
-        bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
+        bundleArchiveStatus = action === "spam" ? qsTr("Marked as spam. You can undo this action.") : qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
     }
     function showOperationFailure(opId, status) {
         mailArchiveUndoOp = ""
@@ -845,6 +845,17 @@ ApplicationWindow {
                                         background: Rectangle { color: window.surface; border.color: "#dce5e3"; radius: Kirigami.Units.cornerRadius }
                                         MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.ink; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
                                         MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.mutedInk; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
+                                        MenuItem {
+                                            objectName: "bundleSpam-" + cardId
+                                            text: qsTr("Mark bundle as spam · %1").arg(cardRow.bundleSummary.accounts.join(", "))
+                                            icon.name: "mail-mark-junk"
+                                            Accessible.name: text
+                                            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                            onTriggered: {
+                                                const operation = window.cardStore.enqueueOp(cardId, "bundle_spam", {bundle_id: card.bundle_id})
+                                                if (operation) window.showArchiveUndo(operation, "spam")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1000,6 +1011,7 @@ ApplicationWindow {
                                     cardTitle: title
                                     accountName: card.account_name || ""
                                     canOpenSource: !!card.source_url
+                                    onCardHandled: function(operation, action) { if (operation) window.showArchiveUndo(operation, action) }
                                     onNoteRequested: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() }
                                     onOpenRequested: {
                                         if (card.source_url) Qt.openUrlExternally(card.source_url)
@@ -1012,7 +1024,7 @@ ApplicationWindow {
                                             noteField.text = note
                                             noteDialog.open()
                                         },
-                                        requestArchiveUndo: function(opId) { window.showArchiveUndo(opId) }
+                                        requestArchiveUndo: function(opId, action) { window.showArchiveUndo(opId, action) }
                                     })
                                 }
                             }

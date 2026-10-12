@@ -49,6 +49,7 @@ Each requirement is **decided** or **open** and names its source.
   Gmail accounts. Oracle: isolated fake-Gmail server tests exercise success,
   failure, replay, bundle members, tenant isolation and both resync paths;
   the Qt lane separately proves enqueue/Undo/flush and menu availability.
+- **R47 Qt mark as spam** (decided, owner 2026-10-12). Each mail card's More actions menu places **Mark as spam · <account address>** directly after Archive in Gmail, with a named icon, accessible name and a 48px minimum row. The bundle details menu offers the matching spam action for open, unpinned members. The existing durable outbox queues `spam` or `bundle_spam`, removes the selected cards immediately, and shows Undo. Undo before transmission cancels the queued operation and sends no HTTP request; HTTP 422 restores the cards and shows an error. Repeating the same spam click before acknowledgement queues only one operation per card. Oracle: `cardstore` spam tests and `markspam` real-store UI tests, plus open-menu screenshots at 1440×900 and 412×915; all network proofs use disposable local transport, never real Gmail.
 - **R8 No reply in Litterbox** (decided, owner 2026-09-27). Litterbox has no
   composer. A mail card opens the thread in the regular Gmail app.
 - **R18 Gmail app published unverified** (decided, owner 2026-09-27).
@@ -101,12 +102,11 @@ Each requirement is **decided** or **open** and names its source.
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
   open card with its content, not only titles. Reading needs no network.
-- **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12).
-  Archive, bundle archive, mark as spam, snooze, pin, done and writing journal
-  notes work with no network. They apply locally at once and sync when the
-  connection returns. Gmail changes for archive, spam and snooze (R7, R20),
-  and star changes for pin (R21), run then; other source actions run on sync
-  through R12.
+- **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12). Archive, bundle
+  archive, spam, bundle spam, snooze, pin, done and writing journal notes work with no network.
+  They apply locally at once and sync when the connection returns. Gmail
+  changes for archive, spam and snooze (R7, R47, R20), and star changes for pin (R21),
+  run then; other source actions run on sync through R12.
   A rejected action never holds back later queued actions; it is shown as failed on its card.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not
   break in the elevator"). Losing the network mid-use never blocks the
