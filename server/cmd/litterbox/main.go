@@ -60,6 +60,7 @@ func main() {
 	flag.Parse()
 
 	mux := http.NewServeMux()
+	httpapi.RegisterPublicPages(mux)
 	mux.HandleFunc("GET /healthz", httpapi.Healthz)
 	mux.HandleFunc("GET /v1/version", httpapi.Version(buildSHA, minClientAPI))
 	var protected http.Handler = mux
