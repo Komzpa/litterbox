@@ -72,6 +72,8 @@ qt_add_resources(litterbox-qt "lb_pages"
     FILES
         pages/EnrollmentPage.qml
         pages/GmailAccountsPage.qml
+        pages/AgentThreadsPage.qml
+        pages/AgentChatPage.qml
         pages/McpTokensPage.qml
         pages/MailDetailPage.qml
         pages/MailActionButton.qml

@@ -422,6 +422,7 @@ ApplicationWindow {
                             border.color: "#dce5e3"
                         }
                         InboxMenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; onTriggered: openPage("GmailAccountsPage") }
+                        InboxMenuItem { objectName: "headerMenuAgents"; text: qsTr("Agents"); icon.name: "user-identity"; onTriggered: openPage("AgentThreadsPage") }
                         InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; onTriggered: openPage("EnrollmentPage") }
                         InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; onTriggered: store.refresh() }
                         InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
