@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,4 +164,41 @@ func TestBridgeJournalSubmittedDeliveryCorrelatesSent(t *testing.T) {
 		ms,err := s.ListMessages(ctx,tenantA,th.ID,0,200)
 		if err!=nil || len(ms)!=1 || ms[0].ID!=ids[th.ID] || ms[0].Direction!="observed" || ms[0].Text!=text || ms[0].DeliveryState!="delivered" { t.Fatalf("delivery replay=%v err=%v",ms,err) }
 	}
+}
+
+func TestBridgeAgentMessageBridgeNativeStatuses(t *testing.T) {
+	s,h := bridgeFixture(t)
+	ctx := context.Background()
+	text := "native AgentMessageBridge work"
+	// Match AgentMessageBridge._journal_event: SHA256(kind|principal|request_id|status|reason|reply_sha).
+	events := []JournalEvent{
+		{Seq:1,Kind:"sent",Sender:"agent:mau",Recipient:"agent:korzhik",ConversationID:"native-conversation",RequestID:"native-request",Text:&text,Status:"queued",RecordedAt:"2026-10-13T12:00:00+00:00"},
+		{Seq:2,Kind:"delivery",Sender:"agent:mau",Recipient:"agent:korzhik",ConversationID:"native-conversation",RequestID:"native-request",Status:"indeterminate",RecordedAt:"2026-10-13T12:00:01+00:00"},
+		{Seq:3,Kind:"delivery",Sender:"agent:mau",Recipient:"agent:korzhik",ConversationID:"native-conversation",RequestID:"native-request",Status:"started",RecordedAt:"2026-10-13T12:00:02+00:00"},
+	}
+	for i := range events {
+		e := &events[i]
+		digest := sha256.Sum256([]byte(strings.Join([]string{e.Kind,e.Sender,e.RequestID,e.Status,"",""},"|")))
+		e.EventKey = fmt.Sprintf("%x",digest)
+	}
+	invalid := events[0]
+	invalid.Status = "unknown"
+	bridgeCall(t,h,"POST","/v1/a2a/ingest","bridge-a",map[string]any{"events":[]JournalEvent{invalid}},400)
+	ids := make(map[string]string)
+	for i, state := range []string{"sent","sent","delivered"} {
+		// e283136d rejects the initial native queued event here with HTTP 400.
+		bridgeCall(t,h,"POST","/v1/a2a/ingest","bridge-a",map[string]any{"events":events[i:i+1]},204)
+		bridgeCall(t,h,"POST","/v1/a2a/ingest","bridge-a",map[string]any{"events":events[:i+1]},204)
+		ths,err := s.ListThreads(ctx,tenantA)
+		if err!=nil || len(ths)!=2 { t.Fatalf("status=%s threads=%v err=%v",events[i].Status,ths,err) }
+		for _, th := range ths {
+			if th.PeerID!=events[0].Sender && th.PeerID!=events[0].Recipient { t.Fatalf("unexpected peer=%s",th.PeerID) }
+			ms,err := s.ListMessages(ctx,tenantA,th.ID,0,200)
+			if err!=nil || len(ms)!=1 { t.Fatalf("status=%s messages=%v err=%v",events[i].Status,ms,err) }
+			m := ms[0]
+			if m.Direction!="observed" || m.Sender!=events[0].Sender || m.Recipient!=events[0].Recipient || m.Text!=text || m.DeliveryState!=state { t.Fatalf("status=%s message=%+v",events[i].Status,m) }
+			if i==0 { ids[th.ID] = m.ID } else if m.ID!=ids[th.ID] { t.Fatalf("changed identity: got=%s want=%s",m.ID,ids[th.ID]) }
+		}
+	}
+	bridgeCall(t,h,"POST","/v1/a2a/ingest","bridge-a",map[string]any{"events":[]JournalEvent{invalid}},400)
 }

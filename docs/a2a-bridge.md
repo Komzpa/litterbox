@@ -6,7 +6,7 @@ The canonical text log is `hermes_a2a_journal.py`. Litterbox is its tenant-scope
 
 `POST /v1/a2a/ingest` accepts `{ "events": [...], "recipients": [...] }` and returns 204. Each optional array is limited to 200 items. An event is exactly a canonical `events_after` row: `seq`, `event_key`, `kind` (`sent`, `delivery`, `reply`), `sender`, `recipient`, `conversation_id`, `request_id`, nullable `text`, `redacted`, `status`, nullable `reason_code`, `recorded_at`. Reply addressing is reversed from the original request: the answering agent is sender. Events must arrive in journal order, including sent before delivery/reply. Recipients are `{peer_id,display_name,kind,availability}` with kind `token_agent` or `omp_session`, and availability `online`, `offline`, `busy` or `unknown`.
 
-Canonical journal status `submitted` maps to projection delivery state `sent`.
+Canonical journal statuses `submitted`, `queued`, and `indeterminate` map to projection delivery state `sent`; `started` maps to `delivered`. Native journal events remain unchanged; unknown statuses are rejected.
 
 A batch commits atomically. One peer maps to one thread. `agent:darafei` conversations project into the other participant's thread; agent-to-agent conversations appear as observed in both participants' threads. Recipient metadata refreshes existing threads; unspecified metadata is preserved. Internally the event identity is namespaced by request_id to correlate subsequent delivery/reply rows. Replaying the same sent/reply event does not duplicate messages or regress delivery state. A completed reply marks the outgoing request replied and adds an incoming row in the same transaction/thread. Delivery events update the original sent row, rather than creating empty bubbles.
 
