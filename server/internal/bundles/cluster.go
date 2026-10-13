@@ -3,6 +3,7 @@ package bundles
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 
 // Embedder converts mail content into a semantic vector.
 type Embedder interface {
+	ModelName() string
 	Embed(context.Context, string) ([]float64, error)
 }
 
@@ -47,6 +49,8 @@ func NewOllamaEmbedder() OllamaEmbedder {
 	}
 	return OllamaEmbedder{Host: host, Model: model, Client: &http.Client{}}
 }
+
+func (e OllamaEmbedder) ModelName() string { return e.Model }
 
 func (e OllamaEmbedder) Embed(ctx context.Context, text string) ([]float64, error) {
 	// Bound each call even when a caller supplies a client without a timeout.
@@ -93,6 +97,7 @@ type mailCard struct {
 	id                    uuid.UUID
 	sender, subject, text string
 	vector                []float64
+	cacheHash             []byte
 	bundleKey             string
 }
 type cluster struct {
@@ -117,6 +122,44 @@ func loadMailCards(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, openOnly bo
 		cards = append(cards, c)
 	}
 	return cards, rows.Err()
+}
+
+func loadEmbeddingCache(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, model string, cards []*mailCard) error {
+	byID := make(map[uuid.UUID]*mailCard, len(cards))
+	for _, c := range cards {
+		byID[c.id] = c
+	}
+	rows, err := tx.Query(ctx, `SELECT e.card_id,e.input_hash,e.vector FROM card_embeddings e JOIN cards c ON c.tenant_id=e.tenant_id AND c.id=e.card_id WHERE e.tenant_id=$1 AND e.model=$2 AND c.source='mail' AND c.state='open'`, tenant, model)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var hash []byte
+		var vector []float64
+		if err := rows.Scan(&id, &hash, &vector); err != nil {
+			return err
+		}
+		if c := byID[id]; c != nil {
+			c.cacheHash, c.vector = hash, vector
+		}
+	}
+	return rows.Err()
+}
+
+// Each successful miss is durable before the next slow embed call. No cache
+// transaction remains open while waiting for the embedder, even on fallback.
+func storeEmbedding(ctx context.Context, db ClusterDB, tenant uuid.UUID, model string, card uuid.UUID, hash []byte, vector []float64) error {
+	tx, err := beginClusterTx(ctx, db, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if _, err := tx.Exec(ctx, `INSERT INTO card_embeddings(tenant_id,card_id,model,input_hash,vector) VALUES($1,$2,$3,$4,$5) ON CONFLICT(tenant_id,card_id,model) DO UPDATE SET input_hash=EXCLUDED.input_hash,vector=EXCLUDED.vector`, tenant, card, model, hash, vector); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ReassignGitHub repairs legacy sender bundles in every card state, using the
@@ -152,6 +195,10 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 	if err != nil {
 		return err
 	}
+	model := embedder.ModelName()
+	if err := loadEmbeddingCache(ctx, tx, tenant, model, cards); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -171,13 +218,21 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 		if SenderKey(c.sender) == "messages-noreply@linkedin.com" && strings.Contains(text, "You are receiving LinkedIn network update digest email.") {
 			text = ""
 		}
-		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+text))
+		input := strings.TrimSpace(c.subject + "\n" + text)
+		hash := sha256.Sum256([]byte(input))
+		if bytes.Equal(c.cacheHash, hash[:]) {
+			continue
+		}
+		v, err := embedder.Embed(ctx, input)
 		if err != nil {
 			log.Printf("bundles: embedding failed, using structured fallback: %v", err)
 			embeddingFailed = true
 			break
 		}
 		c.vector = v
+		if err := storeEmbedding(ctx, db, tenant, model, c.id, hash[:], v); err != nil {
+			return err
+		}
 	}
 	tx, err = beginClusterTx(ctx, db, tenant)
 	if err != nil {
