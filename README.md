@@ -37,6 +37,14 @@ from 1 to 10 seconds; token/server changes cancel the old stream. Bearers
 and server error bodies are never logged by the consumer. Focused proof:
 `ctest --test-dir <qt-build> -R '^a2astream$' --output-on-failure`.
 
+The Qt agent chat page renders incoming, outgoing and observed a2a messages in
+sequence order. Sending posts a UUID `client_msg_id` and text to the thread's
+messages endpoint, immediately showing **pending**. A busy recipient is shown
+as **recipient_busy / not delivered**; **Retry** keeps the original message ID.
+Live a2a events and reconnects reload changes after the page's saved cursor.
+The scoped fake-API proof is `qt/tests/tst_agentchat.qml`; run it with
+`qmltestrunner -input qt/tests/tst_agentchat.qml` on an owned Xvfb display.
+
 ## Reading mail on desktop
 
 Click a mail card's text or preview to read the message inside Litterbox.
