@@ -322,9 +322,21 @@ void CardStore::deriveBundles(QList<QVariantMap> &cards) {
 }
 int CardStore::pendingOps() const { return m_outbox.size(); }
 void CardStore::setOnline(bool online) {
+    if (online && !m_offlineReason.isEmpty()) {
+        m_offlineReason.clear();
+        emit offlineReasonChanged();
+    }
     if (m_online == online) return;
     m_online = online; emit onlineChanged();
     if (online) { flush(); refresh(); }
+}
+void CardStore::reportOffline(const QString &reason) {
+    const QString message = reason.isEmpty() ? QStringLiteral("Connection closed") : reason;
+    if (m_offlineReason != message) {
+        m_offlineReason = message;
+        emit offlineReasonChanged();
+    }
+    setOnline(false);
 }
 void CardStore::setTransport(cardstore::OpTransport *transport) {
     m_transport = transport;

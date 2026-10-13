@@ -429,7 +429,10 @@ ApplicationWindow {
                 }
             }
             Label {
-                text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device")
+                objectName: "connectionStatus"
+                text: store.online ? qsTr("Online · changes sync across devices")
+                    : store.offlineReason ? qsTr("Offline: %1 · changes saved on this device").arg(store.offlineReason)
+                    : qsTr("Offline · changes saved on this device")
                 color: window.mutedInk
                 font.family: Kirigami.Theme.defaultFont.family
                 font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize

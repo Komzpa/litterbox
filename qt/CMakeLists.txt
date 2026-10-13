@@ -35,6 +35,24 @@ if(NOT ANDROID)
 endif()
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
+if(ANDROID)
+    # Qt's Android TLS plugin loads OpenSSL at runtime; Android does not
+    # supply it. Refuse an APK that can enroll over HTTP but never use HTTPS.
+    foreach(_lb_openssl_name libcrypto_3.so libssl_3.so)
+        set(_lb_openssl_found FALSE)
+        foreach(_lb_extra_lib IN LISTS QT_ANDROID_EXTRA_LIBS)
+            get_filename_component(_lb_extra_name "${_lb_extra_lib}" NAME)
+            if(_lb_extra_name STREQUAL _lb_openssl_name AND EXISTS "${_lb_extra_lib}")
+                set(_lb_openssl_found TRUE)
+            endif()
+        endforeach()
+        if(NOT _lb_openssl_found)
+            message(FATAL_ERROR "Android HTTPS requires ${_lb_openssl_name}; pass both OpenSSL 3 runtime paths in QT_ANDROID_EXTRA_LIBS")
+        endif()
+    endforeach()
+    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_EXTRA_LIBS "${QT_ANDROID_EXTRA_LIBS}")
+endif()
+
 # Compiled-in default server URL. Android has no LB_SERVER environment, so
 # the phone uses this until enrollment saves a server_url to QSettings.
 # R17: the repo default stays empty (a LAN address is a deployment detail);

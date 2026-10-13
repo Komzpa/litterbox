@@ -148,7 +148,10 @@ void Api::trackStreamReply(int id, QNetworkReply *reply)
     });
     connect(reply, &QNetworkReply::finished, this, [this, id, reply, buffer]() {
         m_streamReplies.remove(id);
-        const QString error = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QString error = status != 0 && (status < 200 || status >= 300)
+            ? QStringLiteral("HTTP %1").arg(status)
+            : reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
         reply->deleteLater();
         delete buffer;
         emit streamFinished(id, error);

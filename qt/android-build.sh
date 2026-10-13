@@ -7,6 +7,7 @@ ANDROID_SDK_SOURCE=${ANDROID_SDK_SOURCE:-/usr/lib/android-sdk}
 ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT:-"$ANDROID_SDK_SOURCE/ndk/29.0.14206865"}
 ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/.local/share/litterbox/android-sdk-qt6"}
 KIRIGAMI_ROOT=${KIRIGAMI_ROOT:-"$HOME/Qt/kirigami-android"}
+ANDROID_OPENSSL_ROOT=${ANDROID_OPENSSL_ROOT:-}
 ANDROID_API=${ANDROID_API:-34}
 ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS:-35.0.1}
 APP_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -74,6 +75,12 @@ done
 for path in "$QT_ANDROID_ROOT/bin/qt-cmake" "$QT_HOST_ROOT/bin/androiddeployqt" "$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" "$ANDROID_SDK_SOURCE/platforms/android-$ANDROID_API/android.jar" "$KIRIGAMI_ROOT/lib/cmake/KF6Kirigami/KF6KirigamiConfig.cmake"; do
     test -e "$path" || { echo "Required Android toolchain file not found: $path" >&2; exit 1; }
 done
+for library in libcrypto_3.so libssl_3.so; do
+    test -n "$ANDROID_OPENSSL_ROOT" && test -f "$ANDROID_OPENSSL_ROOT/$library" || {
+        echo "Set ANDROID_OPENSSL_ROOT to the ABI-matched OpenSSL 3 runtime directory (missing $library)" >&2
+        exit 1
+    }
+done
 
 mkdir -p "$ANDROID_SDK_ROOT"
 for component in cmdline-tools licenses ndk platform-tools; do
@@ -96,7 +103,8 @@ export JAVA_HOME=${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}
     -DKF6KirigamiPlatform_DIR="$KIRIGAMI_ROOT/lib/cmake/KF6KirigamiPlatform" \
     -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
     -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
-    -DANDROID_PLATFORM="android-$ANDROID_API"
+    -DANDROID_PLATFORM="android-$ANDROID_API" \
+    "-DQT_ANDROID_EXTRA_LIBS=$ANDROID_OPENSSL_ROOT/libcrypto_3.so;$ANDROID_OPENSSL_ROOT/libssl_3.so"
 cmake --build "$BUILD_DIR" --target litterbox-qt_make_apk --parallel "$BUILD_JOBS"
 
 APK=${APK:-"$BUILD_DIR/android-build/build/outputs/apk/release/android-build-release-unsigned.apk"}

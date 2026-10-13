@@ -37,6 +37,8 @@ Cut over production only through the `litterbox-server` `.deb`: build it with `d
 
 The server exposes `GET /v1/android/update` (JSON manifest) and `GET /v1/android/update.apk` (APK bytes). Both routes are behind the existing device-token authentication middleware when the database-backed API is enabled; the client requests the manifest's fixed relative download path on the same configured origin with the same enrolled-device Bearer token. The server snapshots the configured APK at startup (maximum 256 MiB), computes SHA-256 over those exact served bytes, and serves that same snapshot for its lifetime.
 
+Qt Android HTTPS requires bundled OpenSSL 3 runtimes: Android's system TLS libraries are not an OpenSSL ABI provider. Configure every Android build with `-DQT_ANDROID_EXTRA_LIBS='/path/to/arm64-v8a/libcrypto_3.so;/path/to/arm64-v8a/libssl_3.so'` (or set `ANDROID_OPENSSL_ROOT` for `qt/android-build.sh`). CMake fails closed if either runtime is missing. Use the same verified KDAB `android_openssl` arm64 libraries as the TLS-proven release; do not omit them when copying a release recipe. Before publishing, `unzip -Z1 <signed.apk>` must contain `lib/arm64-v8a/libcrypto_3.so`, `lib/arm64-v8a/libssl_3.so`, and the Qt OpenSSL TLS backend. Offline status now includes the actual transport/HTTP reason, cleared when the cards stream reconnects. A saved enrollment `server_url` still overrides the build default; changing the default does not migrate existing devices away from a dead LAN origin.
+
 Configure the litterbox service environment with all three values. `VERSION` is the signed APK's decimal Android `versionCode`, not a marketing version; `PACKAGE` is its exact application ID:
 
 ```sh

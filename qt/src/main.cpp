@@ -402,7 +402,7 @@ int main(int argc, char *argv[])
                 qWarning().noquote() << "Operation request failed:" << status << error;
                 store.reportPostResult(operationRequests.take(id), status, data.toObject().toVariantMap());
             }
-            if (status == 0) store.setOnline(false);
+            if (status == 0) store.reportOffline(error);
         });
 
     QTimer reconnect;
@@ -421,11 +421,11 @@ int main(int argc, char *argv[])
             store.refresh();
         }
     });
-    QObject::connect(&api, &Api::streamFinished, &app, [&](int id, const QString &) {
+    QObject::connect(&api, &Api::streamFinished, &app, [&](int id, const QString &error) {
         if (id != streamId) return;
         streamId = -1;
         cardEvent = false;
-        store.setOnline(false);
+        store.reportOffline(error);
         reconnect.start(retrySeconds * 1000);
         retrySeconds = qMin(retrySeconds * 2, 10);
     });

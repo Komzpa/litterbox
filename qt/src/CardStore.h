@@ -25,6 +25,7 @@ public:
 class CardStore : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(bool online READ online WRITE setOnline NOTIFY onlineChanged)
+    Q_PROPERTY(QString offlineReason READ offlineReason NOTIFY offlineReasonChanged)
     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
 public:
     enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole };
@@ -34,6 +35,8 @@ public:
     Q_INVOKABLE bool open(const QString &path);
     bool online() const { return m_online; }
     void setOnline(bool online);
+    QString offlineReason() const { return m_offlineReason; }
+    void reportOffline(const QString &reason);
     int pendingOps() const;
     void setTransport(cardstore::OpTransport *transport);
     static void registerQml(const char *uri, int major, int minor);
@@ -99,6 +102,7 @@ signals:
     void bundleArchiveUndoChanged();
     void bundleArchiveExpired(const QString &token);
     void onlineChanged();
+    void offlineReasonChanged();
     void pendingOpsChanged();
     void requestPost(const QString &opId, const QString &path, const QVariantMap &body);
     void requestCards(const QString &path);
@@ -144,6 +148,7 @@ private:
     QTimer *m_bundleUndoTimer = nullptr;
     QHash<QString, QVariantMap> m_mailBodies;
     bool m_online = false;
+    QString m_offlineReason;
     QString m_inFlight;
     QTimer m_retryTimer;
     int m_retryAttempt = 0;
