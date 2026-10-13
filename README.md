@@ -27,6 +27,12 @@ The server and Flutter client implement the inbox. Decisions remain numbered in
 
 ### Qt change — 2026-10-13
 
+Callback-driven Qt GETs use high network priority; signal-only cache prefetches
+use low priority. Opening an agent chat therefore no longer waits behind the
+inbox's mail-body prefetch queue. The regression lists threads, queues body
+prefetches, and opens a chat: `ctest --test-dir <qt-build> -R '^api$'
+--output-on-failure`.
+
 The Qt shell exposes `a2aStream` to agent pages. It consumes authenticated
 `/v1/a2a/events` frames (`event: a2a`, `data: {"seq":N}`) and emits
 `changed(seq)`. Pages refetch the thread list on invalidation; chat pages

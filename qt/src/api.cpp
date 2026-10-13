@@ -162,7 +162,10 @@ int Api::get(const QString &path, const QJSValue &callback)
 {
     const int id = m_nextId++;
     if (callback.isCallable()) m_callbacks.insert(id, callback);
-    trackJsonReply(id, m_nam->get(buildRequest(path)));
+    QNetworkRequest request = buildRequest(path);
+    // Keep callback-driven UI loads ahead of signal-only cache prefetches.
+    request.setPriority(callback.isCallable() ? QNetworkRequest::HighPriority : QNetworkRequest::LowPriority);
+    trackJsonReply(id, m_nam->get(request));
     return id;
 }
 

@@ -4,10 +4,49 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QtTest/QtTest>
+#include <QTimer>
 
 class ApiTest : public QObject {
     Q_OBJECT
 private slots:
+    void listThenOpenChatDuringBodyPrefetch() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+                const QByteArray request = socket->readAll();
+                if (!request.contains("\r\n\r\n")) return;
+                const bool background = request.contains("/body ");
+                const QByteArray payload = background ? "{}"
+                    : request.contains("/messages?") ? "{\"messages\":[{\"text\":\"reply\"}]}"
+                    : "{\"threads\":[{\"id\":\"claude\"}]}";
+                QTimer::singleShot(background ? 1000 : 0, socket, [socket, payload] {
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                        + QByteArray::number(payload.size()) + "\r\nConnection: close\r\n\r\n" + payload);
+                    socket->disconnectFromHost();
+                });
+            });
+            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        });
+        Api api;
+        QJSEngine engine;
+        api.setEngine(&engine);
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        engine.evaluate("var listed = false; var messages = null; var failure = null;");
+        api.get(QStringLiteral("/v1/a2a/threads"), engine.evaluate(
+            "(function(error, response) { failure = error; listed = response.body.threads[0].id === 'claude'; })"));
+        QTRY_VERIFY(engine.globalObject().property("listed").toBool());
+        // CardStore's signal-only body prefetch must not bury a newly opened chat.
+        for (int i = 0; i < 24; ++i)
+            api.get(QStringLiteral("/v1/cards/%1/body").arg(i));
+        QTest::qWait(100); // Occupy the HTTP/1 connection slots before opening the chat.
+        api.get(QStringLiteral("/v1/a2a/threads/claude/messages?after=0&limit=200"), engine.evaluate(
+            "(function(error, response) { failure = error; messages = response.body.messages; })"));
+        QTRY_VERIFY_WITH_TIMEOUT(!engine.globalObject().property("messages").isNull(), 2000);
+        QVERIFY(engine.globalObject().property("failure").isNull());
+        QCOMPARE(engine.evaluate("messages[0].text").toString(), QStringLiteral("reply"));
+    }
     void structuredFailureBodySurvivesTransport() {
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));
