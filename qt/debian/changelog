@@ -1,3 +1,13 @@
+litterbox-qt (0.1-25) unstable; urgency=medium
+
+  * Open mail on click again: background body caching is paced to one request
+    every 3 seconds instead of fetching every uncached mail at once, which
+    exhausted the server rate limit and made actions fail with HTTP 429.
+  * Keep an action queued and retry it after a minute when the server answers
+    HTTP 429, instead of restoring the card with "Action failed".
+
+ -- Litterbox <litterbox@example.com>  Wed, 14 Oct 2026 00:50:00 +0400
+
 litterbox-qt (0.1-24) unstable; urgency=medium
 
   * Tidy the inbox: roomier mail cards with aligned icons and a compact, evenly padded More actions menu.
