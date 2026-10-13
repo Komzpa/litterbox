@@ -548,7 +548,7 @@ TestCase {
     }
 
     function test_cardKeyboardFocusAndDeleteArchivesFocusedCard() {
-        const id = "keyboard-card"
+        const id = "11111111-1111-4111-8111-000000000099"
         verify(store.applyRemoteCards({now: [card(id, "", "now", {state: "open", has_body: true})], later: [], missed: []}))
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
