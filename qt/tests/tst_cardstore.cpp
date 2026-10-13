@@ -775,6 +775,187 @@ private slots:
         lock = QSqlDatabase();
         QSqlDatabase::removeDatabase(connection);
     }
+    void bodyPrefetchPacesLargeSnapshotsAndForegroundBypassesQueue() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("prefetch.sqlite")));
+        QVariantList cards;
+        QStringList ids;
+        for (int i = 0; i < 200; ++i) {
+            const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            ids.append(id);
+            cards.append(QVariantMap{{"id", id}, {"source", "mail"}, {"state", "open"}});
+        }
+        const QVariantMap sections{{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        store.setOnline(true);
+        QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
+        QElapsedTimer elapsed;
+        elapsed.start();
+        QVERIFY(store.applyRemoteCards(sections));
+        QCOMPARE(requested.size(), 1);
+        QCOMPARE(requested.first().at(0).toString(), ids.first());
+        // Repeated snapshots and a foreground call for an in-flight body dedup.
+        for (int i = 0; i < 3; ++i) QVERIFY(store.applyRemoteCards(sections));
+        store.requestMailBody(ids.first());
+        QCOMPARE(requested.size(), 1);
+        store.requestMailBody(ids.last());
+        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.last().at(0).toString(), ids.last());
+        store.requestMailBody(ids.last());
+        QCOMPARE(requested.size(), 2);
+        QVERIFY(store.applyRemoteCards(sections));
+        QTest::qWait(100);
+        QCOMPARE(requested.size(), 2);
+        // No response to the first request: later bodies still progress.
+        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), 3, 5000);
+        QVERIFY(elapsed.elapsed() >= 3000);
+        QCOMPARE(requested.last().at(0).toString(), ids.at(1));
+        QVERIFY(store.applyRemoteCards(sections));
+        QCOMPARE(requested.size(), 3);
+        QCOMPARE(store.pendingOps(), 0); // Reading bodies cannot archive anything.
+        QCOMPARE(store.rowCount(), 200);
+    }
+    void bodyPrefetchDeduplicatesQueuedCardsAndStopsOffline() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("prefetch-dedup.sqlite")));
+        const QString second = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString third = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QVariantMap sections{{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"source", "mail"}},
+            QVariantMap{{"id", second}, {"source", "mail"}},
+            QVariantMap{{"id", third}, {"source", "agent"}, {"has_body", true}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        store.setOnline(true);
+        QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
+        QVERIFY(store.applyRemoteCards(sections));
+        QCOMPARE(requested.size(), 1);
+        for (int i = 0; i < 3; ++i) QVERIFY(store.applyRemoteCards(sections));
+        // Foreground removes second from the queue, rather than fetching it twice.
+        store.requestMailBody(second);
+        QCOMPARE(requested.size(), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), 3, 5000);
+        QCOMPARE(requested.last().at(0).toString(), third);
+        QVERIFY(store.applyRemoteCards(sections));
+        QTest::qWait(3100);
+        QCOMPARE(requested.size(), 3);
+        store.setOnline(false);
+        store.reportMailBodyFailed(cardId);
+        QVERIFY(store.applyRemoteCards(sections));
+        QTest::qWait(3100);
+        QCOMPARE(requested.size(), 3);
+        // Reconnection rebuilds the queue; failed/abandoned requests can retry.
+        store.setOnline(true);
+        QCOMPARE(requested.size(), 4);
+        QCOMPARE(requested.last().at(0).toString(), cardId);
+        store.setOnline(false);
+        store.setOnline(true);
+        QCOMPARE(requested.size(), 4); // A reconnect cannot bypass the 3000ms pace.
+        store.requestMailBody(third);
+        QCOMPARE(requested.size(), 5); // Offline cleared the abandoned in-flight set.
+        QCOMPARE(requested.last().at(0).toString(), third);
+        store.setOnline(false);
+    }
+    void foregroundBodyUsesCacheAndPreservesItOnBadResponses() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("body-cache.sqlite")));
+        const QString manual = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"source", "mail"}},
+            QVariantMap{{"id", manual}, {"source", "manual"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
+        QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+        QSignalSpy failed(&store, &CardStore::mailBodyFailed);
+        store.setOnline(true);
+        QCOMPARE(requested.size(), 1);
+        store.requestMailBody(manual);
+        store.requestMailBody("missing");
+        store.requestMailBody(cardId);
+        QCOMPARE(requested.size(), 1);
+        store.applyRemoteMailBody(cardId, {{"html", "   "}});
+        QCOMPARE(failed.size(), 1);
+        QVERIFY(store.cachedMailBody(cardId).isEmpty());
+        store.requestMailBody(cardId);
+        QCOMPARE(requested.size(), 2);
+        store.applyRemoteMailBody(cardId, {{"html", "<p>Useful cached mail</p>"}});
+        QTRY_COMPARE(changed.size(), 1);
+        const QVariantMap useful = store.cachedMailBody(cardId);
+        store.applyRemoteMailBody(cardId, {{"error", "rate limit exceeded"}});
+        store.reportMailBodyFailed(cardId);
+        QCOMPARE(failed.size(), 3);
+        QCOMPARE(store.cachedMailBody(cardId), useful);
+        store.requestMailBody(cardId);
+        QCOMPARE(changed.size(), 2);
+        QCOMPARE(requested.size(), 2);
+        store.setOnline(false);
+        store.requestMailBody(cardId);
+        QCOMPARE(changed.size(), 3);
+        QCOMPARE(requested.size(), 2);
+        QCOMPARE(store.pendingOps(), 0);
+        QCOMPARE(store.rowCount(), 2);
+    }
+    void archive429StaysDurableAndOptimisticThenAcksSameOp() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("rate-limited.sqlite");
+        CardStore store;
+        QVERIFY(store.open(path));
+        const QString neighbor = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QVariantMap sections{{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"source", "mail"}},
+            QVariantMap{{"id", neighbor}, {"source", "mail"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(sections));
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        const QString op = store.enqueueOp(cardId, "archive");
+        QVERIFY(!op.isEmpty());
+        QTRY_COMPARE(posted.size(), 1);
+        const QVariantMap payload = posted.first().at(2).toMap();
+        QElapsedTimer retryElapsed;
+        retryElapsed.start();
+        store.reportPostResult(op, 429, {{"error", "rate limit exceeded"}});
+        QCOMPARE(store.pendingOps(), 1);
+        QCOMPARE(failed.size(), 0);
+        QCOMPARE(store.cardIds(), QStringList{neighbor});
+        QVERIFY(store.applyRemoteCards(sections));
+        QCOMPARE(store.cardIds(), QStringList{neighbor});
+        // Foreground navigation is independent of the operation's retry timer.
+        QSignalSpy bodies(&store, &CardStore::requestMailBodyGet);
+        store.requestMailBody(neighbor);
+        QCOMPARE(bodies.size(), 1);
+        QCOMPARE(bodies.first().at(0).toString(), neighbor);
+        {
+            CardStore coldStart;
+            QVERIFY(coldStart.open(path));
+            QCOMPARE(coldStart.pendingOps(), 1);
+            QCOMPARE(coldStart.cardIds(), QStringList{neighbor});
+            QVERIFY(coldStart.applyRemoteCards(sections));
+            QCOMPARE(coldStart.cardIds(), QStringList{neighbor});
+        }
+        store.flush();
+        QTest::qWait(1100);
+        QCOMPARE(posted.size(), 1);
+        QCOMPARE(failed.size(), 0);
+        // Exercise the real existing timer: 429 must wait a complete minute.
+        QTRY_COMPARE_WITH_TIMEOUT(posted.size(), 2, 65000);
+        QVERIFY(retryElapsed.elapsed() >= 60000);
+        QCOMPARE(posted.last().at(0).toString(), op);
+        QCOMPARE(posted.last().at(2).toMap(), payload);
+        QCOMPARE(store.pendingOps(), 1);
+        QCOMPARE(store.cardIds(), QStringList{neighbor});
+        store.reportPostResult(op, 200, {{"ok", true}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(failed.size(), 0);
+        QVERIFY(store.applyRemoteCards(sections));
+        QCOMPARE(store.cardIds(), QStringList{neighbor});
+        CardStore acknowledged;
+        QVERIFY(acknowledged.open(path));
+        QCOMPARE(acknowledged.pendingOps(), 0);
+        QCOMPARE(acknowledged.cardIds(), QStringList{neighbor});
+    }
     void hasBodyAgentCardPrefetchesAndSurvivesRestart() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
@@ -797,6 +978,8 @@ private slots:
             store.setOnline(true);
             QSignalSpy prefetch(&store, &CardStore::requestMailBodyGet);
             QVERIFY(store.applyRemoteCards(sections));
+            QCOMPARE(prefetch.size(), 1);
+            store.requestMailBody(mailId);
             QCOMPARE(prefetch.size(), 2);
             QSet<QString> ids;
             for (const QVariantList &args : prefetch) ids.insert(args.first().toString());
@@ -807,7 +990,7 @@ private slots:
             store.requestMailBody(manualId);
             QCOMPARE(prefetch.size(), 2);
             store.requestMailBody(agentId);
-            QCOMPARE(prefetch.size(), 3);
+            QCOMPARE(prefetch.size(), 2); // Already in flight: no duplicate.
             store.applyRemoteMailBody(agentId, {{QStringLiteral("html"), bodyHtml}});
             QCOMPARE(store.cachedMailBody(agentId).value(QStringLiteral("html")).toString(), bodyHtml);
             QCOMPARE(store.cachedMailBody(agentId).value(QStringLiteral("source_url")).toString(), QStringLiteral(""));

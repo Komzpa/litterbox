@@ -25,11 +25,18 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     connect(m_bundleUndoTimer, &QTimer::timeout, this, &CardStore::expireBundleArchives);
     m_retryTimer.setSingleShot(true);
     connect(&m_retryTimer, &QTimer::timeout, this, &CardStore::flush);
+    m_retryTimer.setTimerType(Qt::PreciseTimer);
+    m_bodyPrefetchTimer.setSingleShot(true);
+    m_bodyPrefetchTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_bodyPrefetchTimer, &QTimer::timeout, this, &CardStore::queueMailBodyPrefetch);
     m_storage->moveToThread(&m_storageThread);
     connect(&m_storageThread, &QThread::finished, m_storage, &QObject::deleteLater);
     m_storageThread.start();
 }
 CardStore::~CardStore() {
+    m_bodyPrefetchTimer.stop();
+    m_bodyPrefetchQueue.clear();
+    m_bodyRequests.clear();
     // Drain queued commits before closing: an offline action survives exit.
     QMetaObject::invokeMethod(m_storage, [this] {
         m_db.close();
@@ -50,6 +57,9 @@ bool CardStore::execute(const QString &sql) {
 }
 bool CardStore::open(const QString &path) {
     if (m_open || !m_inFlight.isEmpty()) return false;
+    m_bodyPrefetchTimer.stop();
+    m_bodyPrefetchQueue.clear();
+    m_bodyRequests.clear();
     QList<QVariantMap> cards, outbox;
     QHash<QString, QVariantMap> bodies;
     bool opened = false;
@@ -94,6 +104,7 @@ bool CardStore::open(const QString &path) {
     replaceCards(std::move(cards));
     emit pendingOpsChanged();
     flush();
+    queueMailBodyPrefetch();
     return true;
 }
 
@@ -328,7 +339,12 @@ void CardStore::setOnline(bool online) {
     }
     if (m_online == online) return;
     m_online = online; emit onlineChanged();
-    if (online) { flush(); refresh(); }
+    if (online) { flush(); refresh(); queueMailBodyPrefetch(); }
+    else {
+        m_bodyPrefetchTimer.stop();
+        m_bodyPrefetchQueue.clear();
+        m_bodyRequests.clear();
+    }
 }
 void CardStore::reportOffline(const QString &reason) {
     const QString message = reason.isEmpty() ? QStringLiteral("Connection closed") : reason;
@@ -421,18 +437,9 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
     const auto before = m_cards;
     replaceCards(cards);
     persistCards(before, cards);
-    // Proactively cache mail and has_body agent bodies after a remote snapshot
-    // so first-slice offline reading is not contingent on opening each card.
-    // Mail behavior is unchanged; agent cards opt in via has_body from /v1/cards.
-    if (m_online) {
-        for (const QVariantMap &card : m_cards) {
-            const bool isMail = card.value(QStringLiteral("source")).toString() == QStringLiteral("mail");
-            if (!isMail && !card.value(QStringLiteral("has_body")).toBool()) continue;
-            const QString id = card.value(QStringLiteral("id")).toString();
-            if (cachedMailBody(id).isEmpty())
-                emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
-        }
-    }
+    // Keep every fetchable body available offline without exhausting the shared
+    // API limit. The queue survives snapshots; foreground reads bypass its pace.
+    queueMailBodyPrefetch();
     return true;
 }
 QStringList CardStore::pinnedCardIds() const {
@@ -827,7 +834,8 @@ void CardStore::flushNext() {
 void CardStore::reportPostResult(const QString &opId, int status, const QVariantMap &response) {
     if (opId != m_inFlight || m_inFlight.isEmpty()) return;
     const bool acknowledged = status >= 200 && status < 300 && response.value(QStringLiteral("ok")) == QVariant(true);
-    const bool terminal = acknowledged || (status >= 400 && status < 500);
+    const bool rejected = status >= 400 && status < 500 && status != 429;
+    const bool terminal = acknowledged || rejected;
     const QString failureGroup = terminal ? m_bundleFailureGroups.take(opId) : QString();
     const bool notifyFailure = failureGroup.isEmpty() || !m_reportedBundleFailures.contains(failureGroup);
     if (!failureGroup.isEmpty() && !acknowledged) m_reportedBundleFailures.insert(failureGroup);
@@ -836,7 +844,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     if (!acknowledged) {
         if (status == 422)
             qWarning().noquote() << "Operation rejected:" << opId << status << QJsonDocument(QJsonObject::fromVariantMap(response)).toJson(QJsonDocument::Compact);
-        if (status >= 400 && status < 500) {
+        if (rejected) {
             m_retryAttempt = 0;
             const bool canUndoLocally = m_mutations.contains(opId);
             undoOp(opId);
@@ -868,7 +876,12 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             return;
         }
         m_inFlight.clear();
-        const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+        int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+        if (status == 429) {
+            // No retry metadata is part of this response contract. Give the
+            // shared per-IP minute window time to recover; retain the same op.
+            delay = 60000;
+        }
         m_retryAttempt = qMin(m_retryAttempt + 1, 6);
         m_retryTimer.start(delay);
         return;
@@ -904,8 +917,56 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
 QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
     return m_mailBodies.value(cardId);
 }
+void CardStore::queueMailBodyPrefetch() {
+    if (!m_online || !m_open) return;
+    // A lost response must not strand a card (or the rest of the queue).
+    for (auto it = m_bodyRequests.begin(); it != m_bodyRequests.end();) {
+        if (it.value().hasExpired()) it = m_bodyRequests.erase(it);
+        else ++it;
+    }
+    QSet<QString> eligible;
+    for (const QVariantMap &card : m_cards) {
+        if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
+            !card.value(QStringLiteral("has_body")).toBool()) continue;
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (!m_mailBodies.value(id).isEmpty() || m_bodyRequests.contains(id)) continue;
+        eligible.insert(id);
+    }
+    m_bodyPrefetchQueue.erase(std::remove_if(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end(),
+        [&](const QString &id) { return !eligible.contains(id); }), m_bodyPrefetchQueue.end());
+    QSet<QString> queued(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end());
+    for (const QVariantMap &card : m_cards) {
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (eligible.contains(id) && !queued.contains(id)) {
+            m_bodyPrefetchQueue.append(id);
+            queued.insert(id);
+        }
+    }
+    if (m_bodyPrefetchTimer.isActive()) return;
+    if (m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.isEmpty()) return;
+    if (!m_nextBodyPrefetch.hasExpired()) {
+        m_bodyPrefetchTimer.start(int(m_nextBodyPrefetch.remainingTime()));
+        return;
+    }
+    prefetchNextMailBody();
+}
+void CardStore::prefetchNextMailBody() {
+    if (!m_online || !m_open) return;
+    // Arm before emitting: a synchronous callback/snapshot cannot start a burst.
+    m_nextBodyPrefetch = QDeadlineTimer(3000, Qt::PreciseTimer);
+    m_bodyPrefetchTimer.start(3000);
+    if (m_bodyPrefetchQueue.isEmpty()) return;
+    const QString id = m_bodyPrefetchQueue.takeFirst();
+    m_bodyRequests.insert(id, QDeadlineTimer(60000, Qt::PreciseTimer));
+    emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
+}
 void CardStore::requestMailBody(const QString &cardId) {
-    if (!m_online || !m_open || cardId.isEmpty()) return;
+    if (!m_open || cardId.isEmpty()) return;
+    if (!cachedMailBody(cardId).isEmpty()) {
+        emit mailBodyChanged(cardId);
+        return;
+    }
+    if (!m_online) return;
     // Mail cards keep their existing fetchable body; non-mail cards opt in
     // via has_body from /v1/cards. Cards without either have no body route.
     const QVariantMap *card = nullptr;
@@ -915,10 +976,17 @@ void CardStore::requestMailBody(const QString &cardId) {
     if (!card) return;
     const bool isMail = card->value(QStringLiteral("source")).toString() == QStringLiteral("mail");
     if (!isMail && !card->value(QStringLiteral("has_body")).toBool()) return;
+    m_bodyPrefetchQueue.removeAll(cardId);
+    const auto inFlight = m_bodyRequests.constFind(cardId);
+    if (inFlight != m_bodyRequests.cend() && !inFlight.value().hasExpired()) return;
+    m_bodyRequests.insert(cardId, QDeadlineTimer(60000, Qt::PreciseTimer));
+    if (!m_bodyPrefetchTimer.isActive()) m_bodyPrefetchTimer.start(3000);
     emit requestMailBodyGet(cardId, QStringLiteral("/v1/cards/") + cardId + QStringLiteral("/body"));
 }
 void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &body) {
     if (!m_open || cardId.isEmpty()) return;
+    m_bodyRequests.remove(cardId);
+    m_bodyPrefetchQueue.removeAll(cardId);
     const QString html = body.value(QStringLiteral("html")).toString();
     QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
     // Body responses omit empty source_url; SQLite requires a non-null string.
@@ -941,6 +1009,7 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     }, Qt::QueuedConnection);
 }
 void CardStore::reportMailBodyFailed(const QString &cardId) {
+    m_bodyRequests.remove(cardId);
     emit mailBodyFailed(cardId);
 }
 QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl) const {

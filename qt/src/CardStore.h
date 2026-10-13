@@ -3,6 +3,7 @@
 
 #include <QAbstractListModel>
 #include <QTimer>
+#include <QDeadlineTimer>
 #include <QSqlDatabase>
 #include <QStringList>
 #include <QVariantMap>
@@ -120,6 +121,8 @@ private:
     bool writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after);
     void undoOp(const QString &opId);
     void flushNext();
+    void queueMailBodyPrefetch();
+    void prefetchNextMailBody();
     bool execute(const QString &sql);
     void deriveBundles(QList<QVariantMap> &cards);
     QString m_connection;
@@ -147,6 +150,10 @@ private:
     int m_bundleUndoDurationMs = 8000;
     QTimer *m_bundleUndoTimer = nullptr;
     QHash<QString, QVariantMap> m_mailBodies;
+    QStringList m_bodyPrefetchQueue;
+    QHash<QString, QDeadlineTimer> m_bodyRequests;
+    QTimer m_bodyPrefetchTimer;
+    QDeadlineTimer m_nextBodyPrefetch{0, Qt::PreciseTimer};
     bool m_online = false;
     QString m_offlineReason;
     QString m_inFlight;
