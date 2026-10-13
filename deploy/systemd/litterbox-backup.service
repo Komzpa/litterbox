@@ -8,4 +8,6 @@ Type=oneshot
 User=litterbox
 Group=litterbox
 EnvironmentFile=/etc/litterbox/backup.env
+# Prepare only the directory, preserving existing backup files and their owners.
+ExecStartPre=+/usr/bin/install -d -o litterbox -g litterbox -m 0700 ${BACKUP_DIR}
 ExecStart=/opt/litterbox/deploy/backup/daily-pg-dump.sh

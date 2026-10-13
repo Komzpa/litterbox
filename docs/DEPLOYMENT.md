@@ -66,6 +66,8 @@ DATABASE_URL='postgresql://backup_user:...@db-host/litterbox?sslmode=verify-full
 BACKUP_DIR=/var/backups/litterbox
 BACKUP_SECONDARY=backup-user@second-host:/srv/backups/litterbox/
 ```
+The unit prepares `BACKUP_DIR` as `litterbox:litterbox` with mode 0700 before running the dump. Its privileged `ExecStartPre` changes only the directory, not existing backup files; this also repairs a directory left owned by `postgres` after a manual dump.
+
 
 The service account needs source-database read/backup privileges and SSH key access to the second host. Pin the second host key in that account's `known_hosts`; do not enable password login or host-key bypass. Enable the daily job with `systemctl enable --now litterbox-backup.timer`. The script writes a custom-format `pg_dump`, removes dumps at least fourteen days old from the local and dedicated remote backup directories, and copies the new dump to the parameterized secondary host. The remote path must be dedicated to Litterbox dumps and use the restricted path characters validated by the script. Protect both backup locations as sensitive data and monitor timer/exit status. Test access and capacity during provisioning; no production copy is configured here.
 
