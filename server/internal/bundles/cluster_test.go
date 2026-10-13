@@ -54,18 +54,13 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 		}
 	}
 	vectors := fakeEmbedder{subjects[0]: {1, 0, 0}, subjects[1]: {.99, .01, 0}, subjects[2]: {.98, .02, 0}, subjects[3]: {0, 0, 1}}
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(ctx)
-	if err = Cluster(ctx, tx, tenant, vectors); err != nil {
+	if err = Cluster(ctx, conn, tenant, vectors); err != nil {
 		t.Fatal(err)
 	}
 	var b0, b1, b3 *uuid.UUID
 	for i, id := range ids {
 		var b *uuid.UUID
-		if err = tx.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&b); err != nil {
+		if err = conn.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&b); err != nil {
 			t.Fatal(err)
 		}
 		switch i {
@@ -85,15 +80,23 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 	if b3 != nil {
 		t.Fatalf("different topic unexpectedly bundled: %v", b3)
 	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
 	if err = TakeOut(ctx, tx, tenant, ids[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err = Cluster(ctx, tx, tenant, vectors); err != nil {
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = Cluster(ctx, conn, tenant, vectors); err != nil {
 		t.Fatal(err)
 	}
 	for i, id := range ids[:3] {
 		var got *uuid.UUID
-		if err = tx.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&got); err != nil {
+		if err = conn.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
 		if i == 0 && got != nil {

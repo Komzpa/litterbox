@@ -289,18 +289,7 @@ func (h Handler) afterIngest(ctx context.Context, tenant string) error {
 	if err != nil {
 		return err
 	}
-	tx, err := h.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant); err != nil {
-		return err
-	}
-	if err := bundles.AfterIngest(ctx, tx, tenantID, nil); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return bundles.AfterIngest(ctx, h.Pool, tenantID, nil)
 }
 
 func apply(ctx context.Context, db *sql.DB, a Auth, req Request) error {

@@ -428,10 +428,10 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if e != nil {
 		return e
 	}
-	if e = bundles.AfterIngest(ctx, tx, a.TenantID, nil); e != nil {
+	if e = tx.Commit(ctx); e != nil {
 		return e
 	}
-	return tx.Commit(ctx)
+	return bundles.AfterIngest(ctx, s.DB, a.TenantID, nil)
 }
 func (s *Syncer) Run(ctx context.Context, accounts func(context.Context) ([]Account, error)) error {
 	d := s.PollInterval

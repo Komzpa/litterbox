@@ -50,15 +50,7 @@ func TestClusterSecondRunWritesNoChangesRows(t *testing.T) {
 	}
 	vectors := fakeEmbedder{subjects[0]: {1, 0, 0}, subjects[1]: {.99, .01, 0}}
 	run := func() {
-		tx, err := conn.Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tx.Rollback(ctx)
-		if err = Cluster(ctx, tx, tenant, vectors); err != nil {
-			t.Fatal(err)
-		}
-		if err = tx.Commit(ctx); err != nil {
+		if err = Cluster(ctx, conn, tenant, vectors); err != nil {
 			t.Fatal(err)
 		}
 	}

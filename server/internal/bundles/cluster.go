@@ -22,6 +22,12 @@ type Embedder interface {
 	Embed(context.Context, string) ([]float64, error)
 }
 
+// ClusterDB starts top-level transactions. A pgx.Tx deliberately does not
+// satisfy this contract: its Begin would keep the caller's transaction open.
+type ClusterDB interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}
+
 // OllamaEmbedder calls the local Ollama embeddings API.
 type OllamaEmbedder struct {
 	Host, Model string
@@ -127,25 +133,32 @@ func ReassignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID) error {
 // embedding failure falls back to structured keys: GitHub mail keeps its
 // routed keys and is never keyed by sender alone. The embed error is logged
 // once per run so a missing local model is visible instead of silently
-// reshaping the inbox.
-func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder) error {
+// reshaping the inbox. Read and write transactions are tenant-scoped and short;
+// all embedding calls run between them with no database transaction open.
+func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embedder) error {
 	if embedder == nil {
 		return errors.New("nil bundle embedder")
 	}
+	tx, err := beginClusterTx(ctx, db, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
 	cards, err := loadMailCards(ctx, tx, tenant, true)
 	if err != nil {
 		return err
 	}
-	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	var rest []*mailCard
 	for _, c := range cards {
-		if c.bundleKey != "" {
+		if _, routed := RouteGitHubMail(c.sender, c.subject, c.text); routed {
 			continue
 		}
 		rest = append(rest, c)
 	}
+	embeddingFailed := false
 	for _, c := range rest {
 		text := StripGitHubFooter(c.text)
 		// LinkedIn network digests put the topic in the subject; their plain
@@ -157,9 +170,24 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+text))
 		if err != nil {
 			log.Printf("bundles: embedding failed, using structured fallback: %v", err)
-			return fallback(ctx, tx, tenant, cards)
+			embeddingFailed = true
+			break
 		}
 		c.vector = v
+	}
+	tx, err = beginClusterTx(ctx, db, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
+		return err
+	}
+	if embeddingFailed {
+		if err := fallback(ctx, tx, tenant, cards); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 	var groups []*cluster
 	for _, c := range rest {
@@ -209,18 +237,30 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 			}
 		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
-// AfterIngest is the hook mail producers call after inserting or updating a card.
-func AfterIngest(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder) error {
+func beginClusterTx(ctx context.Context, db ClusterDB, tenant uuid.UUID) (pgx.Tx, error) {
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant.String()); err != nil {
+		_ = tx.Rollback(context.Background())
+		return nil, err
+	}
+	return tx, nil
+}
+
+// AfterIngest is called after the producer commits its card and message writes.
+func AfterIngest(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embedder) error {
 	if embedder == nil {
 		embedder = NewOllamaEmbedder()
 	}
-	return Cluster(ctx, tx, tenant, embedder)
+	return Cluster(ctx, db, tenant, embedder)
 }
 
-// assignGitHub routes GitHub mail deterministically before any embedding.
+// assignGitHub routes GitHub mail deterministically in the write phase.
 // Standalone cards (mentions, human replies on his own threads) get no
 // bundle; bundled cards are grouped by their structured key with a human
 // title. Routed cards carry c.bundleKey so the semantic path skips them.
