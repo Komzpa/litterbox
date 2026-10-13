@@ -248,13 +248,17 @@ Each requirement is **decided** or **open** and names its source.
   deb and Android APK, must be reviewed visually before release. The lead must
   open screenshots of the exact release candidate at phone size (412x915)
   and at desktop size. Release is blocked if the phone inbox shows fewer than
-  4 single-mail cards per screen. The `-V` suffix distinguishes this release
+  4 complete cards per screen, including a mixed mail/non-mail fixture. The `-V` suffix distinguishes this release
   gate from the existing R33 app-native capture contract.
   Phone inbox correction: below 640 px, use 8 px gutters and card padding,
   full-width sender → subject → preview text, an inline bundle-count chip,
   and one compact trailing action strip. Sender/account metadata must not
   compete with the subject or preview. Collapsed bundles use the same text
   hierarchy and density as single mail cards; desktop layout stays unchanged.
+  Non-mail cards use the same compact metadata and trailing controls; phone
+  subjects, non-mail summaries and notes are bounded to two elided lines.
+  `tst_inboxlayout` scans rendered card pixels with agent, mail, manual, journal,
+  reminder and alert cards at 412x915, 480x915 and 1280x800, and checks action bounds.
   This replaces conflicting phone-only spacing and chip placement in R36.
 
 ## Open questions

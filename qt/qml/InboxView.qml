@@ -1121,8 +1121,10 @@ ApplicationWindow {
                                         text: cardRow.bundled ? (card.account_name || "") : window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
                                         visible: (cardRow.bundled && !window.compactInbox) || card.source !== "mail"
                                         color: window.mutedInk
-                                        font: Kirigami.Theme.defaultFont
-                                        wrapMode: Text.Wrap
+                                        font.family: Kirigami.Theme.defaultFont.family
+                                        font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+                                        wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
+                                        elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     Kirigami.Heading {
@@ -1131,6 +1133,8 @@ ApplicationWindow {
                                         color: window.ink
                                         level: 4
                                         wrapMode: Text.Wrap
+                                        maximumLineCount: window.compactInbox ? 2 : Infinity
+                                        elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     Label {
@@ -1141,16 +1145,16 @@ ApplicationWindow {
                                         font: Kirigami.Theme.defaultFont
                                         textFormat: Text.PlainText
                                         wrapMode: window.compactInbox ? Text.Wrap : Text.NoWrap
-                                        maximumLineCount: window.compactInbox ? 3 : 1
+                                        maximumLineCount: window.compactInbox && card.source !== "mail" ? 2 : window.compactInbox ? 3 : 1
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
-                                    Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                    Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; maximumLineCount: window.compactInbox ? 2 : Infinity; elide: Text.ElideRight; Layout.fillWidth: true }
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
                                 Label {
                                     objectName: "phoneMailDate-" + cardId
-                                    visible: window.compactInbox
+                                    visible: window.compactInbox && card.source === "mail"
                                     Layout.row: 1
                                     Layout.column: 0
                                     Layout.fillWidth: true

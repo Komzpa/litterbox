@@ -30,6 +30,87 @@ TestCase {
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
 
+    function test_mixedPhoneDensity_data() {
+        return [{tag: "phone", viewWidth: 412, viewHeight: 915},
+                {tag: "neighbor", viewWidth: 480, viewHeight: 915},
+                {tag: "desktop", viewWidth: 1280, viewHeight: 800}]
+    }
+    function test_mixedPhoneDensity(data) {
+        store.clear()
+        const sources = ["agent", "mail", "manual", "journal", "reminder", "alert", "mail"]
+        for (let i = 0; i < sources.length; ++i) {
+            const source = sources[i]
+            store.append({cardId: "mixed-" + i, title: "Review the latest inbox update " + i, section: "now", card: {
+                id: "mixed-" + i, title: "Review the latest inbox update " + i, source: source, section: "now",
+                bundle_id: "", pinned_rank: null, important: false, timed: false, has_body: source === "mail",
+                summary: "Disposable mixed card: existing phone inbox must stay compact with all actions reachable.",
+                snippet: "Disposable mail preview: existing phone inbox must stay compact with all actions reachable.",
+                note: "", account_name: source === "mail" ? "owner@example.test" : "",
+                sender_name: "Research team", received_at: "2026-10-13T12:00:00Z"
+            }})
+        }
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: data.viewHeight
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(4) !== null })
+        wait(200)
+        const canvas = inbox.contentItem.parent
+        const image = grabImage(canvas)
+        compare(image.width, data.viewWidth)
+        compare(image.height, data.viewHeight)
+        // Scan a blank interior column: white card runs separated by the inbox
+        // background count rendered cards, not model rows or recycled delegates.
+        const firstFrame = findChild(list.itemAtIndex(0), "inboxCard")
+        const scanX = Math.ceil(firstFrame.mapToItem(canvas, 4, 0).x)
+        let pixelCards = 0
+        let run = 0
+        for (let y = Math.ceil(list.mapToItem(canvas, 0, 0).y); y < image.height; ++y) {
+            if (Qt.colorEqual(image.pixel(scanX, y), inbox.surface)) run++
+            else {
+                if (run >= 48) pixelCards++
+                run = 0
+            }
+        }
+        // A white run reaching the bottom is a clipped card, not a full card.
+        let completeCards = 0
+        for (let i = 0; i < list.count; ++i) {
+            const row = list.itemAtIndex(i)
+            if (!row) continue
+            const frame = findChild(row, "inboxCard")
+            const top = frame.mapToItem(canvas, 0, 0)
+            if (top.y < 0 || top.y + frame.height > image.height) continue
+            completeCards++
+            const title = findChild(row, "mailTitle-mixed-" + i)
+            const primary = findChild(row, "doneButton-mixed-" + i)
+            const more = findChild(row, "inboxActions")
+            for (const action of [primary, more]) {
+                verify(action.visible && action.enabled)
+                verify(action.width >= 48 && action.height >= 48)
+                const p = action.mapToItem(frame, 0, 0)
+                verify(p.x >= 0 && p.y >= 0 && p.x + action.width <= frame.width + 1 && p.y + action.height <= frame.height + 1,
+                       "action clipped for " + sources[i])
+                const textBottom = title.mapToItem(frame, 0, title.height).y
+                verify(inbox.compactInbox ? p.y >= textBottom : p.x >= title.mapToItem(frame, title.width, 0).x,
+                       "action overlaps text for " + sources[i])
+            }
+        }
+        compare(pixelCards, completeCards, "pixel oracle must count complete mixed cards")
+        verify(pixelCards >= 4, "R33-V: only " + pixelCards + " complete mixed cards fit")
+        image.save("/tmp/litterbox-mixed-inbox-" + data.viewWidth + "x" + data.viewHeight + ".png")
+        console.log("Mixed inbox " + data.viewWidth + "x" + data.viewHeight + ": " + pixelCards + " complete cards")
+        // Exercise the actual overflow target on a non-mail card.
+        const more = findChild(list.itemAtIndex(0), "inboxActions")
+        mouseClick(more)
+        const sheet = findChild(more, "cardActionSheet-mixed-0")
+        tryVerify(function() { return sheet && sheet.visible })
+        mouseClick(findChild(sheet, "actionSheetClose-mixed-0"))
+        inbox.close()
+    }
+
     function test_collapsedMembersLeaveNoHolesAndExpandInPlace() {
         store.clear()
         for (let i = 0; i < 4; ++i) {

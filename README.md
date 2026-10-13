@@ -76,14 +76,21 @@ VALUES ('11111111-1111-4111-8111-111111111111',
 INSERT INTO source_tokens (tenant_id,source,token_hash)
 VALUES ('11111111-1111-4111-8111-111111111111', 'a2a',
         sha256(convert_to('a2a-local-bridge','UTF8')));
-INSERT INTO cards (tenant_id,id,source,external_id,title,summary)
+INSERT INTO accounts (tenant_id,id,address,refresh_token)
+VALUES ('11111111-1111-4111-8111-111111111111',
+        '55555555-5555-4555-8555-555555555555','owner@example.test',''::bytea);
+INSERT INTO cards
+    (tenant_id,id,source,external_id,account_id,gmail_thread_id,title,subject,summary)
 SELECT '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
-       'agent', 'ui-review-' || n,
-       CASE n WHEN 1 THEN 'Review the a2a integration'
-              WHEN 2 THEN 'Local inbox negative control'
-              ELSE 'A longer inbox preview that should wrap without clipping' END,
+       CASE n WHEN 1 THEN 'agent' WHEN 2 THEN 'mail' WHEN 3 THEN 'manual'
+              WHEN 4 THEN 'journal' WHEN 5 THEN 'reminder' WHEN 6 THEN 'alert'
+              ELSE 'mail' END,
+       CASE WHEN n IN (2,7) THEN NULL ELSE 'ui-review-' || n END,
+       CASE WHEN n IN (2,7) THEN '55555555-5555-4555-8555-555555555555'::uuid END,
+       CASE WHEN n IN (2,7) THEN 'ui-review-mail-' || n END,
+       'Review the inbox update ' || n, 'Review the inbox update ' || n,
        'Disposable fixture card ' || n || ': existing phone inbox must stay compact.'
-FROM generate_series(1,3) n;
+FROM generate_series(1,7) n;
 INSERT INTO a2a_threads (id,tenant_id,peer_id,display_name,kind,availability)
 VALUES ('33333333-3333-4333-8333-333333333333',
         '11111111-1111-4111-8111-111111111111','agent:mau','Mau','token_agent','online'),
@@ -127,9 +134,14 @@ env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=xcb xvfb-run -a \
 
 For scripted PNG capture, use `--capture-script "$profile" SCRIPT.json EMPTY_OUT_DIR`
 instead of `--test-profile`; the script supports resize, click and shot steps.
+Start the script with `{"eval":"store.online = true; store.refresh()"}` and
+`{"wait":3000}`: scripted mode deliberately does not start normal live sync.
 Review inbox, Agents and one chat at 412×915 and 1280×800 on the owned Xvfb
-display; never use `DISPLAY=:0`. Stop the local server with Ctrl-C and exit the
-`pg_virtualenv` shell to remove its cluster after review.
+display; never use `DISPLAY=:0`. At least four complete mixed cards must fit
+the phone screen. `tst_inboxlayout` also counts painted card interiors at 412,
+480 and 1280 px and checks that the non-mail overflow sheet is reachable.
+Stop the local server with Ctrl-C and exit the `pg_virtualenv` shell to remove
+its cluster after review.
 
 ## Reading mail on desktop
 
