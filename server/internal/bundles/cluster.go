@@ -45,10 +45,14 @@ func NewOllamaEmbedder() OllamaEmbedder {
 	if model == "" {
 		model = "nomic-embed-text"
 	}
-	return OllamaEmbedder{Host: host, Model: model, Client: &http.Client{Timeout: 15 * time.Second}}
+	return OllamaEmbedder{Host: host, Model: model, Client: &http.Client{}}
 }
 
 func (e OllamaEmbedder) Embed(ctx context.Context, text string) ([]float64, error) {
+	// Bound each call even when a caller supplies a client without a timeout.
+	// Only this child context expires, so Cluster can still commit its fallback.
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	client := e.Client
 	if client == nil {
 		client = http.DefaultClient

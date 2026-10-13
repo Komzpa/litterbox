@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
@@ -68,9 +70,13 @@ type Auth struct{ TenantID, Source, CallbackURL string }
 type Handler struct {
 	DB   *sql.DB
 	Pool *pgxpool.Pool
+
+	jobsMu   sync.Mutex
+	jobs     sync.WaitGroup
+	stopping bool
 }
 
-func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -141,12 +147,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Files = files
 	err = apply(r.Context(), h.DB, a, req)
-	if err == nil && req.Operation == "upsert" && h.Pool != nil {
-		err = h.afterIngest(r.Context(), a.TenantID)
-	}
 	if err != nil {
 		http.Error(w, "ingest failed", http.StatusInternalServerError)
 		return
+	}
+	if req.Operation == "upsert" && h.Pool != nil {
+		h.startAfterIngest(a.TenantID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -284,12 +290,52 @@ func renderBody(summary string, files []File) string {
 	return b.String()
 }
 
-func (h Handler) afterIngest(ctx context.Context, tenant string) error {
+func (h *Handler) afterIngest(ctx context.Context, tenant string) error {
 	tenantID, err := uuid.Parse(tenant)
 	if err != nil {
 		return err
 	}
 	return bundles.AfterIngest(ctx, h.Pool, tenantID, nil)
+}
+
+// startAfterIngest runs only after the producer's card transaction commits.
+// The job belongs to the server, not the request that triggered it.
+func (h *Handler) startAfterIngest(tenant string) {
+	h.jobsMu.Lock()
+	if h.stopping {
+		h.jobsMu.Unlock()
+		log.Printf("ingest: clustering deferred until next ingest or sync during shutdown")
+		return
+	}
+	h.jobs.Add(1)
+	h.jobsMu.Unlock()
+	go func() {
+		defer h.jobs.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := h.afterIngest(ctx, tenant); err != nil {
+			log.Printf("ingest: background clustering failed for tenant %s: %v", tenant, err)
+		}
+	}()
+}
+
+// Shutdown stops accepting new cluster jobs and drains jobs up to ctx's deadline.
+// Committed cards remain durable if a job must be rerun by the next ingest/sync.
+func (h *Handler) Shutdown(ctx context.Context) error {
+	h.jobsMu.Lock()
+	h.stopping = true
+	h.jobsMu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		h.jobs.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func apply(ctx context.Context, db *sql.DB, a Auth, req Request) error {

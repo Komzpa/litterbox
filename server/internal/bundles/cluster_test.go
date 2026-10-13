@@ -2,8 +2,13 @@ package bundles
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
@@ -111,3 +116,27 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 	}
 }
 func idAccount(id uuid.UUID) uuid.UUID { return id }
+
+func TestOllamaEmbedderTimeoutLeavesParentUsable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	parent, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// No client timeout: Embed must enforce its own per-call deadline.
+	embedder := OllamaEmbedder{Host: server.URL, Model: "test", Client: server.Client()}
+	start := time.Now()
+	_, err := embedder.Embed(parent, "paused")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("paused embedding error=%v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed < 14*time.Second || elapsed > 17*time.Second {
+		t.Fatalf("per-call deadline elapsed=%s, want about 15s", elapsed)
+	}
+	if err := parent.Err(); err != nil {
+		t.Fatalf("embedding timeout canceled fallback context: %v", err)
+	}
+	t.Log("Ollama timed out at 15s; parent remains usable for structured fallback")
+}
