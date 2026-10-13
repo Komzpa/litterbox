@@ -20,7 +20,8 @@ ApplicationWindow {
     readonly property color surface: "#ffffff"
     readonly property color canvas: "#f3f7f6"
     readonly property color accent: "#397d73"
-    readonly property real edgeSpacing: Math.max(18, Kirigami.Units.largeSpacing)
+    readonly property bool compactInbox: width < 640
+    readonly property real edgeSpacing: compactInbox ? 8 : Math.max(18, Kirigami.Units.largeSpacing)
     readonly property int actionIconSize: 20
     component InboxMenuItem: MenuItem {
         id: entry
@@ -365,9 +366,9 @@ ApplicationWindow {
         ColumnLayout {
             width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Kirigami.Units.smallSpacing
+            spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
             RowLayout {
-                spacing: Kirigami.Units.mediumSpacing
+                spacing: window.compactInbox ? 4 : Kirigami.Units.mediumSpacing
                 Layout.fillWidth: true
                 Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: 2; Layout.fillWidth: true }
                 Button {
@@ -378,9 +379,9 @@ ApplicationWindow {
                     icon.width: Kirigami.Units.iconSizes.small
                     icon.height: Kirigami.Units.iconSizes.small
                     icon.color: window.surface
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                    leftPadding: Kirigami.Units.largeSpacing
-                    rightPadding: Kirigami.Units.largeSpacing
+                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                    leftPadding: window.compactInbox ? 10 : Kirigami.Units.largeSpacing
+                    rightPadding: window.compactInbox ? 10 : Kirigami.Units.largeSpacing
                     Material.foreground: window.surface
                     palette.buttonText: window.surface
                     background: Rectangle {
@@ -399,8 +400,8 @@ ApplicationWindow {
                     icon.height: window.actionIconSize
                     text: qsTr("Inbox commands")
                     display: AbstractButton.IconOnly
-                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: qsTr("Inbox commands")
                     ToolTip.text: Accessible.name
                     onClicked: headerMenu.open()
@@ -427,7 +428,16 @@ ApplicationWindow {
                     }
                 }
             }
-            Label { text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device"); color: window.mutedInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; Layout.bottomMargin: Kirigami.Units.smallSpacing; wrapMode: Text.Wrap }
+            Label {
+                text: store.online ? qsTr("Online · changes sync across devices") : qsTr("Offline · changes saved on this device")
+                color: window.mutedInk
+                font.family: Kirigami.Theme.defaultFont.family
+                font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+                Layout.fillWidth: true
+                Layout.bottomMargin: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
+                wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
+                elide: Text.ElideRight
+            }
             Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
             Rectangle {
                 id: bundleArchiveUndoBar
@@ -726,7 +736,7 @@ ApplicationWindow {
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
                     readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], important: 0, unpinned: 0, lastId: cardId}
                     readonly property bool lastMember: bundleSummary.lastId === cardId
-                    readonly property real bundleTextInset: Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
+                    readonly property real bundleTextInset: window.compactInbox ? 0 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
                     function unregisterControls() {
@@ -824,7 +834,7 @@ ApplicationWindow {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
                                     Layout.fillWidth: true
-                                    Layout.columnSpan: window.width < 640 ? 2 : 1
+                                    Layout.columnSpan: window.compactInbox ? 2 : 1
                                     Layout.minimumWidth: 48
                                     implicitHeight: Math.max(48, contentItem.implicitHeight)
                                     padding: 0
@@ -846,12 +856,14 @@ ApplicationWindow {
                                         spacing: Kirigami.Units.smallSpacing
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
-                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            text: window.compactInbox ? window.bundleTitle(card) : (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
                                             color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
+                                            font.family: Kirigami.Theme.defaultFont.family
+                                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
-                                            wrapMode: Text.Wrap
+                                            wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
+                                            elide: Text.ElideRight
                                         }
                                         GridLayout {
                                             Layout.fillWidth: true
@@ -859,31 +871,35 @@ ApplicationWindow {
                                             rowSpacing: Kirigami.Units.smallSpacing
                                             columns: window.width < 640 ? 2 : 4
                                             Item {
+                                                visible: !window.compactInbox
                                                 implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.width < 640 ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.width < 640 ? Infinity : implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; text: window.compactInbox ? title : bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
                                             Rectangle {
-                                                Layout.row: window.width < 640 ? 1 : 0
-                                                Layout.column: window.width < 640 ? 1 : 2
-                                                implicitWidth: countLabel.implicitWidth + 16
-                                                implicitHeight: countLabel.implicitHeight + 8
+                                                Layout.row: 0
+                                                Layout.column: window.compactInbox ? 1 : 2
+                                                Layout.alignment: Qt.AlignTop
+                                                implicitWidth: countLabel.implicitWidth + (window.compactInbox ? 10 : 16)
+                                                implicitHeight: countLabel.implicitHeight + (window.compactInbox ? 4 : 8)
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
-                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font: Kirigami.Theme.defaultFont }
+                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: Kirigami.Theme.defaultFont.family; font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize }
                                             }
                                             Item { visible: window.width >= 640; Layout.fillWidth: true }
                                         }
                                         Label {
                                             objectName: "bundleLatestLabel-" + cardId
-                                            text: qsTr("Latest: %1").arg(title)
-                                            visible: !cardRow.bundleExpanded
+                                            text: window.compactInbox ? (card.snippet || "") : qsTr("Latest: %1").arg(title)
+                                            visible: !cardRow.bundleExpanded && text.length > 0
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
                                             wrapMode: Text.Wrap
+                                            maximumLineCount: window.compactInbox ? 3 : Infinity
+                                            elide: Text.ElideRight
                                         }
                                         Label {
                                             visible: cardRow.bundleSummary.important > 0
@@ -906,14 +922,16 @@ ApplicationWindow {
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
                                 ColumnLayout {
-                                    Layout.preferredWidth: window.width >= 640 ? 120 : -1
-                                    Layout.minimumWidth: window.width >= 640 ? 120 : 0
-                                    Layout.maximumWidth: window.width >= 640 ? 120 : Infinity
+                                    Layout.columnSpan: window.compactInbox ? 2 : 1
+                                    Layout.fillWidth: window.compactInbox
+                                    Layout.preferredWidth: window.compactInbox ? -1 : 120
+                                    Layout.minimumWidth: window.compactInbox ? 0 : 120
+                                    Layout.maximumWidth: window.compactInbox ? Infinity : 120
                                     spacing: Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "bundleDate-" + cardId
                                         text: window.mailArrival(card)
-                                        visible: text.length > 0
+                                        visible: !window.compactInbox && text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
                                         Layout.fillWidth: true
@@ -921,7 +939,15 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.alignment: Qt.AlignRight
-                                        spacing: Kirigami.Units.smallSpacing
+                                        Layout.fillWidth: window.compactInbox
+                                        spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
+                                        Label {
+                                            visible: window.compactInbox
+                                            text: window.mailArrival(card)
+                                            color: window.mutedInk
+                                            font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                                            Layout.fillWidth: true
+                                        }
                                 Button {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
@@ -931,10 +957,10 @@ ApplicationWindow {
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
-                                    Layout.minimumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    Layout.preferredWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    Layout.maximumWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.minimumWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.preferredWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.maximumWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
                                     Accessible.description: qsTr("Archives all %1 unpinned %2; pinned cards stay open").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.unpinned === 1 ? qsTr("email") : qsTr("emails"))
                                     ToolTip.text: Accessible.name
@@ -956,8 +982,8 @@ ApplicationWindow {
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: text
                                     ToolTip.text: text
                                     ToolTip.visible: hovered
@@ -986,19 +1012,23 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle { id: bundleDivider; Layout.fillWidth: true; implicitHeight: 1; color: "#e0e9e6"; visible: cardRow.bundleLeader && cardRow.bundleExpanded }
-                            RowLayout {
+                            GridLayout {
+                                columns: 3
                                 Layout.leftMargin: cardRow.bundled ? cardRow.bundleTextInset : 0
                                 visible: !cardRow.bundleLeader || cardRow.bundleExpanded
                                 Layout.fillWidth: true
                                 Layout.minimumHeight: window.width >= 640 ? 84 : 0
                                 Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
-                                spacing: Kirigami.Units.smallSpacing
+                                columnSpacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
+                                rowSpacing: window.compactInbox ? 2 : 0
                                 ToolButton {
                                     id: dragHandle
                                     objectName: "reorderHandle-" + cardId
+                                    Layout.row: window.compactInbox ? 1 : 0
+                                    Layout.column: window.compactInbox ? 1 : 0
                                     visible: !cardRow.bundled
-                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
                                     readonly property bool reorderable: pinned || !card.timed
                                     // Timed rows stay visible but cannot be dragged;
@@ -1023,6 +1053,9 @@ ApplicationWindow {
                                 ColumnLayout {
                                     id: cardText
                                     objectName: "openCard-" + cardId
+                                    Layout.row: 0
+                                    Layout.column: window.compactInbox ? 0 : 1
+                                    Layout.columnSpan: window.compactInbox ? 3 : 1
                                     function openCard() {
                                         if (card.source === "mail" || card.has_body) cardActions.readCachedRequested()
                                         else cardActions.openRequested()
@@ -1047,7 +1080,7 @@ ApplicationWindow {
                                     }
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
-                                    spacing: Kirigami.Units.smallSpacing
+                                    spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
                                         visible: card.source === "mail"
@@ -1058,14 +1091,16 @@ ApplicationWindow {
                                             text: window.mailSender(card)
                                             visible: text.length > 0
                                             color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
+                                            font.family: Kirigami.Theme.defaultFont.family
+                                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
                                             elide: Text.ElideRight
                                             Layout.minimumWidth: 0
+                                            Layout.fillWidth: window.compactInbox
                                         }
                                         Label {
                                             objectName: "mailAccount-" + cardId
                                             text: card.account_name || ""
-                                            visible: text.length > 0
+                                            visible: !window.compactInbox && text.length > 0
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             elide: Text.ElideLeft
@@ -1074,7 +1109,7 @@ ApplicationWindow {
                                     }
                                     Label {
                                         text: cardRow.bundled ? (card.account_name || "") : window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
-                                        visible: cardRow.bundled || card.source !== "mail"
+                                        visible: (cardRow.bundled && !window.compactInbox) || card.source !== "mail"
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
                                         wrapMode: Text.Wrap
@@ -1095,23 +1130,34 @@ ApplicationWindow {
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
                                         textFormat: Text.PlainText
-                                        wrapMode: Text.NoWrap
-                                        maximumLineCount: 1
+                                        wrapMode: window.compactInbox ? Text.Wrap : Text.NoWrap
+                                        maximumLineCount: window.compactInbox ? 3 : 1
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
+                                Label {
+                                    visible: window.compactInbox
+                                    Layout.row: 1
+                                    Layout.column: 0
+                                    Layout.fillWidth: true
+                                    text: card.source === "mail" ? window.mailArrival(card) : ""
+                                    color: window.mutedInk
+                                    font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                                }
                                 ColumnLayout {
-                                    Layout.preferredWidth: window.width >= 640 ? 120 : -1
-                                    Layout.minimumWidth: window.width >= 640 ? 120 : 0
-                                    Layout.maximumWidth: window.width >= 640 ? 120 : Infinity
+                                    Layout.row: window.compactInbox ? 1 : 0
+                                    Layout.column: 2
+                                    Layout.preferredWidth: window.compactInbox ? -1 : 120
+                                    Layout.minimumWidth: window.compactInbox ? 0 : 120
+                                    Layout.maximumWidth: window.compactInbox ? Infinity : 120
                                     spacing: Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "mailDate-" + cardId
                                         text: window.mailArrival(card)
-                                        visible: card.source === "mail" && text.length > 0
+                                        visible: !window.compactInbox && card.source === "mail" && text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
                                         Layout.fillWidth: true
@@ -1119,7 +1165,7 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.alignment: Qt.AlignRight
-                                        spacing: Kirigami.Units.smallSpacing
+                                        spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
                                     text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
@@ -1128,8 +1174,8 @@ ApplicationWindow {
                                     icon.height: window.actionIconSize
                                     icon.color: window.ink
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     opacity: 1
                                     Accessible.name: cardActions.primaryName
                                     ToolTip.text: Accessible.name
@@ -1139,6 +1185,8 @@ ApplicationWindow {
                                 Litterbox.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     store: window.cardStore
                                     cardKey: cardId
                                     source: card.source || ""
