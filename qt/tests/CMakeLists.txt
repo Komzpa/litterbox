@@ -5,12 +5,13 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Sql Qml Quick QuickControls2 Network Test)
 find_package(KF6Kirigami CONFIG REQUIRED)
 enable_testing()
+set(LB_TEST_PLATFORM "offscreen" CACHE STRING "Qt platform used by CTest")
 add_executable(tst_cardstore tst_cardstore.cpp ../src/CardStore.cpp ../src/CardStore.h)
 target_include_directories(tst_cardstore PRIVATE ../src)
 target_link_libraries(tst_cardstore PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::Test KF6::Kirigami)
 target_compile_definitions(tst_cardstore PRIVATE LB_SOURCE_ACTIONS_QML="${CMAKE_CURRENT_SOURCE_DIR}/../src/qml/CardActions.qml")
 add_test(NAME cardstore COMMAND tst_cardstore)
-set_tests_properties(cardstore PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+set_tests_properties(cardstore PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM}")
 
 # Opt-in measurement (not an offscreen CTest): on an owned systemd-run Xvfb,
 # python3 mailresize_driver.py --runner <build>/tst_mailresize --display :N --output <proof-dir>
@@ -28,12 +29,12 @@ if(NOT ANDROID)
         -input ${CMAKE_CURRENT_SOURCE_DIR}/uipolish.qml
         -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports UiPolish::test_geometry)
     set_tests_properties(uipolish PROPERTIES ENVIRONMENT
-        "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+        "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
     add_test(NAME gmailreconnect COMMAND tst_mailresize
         -input ${CMAKE_CURRENT_SOURCE_DIR}/uipolish.qml
         -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports UiPolish::test_reconnectLifecycle)
     set_tests_properties(gmailreconnect PROPERTIES ENVIRONMENT
-        "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+        "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 endif()
 
 # Real CardStore consumer proof; optionally load a copied desktop cache.
@@ -45,12 +46,12 @@ add_test(NAME bundleexpand COMMAND tst_bundleexpand
     -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_bundleexpand.qml
     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
 set_tests_properties(bundleexpand PROPERTIES ENVIRONMENT
-    "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 add_test(NAME markspam COMMAND tst_bundleexpand
     -input ${CMAKE_CURRENT_SOURCE_DIR}/markspam.qml
     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
 set_tests_properties(markspam PROPERTIES ENVIRONMENT
-    "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 
 # Same real CardStore runner, with the large-bundle timing and wheel oracle.
 add_test(NAME scrollresilience COMMAND tst_bundleexpand
@@ -58,4 +59,4 @@ add_test(NAME scrollresilience COMMAND tst_bundleexpand
     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
 set_tests_properties(scrollresilience PROPERTIES
     TIMEOUT 60
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")

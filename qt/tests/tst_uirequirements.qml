@@ -122,7 +122,7 @@ TestCase {
         verify(close.implicitWidth >= 48)
         verify(close.implicitHeight >= 48)
         let checkedActions = 0
-        for (const name of ["primary", "open", "cached", "note", "snooze", "pin", "bundle", "takeout"]) {
+        for (const name of ["primary", "spam", "open", "cached", "note", "snooze", "pin", "takeout"]) {
             const control = findChild(sheet, "actionRow-" + name + "-card-1")
             verify(control, "missing real action row " + name)
             if (!control.visible) continue

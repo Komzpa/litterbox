@@ -1,16 +1,18 @@
 #include "maildocumentprofile.h"
 #ifdef LB_RESIZE_STORE
 #include "CardStore.h"
-#include <QTemporaryDir>
 #endif
 
 #include <QElapsedTimer>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLocale>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTimer>
 #include <QVariantList>
+#include <QTemporaryDir>
 #include <QtQuickTest/quicktest.h>
 #include <QtWebEngineQuick>
 #include <stdlib.h>
@@ -37,7 +39,11 @@ public:
     }
     Q_INVOKABLE QString screenshotPath(const QString &name) const
     {
-        return qEnvironmentVariable("LB_UI_PROOF_DIR") + QLatin1Char('/') + name;
+        const QString directory = qEnvironmentVariable("LB_UI_PROOF_DIR", m_screenshots.path());
+        const QString path = QDir(directory).filePath(name);
+        if (directory.isEmpty() || !QDir().mkpath(QFileInfo(path).absolutePath()))
+            qFatal("Cannot create UI screenshot directory");
+        return path;
     }
     Q_INVOKABLE void startHeartbeat()
     {
@@ -54,6 +60,7 @@ public:
     }
     Q_INVOKABLE QVariantList heartbeatBlocks() const { return m_gaps; }
 private:
+    QTemporaryDir m_screenshots;
     void recordGap(qint64 now)
     {
         const qint64 gap = now - m_last;

@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QSignalSpy>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -53,11 +54,15 @@ void atomicReplace(const QString &binary, const QString &script)
 
 class UpdateWatcherTest : public QObject {
     Q_OBJECT
+    bool m_hasUserManager = false;
 private slots:
     void initTestCase()
     {
         // A clean environment: tests below set the generation explicitly.
         qunsetenv("LB_RESTART_GENERATION");
+        QProcess probe;
+        probe.start(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("show-environment")});
+        m_hasUserManager = probe.waitForFinished(5000) && probe.exitCode() == 0;
     }
     void watchesOnlyInstalledStylePrefix()
     {
@@ -73,6 +78,7 @@ private slots:
     }
     void restartsIntoAtomicReplacement()
     {
+        if (!m_hasUserManager) QSKIP("Restart spawning requires a reachable systemd user manager");
         QTemporaryDir dir;
         const QString marker = dir.filePath(QStringLiteral("spawned"));
         const QString binary = makeInstalledBinary(dir, QStringLiteral("#!/bin/sh\n"));
@@ -96,6 +102,7 @@ private slots:
     }
     void waitsForPackageManagerLock()
     {
+        if (!m_hasUserManager) QSKIP("Restart spawning requires a reachable systemd user manager");
         QTemporaryDir dir;
         const QString binary = makeInstalledBinary(dir, QStringLiteral("#!/bin/sh\n"));
         const QString lockPath = dir.filePath(QStringLiteral("dpkg-lock"));
@@ -119,6 +126,7 @@ private slots:
     }
     void debounceCollapsesFlappingReplacements()
     {
+        if (!m_hasUserManager) QSKIP("Restart spawning requires a reachable systemd user manager");
         QTemporaryDir dir;
         const QString marker = dir.filePath(QStringLiteral("spawned"));
         const QString binary = makeInstalledBinary(dir, QStringLiteral("#!/bin/sh\n"));
@@ -141,6 +149,7 @@ private slots:
     }
     void detectsReplacementBeforeWatchStarts()
     {
+        if (!m_hasUserManager) QSKIP("Restart spawning requires a reachable systemd user manager");
         // The upgrade can land while the app is still starting up: by the time
         // the watcher exists, the path already holds the new file. The
         // baseline then comes from the executed file (/proc/self/exe),
@@ -162,6 +171,7 @@ private slots:
     }
     void oneRestartPerReplacementOnly()
     {
+        if (!m_hasUserManager) QSKIP("Restart spawning requires a reachable systemd user manager");
         QTemporaryDir dir;
         const QString binary = makeInstalledBinary(dir, QStringLiteral("#!/bin/sh\n"));
         UpdateWatcher watcher(binary);

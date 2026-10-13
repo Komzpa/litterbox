@@ -554,6 +554,8 @@ TestCase {
             store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
         })
         verify(inbox)
+        inbox.requestActivate()
+        tryCompare(inbox, "active", true)
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
         const row = list.itemAtIndex(0)
@@ -566,6 +568,9 @@ TestCase {
         tryVerify(function() { return frame.background.border.width === 2 }, 5000,
                   "Keyboard focus must have a visible card ring")
         verify(cardOpen.activeFocus, "Focused card remains keyboard-active")
+        keyClick(Qt.Key_Delete)
+        tryVerify(function() { return store.cardIds().indexOf(id) < 0 }, 5000,
+                  "Delete archives the keyboard-focused card")
         inbox.close()
     }
     function test_scrollThenExpandKeepsHeaderInView() {
@@ -582,6 +587,8 @@ TestCase {
         })
         verify(inbox)
         const list = findChild(inbox, "inboxList")
+        // ListView only instantiates delegates near its viewport.
+        list.positionViewAtIndex(12, ListView.End)
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(12) !== null })
         list.positionViewAtIndex(12, ListView.End)
         list.contentY += 40

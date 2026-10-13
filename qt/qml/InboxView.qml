@@ -157,7 +157,9 @@ ApplicationWindow {
         next[bundleId] = !next[bundleId]
         expandedBundles = next
         bundleModel.rebuildPresentation(false)
-        Qt.callLater(function() {
+        // Layouts polish after callLater; anchor against their rendered geometry.
+        window.frameSwapped.connect(function restoreHeader() {
+            window.frameSwapped.disconnect(restoreHeader)
             const currentOpener = bundleOpeners[bundleId]
             if (currentOpener) {
                 inboxList.contentY += currentOpener.mapToItem(inboxList, 0, 0).y - headerY

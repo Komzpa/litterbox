@@ -145,11 +145,23 @@ existing SSRF protections and embedded as data URLs, never loaded directly by
 the desktop. Plain-text messages retain line breaks and spacing while long
 lines wrap. Only explicitly clicked HTTP(S)/mailto links open externally.
 
-Focused UI regression checks:
+Focused UI regression checks use Xvfb so separate inbox windows can receive
+keyboard focus. Configure with `-DLB_TEST_PLATFORM=xcb`, then run with an
+isolated home/config directory and a session bus (never the live desktop):
 
 ```sh
-ctest --test-dir build/qt -R '^tst_mail(open|detail)$' --output-on-failure
+cmake -S qt -B build/qt -DLB_TEST_PLATFORM=xcb
+test_home=$(mktemp -d /tmp/litterbox-qt-test.XXXXXX)
+env -u WAYLAND_DISPLAY HOME="$test_home" XDG_CONFIG_HOME="$test_home/config" \
+    QT_QPA_PLATFORM=xcb xvfb-run -a dbus-run-session -- \
+    ctest --test-dir build/qt -R '^tst_mail(open|detail)$' --output-on-failure
 ```
+
+Omit `-R` for the complete Qt suite. UI screenshots default to a disposable
+directory; set `LB_UI_PROOF_DIR` to retain them (nested directories are created).
+The restart-survival fixture never reads normal Litterbox credentials. It and
+the service-spawning UpdateWatcher cases explicitly skip when no systemd user
+manager is reachable; a private session bus alone does not create that manager.
 
 
 ## Gmail account connection

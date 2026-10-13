@@ -16,6 +16,8 @@ endif()
 qt_standard_project_setup(REQUIRES 6.5)
 
 enable_testing()
+# Use -DLB_TEST_PLATFORM=xcb under an owned Xvfb for keyboard/focus tests.
+set(LB_TEST_PLATFORM "offscreen" CACHE STRING "Qt platform used by CTest")
 
 qt_add_executable(litterbox-qt
     src/main.cpp
@@ -167,7 +169,7 @@ if(NOT ANDROID)
         add_test(NAME restart_service_survival
             COMMAND ${XVFB_RUN} -a ${CMAKE_CURRENT_SOURCE_DIR}/tests/restart_service_survival.sh
                     $<TARGET_FILE:litterbox-qt> ${CMAKE_CURRENT_BINARY_DIR}/restart-service-survival)
-        set_tests_properties(restart_service_survival PROPERTIES TIMEOUT 60)
+        set_tests_properties(restart_service_survival PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
     endif()
 endif()
 add_test(NAME serverurl COMMAND tst_serverurl)
@@ -189,21 +191,22 @@ if (QMLTESTRUNNER6)
     foreach (_test ${_lb_page_tests})
         get_filename_component(_test_name ${_test} NAME_WE)
         add_test(NAME ${_test_name}
-                 COMMAND ${QMLTESTRUNNER6} -input ${_test} -platform offscreen)
+                 COMMAND ${QMLTESTRUNNER6} -input ${_test}
+                         -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform ${LB_TEST_PLATFORM})
         set_tests_properties(${_test_name} PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endforeach()
     add_test(NAME tst_touchdefects
              COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml
-                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
+                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform ${LB_TEST_PLATFORM})
     set_tests_properties(tst_touchdefects PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME tst_inboxlayout
              COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml
-                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
+                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform ${LB_TEST_PLATFORM})
     set_tests_properties(tst_inboxlayout PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     if(ANDROID)
         add_test(NAME tst_mailopen
                  COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
-                         -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform offscreen)
+                         -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform ${LB_TEST_PLATFORM})
         set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
 endif()
@@ -222,12 +225,12 @@ if(NOT ANDROID)
                          # The installed Plasma session resolves controls through
                          # org.kde.desktop; the default Basic style hides the dark
                          # button fill reported on the 0.1-7 build.
-                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+                         ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
     add_test(NAME tst_mailopen
              COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
                      -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports)
     set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+                         ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 endif()
 
 # Install desktop executables to bin and Android module libraries to lib.

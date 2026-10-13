@@ -5,6 +5,12 @@ set -euo pipefail
 BINARY=${1:?usage: restart_service_survival.sh <binary> <workdir>}
 WORK=${2:?usage: restart_service_survival.sh <binary> <workdir>}
 : "${DISPLAY:?run under an owned Xvfb display}"
+# A private D-Bus session does not itself provide a systemd user manager.
+# Report an unavailable prerequisite rather than touching live credentials.
+if ! systemctl --user show-environment >/dev/null 2>&1; then
+    echo 'SKIP: restart_service_survival requires a reachable systemd user manager'
+    exit 77
+fi
 if pgrep -a litterbox-qt; then
     echo 'Refusing to run while another Litterbox process exists' >&2
     exit 1
@@ -18,16 +24,8 @@ mkdir -p "$PREFIX/bin" "$PREFIX/share/applications" "$PROFILE"
 cp "$BINARY" "$PREFIX/bin/litterbox-qt"
 printf '[Desktop Entry]\nName=Litterbox\n' > "$PREFIX/share/applications/litterbox-qt.desktop"
 
-SERVER_URL=''
-TOKEN=''
-while IFS= read -r line; do
-    case "$line" in
-        server_url=*) SERVER_URL=${line#server_url=} ;;
-        token=*) TOKEN=${line#token=} ;;
-    esac
-done < /home/kom/.config/Litterbox/Litterbox.conf
-[[ -n "$SERVER_URL" && -n "$TOKEN" ]] || { echo 'Litterbox test profile credentials are unavailable' >&2; exit 1; }
-printf '{"server_url":"%s","token":"%s"}\n' "$SERVER_URL" "$TOKEN" > "$PROFILE/profile.json"
+# Restart survival needs a syntactically valid profile, not a live account.
+printf '%s\n' '{"server_url":"http://127.0.0.1:9","token":"restart-survival-fixture"}' > "$PROFILE/profile.json"
 export HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/home/.config" XDG_DATA_HOME="$WORK/home/.local/share" XDG_CACHE_HOME="$WORK/home/.cache"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 cleanup() {

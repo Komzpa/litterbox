@@ -205,7 +205,7 @@ TestCase {
         tryCompare(menu, "opened", true)
         wait(100)
         const refresh = findChild(inbox, "headerMenuRefresh")
-        compare(menu.height, menu.topPadding + menu.bottomPadding + accounts.height + findChild(inbox, "headerMenuEnroll").height + refresh.height,
+        compare(menu.height, menu.topPadding + menu.bottomPadding + accounts.height + findChild(inbox, "headerMenuAgents").height + findChild(inbox, "headerMenuEnroll").height + refresh.height,
                 "Unsupported updates must leave no empty menu tail")
         compare(accounts.icon.width, 20)
         compare(accounts.icon.height, 20)
