@@ -1,10 +1,11 @@
 [Unit]
 Description=Litterbox LAN TCP proxy socket
-After=network-online.target
-Wants=network-online.target
+# Start with sockets.target, not network-online.target (which can order after sockets.target).
 
 [Socket]
 ListenStream=192.168.100.74:8081
+# Permit the LAN-only bind before the address is assigned during boot.
+FreeBind=yes
 Accept=no
 
 [Install]
