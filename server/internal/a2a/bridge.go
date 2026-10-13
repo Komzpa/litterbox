@@ -96,7 +96,7 @@ func bridgeJSON(w http.ResponseWriter, value any) {
 
 func deliveryState(status string) (string, bool) {
 	switch status {
-	case "", "pending", "sent": return "sent", true
+	case "", "pending", "sent", "submitted": return "sent", true
 	case "delivered": return "delivered", true
 	case "failed": return "not_delivered", true
 	case "completed": return "replied", true

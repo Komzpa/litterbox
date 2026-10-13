@@ -137,3 +137,30 @@ func TestBridgeJournalDeliveryCorrelatesSent(t *testing.T) {
 	ms,err := s.ListMessages(context.Background(),tenantA,ths[0].ID,0,200)
 	if err!=nil || len(ms)!=1 || ms[0].DeliveryState!="not_delivered" || ms[0].ReasonCode==nil || *ms[0].ReasonCode!="recipient_busy" { t.Fatalf("delivery=%v err=%v",ms,err) }
 }
+
+func TestBridgeJournalSubmittedDeliveryCorrelatesSent(t *testing.T) {
+	s,h := bridgeFixture(t)
+	ctx := context.Background()
+	text := "work"
+	sent := JournalEvent{Seq:4,EventKey:"journal-submitted",Kind:"sent",Sender:"agent:mau",Recipient:"omp:worker",RequestID:"submitted-request",Text:&text,Status:"submitted"}
+	delivery := JournalEvent{Seq:5,EventKey:"journal-delivered",Kind:"delivery",Sender:sent.Sender,Recipient:sent.Recipient,RequestID:sent.RequestID,Status:"delivered"}
+	invalid := sent
+	invalid.Status = "unknown"
+	bridgeCall(t,h,"POST","/v1/a2a/ingest","bridge-a",map[string]any{"events":[]JournalEvent{invalid}},400)
+	// The old mapping rejects this canonical submitted event with HTTP 400.
+	ingestEvents(t,h,sent)
+	ths,err := s.ListThreads(ctx,tenantA)
+	if err!=nil || len(ths)!=2 { t.Fatalf("threads=%v err=%v",ths,err) }
+	ids := make(map[string]string)
+	for _, th := range ths {
+		ms,err := s.ListMessages(ctx,tenantA,th.ID,0,200)
+		if err!=nil || len(ms)!=1 || ms[0].Direction!="observed" || ms[0].Text!=text || ms[0].DeliveryState!="sent" { t.Fatalf("submitted=%v err=%v",ms,err) }
+		ids[th.ID] = ms[0].ID
+	}
+	ingestEvents(t,h,sent,delivery)
+	ingestEvents(t,h,sent,delivery)
+	for _, th := range ths {
+		ms,err := s.ListMessages(ctx,tenantA,th.ID,0,200)
+		if err!=nil || len(ms)!=1 || ms[0].ID!=ids[th.ID] || ms[0].Direction!="observed" || ms[0].Text!=text || ms[0].DeliveryState!="delivered" { t.Fatalf("delivery replay=%v err=%v",ms,err) }
+	}
+}
