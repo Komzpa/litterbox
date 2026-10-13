@@ -1,5 +1,6 @@
 #include "androidupdater.h"
 #include "api.h"
+#include "a2astream.h"
 #include "CardStore.h"
 #include "timerules.h"
 #ifndef Q_OS_ANDROID
@@ -313,6 +314,7 @@ int main(int argc, char *argv[])
     api.setToken(profileMode ? testToken : qEnvironmentVariable("LB_TOKEN", settings->value(QStringLiteral("token")).toString()));
     QObject::connect(&api, &Api::tokenChanged, &app, [&] { settings->setValue(QStringLiteral("token"), api.token()); });
     QObject::connect(&api, &Api::baseUrlChanged, &app, [&] { settings->setValue(QStringLiteral("server_url"), api.baseUrl()); });
+    A2aStream a2aStream(&api);
     AndroidUpdater updater;
     updater.setBaseUrl(api.baseUrl());
     updater.setToken(api.token());
@@ -340,6 +342,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     api.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("api"), &api);
+    engine.rootContext()->setContextProperty(QStringLiteral("a2aStream"), &a2aStream);
     engine.rootContext()->setContextProperty(QStringLiteral("updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("store"), &store);
     engine.rootContext()->setContextProperty(QStringLiteral("timeRules"), &timeRules);
