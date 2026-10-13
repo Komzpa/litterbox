@@ -174,6 +174,10 @@ func main() {
 		a2aStore := &a2a.Store{DB: db}
 		a2aHandler := &a2a.Handler{Store: a2aStore, Events: a2a.StartEvents(eventsCtx, databaseURL, a2aStore)}
 		a2aHandler.Routes(mux)
+		bridgeHandler := a2a.NewBridgeHandler(pool)
+		mux.Handle("/v1/a2a/ingest", bridgeHandler)
+		mux.Handle("/v1/a2a/outbox", bridgeHandler)
+		mux.Handle("/v1/a2a/outbox/", bridgeHandler)
 		cardMux := http.NewServeMux()
 		cardHandler.Routes(cardMux)
 		mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
