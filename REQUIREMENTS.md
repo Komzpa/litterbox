@@ -248,7 +248,14 @@ Each requirement is **decided** or **open** and names its source.
   deb and Android APK, must be reviewed visually before release. The lead must
   open screenshots of the exact release candidate at phone size (412x915)
   and at desktop size. Release is blocked if the phone inbox shows fewer than
-  4 complete cards per screen, including a mixed mail/non-mail fixture. The `-V` suffix distinguishes this release
+  4 complete cards per screen, including a mixed mail/non-mail fixture.
+  Review must also click a real mail card on the exact candidate, on the
+  desktop build and at phone size 412x915, and keep a screenshot of the
+  opened mail body (MailDetailPage, no error toast); a screenshot of the
+  list alone does not pass review (0.1-24 shipped with a click that ended in
+  «Action failed (HTTP 429)» because review looked only at the list). Oracle:
+  `tst_cardstore` `bodyPrefetchPacesLargeSnapshotsAndForegroundBypassesQueue`
+  plus the opened-mail screenshot. The `-V` suffix distinguishes this release
   gate from the existing R33 app-native capture contract.
   Phone inbox correction: below 640 px, use 8 px gutters and card padding,
   full-width sender → subject → preview text, an inline bundle-count chip,
