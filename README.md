@@ -25,6 +25,14 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+The Qt agent chat page renders incoming, outgoing and observed a2a messages in
+sequence order. Sending posts a UUID `client_msg_id` and text to the thread's
+messages endpoint, immediately showing **pending**. A busy recipient is shown
+as **recipient_busy / not delivered**; **Retry** keeps the original message ID.
+Live a2a events and reconnects reload changes after the page's saved cursor.
+The scoped fake-API proof is `qt/tests/tst_agentchat.qml`; run it with
+`qmltestrunner -input qt/tests/tst_agentchat.qml` on an owned Xvfb display.
+
 ## Reading mail on desktop
 
 Click a mail card's text or preview to read the message inside Litterbox.
