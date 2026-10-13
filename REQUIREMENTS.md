@@ -231,6 +231,21 @@ Each requirement is **decided** or **open** and names its source.
   1 s (owner accepted 2026-09-28). A request with another tenant's device token
   cannot read any `LB1-*` card belonging to the first tenant.
 
+- **R33-V Visual review before every release** (decided, Darafei 2026-10-13:
+  «каждый билд надо отсматривать визуально. на телефонном размере в том числе»;
+  reason: the phone inbox was unacceptably sparse). Every build, both desktop
+  deb and Android APK, must be reviewed visually before release. The lead must
+  open screenshots of the exact release candidate at phone size (412x915)
+  and at desktop size. Release is blocked if the phone inbox shows fewer than
+  4 single-mail cards per screen. The `-V` suffix distinguishes this release
+  gate from the existing R33 app-native capture contract.
+  Phone inbox correction: below 640 px, use 8 px gutters and card padding,
+  full-width sender → subject → preview text, an inline bundle-count chip,
+  and one compact trailing action strip. Sender/account metadata must not
+  compete with the subject or preview. Collapsed bundles use the same text
+  hierarchy and density as single mail cards; desktop layout stays unchanged.
+  This replaces conflicting phone-only spacing and chip placement in R36.
+
 ## Open questions
 
 None.

@@ -72,7 +72,8 @@ TestCase {
     function test_senderSummary(data) {
         const bundle = data.bundle || "sender:messages-noreply@linkedin.com"
         const cards = data.names.map((name, index) => card("sender-" + index, bundle, "now", {
-            sender_name: name, title: index === 0 ? "Your latest career update" : "An earlier update"
+            sender_name: name, title: index === 0 ? "Your latest career update" : "An earlier update",
+            snippet: "New projects and conversations from your network."
         }))
         verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
         const inbox = createTemporaryObject(inboxComponent, this, {
@@ -85,11 +86,12 @@ TestCase {
         const toggle = findChild(row, "bundleToggle-sender-0")
         tryCompare(toggle, "text", data.title)
         const sender = findChild(row, "bundleAccountLabel-sender-0")
-        compare(sender.text, data.preview + " · test@example.test")
+        compare(sender.text, data.preview)
         const latest = findChild(row, "bundleLatestLabel-sender-0")
-        verify(latest && latest.visible && latest.height > 0, "Collapsed preview must show the latest subject")
-        compare(latest.text, "Latest: Your latest career update")
+        verify(latest && latest.visible && latest.height > 0, "Collapsed preview must show the latest email snippet")
+        compare(latest.text, "New projects and conversations from your network.")
         const title = findChild(row, "bundleTitleLabel-sender-0")
+        compare(title.text, "Your latest career update")
         verify(!title.truncated, "Distinct sender names must remain readable at 520 px")
         mouseClick(toggle, toggle.width / 2, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, true)

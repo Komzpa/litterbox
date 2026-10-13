@@ -77,7 +77,7 @@ TestCase {
             const row = list.itemAtIndex(i)
             const memberContext = findChild(row, "mailContext-bundle-" + i)
             const memberSender = findChild(row, "mailSender-bundle-" + i)
-            const memberDate = findChild(row, "mailDate-bundle-" + i)
+            const memberDate = findChild(row, (inbox.compactInbox ? "phoneMailDate-" : "mailDate-") + "bundle-" + i)
             const memberSnippet = findChild(row, "mailSnippet-bundle-" + i)
             verify(memberContext && memberContext.visible, "expanded bundle mail context must be visible")
             verify(memberSender && memberSender.visible, "expanded bundle sender must be visible")

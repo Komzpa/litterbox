@@ -853,10 +853,10 @@ ApplicationWindow {
                                         border.color: window.accent
                                     }
                                     contentItem: ColumnLayout {
-                                        spacing: Kirigami.Units.smallSpacing
+                                        spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
-                                            text: window.compactInbox ? window.bundleTitle(card) : (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (window.compactInbox ? "" : cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
                                             color: window.mutedInk
                                             font.family: Kirigami.Theme.defaultFont.family
                                             font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
@@ -876,7 +876,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; text: window.compactInbox ? title : bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; text: window.compactInbox ? title : bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: 0
                                                 Layout.column: window.compactInbox ? 1 : 2
@@ -942,6 +942,7 @@ ApplicationWindow {
                                         Layout.fillWidth: window.compactInbox
                                         spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                         Label {
+                                            objectName: "phoneBundleDate-" + cardId
                                             visible: window.compactInbox
                                             text: window.mailArrival(card)
                                             color: window.mutedInk
@@ -1026,6 +1027,9 @@ ApplicationWindow {
                                     objectName: "reorderHandle-" + cardId
                                     Layout.row: window.compactInbox ? 1 : 0
                                     Layout.column: window.compactInbox ? 1 : 0
+                                    Layout.minimumWidth: window.compactInbox ? 48 : -1
+                                    Layout.preferredWidth: window.compactInbox ? 48 : -1
+                                    Layout.maximumWidth: window.compactInbox ? 48 : Infinity
                                     visible: !cardRow.bundled
                                     implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
@@ -1139,6 +1143,7 @@ ApplicationWindow {
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
                                 Label {
+                                    objectName: "phoneMailDate-" + cardId
                                     visible: window.compactInbox
                                     Layout.row: 1
                                     Layout.column: 0
@@ -1150,9 +1155,9 @@ ApplicationWindow {
                                 ColumnLayout {
                                     Layout.row: window.compactInbox ? 1 : 0
                                     Layout.column: 2
-                                    Layout.preferredWidth: window.compactInbox ? -1 : 120
-                                    Layout.minimumWidth: window.compactInbox ? 0 : 120
-                                    Layout.maximumWidth: window.compactInbox ? Infinity : 120
+                                    Layout.preferredWidth: window.compactInbox ? 96 : 120
+                                    Layout.minimumWidth: window.compactInbox ? 96 : 120
+                                    Layout.maximumWidth: window.compactInbox ? 96 : 120
                                     spacing: Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "mailDate-" + cardId
