@@ -62,6 +62,12 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// a2a bridge routes enforce their own source=a2a credential, never a
+		// device token (including when development device auth is enabled).
+		if r.URL.Path == "/v1/a2a/ingest" || r.URL.Path == "/v1/a2a/outbox" || strings.HasPrefix(r.URL.Path, "/v1/a2a/outbox/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		if r.URL.Path == "/v1/version" && r.Method == http.MethodGet {
 			next.ServeHTTP(w, r)
