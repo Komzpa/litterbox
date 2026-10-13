@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/a2a"
 	"github.com/Komzpa/litterbox/server/internal/auth"
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/cards"
@@ -170,6 +171,9 @@ func main() {
 		eventsCtx, stopEvents := context.WithCancel(context.Background())
 		defer stopEvents()
 		cardHandler.Events = cards.StartEvents(eventsCtx, databaseURL)
+		a2aStore := &a2a.Store{DB: db}
+		a2aHandler := &a2a.Handler{Store: a2aStore, Events: a2a.StartEvents(eventsCtx, databaseURL, a2aStore)}
+		a2aHandler.Routes(mux)
 		cardMux := http.NewServeMux()
 		cardHandler.Routes(cardMux)
 		mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
