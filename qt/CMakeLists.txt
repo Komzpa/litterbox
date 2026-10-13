@@ -21,6 +21,8 @@ qt_add_executable(litterbox-qt
     src/main.cpp
     src/api.h
     src/api.cpp
+    src/a2astream.h
+    src/a2astream.cpp
     src/androidupdater.h
     src/androidupdater.cpp
     src/CardStore.h
@@ -142,6 +144,11 @@ qt_add_executable(tst_api tests/tst_api.cpp src/api.h src/api.cpp)
 target_include_directories(tst_api PRIVATE src)
 target_link_libraries(tst_api PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
 add_test(NAME api COMMAND tst_api)
+
+qt_add_executable(tst_a2astream tests/tst_a2astream.cpp src/a2astream.h src/a2astream.cpp src/api.h src/api.cpp)
+target_include_directories(tst_a2astream PRIVATE src)
+target_link_libraries(tst_a2astream PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
+add_test(NAME a2astream COMMAND tst_a2astream)
 qt_add_executable(tst_androidupdater tests/tst_androidupdater.cpp src/androidupdater.h src/androidupdater.cpp)
 target_include_directories(tst_androidupdater PRIVATE src)
 target_link_libraries(tst_androidupdater PRIVATE Qt6::Core Qt6::Network Qt6::Test)

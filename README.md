@@ -25,6 +25,18 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+### Qt change — 2026-10-13
+
+The Qt shell exposes `a2aStream` to agent pages. It consumes authenticated
+`/v1/a2a/events` frames (`event: a2a`, `data: {"seq":N}`) and emits
+`changed(seq)`. Pages refetch the thread list on invalidation; chat pages
+refetch messages after their own saved cursor, not the SSE sequence. The
+`reconnected()` signal fires on each accepted stream, including the first,
+so pages can recover changes missed while disconnected. Retries back off
+from 1 to 10 seconds; token/server changes cancel the old stream. Bearers
+and server error bodies are never logged by the consumer. Focused proof:
+`ctest --test-dir <qt-build> -R '^a2astream$' --output-on-failure`.
+
 ## Reading mail on desktop
 
 Click a mail card's text or preview to read the message inside Litterbox.
