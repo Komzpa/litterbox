@@ -25,6 +25,25 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+### LAN socket boot fix — 2026-10-14
+
+Install both `deploy/systemd/litterbox-lan-proxy.socket` and its
+`litterbox-lan-proxy.socket.d/10-freebind.conf` drop-in under
+`/etc/systemd/system/`, then run `systemctl daemon-reload` and
+`systemctl enable --now litterbox-lan-proxy.socket`. The LAN-only listener
+starts through `sockets.target`; `FreeBind=yes` lets it precede LAN address
+assignment. Never order this socket after `network-online.target`: the
+2026-10-13 boot journal records that cycle deleting the socket's start job.
+
+Before installation, preserve the existing unit and drop-in. Roll back by
+restoring those saved files and running `systemctl daemon-reload`; if the
+socket was previously disabled, restore that state with
+`systemctl disable litterbox-lan-proxy.socket`. Read back `systemctl
+is-enabled litterbox-lan-proxy.socket`, `systemctl list-dependencies
+sockets.target`, and `systemctl show litterbox-lan-proxy.socket -p FreeBind
+-p After -p Before`. A transient transport abort after a successful boot is
+not evidence of this ordering cycle; diagnose it separately from logs.
+
 ### Qt change — 2026-10-13
 
 Callback-driven Qt GETs use high network priority; signal-only cache prefetches
