@@ -25,7 +25,7 @@ func TestClusterSecondRunWritesNoChangesRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/007_offline_ops.sql"} {
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/007_offline_ops.sql", "../../db/019_card_embeddings.sql"} {
 		b, e := os.ReadFile(path)
 		if e != nil {
 			t.Fatal(e)
@@ -50,15 +50,7 @@ func TestClusterSecondRunWritesNoChangesRows(t *testing.T) {
 	}
 	vectors := fakeEmbedder{subjects[0]: {1, 0, 0}, subjects[1]: {.99, .01, 0}}
 	run := func() {
-		tx, err := conn.Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tx.Rollback(ctx)
-		if err = Cluster(ctx, tx, tenant, vectors); err != nil {
-			t.Fatal(err)
-		}
-		if err = tx.Commit(ctx); err != nil {
+		if err = Cluster(ctx, conn, tenant, vectors); err != nil {
 			t.Fatal(err)
 		}
 	}

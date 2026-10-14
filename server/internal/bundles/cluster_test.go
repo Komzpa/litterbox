@@ -2,8 +2,13 @@ package bundles
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
@@ -11,6 +16,8 @@ import (
 )
 
 type fakeEmbedder map[string][]float64
+
+func (fakeEmbedder) ModelName() string { return "test-model" }
 
 func (f fakeEmbedder) Embed(_ context.Context, text string) ([]float64, error) { return f[text], nil }
 
@@ -25,7 +32,7 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql"} {
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/019_card_embeddings.sql"} {
 		b, e := os.ReadFile(path)
 		if e != nil {
 			t.Fatal(e)
@@ -54,18 +61,13 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 		}
 	}
 	vectors := fakeEmbedder{subjects[0]: {1, 0, 0}, subjects[1]: {.99, .01, 0}, subjects[2]: {.98, .02, 0}, subjects[3]: {0, 0, 1}}
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(ctx)
-	if err = Cluster(ctx, tx, tenant, vectors); err != nil {
+	if err = Cluster(ctx, conn, tenant, vectors); err != nil {
 		t.Fatal(err)
 	}
 	var b0, b1, b3 *uuid.UUID
 	for i, id := range ids {
 		var b *uuid.UUID
-		if err = tx.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&b); err != nil {
+		if err = conn.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&b); err != nil {
 			t.Fatal(err)
 		}
 		switch i {
@@ -85,15 +87,23 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 	if b3 != nil {
 		t.Fatalf("different topic unexpectedly bundled: %v", b3)
 	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
 	if err = TakeOut(ctx, tx, tenant, ids[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err = Cluster(ctx, tx, tenant, vectors); err != nil {
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = Cluster(ctx, conn, tenant, vectors); err != nil {
 		t.Fatal(err)
 	}
 	for i, id := range ids[:3] {
 		var got *uuid.UUID
-		if err = tx.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&got); err != nil {
+		if err = conn.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, id).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
 		if i == 0 && got != nil {
@@ -108,3 +118,27 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 	}
 }
 func idAccount(id uuid.UUID) uuid.UUID { return id }
+
+func TestOllamaEmbedderTimeoutLeavesParentUsable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	parent, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// No client timeout: Embed must enforce its own per-call deadline.
+	embedder := OllamaEmbedder{Host: server.URL, Model: "test", Client: server.Client()}
+	start := time.Now()
+	_, err := embedder.Embed(parent, "paused")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("paused embedding error=%v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed < 14*time.Second || elapsed > 17*time.Second {
+		t.Fatalf("per-call deadline elapsed=%s, want about 15s", elapsed)
+	}
+	if err := parent.Err(); err != nil {
+		t.Fatalf("embedding timeout canceled fallback context: %v", err)
+	}
+	t.Log("Ollama timed out at 15s; parent remains usable for structured fallback")
+}

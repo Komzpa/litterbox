@@ -65,6 +65,7 @@ func main() {
 	mux.HandleFunc("GET /healthz", httpapi.Healthz)
 	mux.HandleFunc("GET /v1/version", httpapi.Version(buildSHA, minClientAPI))
 	var protected http.Handler = mux
+	var ingestHandler *ingest.Handler
 	if databaseURL != "" {
 		// HTTP auth requests run concurrently; each lookup/transaction needs its own connection.
 		pg, err := pgxpool.New(context.Background(), databaseURL)
@@ -136,7 +137,8 @@ func main() {
 			}
 			journalMux.ServeHTTP(w, r.WithContext(ctx))
 		}))
-		mux.Handle("POST /v1/ingest", ingest.Handler{DB: db, Pool: pool})
+		ingestHandler = &ingest.Handler{DB: db, Pool: pool}
+		mux.Handle("POST /v1/ingest", ingestHandler)
 		go func() {
 			if err := ingest.RunCallbacks(context.Background(), db, &http.Client{Timeout: 10 * time.Second}); err != nil {
 				log.Printf("source callback worker stopped: %v", err)
@@ -264,6 +266,13 @@ func main() {
 		}
 		if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 			log.Printf("HTTP server failed: %v", err)
+		}
+	}
+	if ingestHandler != nil {
+		clusterCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := ingestHandler.Shutdown(clusterCtx); err != nil {
+			log.Printf("ingest clustering shutdown: %v; reruns on next ingest or sync", err)
 		}
 	}
 }

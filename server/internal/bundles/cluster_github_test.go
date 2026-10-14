@@ -17,6 +17,8 @@ import (
 
 type failingEmbedder struct{}
 
+func (failingEmbedder) ModelName() string { return "nomic-embed-text" }
+
 func (failingEmbedder) Embed(_ context.Context, _ string) ([]float64, error) {
 	return nil, errors.New("model nomic-embed-text not found")
 }
@@ -43,7 +45,7 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 	if _, err := conn.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql"} {
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/019_card_embeddings.sql"} {
 		sql, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -83,17 +85,12 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 		}
 	}
 
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(ctx)
-	if err = Cluster(ctx, tx, tenant, failingEmbedder{}); err != nil {
+	if err = Cluster(ctx, conn, tenant, failingEmbedder{}); err != nil {
 		t.Fatal(err)
 	}
 
 	var senderBundled int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM cards c JOIN bundles b ON b.id=c.bundle_id WHERE c.tenant_id=$1 AND b.bundle_key LIKE 'sender:%' AND c.sender LIKE '%github.com%'`, tenant).Scan(&senderBundled); err != nil {
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM cards c JOIN bundles b ON b.id=c.bundle_id WHERE c.tenant_id=$1 AND b.bundle_key LIKE 'sender:%' AND c.sender LIKE '%github.com%'`, tenant).Scan(&senderBundled); err != nil {
 		t.Fatal(err)
 	}
 	if senderBundled != 0 {
@@ -107,7 +104,7 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 	}
 	for key, title := range checks {
 		var got string
-		if err := tx.QueryRow(ctx, `SELECT title FROM bundles WHERE tenant_id=$1 AND bundle_key=$2`, tenant, key).Scan(&got); err != nil {
+		if err := conn.QueryRow(ctx, `SELECT title FROM bundles WHERE tenant_id=$1 AND bundle_key=$2`, tenant, key).Scan(&got); err != nil {
 			t.Fatalf("bundle %s missing: %v", key, err)
 		}
 		if got != title {
@@ -115,7 +112,7 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 		}
 	}
 	var agentsCount int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM cards c JOIN bundles b ON b.id=c.bundle_id WHERE c.tenant_id=$1 AND b.bundle_key='github-agents:Komzpa/oh-my-pi'`, tenant).Scan(&agentsCount); err != nil {
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM cards c JOIN bundles b ON b.id=c.bundle_id WHERE c.tenant_id=$1 AND b.bundle_key='github-agents:Komzpa/oh-my-pi'`, tenant).Scan(&agentsCount); err != nil {
 		t.Fatal(err)
 	}
 	if agentsCount != 2 {
@@ -123,7 +120,7 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 	}
 	for _, idx := range []int{2, 3} {
 		var bundleID *uuid.UUID
-		if err := tx.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, ids[idx]).Scan(&bundleID); err != nil {
+		if err := conn.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, ids[idx]).Scan(&bundleID); err != nil {
 			t.Fatal(err)
 		}
 		if bundleID != nil {
@@ -131,21 +128,29 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 		}
 	}
 
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
 	if err = TakeOut(ctx, tx, tenant, ids[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err = Cluster(ctx, tx, tenant, failingEmbedder{}); err != nil {
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = Cluster(ctx, conn, tenant, failingEmbedder{}); err != nil {
 		t.Fatal(err)
 	}
 	var bundleID *uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, ids[0]).Scan(&bundleID); err != nil {
+	if err := conn.QueryRow(ctx, `SELECT bundle_id FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, ids[0]).Scan(&bundleID); err != nil {
 		t.Fatal(err)
 	}
 	if bundleID != nil {
 		t.Fatalf("taken-out card re-bundled into new keys: %v", *bundleID)
 	}
 	var agentsCountAfter int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM cards c JOIN bundles b ON b.id=c.bundle_id WHERE c.tenant_id=$1 AND b.bundle_key='github-agents:Komzpa/oh-my-pi'`, tenant).Scan(&agentsCountAfter); err != nil {
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM cards c JOIN bundles b ON b.id=c.bundle_id WHERE c.tenant_id=$1 AND b.bundle_key='github-agents:Komzpa/oh-my-pi'`, tenant).Scan(&agentsCountAfter); err != nil {
 		t.Fatal(err)
 	}
 	if agentsCountAfter != 1 {

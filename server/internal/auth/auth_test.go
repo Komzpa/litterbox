@@ -267,3 +267,48 @@ func TestRateLimitAlsoAppliesToAuthenticatedRequests(t *testing.T) {
 		t.Fatalf("second request status=%d want 429", res.Code)
 	}
 }
+
+type twoDeviceStore struct{ devices map[string]Device }
+
+func (s twoDeviceStore) RedeemInvite(context.Context, string, string, string, string, string) (string, error) {
+	return "", errors.New("unused")
+}
+func (s twoDeviceStore) DeviceByToken(_ context.Context, hash string) (Device, error) {
+	d, ok := s.devices[hash]
+	if !ok {
+		return Device{}, errors.New("missing")
+	}
+	return d, nil
+}
+func (s twoDeviceStore) CreateInvite(context.Context, string, string) error { return nil }
+func (s twoDeviceStore) RevokeDevice(context.Context, string, string) error { return nil }
+
+func TestRateLimitIsPerDeviceNotPerSharedAddress(t *testing.T) {
+	store := twoDeviceStore{devices: map[string]Device{
+		tokenHash("phone-token"):   {TenantID: "tenant", DeviceID: "phone"},
+		tokenHash("desktop-token"): {TenantID: "tenant", DeviceID: "desktop"},
+	}}
+	h := NewHandler(store, "")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	protected := h.Middleware(mux)
+	request := func(token string) int {
+		req := httptest.NewRequest(http.MethodGet, "/v1/cards", nil)
+		req.RemoteAddr = "127.0.0.1:40000" // every client arrives via the local proxy
+		req.Header.Set("Authorization", "Bearer "+token)
+		res := httptest.NewRecorder()
+		protected.ServeHTTP(res, req)
+		return res.Code
+	}
+	for i := range 60 {
+		if code := request("phone-token"); code != http.StatusOK {
+			t.Fatalf("phone request %d status=%d want 200", i+1, code)
+		}
+	}
+	if code := request("phone-token"); code != http.StatusTooManyRequests {
+		t.Fatalf("phone request 61 status=%d want 429", code)
+	}
+	if code := request("desktop-token"); code != http.StatusOK {
+		t.Fatalf("desktop status=%d want 200 while phone is over its limit", code)
+	}
+}

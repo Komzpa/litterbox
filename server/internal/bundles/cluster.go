@@ -3,6 +3,7 @@ package bundles
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,14 @@ import (
 
 // Embedder converts mail content into a semantic vector.
 type Embedder interface {
+	ModelName() string
 	Embed(context.Context, string) ([]float64, error)
+}
+
+// ClusterDB starts top-level transactions. A pgx.Tx deliberately does not
+// satisfy this contract: its Begin would keep the caller's transaction open.
+type ClusterDB interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
 // OllamaEmbedder calls the local Ollama embeddings API.
@@ -39,10 +47,16 @@ func NewOllamaEmbedder() OllamaEmbedder {
 	if model == "" {
 		model = "nomic-embed-text"
 	}
-	return OllamaEmbedder{Host: host, Model: model, Client: &http.Client{Timeout: 15 * time.Second}}
+	return OllamaEmbedder{Host: host, Model: model, Client: &http.Client{}}
 }
 
+func (e OllamaEmbedder) ModelName() string { return e.Model }
+
 func (e OllamaEmbedder) Embed(ctx context.Context, text string) ([]float64, error) {
+	// Bound each call even when a caller supplies a client without a timeout.
+	// Only this child context expires, so Cluster can still commit its fallback.
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	client := e.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -83,6 +97,7 @@ type mailCard struct {
 	id                    uuid.UUID
 	sender, subject, text string
 	vector                []float64
+	cacheHash             []byte
 	bundleKey             string
 }
 type cluster struct {
@@ -109,6 +124,44 @@ func loadMailCards(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, openOnly bo
 	return cards, rows.Err()
 }
 
+func loadEmbeddingCache(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, model string, cards []*mailCard) error {
+	byID := make(map[uuid.UUID]*mailCard, len(cards))
+	for _, c := range cards {
+		byID[c.id] = c
+	}
+	rows, err := tx.Query(ctx, `SELECT e.card_id,e.input_hash,e.vector FROM card_embeddings e JOIN cards c ON c.tenant_id=e.tenant_id AND c.id=e.card_id WHERE e.tenant_id=$1 AND e.model=$2 AND c.source='mail' AND c.state='open'`, tenant, model)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var hash []byte
+		var vector []float64
+		if err := rows.Scan(&id, &hash, &vector); err != nil {
+			return err
+		}
+		if c := byID[id]; c != nil {
+			c.cacheHash, c.vector = hash, vector
+		}
+	}
+	return rows.Err()
+}
+
+// Each successful miss is durable before the next slow embed call. No cache
+// transaction remains open while waiting for the embedder, even on fallback.
+func storeEmbedding(ctx context.Context, db ClusterDB, tenant uuid.UUID, model string, card uuid.UUID, hash []byte, vector []float64) error {
+	tx, err := beginClusterTx(ctx, db, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if _, err := tx.Exec(ctx, `INSERT INTO card_embeddings(tenant_id,card_id,model,input_hash,vector) VALUES($1,$2,$3,$4,$5) ON CONFLICT(tenant_id,card_id,model) DO UPDATE SET input_hash=EXCLUDED.input_hash,vector=EXCLUDED.vector`, tenant, card, model, hash, vector); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // ReassignGitHub repairs legacy sender bundles in every card state, using the
 // same deterministic router and exclusions as ingestion. No embeddings or
 // Gmail access are needed; unchanged memberships produce no card changes.
@@ -127,25 +180,36 @@ func ReassignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID) error {
 // embedding failure falls back to structured keys: GitHub mail keeps its
 // routed keys and is never keyed by sender alone. The embed error is logged
 // once per run so a missing local model is visible instead of silently
-// reshaping the inbox.
-func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder) error {
+// reshaping the inbox. Read and write transactions are tenant-scoped and short;
+// all embedding calls run between them with no database transaction open.
+func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embedder) error {
 	if embedder == nil {
 		return errors.New("nil bundle embedder")
 	}
+	tx, err := beginClusterTx(ctx, db, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
 	cards, err := loadMailCards(ctx, tx, tenant, true)
 	if err != nil {
 		return err
 	}
-	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
+	model := embedder.ModelName()
+	if err := loadEmbeddingCache(ctx, tx, tenant, model, cards); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	var rest []*mailCard
 	for _, c := range cards {
-		if c.bundleKey != "" {
+		if _, routed := RouteGitHubMail(c.sender, c.subject, c.text); routed {
 			continue
 		}
 		rest = append(rest, c)
 	}
+	embeddingFailed := false
 	for _, c := range rest {
 		text := StripGitHubFooter(c.text)
 		// LinkedIn network digests put the topic in the subject; their plain
@@ -154,12 +218,35 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 		if SenderKey(c.sender) == "messages-noreply@linkedin.com" && strings.Contains(text, "You are receiving LinkedIn network update digest email.") {
 			text = ""
 		}
-		v, err := embedder.Embed(ctx, strings.TrimSpace(c.subject+"\n"+text))
+		input := strings.TrimSpace(c.subject + "\n" + text)
+		hash := sha256.Sum256([]byte(input))
+		if bytes.Equal(c.cacheHash, hash[:]) {
+			continue
+		}
+		v, err := embedder.Embed(ctx, input)
 		if err != nil {
 			log.Printf("bundles: embedding failed, using structured fallback: %v", err)
-			return fallback(ctx, tx, tenant, cards)
+			embeddingFailed = true
+			break
 		}
 		c.vector = v
+		if err := storeEmbedding(ctx, db, tenant, model, c.id, hash[:], v); err != nil {
+			return err
+		}
+	}
+	tx, err = beginClusterTx(ctx, db, tenant)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
+		return err
+	}
+	if embeddingFailed {
+		if err := fallback(ctx, tx, tenant, cards); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 	var groups []*cluster
 	for _, c := range rest {
@@ -190,7 +277,11 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 			continue
 		}
 		var bundleID uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, g.cards[0].subject, g.key).Scan(&bundleID); err != nil {
+		members := make([]TitleMember, 0, len(g.cards))
+		for _, c := range g.cards {
+			members = append(members, TitleMember{Subject: c.subject, Sender: c.sender})
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, HumanTitle("", members), g.key).Scan(&bundleID); err != nil {
 			return err
 		}
 		for _, c := range g.cards {
@@ -209,18 +300,30 @@ func Cluster(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder
 			}
 		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
-// AfterIngest is the hook mail producers call after inserting or updating a card.
-func AfterIngest(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, embedder Embedder) error {
+func beginClusterTx(ctx context.Context, db ClusterDB, tenant uuid.UUID) (pgx.Tx, error) {
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant.String()); err != nil {
+		_ = tx.Rollback(context.Background())
+		return nil, err
+	}
+	return tx, nil
+}
+
+// AfterIngest is called after the producer commits its card and message writes.
+func AfterIngest(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embedder) error {
 	if embedder == nil {
 		embedder = NewOllamaEmbedder()
 	}
-	return Cluster(ctx, tx, tenant, embedder)
+	return Cluster(ctx, db, tenant, embedder)
 }
 
-// assignGitHub routes GitHub mail deterministically before any embedding.
+// assignGitHub routes GitHub mail deterministically in the write phase.
 // Standalone cards (mentions, human replies on his own threads) get no
 // bundle; bundled cards are grouped by their structured key with a human
 // title. Routed cards carry c.bundleKey so the semantic path skips them.

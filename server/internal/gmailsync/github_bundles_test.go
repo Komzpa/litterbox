@@ -90,8 +90,12 @@ func TestGitHubMailSyncKeepsRepositoryBundle(t *testing.T) {
 					t.Fatal("re-sync replaced the existing card")
 				}
 			}
-			if embedCalls != 2 {
-				t.Fatalf("embedding calls=%d, want 2 for plain mail only", embedCalls)
+			wantCalls := 2 // Failed embeddings are not cached.
+			if embeddingWorks {
+				wantCalls = 1 // Unchanged plain mail reuses its first vector.
+			}
+			if embedCalls != wantCalls {
+				t.Fatalf("embedding calls=%d, want %d for plain mail only", embedCalls, wantCalls)
 			}
 			var plainKey string
 			if err := db.QueryRow(ctx, `SELECT COALESCE(b.bundle_key,'') FROM cards c LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id WHERE c.id=$1`, plain).Scan(&plainKey); err != nil {

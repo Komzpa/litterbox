@@ -52,40 +52,39 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !h.limiter.Allow(clientIP(r)) {
+		// Every client reaches the server from the same loopback address behind
+		// the LAN proxy and the reverse tunnel, so the address cannot identify a
+		// device. Authenticated requests are limited per device; requests with no
+		// valid device identity fall back to the remote address.
+		limitIP := func() bool {
+			if h.limiter.Allow("ip:" + clientIP(r)) {
+				return true
+			}
 			writeError(w, 429, "rate limit exceeded")
-			return
+			return false
 		}
 		// The ingest handler validates its source-scoped token and establishes
 		// tenant scope itself; device tokens must not gate this producer route.
-		if r.URL.Path == "/v1/ingest" && r.Method == http.MethodPost {
-			next.ServeHTTP(w, r)
-			return
-		}
 		// a2a bridge routes enforce their own source=a2a credential, never a
 		// device token (including when development device auth is enabled).
-		if r.URL.Path == "/v1/a2a/ingest" || r.URL.Path == "/v1/a2a/outbox" || strings.HasPrefix(r.URL.Path, "/v1/a2a/outbox/") {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		if r.URL.Path == "/v1/version" && r.Method == http.MethodGet {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if r.URL.Path == "/v1/devices/enroll" && r.Method == http.MethodPost {
-			next.ServeHTTP(w, r)
-			return
-		}
 		// The Gmail OAuth callback is a browser redirect from Google: it cannot
 		// carry a device token. It authenticates with its single-use HMAC-signed
 		// state, which carries the tenant; every other gmail route stays
 		// device-authenticated.
-		if r.URL.Path == "/v1/gmail/oauth/callback" && r.Method == http.MethodGet {
-			next.ServeHTTP(w, r)
+		if (r.URL.Path == "/v1/ingest" && r.Method == http.MethodPost) ||
+			r.URL.Path == "/v1/a2a/ingest" || r.URL.Path == "/v1/a2a/outbox" || strings.HasPrefix(r.URL.Path, "/v1/a2a/outbox/") ||
+			(r.URL.Path == "/v1/version" && r.Method == http.MethodGet) ||
+			(r.URL.Path == "/v1/devices/enroll" && r.Method == http.MethodPost) ||
+			(r.URL.Path == "/v1/gmail/oauth/callback" && r.Method == http.MethodGet) {
+			if limitIP() {
+				next.ServeHTTP(w, r)
+			}
 			return
 		}
 		if h.devTenant != "" {
+			if !limitIP() {
+				return
+			}
 			d := Device{TenantID: h.devTenant, DeviceID: "development"}
 			ctx := context.WithValue(r.Context(), contextKey{}, d)
 			ctx = cards.WithTenant(ctx, d.TenantID)
@@ -95,12 +94,20 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 		const prefix = "Bearer "
 		header := r.Header.Get("Authorization")
 		if !strings.HasPrefix(header, prefix) || strings.TrimSpace(strings.TrimPrefix(header, prefix)) == "" {
-			writeError(w, 401, "unauthorized")
+			if limitIP() {
+				writeError(w, 401, "unauthorized")
+			}
 			return
 		}
 		d, err := h.store.DeviceByToken(r.Context(), tokenHash(strings.TrimSpace(strings.TrimPrefix(header, prefix))))
 		if err != nil {
-			writeError(w, 401, "unauthorized")
+			if limitIP() {
+				writeError(w, 401, "unauthorized")
+			}
+			return
+		}
+		if !h.limiter.Allow("device:" + d.TenantID + "/" + d.DeviceID) {
+			writeError(w, 429, "rate limit exceeded")
 			return
 		}
 		ctx := context.WithValue(r.Context(), contextKey{}, d)
