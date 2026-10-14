@@ -277,7 +277,11 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 			continue
 		}
 		var bundleID uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, g.cards[0].subject, g.key).Scan(&bundleID); err != nil {
+		members := make([]TitleMember, 0, len(g.cards))
+		for _, c := range g.cards {
+			members = append(members, TitleMember{Subject: c.subject, Sender: c.sender})
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, HumanTitle("", members), g.key).Scan(&bundleID); err != nil {
 			return err
 		}
 		for _, c := range g.cards {
