@@ -1059,6 +1059,93 @@ private slots:
         QCOMPARE(store.cachedMailBody(hiddenId).value(QStringLiteral("html")).toString(), hiddenUrl);
         QCOMPARE(store.openCachedFile(hiddenId, hiddenUrl), QString());
     }
+    void delayedArchivedSnapshotAfterInverseAckKeepsRestoredCard() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("delayed-snapshot.sqlite");
+        const QVariantMap full{{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "mail"}, {"state", "open"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap absent{{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(full));
+            QSignalSpy posted(&store, &CardStore::requestPost);
+            store.setOnline(true);
+            const QString archive = store.enqueueOp(cardId, "archive");
+            QTRY_COMPARE(posted.size(), 1);
+            store.reportPostResult(archive, 200, {{"ok", true}});
+            QTRY_COMPARE(store.pendingOps(), 0);
+            // This archived snapshot was requested before Undo and returns last.
+            store.refresh();
+            QVERIFY(store.undoBundleArchive(archive));
+            QTRY_COMPARE(posted.size(), 2);
+            store.reportPostResult(posted.last().at(0).toString(), 200, {{"ok", true}});
+            QTRY_COMPARE(store.pendingOps(), 0);
+            QVERIFY(store.applyRemoteCards(absent));
+            QCOMPARE(store.cardIds(), QStringList{cardId});
+            QVERIFY(store.applyRemoteCards(full));
+            QCOMPARE(store.cardIds(), QStringList{cardId});
+            // A later real archive must still be allowed to remove the row.
+            QVERIFY(store.applyRemoteCards(absent));
+            QCOMPARE(store.rowCount(), 0);
+            QVERIFY(store.applyRemoteCards(full));
+        }
+        CardStore coldStart;
+        QVERIFY(coldStart.open(path));
+        QCOMPARE(coldStart.cardIds(), QStringList{cardId});
+    }
+    void undoInflightArchiveThenBothRejectedKeepsOpenCard() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("rejected-archive-undo.sqlite")));
+        const QVariantMap full{{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "mail"}, {"state", "open"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(full));
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        QSignalSpy refreshes(&store, &CardStore::requestCards);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        const QString archive = store.enqueueOp(cardId, "archive");
+        QTRY_COMPARE(posted.size(), 1);
+        QVERIFY(store.undoBundleArchive(archive));
+        store.reportPostResult(archive, 422, {{"ok", false}});
+        QTRY_COMPARE(posted.size(), 2);
+        // The archive transaction rolled back; its refresh reports open.
+        QVERIFY(store.applyRemoteCards(full));
+        const int beforeRejection = refreshes.size();
+        store.reportPostResult(posted.last().at(0).toString(), 422, {{"ok", false}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(store.cardIds(), QStringList{cardId});
+        QCOMPARE(failed.size(), 2);
+        QVERIFY(refreshes.size() > beforeRejection);
+    }
+    void partialBundleRejectionsThenUndoPreservesFullOrder() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("partial-bundle.sqlite")));
+        const auto mail = [](const QString &id) {
+            return QVariantMap{{"id", id}, {"source", "mail"}, {"state", "open"}, {"bundle_id", "bundle"}};
+        };
+        QVariantMap pin = mail("P");
+        pin.insert("pinned_rank", 1);
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{pin, mail("A"), mail("B"), mail("C")}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        store.setOnline(true);
+        const QString token = store.archiveBundleNow("bundle").value("token").toString();
+        QTRY_COMPARE(posted.size(), 1);
+        store.reportPostResult(posted.last().at(0).toString(), 422, {{"ok", false}});
+        QTRY_COMPARE(posted.size(), 2);
+        // Keep C queued when B fails, rather than transmitting another archive.
+        store.setOnline(false);
+        store.reportPostResult(posted.last().at(0).toString(), 422, {{"ok", false}});
+        QTRY_COMPARE(store.pendingOps(), 1);
+        QVERIFY(store.undoBundleArchive(token));
+        QCOMPARE(store.cardIds(), QStringList({"P", "A", "B", "C"}));
+        QCOMPARE(store.pendingOps(), 0);
+        QCOMPARE(posted.size(), 2);
+    }
+
     void singleArchiveUndoAcrossAcknowledgement_data() {
         QTest::addColumn<QString>("phase");
         for (const QString &phase : {"queued", "acknowledged", "inflight", "ack-callback", "lost-ack", "inverse-rejected", "expired"})

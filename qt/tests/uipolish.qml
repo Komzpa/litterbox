@@ -9,6 +9,11 @@ TestCase {
     when: windowShown
     property var store: resizeStore
     property url pagesDir: Qt.resolvedUrl("../pages/")
+    property string reconnectUndoToken: ""
+    function cleanup() {
+        if (reconnectUndoToken) store.undoBundleArchive(reconnectUndoToken)
+        reconnectUndoToken = ""
+    }
     QtObject {
         id: api
         property string baseUrl: "https://inbox.example.test"
@@ -190,6 +195,37 @@ TestCase {
         verify(!bar.visible, "Old servers without status must not show stale banners")
         inbox.close()
     }
+    function test_reconnectRejectionPreservesActiveUndo_data() {
+        return [{tag: "1440", width: 1440}, {tag: "900", width: 900}]
+    }
+    function test_reconnectRejectionPreservesActiveUndo(data) {
+        seed()
+        store.online = false
+        api.accounts = [{id: "account", address: "owner@example.test", status: "active"}]
+        const inbox = createTemporaryObject(inboxComponent, proof, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 1000
+        })
+        verify(inbox)
+        inbox.show()
+        verify(inbox.archiveBundle("digest"))
+        const token = inbox.bundleArchiveToken
+        reconnectUndoToken = token
+        const message = inbox.bundleArchiveStatus
+        const undo = findChild(inbox, "bundleArchiveUndoButton")
+        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        tryCompare(undo, "visible", true)
+        inbox.showOperationFailure("unrelated", 422, {code: "gmail_reconnect_required"})
+        compare(inbox.bundleArchiveToken, token)
+        verify(bar.visible, "An unrelated reconnect rejection must not consume the active Undo banner")
+        verify(undo.visible && undo.enabled)
+        compare(inbox.bundleArchiveStatus, message)
+        shot(inbox, "undo-reconnect", "active-undo", data.width)
+        mouseClick(undo)
+        compare(inbox.bundleArchiveToken, "")
+        compare(store.cardIds().length, 5)
+        verify(!inbox.archiveUndoAvailable)
+        inbox.close()
+    }
     function test_geometry_data() { return [{tag: "1440", width: 1440}, {tag: "900", width: 900}, {tag: "572", width: 572}] }
     function test_geometry(data) {
         seed()
@@ -205,7 +241,7 @@ TestCase {
         tryCompare(menu, "opened", true)
         wait(100)
         const refresh = findChild(inbox, "headerMenuRefresh")
-        compare(menu.height, menu.topPadding + menu.bottomPadding + accounts.height + findChild(inbox, "headerMenuAgents").height + findChild(inbox, "headerMenuEnroll").height + refresh.height,
+        compare(menu.height, menu.topPadding + menu.bottomPadding + accounts.height + findChild(inbox, "headerMenuAgents").height + findChild(inbox, "headerMenuSettings").height + findChild(inbox, "headerMenuEnroll").height + refresh.height,
                 "Unsupported updates must leave no empty menu tail")
         compare(accounts.icon.width, 20)
         compare(accounts.icon.height, 20)

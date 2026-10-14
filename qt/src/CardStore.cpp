@@ -287,6 +287,9 @@ void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVari
 void CardStore::undoOp(const QString &opId) {
     if (!m_mutations.contains(opId)) return;
     const Mutation mutation = m_mutations.take(opId);
+    ++m_snapshotRevision;
+    // Undo of a rejected archive never made the canonical card archived.
+    if (mutation.archiveRejected) return;
     QList<QVariantMap> cards = m_cards;
     QHash<QString, QVariantMap> before, after;
     for (const auto &card : mutation.before) before.insert(card.value(QStringLiteral("id")).toString(), card);
@@ -305,11 +308,14 @@ void CardStore::undoOp(const QString &opId) {
             else cards[row].remove(key);
         }
     }
-    for (int row = 0; row < mutation.before.size(); ++row) {
-        const auto &card = mutation.before[row];
+    QSet<QString> restore;
+    for (const auto &card : mutation.before) {
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (!after.contains(id)) cards.insert(qMin(row, int(cards.size())), card);
+        if (!after.contains(id) && std::none_of(cards.cbegin(), cards.cend(), [&](const QVariantMap &current) {
+            return current.value(QStringLiteral("id")).toString() == id;
+        })) restore.insert(id);
     }
+    restoreCardOrder(cards, mutation.before, restore);
     const auto current = m_cards;
     replaceCards(cards);
     persistCards(current, cards);
@@ -405,6 +411,22 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections) {
         if (leftPinned != rightPinned) return leftPinned;
         return leftPinned && leftRank.toLongLong() < rightRank.toLongLong();
     });
+    for (auto it = m_restoredAwaitingSnapshot.begin(); it != m_restoredAwaitingSnapshot.end();) {
+        const auto mutation = m_mutations.constFind(*it);
+        bool confirmed = mutation != m_mutations.cend();
+        if (confirmed) {
+            QSet<QString> beforeIds;
+            for (const auto &card : mutation->before) beforeIds.insert(card.value(QStringLiteral("id")).toString());
+            for (const auto &card : mutation->after) {
+                const QString id = card.value(QStringLiteral("id")).toString();
+                if (!beforeIds.contains(id) && !ids.contains(id)) confirmed = false;
+            }
+        }
+        if (confirmed || mutation == m_mutations.cend()) {
+            m_mutations.remove(*it);
+            it = m_restoredAwaitingSnapshot.erase(it);
+        } else ++it;
+    }
     // An acknowledged archive remains optimistic until a snapshot confirms its absence.
     for (auto it = m_archivedAwaitingSnapshot.begin(); it != m_archivedAwaitingSnapshot.end();) {
         const QString id = *it;
@@ -673,6 +695,7 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
 
     const auto before = m_cards;
     if (changed) {
+        ++m_snapshotRevision;
         m_mutations.insert(id, {before, cards});
         replaceCards(cards);
     }
@@ -745,14 +768,16 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
         m_bundleFailureGroups.insert(opId, token);
         ops.append({{QStringLiteral("op_id"), opId}, {QStringLiteral("card_id"), cardId},
             {QStringLiteral("type"), QStringLiteral("archive")}, {QStringLiteral("args"), QVariantMap{}}});
-        QList<QVariantMap> withCard;
-        for (const QVariantMap &other : before) {
-            const QString otherId = other.value(QStringLiteral("id")).toString();
-            if (otherId == cardId || !archived.contains(otherId)) withCard.append(other);
-        }
-        m_mutations.insert(opId, {withCard, after});
+        // Each member rolls back against the same complete original order,
+        // while its delta still removes only that member.
+        QList<QVariantMap> withoutCard = before;
+        withoutCard.erase(std::remove_if(withoutCard.begin(), withoutCard.end(), [&](const QVariantMap &other) {
+            return other.value(QStringLiteral("id")).toString() == cardId;
+        }), withoutCard.end());
+        m_mutations.insert(opId, {before, withoutCard});
         entry.ops.append({cardId, opId});
     }
+    ++m_snapshotRevision;
     replaceCards(after);
     m_outbox.append(ops);
     persistCards(before, after, ops);
@@ -825,6 +850,7 @@ bool CardStore::undoBundleArchive(const QString &token) {
         m_mutations.insert(op.value(QStringLiteral("op_id")).toString(), {without, cards});
     }
     const QList<QVariantMap> current = m_cards;
+    ++m_snapshotRevision;
     replaceCards(cards);
     m_outbox.append(reverseOps);
     persistCards(current, cards, reverseOps, cancelled);
@@ -867,8 +893,20 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         if (status == 422)
             qWarning().noquote() << "Operation rejected:" << opId << status << QJsonDocument(QJsonObject::fromVariantMap(response)).toJson(QJsonDocument::Compact);
         if (rejected) {
+            ++m_snapshotRevision;
+            const QVariantMap operation = m_outbox.first();
+            if (operation.value(QStringLiteral("type")).toString() == QStringLiteral("archive")) {
+                const QString cardId = operation.value(QStringLiteral("card_id")).toString();
+                for (const auto &pending : m_outbox) {
+                    if (pending.value(QStringLiteral("card_id")).toString() != cardId ||
+                        pending.value(QStringLiteral("type")).toString() != QStringLiteral("gmail.label_add") ||
+                        pending.value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() != QStringLiteral("INBOX")) continue;
+                    auto inverse = m_mutations.find(pending.value(QStringLiteral("op_id")).toString());
+                    if (inverse != m_mutations.end()) inverse->archiveRejected = true;
+                }
+            }
             m_retryAttempt = 0;
-            const bool canUndoLocally = m_mutations.contains(opId);
+            const bool canUndoLocally = m_mutations.contains(opId) && !m_mutations.value(opId).archiveRejected;
             undoOp(opId);
             if (notifyFailure) emit operationFailed(opId, status, response);
             QMetaObject::invokeMethod(m_storage, [this, opId, canUndoLocally] {
@@ -923,6 +961,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
                 return;
             }
             m_retryAttempt = 0;
+            ++m_snapshotRevision;
             const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
                 return op.value(QStringLiteral("op_id")).toString() == opId;
             });
@@ -932,10 +971,16 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
                 if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == cardId; }))
                     m_archivedAwaitingSnapshot.insert(cardId);
             }
+            const bool restored = acknowledgedOp != m_outbox.cend() &&
+                acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
+                acknowledgedOp->value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX") &&
+                m_mutations.contains(opId);
+            if (restored) m_restoredAwaitingSnapshot.insert(opId);
             if (!m_outbox.isEmpty() && m_outbox.first().value(QStringLiteral("op_id")).toString() == opId) m_outbox.removeFirst();
             m_durableOps.remove(opId);
-            m_mutations.remove(opId);
+            if (!restored) m_mutations.remove(opId);
             emit pendingOpsChanged();
+            if (restored) refresh();
             flush();
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);

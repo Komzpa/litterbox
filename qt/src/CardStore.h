@@ -43,6 +43,9 @@ public:
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool applyRemoteCards(const QVariantMap &sections);
+    // HTTP responses carry the revision captured at request time; main drops
+    // responses predating a local mutation or a terminal operation result.
+    quint64 snapshotRevision() const { return m_snapshotRevision; }
     // Semantic reminder label is independent of the token-bound source identity.
     Q_INVOKABLE QString sourceLabel(const QVariantMap &card) const {
         if (card.value(QStringLiteral("source_kind")).toString() == QStringLiteral("reminder"))
@@ -134,7 +137,7 @@ private:
     bool m_open = false;
     QList<QVariantMap> m_outbox;
     QSet<QString> m_durableOps;
-    struct Mutation { QList<QVariantMap> before, after; };
+    struct Mutation { QList<QVariantMap> before, after; bool archiveRejected = false; };
     QHash<QString, Mutation> m_mutations;
     // One Undo window per single-card or bundle archive, retained across ACK.
     // Transmitted ops remain ordered before their inverse even after a lost ACK.
@@ -149,6 +152,10 @@ private:
     QSet<QString> m_reportedBundleFailures;
     void expireBundleArchives();
     QSet<QString> m_archivedAwaitingSnapshot;
+    // Successful INBOX inverses retain their row overlay until a fresh open
+    // snapshot confirms it. A delayed archived snapshot cannot erase Undo.
+    QSet<QString> m_restoredAwaitingSnapshot;
+    quint64 m_snapshotRevision = 0;
     int m_bundleUndoDurationMs = 8000;
     QTimer *m_bundleUndoTimer = nullptr;
     QHash<QString, QVariantMap> m_mailBodies;

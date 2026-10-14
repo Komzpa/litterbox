@@ -193,7 +193,7 @@ ApplicationWindow {
         }
         // Reconnect state belongs exclusively to the current account list.
         if (response && response.code === "gmail_reconnect_required") {
-            bundleArchiveStatus = ""
+            if (!archiveUndoAvailable) bundleArchiveStatus = ""
             reloadGmailAccounts()
         } else {
             bundleArchiveStatus = qsTr("Action failed (HTTP %1).").arg(status)
@@ -454,7 +454,7 @@ ApplicationWindow {
             Rectangle {
                 id: bundleArchiveUndoBar
                 objectName: "bundleArchiveUndoBar"
-                visible: window.reconnectStatus.length > 0 || window.bundleArchiveStatus.length > 0
+                visible: window.archiveUndoAvailable || window.reconnectStatus.length > 0 || window.bundleArchiveStatus.length > 0
                 Layout.fillWidth: true
                 implicitHeight: Math.max(48, undoBarRow.implicitHeight) + 12
                 radius: Kirigami.Units.cornerRadius
