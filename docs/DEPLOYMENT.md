@@ -46,6 +46,14 @@ An unknown legacy title may be marked as a generated seed only from independentl
 recorded provenance, using an exact expected-value guard and preserved rollback;
 never infer provenance from title/subject equality or run a broad backfill.
 
+Desktop-only follow-up 0.1-32 renders the canonical bundle topic at compact
+widths as well as desktop widths. Keep the installed 0.1-31 desktop package
+for rollback before installation. This follow-up does not rebuild, reinstall,
+or restart the 0.1-31 server, replay migrations or title-origin repair, or
+publish an Android update. Prove the installed visible topic label using an
+isolated copy of the accepted CardStore cache; cached offline captures do not
+claim live API availability.
+
 Build packages out of tree; preserve installed binaries, unit and packages.
 Prove the frozen server through real CardStore/QML in an isolated profile before
 publication or installation. Installed desktop clients use the existing
