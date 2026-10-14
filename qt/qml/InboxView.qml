@@ -742,7 +742,9 @@ ApplicationWindow {
                     readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
                     readonly property bool bundleExpanded: !!window.expandedBundles[card.bundle_id]
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
-                    readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], important: 0, unpinned: 0, lastId: cardId}
+                    readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], senders: [], important: 0, unpinned: 0, lastId: cardId}
+                    readonly property bool showMemberSender: !bundled || bundleSummary.senders.length !== 1 || bundleSummary.senders[0] !== window.mailSender(card)
+                    readonly property bool showMemberAccount: !bundled || bundleSummary.accounts.length !== 1 || bundleSummary.accounts[0] !== card.account_name
                     readonly property bool lastMember: bundleSummary.lastId === cardId
                     readonly property real bundleTextInset: window.compactInbox ? 0 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
                     property string registeredCardId: ""
@@ -864,7 +866,7 @@ ApplicationWindow {
                                         spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
-                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (window.compactInbox ? "" : cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
                                             color: window.mutedInk
                                             font.family: Kirigami.Theme.defaultFont.family
                                             font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
@@ -1095,13 +1097,14 @@ ApplicationWindow {
                                     spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
-                                        visible: card.source === "mail"
+                                        visible: card.source === "mail" && ((cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing
                                         Label {
+                                            id: mailSenderLabel
                                             objectName: "mailSender-" + cardId
                                             text: window.mailSender(card)
-                                            visible: text.length > 0
+                                            visible: text.length > 0 && cardRow.showMemberSender
                                             color: window.mutedInk
                                             font.family: Kirigami.Theme.defaultFont.family
                                             font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
@@ -1110,9 +1113,10 @@ ApplicationWindow {
                                             Layout.fillWidth: window.compactInbox
                                         }
                                         Label {
+                                            id: mailAccountLabel
                                             objectName: "mailAccount-" + cardId
                                             text: card.account_name || ""
-                                            visible: !window.compactInbox && text.length > 0
+                                            visible: text.length > 0 && cardRow.showMemberAccount && (!window.compactInbox || cardRow.bundled)
                                             color: window.mutedInk
                                             font: Kirigami.Theme.defaultFont
                                             elide: Text.ElideLeft
@@ -1120,8 +1124,8 @@ ApplicationWindow {
                                         }
                                     }
                                     Label {
-                                        text: cardRow.bundled ? (card.account_name || "") : window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
-                                        visible: (cardRow.bundled && !window.compactInbox) || card.source !== "mail"
+                                        text: window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
+                                        visible: card.source !== "mail"
                                         color: window.mutedInk
                                         font.family: Kirigami.Theme.defaultFont.family
                                         font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize

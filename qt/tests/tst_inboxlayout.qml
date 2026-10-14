@@ -2,6 +2,7 @@ import QtQuick
 import QtTest
 import litterbox 1.0 as App
 import "previewcards.js" as Previews
+import "techshipcontext.js" as Techship
 
 TestCase {
     name: "InboxLayout"
@@ -173,6 +174,85 @@ TestCase {
         const collapsedNext = list.itemAtIndex(4)
         const collapsedFrame = findChild(collapsedLeader, "inboxCard")
         compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
+    }
+    function test_expandedMemberContext_data() {
+        return [{tag: "desktop", viewWidth: 1356, viewHeight: 475},
+                {tag: "phone", viewWidth: 412, viewHeight: 915}]
+    }
+    function test_expandedMemberContext(data) {
+        store.clear()
+        const cards = Techship.cards()
+        const single = Object.assign({}, cards[0], {id: "single-context", bundle_id: "", title: "Standalone mail neighbor"})
+        delete single.bundle_leader
+        function populate(records) {
+            store.clear()
+            for (const card of records.concat([single]))
+                store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        }
+        populate(cards)
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: data.viewHeight
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = data.viewHeight * 4
+        function ready() { list.forceLayout(); return list.itemAtIndex(3) !== null }
+        tryVerify(ready)
+        function capture(name) {
+            wait(150)
+            if (typeof mailFixtures !== "undefined")
+                grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath(name + "-" + data.viewWidth + ".png"))
+        }
+        capture("collapsed")
+        mouseClick(findChild(list.itemAtIndex(0), "bundleToggle-" + cards[0].id))
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1).visible })
+        capture("expanded")
+        const shared = cards.map(function(card, index) {
+            const row = list.itemAtIndex(index)
+            return {sender: findChild(row, "mailSender-" + card.id).visible,
+                    account: findChild(row, "mailAccount-" + card.id).visible,
+                    context: findChild(row, "mailContext-" + card.id).visible}
+        })
+        const header = findChild(list.itemAtIndex(0), "bundleAccountLabel-" + cards[0].id)
+        const headerHasAccount = header.text.indexOf(cards[0].account_name) >= 0
+        for (let i = 0; i < cards.length; ++i) {
+            const row = list.itemAtIndex(i)
+            compare(findChild(row, "mailTitle-" + cards[i].id).text, cards[i].title)
+            compare(findChild(row, "mailSnippet-" + cards[i].id).text, cards[i].snippet)
+            verify(findChild(row, (inbox.compactInbox ? "phoneMailDate-" : "mailDate-") + cards[i].id).visible)
+        }
+        const singleRow = list.itemAtIndex(3)
+        verify(findChild(singleRow, "mailSender-single-context").visible)
+        compare(findChild(singleRow, "mailAccount-single-context").visible, !inbox.compactInbox)
+        const mixed = cards.map(function(card) { return Object.assign({}, card) })
+        mixed[2].account_name = "different@example.test"
+        mixed[2].sender_name = "Different sender"
+        populate(mixed)
+        tryVerify(ready)
+        wait(150)
+        capture("mixed-expanded")
+        list.positionViewAtEnd()
+        capture("mixed-account-and-single-neighbor")
+        const mixedRow = list.itemAtIndex(2)
+        const mixedAccount = findChild(mixedRow, "mailAccount-" + mixed[2].id)
+        const mixedSender = findChild(mixedRow, "mailSender-" + mixed[2].id)
+        const mixedAccountVisible = mixedAccount.visible
+        const mixedSenderVisible = mixedSender.visible
+        compare(mixedAccount.text, "different@example.test")
+        compare(mixedSender.text, "Different sender")
+        console.log("CONTEXT_ORACLE", JSON.stringify({width: data.viewWidth, shared: shared,
+                    headerHasAccount: headerHasAccount, mixedAccount: mixedAccountVisible, mixedSender: mixedSenderVisible}))
+        inbox.close()
+        for (const member of shared) {
+            verify(!member.account, "Same-account bundle member must omit repeated account")
+            verify(!member.sender, "Same-sender bundle member must omit repeated sender")
+            verify(!member.context, "Repeated-only context row must collapse")
+        }
+        verify(headerHasAccount, "Shared account identity must remain on the bundle summary")
+        verify(mixedAccountVisible, "Mixed-account child must retain its own identity")
+        verify(mixedSenderVisible, "Mixed-sender child must retain its own identity")
     }
     function test_singleMailShowsSenderDateAndSnippet() {
         store.clear()
