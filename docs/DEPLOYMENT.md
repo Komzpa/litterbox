@@ -35,24 +35,22 @@ The loopback-only listener is kept as the server's only bind. To reach clients o
 
 The socket uses `FreeBind=yes` so the LAN address may be assigned after the listener is created. Do not add `After=network-online.target` or `Wants=network-online.target` to this socket: network startup can depend on `sockets.target`, creating an ordering cycle that deletes the socket's boot start job. Existing installations can retain `/etc/systemd/system/litterbox-lan-proxy.socket.d/10-freebind.conf` with `[Socket]` and `FreeBind=yes`.
 
-## Server Debian package install and rollback
+## Unified release installation and rollback
 
-The historical Techship desktop/server release used desktop package 0.1-31 and
-a server package stamped with the frozen composite commit. Its limited scope
-preserved the published Android v19 common mail/settings sources but did not
-publish an Android update; it did not deliver the newer shared Qt fixes to phones.
+Publish one frozen-source cohort: the server Debian package, ordinary desktop
+Debian package and signed Android APK. Build and accept all three before changing
+any installed or served state. `deploy/release.py` is the sole cutover entrypoint;
+do not reconstruct a release from ad-hoc copy, environment-edit or restart commands.
 Apply migration 020 for explicit title origin.
 Read-time preview/title projections leave archived cards and stored bodies intact.
 An unknown legacy title may be marked as a generated seed only from independently
 recorded provenance, using an exact expected-value guard and preserved rollback;
 never infer provenance from title/subject equality or run a broad backfill.
 
-The historical desktop-only follow-up 0.1-32 rendered the canonical bundle topic
-at compact widths. That delivery neither restarted the server nor published an
-Android update, so it was not Android completion. Keep the installed 0.1-31
-desktop package for rollback. Its isolated accepted-CardStore-cache topic
-captures proved the installed desktop label, not live API availability or a
-native Android release. Shared Qt changes require the separate Android gate below.
+Source publication, package preparation, server publication and installed-client
+adoption are different facts. Record the full artifact source SHA separately
+from the commit and SHA-256 of the release CLI: documentation/CLI-only commits
+do not require rebuilding unchanged accepted application artifacts.
 
 Build packages out of tree; preserve installed binaries, unit and packages.
 Prove the frozen server through real CardStore/QML in an isolated profile before
@@ -62,7 +60,78 @@ stable with package-manager locks released, it starts a replacement user service
 and quits normally. Do not drive or restart the owner desktop. Observe executable
 mappings to confirm adoption; otherwise report the exact remaining serving gap.
 
-Cut over production only through the `litterbox-server` `.deb`: build it with `deploy/server/debian/build.sh` from the pinned release binary (packaging sources in `deploy/server/debian`), which installs the binary at `/opt/litterbox/server/litterbox` (root-owned, mode 0755), the unit at `/lib/systemd/system/litterbox-server.service`, and reference operator migrations under `/usr/share/litterbox-server/db`. Credentials and environment in `/etc/litterbox` are never bundled. Install with `dpkg -i litterbox-server_<version>_<arch>.deb` (postinst reloads systemd only), apply any pending operator-owned SQL migration from the packaged `db/` files through the database owner role, then restart explicitly with `systemctl restart litterbox-server.service`. The `card_bodies` table (migration `011`) requires `GRANT SELECT, INSERT, UPDATE, DELETE ON card_bodies TO litterbox_app;` on the production database; row-level security stays enforced. Before every cutover, preserve the running binary, the effective unit file, and the exact grant state for rollback; on a failed post-install, restore the preserved binary and unit and restart the same service (grants and RLS are safe to leave). Verify after cutover with `dpkg -s litterbox-server`, the installed executable's SHA-256 against the pinned candidate, `systemctl is-active litterbox-server.service`, the running process executable mapping, the loopback listener, `GET /healthz` returning `200`, and an unauthenticated `/v1/cards` returning `401`.
+Build the server package with `deploy/server/debian/build.sh` from the pinned
+binary. It installs `/opt/litterbox/server/litterbox` and the canonical unit at
+`/lib/systemd/system/litterbox-server.service`; postinst reloads systemd but does
+not restart it. Build the desktop with the existing Debian recipe, without adding
+a custom ELF note: its exact executable hash and source are bound by the build
+receipt. Configuration and credentials under `/etc/litterbox` never enter packages.
+Complete pending operator-owned SQL migrations before release; the CLI neither
+migrates databases nor changes grants. Migration `011` requires `SELECT, INSERT,
+UPDATE, DELETE` on `card_bodies` for `litterbox_app`, with RLS retained.
+
+Prepare a private absolute-path `cohort.json` with this contract (no credentials):
+
+- `source_sha`: full frozen Git SHA. `artifacts` has exactly `server`, `desktop`,
+  `android`; each has `path`, `sha256`, `source_sha` equal to that frozen SHA.
+  Debian entries add `package`, `version`, `architecture`, `binary_sha256`.
+  Android adds `package`, integer `version_code`, `version_name`, `signer_sha256`.
+- `proofs`: `{path, sha256, artifacts: [names], accepted, bindings}` references.
+  Every reference binds the source and each listed artifact hash through dotted
+  JSON keys, for example `source_sha` and `artifacts.desktop.sha256`. All three
+  need an accepted receipt (`status` PASS/ACCEPTED/accepted or `accepted: true`,
+  never `accepted: false`). Include the producer manifest/build receipts as
+  non-acceptance references; retain exact-candidate native and lead visual approval.
+- `target`: `host`, `service`, `environment`, `server_binary`, `desktop_binary`,
+  `unit_path`, `origins`, `credential_loader`, `aapt`, `apksigner`, plus hash-bound
+  `publisher_inputs`, `before_receipt`, `rollback_debs.server/desktop` references.
+  The credential loader is a private JSON file with an enrolled-device `token`;
+  neither its contents nor child-command output is printed.
+- Publisher inputs bind `host`, `service`, `environment_path`,
+  `environment_sha256`, `server_binary`, `server_binary_sha256`, `server_source`,
+  `origins`, `credential_loader`, `candidate_source`, `candidate_apk`,
+  `candidate_sha256`, `candidate_version` (decimal string), `candidate_package`,
+  `candidate_signer`, `rollback_apk_preserve`, `proposed_immutable_apk_path`, and
+  `environment_release_values` containing the three current Android keys below.
+  The before receipt contains `signer_sha256`, `apk_sha256`, and `manifest`
+  with the old `version` and `package`.
+- Explicit mobile installation additionally requires `mobile`: hash-bound
+  `helper` (`phone_adb.py`), canonical `registry` and `lock_path`, `adb`, verified
+  `endpoint`, hardware `serial`, `model`, and `old_apk` with Android metadata.
+  Use the public helper's registered identity/discovery first; no default device.
+  Preserve the operator's `HOME` and `XDG_STATE_HOME` as below so root uses the
+  same canonical phone lock and already-paired ADB key, not a second root identity.
+
+Run the same manifest through the real CLI (backup parent must already exist):
+
+```sh
+sudo --preserve-env=HOME,XDG_STATE_HOME python3 deploy/release.py plan /private/cohort.json --install-mobile mainphone
+sudo --preserve-env=HOME,XDG_STATE_HOME python3 deploy/release.py apply /private/cohort.json --install-mobile mainphone --receipt /var/backups/litterbox/release-ID
+sudo --preserve-env=HOME,XDG_STATE_HOME python3 deploy/release.py rollback /var/backups/litterbox/release-ID
+```
+
+`plan` performs all hash/source/signature/proof/live-state checks and the Debian
+no-act check without installation. `apply` repeats every preflight before any
+installation, preserves old packages/APK, executable/environment/unit bytes in a
+root-private rollback packet, stages all three candidates, installs both Debian
+packages together, atomically replaces only the three Android keys, and restarts
+the server once. Other environment bytes and ownership/mode are preserved.
+It verifies installed package/executable identities, the running server mapping
+and source revision, authenticated manifests/download hashes at every origin,
+anonymous rejection, and passive desktop adoption. It never drives the owner GUI.
+With explicit mobile selection it uses the canonical phone lock and independently
+verified transport/hardware identity for only `adb -s <endpoint> install -r <APK>`
+and narrow package/version/hash readback. It never pairs, unlocks, enables debugging,
+approves permissions, launches apps, or changes other packages.
+
+Without `--install-mobile`, the phone is untouched and the receipt says
+`mobile: not_requested`; publication success is not all-three installed completion.
+Any failed readback leaves `status: failed`, never a success claim. Keep the
+printed receipt and exact CLI hash. Explicit rollback verifies its saved hashes,
+reinstalls both old Debian packages, restores exact old files, restarts the same
+service and verifies old package/process/publication identities and desktop
+adoption. The old phone APK is preserved, but Android downgrade/uninstall/data
+restoration is never automatic; rollback explicitly reports that phone limitation.
 
 ## Android update release
 
@@ -78,11 +147,11 @@ LITTERBOX_ANDROID_VERSION=20
 LITTERBOX_ANDROID_PACKAGE=org.qtproject.example.litterbox_qt
 ```
 
-For every shared Qt fix, track desktop and Android delivery separately. A desktop package, source push or local APK does not publish an Android update. Before publication, freeze a signed candidate with a decimal versionCode strictly above both the served and recorded installed releases; record its full source and APK SHA-256, badging and certificate, retaining the existing package/signing lineage, OpenSSL runtimes and QML imports. Inspect `qt/android-build.sh` before use: its default selects the real phone and installs/launches; release builds must use an explicit out-of-tree build-only recipe with the canonical redacted signing loader, not invoke that default workflow.
+Every shared Qt release uses the unified cohort above; a desktop package, source push or local APK alone is incomplete. Freeze a signed candidate whose decimal versionCode is strictly above both served and recorded installed releases; record its full source and APK SHA-256, badging and certificate, retaining package/signing lineage, OpenSSL runtimes and QML imports. Inspect `qt/android-build.sh` before use: its default selects the real phone and installs/launches. Release builds must use an explicit out-of-tree build-only recipe with the canonical redacted signing loader, not that default workflow.
 
 Prove R42 on that exact signed file first: a fresh owned native emulator enrolls through the normal UI with no `LB_SERVER` and no pre-enrolled profile and reaches Online against the intended deployed origin. Record any dedicated test-device production enrollment API requests and their tenant scope/rollback. Then retain exact-candidate phone-size inbox/mail/topic captures: at least four complete collapsed/standalone cards, three expanded Techship member previews with the shared identity rendered once, the real mail card's retained body, and neighboring Settings. A desktop Qt wrapper, launch-only or disposable-server-only receipt does not pass the native gate. Use the existing owned-runtime/proof recipes after contract and readiness checks, preserve each run's logs, and stop after at most two full acceptance attempts rather than rerunning a matrix blindly.
 
-Publish once only after native acceptance: preserve the old immutable APK, release environment and unchanged live server identity for rollback; install the accepted APK at its immutable path, change only the three release values and restart the canonical server because its APK snapshot is startup-bound. Do not rebuild or replace the server for release-config-only changes. Read back the authenticated same-origin manifest and downloaded APK bytes: versionCode, package and SHA-256 must match the exact signed accepted candidate; unauthenticated protection and the live server source/binary must remain unchanged. On an older normally enrolled isolated consumer, exercise actual **Check updates** and retain the **Update available** offer without approving Android installer/unknown-source safety prompts. This offer proof and the exact-candidate native gate are separate; a blocked provider-consent installation is not an upgrade pass.
+After native and lead acceptance, publish and install the entire cohort through `deploy/release.py` above. The server source/binary must become the accepted cohort identity, not remain the previous release; its startup-bound APK snapshot must match the same accepted cohort. Read back the authenticated same-origin manifest and downloaded bytes, with anonymous protection retained. On an older normally enrolled isolated consumer, exercise actual **Check updates** and retain **Update available** without approving installer/unknown-source safety prompts. This offer proof is separate from native acceptance and explicit device installation; a blocked provider-consent installation is not an upgrade pass.
 
 Install each immutable release at a fixed, service-readable path and restart the server to select it. If any value is absent, the file cannot be read, or its size is empty or exceeds the bound, both endpoints fail closed with `503 Service Unavailable`. The server never accepts a request-provided file path. Keep APKs private; do not place signing keys or credentials in this configuration or repository.
 
