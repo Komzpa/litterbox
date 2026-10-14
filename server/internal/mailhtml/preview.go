@@ -43,6 +43,11 @@ func PreviewText(body string) string {
     if a.Key == "hidden" || (a.Key == "aria-hidden" && style == "true") || (a.Key == "style" && (strings.Contains(style,"display:none") || strings.Contains(style,"visibility:hidden") || strings.Contains(style,"opacity:0;") || style == "opacity:0")) { return }
    }
    switch n.Data { case "p", "div", "td", "tr", "li", "h1", "h2", "h3", "h4", "br": flush() }
+			// A nested data table owns its content; an outer layout cannot
+			// classify it as decoration. Presentation wrappers retain the band.
+			if n.Data == "table" && !presentationTable(n) {
+				band = false
+			}
 			if n.Data == "td" || n.Data == "th" {
 				cell = n
 				band = band || presentationBand(n)
@@ -72,10 +77,10 @@ func PreviewText(body string) string {
 	start := 0
 	for i, b := range blocks {
 		if i > 0 && b.heading && b.cell != nil && i+1 < len(blocks) &&
-			blocks[i+1].cell == b.cell && blocks[i+1].paragraph {
+			containsCell(b.cell, blocks[i+1].cell) && blocks[i+1].paragraph {
 			separate := true
 			for _, prefix := range blocks[:i] {
-				if prefix.cell == b.cell {
+				if containsCell(b.cell, prefix.cell) {
 					separate = false
 					break
 				}
@@ -118,12 +123,25 @@ func presentationBand(cell *html.Node) bool {
 	}
 	for n := row.Parent; n != nil; n = n.Parent {
 		if n.Data == "table" {
-			for _, a := range n.Attr {
-				if a.Key == "role" && strings.EqualFold(a.Val, "presentation") {
-					return true
-				}
-			}
-			return false
+			return presentationTable(n)
+		}
+	}
+	return false
+}
+
+func containsCell(outer, inner *html.Node) bool {
+	for n := inner; n != nil; n = n.Parent {
+		if n == outer {
+			return true
+		}
+	}
+	return false
+}
+
+func presentationTable(table *html.Node) bool {
+	for _, a := range table.Attr {
+		if a.Key == "role" && strings.EqualFold(a.Val, "presentation") {
+			return true
 		}
 	}
 	return false
