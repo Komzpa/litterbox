@@ -357,6 +357,7 @@ ApplicationWindow {
         } else {
             const values = Object.assign({api: api}, properties || {})
             if (name === "GmailAccountsPage") values.accountsLoaded = function(accounts) { window.gmailAccounts = accounts }
+            if (name === "SettingsPage") values.updater = window.updater
             stack.push(page, values)
         }
     }
@@ -425,7 +426,8 @@ ApplicationWindow {
                         }
                         InboxMenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; onTriggered: openPage("GmailAccountsPage") }
                         InboxMenuItem { objectName: "headerMenuAgents"; text: qsTr("Agents"); icon.name: "user-identity"; onTriggered: openPage("AgentThreadsPage") }
-                        InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; onTriggered: openPage("EnrollmentPage") }
+                        InboxMenuItem { objectName: "headerMenuSettings"; text: qsTr("Settings"); icon.name: "application-menu"; onTriggered: openPage("SettingsPage") }
+                        InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; visible: !api.token; onTriggered: openPage("EnrollmentPage") }
                         InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; onTriggered: store.refresh() }
                         InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                     }

@@ -75,6 +75,7 @@ qt_add_resources(litterbox-qt "lb_pages"
     PREFIX "/qt/qml/litterbox/qml"
     FILES
         pages/EnrollmentPage.qml
+        pages/SettingsPage.qml
         pages/GmailAccountsPage.qml
         pages/AgentThreadsPage.qml
         pages/AgentChatPage.qml

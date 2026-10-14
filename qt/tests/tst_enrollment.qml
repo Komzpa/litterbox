@@ -10,6 +10,10 @@ TestCase {
     visible: true
     when: windowShown
     Component { id: pageComponent; Pages.EnrollmentPage {} }
+    function initTestCase() {
+        Qt.application.organization = "LitterboxEnrollmentProof"
+        Qt.application.domain = "enrollment-proof.example.test"
+    }
 
     function test_enrollAndEmitToken() {
         var call = null

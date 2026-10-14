@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import QtQuick.Controls.Material
 import org.kde.kirigami as Kirigami
+import QtCore
 
 Kirigami.ScrollablePage {
     id: root
@@ -40,11 +41,20 @@ Kirigami.ScrollablePage {
 
     // api.post(path, body, cb) calls cb(error, {status, body}).
     property var api
+    readonly property bool alreadyEnrolled: !!(token || (api && api.token))
+    Settings {
+        id: identity
+        category: "enrollment"
+        property string deviceId: ""
+        property string tenantId: ""
+        property string deviceName: ""
+        property string serverUrl: ""
+    }
 
     property bool busy: false
     readonly property bool serverUrlValid: /^https?:\/\/[a-z0-9.-]+(?::[0-9]+)?(?:[/?#][^\s]*)?$/i.test(serverField.text.trim())
     property string errorText: ""
-    // Set on success; the token is only shown once.
+    // Set on successful enrollment; stored bearer tokens are never displayed.
     property string token: ""
     property string deviceId: ""
     property string tenantId: ""
@@ -98,6 +108,11 @@ Kirigami.ScrollablePage {
             token = response.body.token
             deviceId = response.body.device_id
             tenantId = response.body.tenant_id
+            identity.setValue("deviceId", deviceId)
+            identity.setValue("tenantId", tenantId)
+            identity.setValue("deviceName", name)
+            identity.setValue("serverUrl", server)
+            identity.sync()
             api.token = token
             root.enrolled(response.body)
         })
@@ -105,7 +120,7 @@ Kirigami.ScrollablePage {
     }
 
     Kirigami.FormLayout {
-        visible: root.token === ""
+        visible: !root.alreadyEnrolled
         width: Math.min(parent.width, 1200)
         Layout.alignment: Qt.AlignHCenter
 
@@ -236,26 +251,21 @@ Kirigami.ScrollablePage {
     }
 
     ColumnLayout {
-        visible: root.token !== ""
+        visible: root.alreadyEnrolled
         width: Math.min(parent.width, 1200)
         Layout.alignment: Qt.AlignHCenter
         spacing: Kirigami.Units.smallSpacing
 
         QQC2.Label {
-            text: qsTr("Enrollment complete. Save this token — it will not be shown again.")
+            text: qsTr("This device is enrolled. No invite code is needed.")
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
-        QQC2.TextField {
-            objectName: "tokenField"
-            Layout.fillWidth: true
-            readOnly: true
-            text: root.token
-            selectByMouse: true
-        }
         QQC2.Label {
             objectName: "deviceSummary"
-            text: qsTr("Device: %1 · Tenant: %2").arg(root.deviceId).arg(root.tenantId)
+            text: identity.serverUrl === api.baseUrl && identity.deviceId
+                ? qsTr("Device: %1 · Tenant: %2").arg(identity.deviceId).arg(identity.tenantId)
+                : qsTr("Enrollment is saved on this device.")
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
