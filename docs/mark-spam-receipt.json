@@ -1,4 +1,5 @@
 {
+  "rerun_note": "Historical commands below ran before the litterbox_test_ database guard; pg_virtualenv default PGDATABASE=postgres is now refused. To rerun, follow README section Server tests: disposable databases only (createdb litterbox_test_<name> inside pg_virtualenv, PGDATABASE set to it, DATABASE_URL unset).",
   "lane": "MarkSpamServerOp",
   "branch": "fix/mark-spam-20261012",
   "base_commit": "647e167beac804138d5fb27284161bb6baec7dab",

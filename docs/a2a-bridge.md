@@ -22,7 +22,7 @@ Run only against disposable infrastructure:
 
 ```sh
 cd server
-pg_virtualenv env CARD_TEST_POSTGRES=1 DATABASE_URL= go test ./internal/a2a -run '^TestBridge' -v -count=1
+pg_virtualenv bash -c 'unset DATABASE_URL; createdb litterbox_test_bridge && PGDATABASE=litterbox_test_bridge CARD_TEST_POSTGRES=1 go test ./internal/a2a -run "^TestBridge" -v -count=1'
 ```
 
 The neighboring auth suite checks that existing card/device/producer route behavior remains intact:

@@ -72,7 +72,7 @@ Each requirement is **decided** or **open** and names its source.
   `seq`. Device-composed messages carry `client_msg_id` (uuid, null for journal
   rows), unique per thread, so a retry is idempotent. A commit fires
   `NOTIFY a2a` with only the tenant id. Oracle: `internal/a2a` store tests under
-  pg_virtualenv with `CARD_TEST_POSTGRES=1`.
+  pg_virtualenv with `CARD_TEST_POSTGRES=1` and `PGDATABASE=litterbox_test_*`.
 - **R18 Gmail app published unverified** (decided, owner 2026-09-27).
   Litterbox's Google Cloud app is published without Google verification.
   Connecting a Gmail account shows Google's unverified-app warning, and the
