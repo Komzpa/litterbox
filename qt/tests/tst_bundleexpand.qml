@@ -505,10 +505,10 @@ TestCase {
         verify(archive && archive.visible)
         mouseClick(archive, archive.width / 2, archive.height / 2)
         tryVerify(function() { return rejectedCards.indexOf(ids[0]) >= 0 && rejectedCards.indexOf(ids[1]) >= 0 }, 5000, "Stub server must reject both archive POSTs with 422")
-        tryCompare(inbox, "bundleArchiveStatus", "Action failed (HTTP 422). The card was restored.", 5000)
+        tryCompare(inbox, "bundleArchiveStatus", "Action failed (HTTP 422).", 5000)
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar && bar.visible, "Rejected archive must keep the error status visible")
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Action failed (HTTP 422). The card was restored.")
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Action failed (HTTP 422).")
         tryVerify(function() { return store.cardIds().indexOf(ids[0]) >= 0 && store.cardIds().indexOf(ids[1]) >= 0 }, 5000, "Rejected ops must restore both bundle members")
         store.requestPost.disconnect(stub)
         store.online = false
@@ -549,7 +549,7 @@ TestCase {
         inbox.showOperationFailure("single", 422, {code: "gmail_reconnect_required", account_address: "other@example.test"})
         compare(inbox.reconnectStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
         inbox.showOperationFailure("generic", 422, {})
-        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422). The card was restored.")
+        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422).")
         store.requestPost.disconnect(stub)
         store.operationFailed.disconnect(failed)
         store.online = false

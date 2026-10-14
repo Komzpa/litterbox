@@ -175,26 +175,28 @@ ApplicationWindow {
         const result = store.archiveBundleNow(bundleId)
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
+        mailArchiveUndoOp = ""
         archiveUndoAvailable = true
         bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(result.count))
         return true
     }
     function showArchiveUndo(opId, action) {
-        mailArchiveUndoOp = opId
+        mailArchiveUndoOp = action === "spam" ? opId : ""
         archiveUndoAvailable = true
-        bundleArchiveToken = ""
+        bundleArchiveToken = action === "archive" ? opId : ""
         bundleArchiveStatus = action === "spam" ? qsTr("Marked as spam. You can undo this action.") : qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
     }
     function showOperationFailure(opId, status, response) {
-        mailArchiveUndoOp = ""
-        bundleArchiveToken = ""
-        archiveUndoAvailable = false
+        if (opId === mailArchiveUndoOp) {
+            mailArchiveUndoOp = ""
+            archiveUndoAvailable = false
+        }
         // Reconnect state belongs exclusively to the current account list.
         if (response && response.code === "gmail_reconnect_required") {
             bundleArchiveStatus = ""
             reloadGmailAccounts()
         } else {
-            bundleArchiveStatus = qsTr("Action failed (HTTP %1). The card was restored.").arg(status)
+            bundleArchiveStatus = qsTr("Action failed (HTTP %1).").arg(status)
         }
     }
     function undoBundleArchive() {
@@ -208,6 +210,7 @@ ApplicationWindow {
         }
         const restored = bundleArchiveToken.length > 0 && store.undoBundleArchive(bundleArchiveToken)
         bundleArchiveToken = ""
+        archiveUndoAvailable = false
         if (restored) {
             bundleArchiveStatus = ""
         } else {
@@ -228,6 +231,7 @@ ApplicationWindow {
         function onBundleArchiveExpired(token) {
             if (token !== window.bundleArchiveToken) return
             window.bundleArchiveToken = ""
+            window.archiveUndoAvailable = false
             window.bundleArchiveStatus = qsTr("Undo has expired.")
             undoExpiredNoticeTimer.restart()
         }

@@ -25,6 +25,21 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+### Archive Undo — 2026-10-15 (source candidate)
+
+Single-mail Archive, including the reader, uses the same eight-second Undo
+window as Archive bundle. Undo cancels unsent archives or restores local order
+and queues the existing Gmail INBOX inverse behind transmitted archives, even
+while their acknowledgement is pending. The inverse reopens the canonical card
+only after Gmail succeeds, publishing the normal card change. Rejection rolls
+back the optimistic restoration and surfaces an error; spam stays queued-only.
+Scoped regressions: `tst_cardstore singleArchiveUndoAcrossAcknowledgement
+bundleArchiveUndoRestoresOrderAndReversesOps archivedMailStaysOutOfInboxAcrossStaleSnapshots`,
+and `TestArchiveUndo*` under `pg_virtualenv` with a `litterbox_test_` database.
+`qt/tests/archive_undo_consumer.py` exercises actual Qt actions and authenticated
+server handlers with a registered loopback fake Gmail provider. This is source
+proof, not production Gmail or a published desktop/Android release.
+
 ### Android 0.1-33 (versionCode 20) — 2026-10-14
 
 The Android release candidate includes the shared compact inbox, canonical

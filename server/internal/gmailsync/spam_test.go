@@ -26,6 +26,8 @@ type spamCall struct {
 
 type spamFixture struct {
 	db *pgxpool.Pool
+	dsn string
+	tdb interface{ Migration(string) string }
 	tenant, account, card uuid.UUID
 	api ops.API
 	server *httptest.Server
@@ -38,7 +40,7 @@ type spamFixture struct {
 func newSpamFixture(t *testing.T) *spamFixture {
 	t.Helper()
 	db, tdb := testPool(t)
-	f := &spamFixture{db: db, tenant: uuid.New(), account: uuid.New(), card: uuid.New(), gmail: fakeGmail{inbox: true, messageCount: 1, history: "1"}}
+	f := &spamFixture{db: db, dsn: tdb.DSN, tdb: tdb, tenant: uuid.New(), account: uuid.New(), card: uuid.New(), gmail: fakeGmail{inbox: true, messageCount: 1, history: "1"}}
 	ctx := context.Background()
 	for _, name := range []string{"005_card_notify.sql", "007_offline_ops.sql"} {
 		migration, err := os.ReadFile(filepath.Join("..", "..", "db", name))
@@ -67,6 +69,10 @@ func newSpamFixture(t *testing.T) *spamFixture {
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "expires_in": 3600})
 			return
 		}
+		if r.URL.Path == "/gmail/v1/users/me/labels" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"labels": []any{map[string]string{"id": "INBOX", "name": "INBOX"}, map[string]string{"id": "STARRED", "name": "STARRED"}}})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/modify") {
 			var call spamCall
 			if err := json.NewDecoder(r.Body).Decode(&call); err != nil { t.Error(err) }
@@ -74,7 +80,7 @@ func newSpamFixture(t *testing.T) *spamFixture {
 			call.Token = r.Header.Get("Authorization")
 			f.calls = append(f.calls, call)
 			if f.fail { http.Error(w, "fixture Gmail denied", http.StatusForbidden); return }
-			f.gmail.inbox = false
+			f.gmail.inbox = len(call.Add) > 0 && call.Add[0] == "INBOX"
 			f.gmail.history = "2"
 			w.WriteHeader(http.StatusOK)
 			return

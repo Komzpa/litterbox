@@ -64,7 +64,16 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 					adds = nil
 				}
 			}
-			return c.Modify(ctx, thread, adds, removes)
+			if err := c.Modify(ctx, thread, adds, removes); err != nil {
+				return err
+			}
+			if name == "label_add" && a.Label == "INBOX" {
+				// Archive Undo commits the provider inverse and normal card change
+				// together; a provider failure leaves the card archived.
+				_, err = tx.Exec(ctx, `UPDATE cards SET state='open' WHERE tenant_id=$1 AND id=$2 AND source='mail'`, tenant, cardID)
+				return err
+			}
+			return nil
 		})
 	}
 	register("archive", nil, []string{"INBOX"})

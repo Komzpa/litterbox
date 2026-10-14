@@ -78,7 +78,7 @@ TestCase {
         compare(posted[0].path, "/v1/ops")
         compare(posted[0].body.type, "spam")
         compare(bundleStore.cardIds().length, 1)
-        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422). The card was restored.")
+        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422).")
         verify(!inbox.archiveUndoAvailable)
         inbox.close()
     }

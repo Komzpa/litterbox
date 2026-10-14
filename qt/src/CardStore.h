@@ -72,6 +72,7 @@ public:
     bool bundleArchiveUndoActive() const;
     int bundleArchiveUndoRemainingMs() const;
     Q_INVOKABLE QVariantMap archiveBundleNow(const QString &bundleId);
+    // Single-card archive enqueueOp IDs are also tokens for this same Undo window.
     Q_INVOKABLE bool undoBundleArchive(const QString &token);
     // Cancels a queued op before it is sent and restores its optimistic rows.
     Q_INVOKABLE void undoQueuedOp(const QString &opId);
@@ -135,12 +136,13 @@ private:
     QSet<QString> m_durableOps;
     struct Mutation { QList<QVariantMap> before, after; };
     QHash<QString, Mutation> m_mutations;
-    // One Undo window per bundle archive: the card list just before it and
-    // its (card id, archive op id) pairs, kept until the deadline passes.
+    // One Undo window per single-card or bundle archive, retained across ACK.
+    // Transmitted ops remain ordered before their inverse even after a lost ACK.
     struct BundleArchive {
         QList<QVariantMap> before;
         QList<QPair<QString, QString>> ops;
         QDeadlineTimer deadline;
+        QSet<QString> sent;
     };
     QHash<QString, BundleArchive> m_bundleArchives;
     QHash<QString, QString> m_bundleFailureGroups;

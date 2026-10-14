@@ -1059,6 +1059,92 @@ private slots:
         QCOMPARE(store.cachedMailBody(hiddenId).value(QStringLiteral("html")).toString(), hiddenUrl);
         QCOMPARE(store.openCachedFile(hiddenId, hiddenUrl), QString());
     }
+    void singleArchiveUndoAcrossAcknowledgement_data() {
+        QTest::addColumn<QString>("phase");
+        for (const QString &phase : {"queued", "acknowledged", "inflight", "ack-callback", "lost-ack", "inverse-rejected", "expired"})
+            QTest::newRow(qPrintable(phase)) << phase;
+    }
+    void singleArchiveUndoAcrossAcknowledgement() {
+        QFETCH(QString, phase);
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("single-undo.sqlite")));
+        const QString neighbor = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString pinned = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QVariantMap pin{{"id", pinned}, {"source", "mail"}, {"state", "open"}, {"pinned_rank", 1}};
+        const QVariantMap other{{"id", neighbor}, {"source", "manual"}, {"state", "open"}, {"note", "Untouched"}};
+        const QVariantMap mail{{"id", cardId}, {"source", "mail"}, {"state", "open"}};
+        const QVariantMap full{{"now", QVariantList{pin, other, mail}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap absent{{"now", QVariantList{pin, other}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(full));
+        const QStringList original{pinned, neighbor, cardId};
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        if (phase == "expired") store.setBundleArchiveUndoDurationForTest(1);
+        if (phase != "queued" && phase != "expired") store.setOnline(true);
+        const QString op = store.enqueueOp(cardId, "archive");
+        QVERIFY(!op.isEmpty());
+        QCOMPARE(store.cardIds(), QStringList({pinned, neighbor}));
+        if (phase != "queued" && phase != "expired") {
+            QTRY_COMPARE(posted.size(), 1);
+            if (phase == "acknowledged" || phase == "inverse-rejected") {
+                store.reportPostResult(op, 200, {{"ok", true}});
+                QTRY_COMPARE(store.pendingOps(), 0);
+            } else if (phase == "ack-callback") {
+                store.reportPostResult(op, 200, {{"ok", true}});
+            } else if (phase == "lost-ack") {
+                store.reportPostResult(op, 0, {});
+            }
+        }
+        if (phase == "expired") {
+            QTest::qWait(5);
+            QVERIFY(!store.undoBundleArchive(op));
+            QCOMPARE(store.cardIds(), QStringList({pinned, neighbor}));
+            return;
+        }
+        QVERIFY2(store.undoBundleArchive(op), "Single mail archive must retain its Undo token across the actual ACK transition");
+        QCOMPARE(store.cardIds(), original);
+        QVERIFY(!store.undoBundleArchive(op));
+        QVERIFY(!store.undoBundleArchive("unknown-token"));
+        if (phase == "queued") {
+            QCOMPARE(store.pendingOps(), 0);
+            store.setOnline(true);
+            QTest::qWait(50);
+            QCOMPARE(posted.size(), 0);
+        } else {
+            // The remote archived snapshot cannot mask or reorder the inverse.
+            QVERIFY(store.applyRemoteCards(absent));
+            QCOMPARE(store.cardIds(), original);
+            if (phase == "inflight") store.reportPostResult(op, 200, {{"ok", true}});
+            if (phase == "lost-ack") {
+                QTRY_COMPARE(posted.size(), 2);
+                QCOMPARE(posted.last().at(0).toString(), op);
+                store.reportPostResult(op, 200, {{"ok", true}});
+            }
+            const int expected = phase == "lost-ack" ? 3 : 2;
+            QTRY_COMPARE(posted.size(), expected);
+            const QVariantMap inverse = posted.last().at(2).toMap();
+            QCOMPARE(inverse.value("type").toString(), QStringLiteral("gmail.label_add"));
+            QCOMPARE(inverse.value("card_id").toString(), cardId);
+            QCOMPARE(inverse.value("args").toMap().value("label").toString(), QStringLiteral("INBOX"));
+            QVERIFY(store.applyRemoteCards(absent));
+            QCOMPARE(store.cardIds(), original);
+            store.reportPostResult(inverse.value("op_id").toString(), phase == "inverse-rejected" ? 422 : 200, {{"ok", phase != "inverse-rejected"}});
+            QTRY_COMPARE(store.pendingOps(), 0);
+            if (phase == "inverse-rejected") {
+                QCOMPARE(failed.size(), 1);
+                QCOMPARE(store.cardIds(), QStringList({pinned, neighbor}));
+                QVERIFY(store.applyRemoteCards(absent));
+                QCOMPARE(store.cardIds(), QStringList({pinned, neighbor}));
+                return;
+            }
+        }
+        QVERIFY(store.applyRemoteCards(full));
+        QCOMPARE(store.cardIds(), original);
+        QCOMPARE(store.data(store.index(1), CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Untouched"));
+        QCOMPARE(failed.size(), 0);
+    }
+
     // Archive bundle acts at once; Undo puts the cards back in order and
     // cancels their queued archive ops, or queues the INBOX re-add for ops
     // that were already sent. Invoked by name so this test fails (instead of
@@ -1144,6 +1230,8 @@ private slots:
         QCOMPARE(server.received[2].value("card_id").toString(), first);
         QCOMPARE(server.received[3].value("card_id").toString(), last);
         QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(store.cardIds(), original);
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{pinnedCard, mail(loose, QVariant()), mail(first, bundle), mail(middle, QVariant()), mail(last, bundle)}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
         QCOMPARE(store.cardIds(), original);
     }
 };
