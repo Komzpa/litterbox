@@ -1,3 +1,11 @@
+litterbox-qt (0.1-30) unstable; urgency=medium
+
+  * Deliver readable stored-mail previews and independent bundle titles.
+  * Show shared sender/account context once on expanded bundle summaries.
+  * Preserve published common mail rendering and settings changes.
+
+ -- Litterbox <litterbox@example.com>  Wed, 14 Oct 2026 16:33:00 +0400
+
 litterbox-qt (0.1-25) unstable; urgency=medium
 
   * Open mail on click again: background body caching is paced to one request
