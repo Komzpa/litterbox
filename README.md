@@ -25,6 +25,16 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+### Android 0.1-33 (versionCode 20) — 2026-10-14
+
+The Android release candidate includes the shared compact inbox, canonical
+bundle topic and Techship member-preview fixes from desktop 0.1-32, retaining
+the native mail view, Settings, package identity and signing lineage from v19.
+Desktop installation does not deliver these changes to Android. Publication
+requires the exact signed APK's native and authenticated update-route gates in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#android-update-release); candidate
+metadata alone is not a release receipt.
+
 ### Android 0.1-29 (versionCode 19) — 2026-10-14
 
 This release combines responsive phone mail rendering with the Settings menu.

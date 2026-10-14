@@ -37,22 +37,22 @@ The socket uses `FreeBind=yes` so the LAN address may be assigned after the list
 
 ## Server Debian package install and rollback
 
-The Techship desktop/server release uses desktop package 0.1-31 and a server
-package stamped with the frozen composite commit. It preserves both authored
-repair histories and the published Android v19 common mail/settings sources;
-no Android update is published. Apply migration 020 for explicit title origin.
+The historical Techship desktop/server release used desktop package 0.1-31 and
+a server package stamped with the frozen composite commit. Its limited scope
+preserved the published Android v19 common mail/settings sources but did not
+publish an Android update; it did not deliver the newer shared Qt fixes to phones.
+Apply migration 020 for explicit title origin.
 Read-time preview/title projections leave archived cards and stored bodies intact.
 An unknown legacy title may be marked as a generated seed only from independently
 recorded provenance, using an exact expected-value guard and preserved rollback;
 never infer provenance from title/subject equality or run a broad backfill.
 
-Desktop-only follow-up 0.1-32 renders the canonical bundle topic at compact
-widths as well as desktop widths. Keep the installed 0.1-31 desktop package
-for rollback before installation. This follow-up does not rebuild, reinstall,
-or restart the 0.1-31 server, replay migrations or title-origin repair, or
-publish an Android update. Prove the installed visible topic label using an
-isolated copy of the accepted CardStore cache; cached offline captures do not
-claim live API availability.
+The historical desktop-only follow-up 0.1-32 rendered the canonical bundle topic
+at compact widths. That delivery neither restarted the server nor published an
+Android update, so it was not Android completion. Keep the installed 0.1-31
+desktop package for rollback. Its isolated accepted-CardStore-cache topic
+captures proved the installed desktop label, not live API availability or a
+native Android release. Shared Qt changes require the separate Android gate below.
 
 Build packages out of tree; preserve installed binaries, unit and packages.
 Prove the frozen server through real CardStore/QML in an isolated profile before
@@ -73,12 +73,16 @@ Qt Android HTTPS requires bundled OpenSSL 3 runtimes: Android's system TLS libra
 Configure the litterbox service environment with all three values. `VERSION` is the signed APK's decimal Android `versionCode`, not a marketing version; `PACKAGE` is its exact application ID:
 
 ```sh
-LITTERBOX_ANDROID_APK_PATH=/srv/litterbox/releases/litterbox-v4.apk
-LITTERBOX_ANDROID_VERSION=4
+LITTERBOX_ANDROID_APK_PATH=/opt/litterbox/server/litterbox-qt-v20-<sha256-prefix>.apk
+LITTERBOX_ANDROID_VERSION=20
 LITTERBOX_ANDROID_PACKAGE=org.qtproject.example.litterbox_qt
 ```
 
-Before publishing a signed APK, record its SHA-256 and prove R42 on that exact file: enroll through the normal UI, with no `LB_SERVER` and no pre-enrolled test profile, and reach Online against the intended deployed server route. A launch-only or disposable-server-only receipt does not pass this gate.
+For every shared Qt fix, track desktop and Android delivery separately. A desktop package, source push or local APK does not publish an Android update. Before publication, freeze a signed candidate with a decimal versionCode strictly above both the served and recorded installed releases; record its full source and APK SHA-256, badging and certificate, retaining the existing package/signing lineage, OpenSSL runtimes and QML imports. Inspect `qt/android-build.sh` before use: its default selects the real phone and installs/launches; release builds must use an explicit out-of-tree build-only recipe with the canonical redacted signing loader, not invoke that default workflow.
+
+Prove R42 on that exact signed file first: a fresh owned native emulator enrolls through the normal UI with no `LB_SERVER` and no pre-enrolled profile and reaches Online against the intended deployed origin. Record any dedicated test-device production enrollment API requests and their tenant scope/rollback. Then retain exact-candidate phone-size inbox/mail/topic captures: at least four complete collapsed/standalone cards, three expanded Techship member previews with the shared identity rendered once, the real mail card's retained body, and neighboring Settings. A desktop Qt wrapper, launch-only or disposable-server-only receipt does not pass the native gate. Use the existing owned-runtime/proof recipes after contract and readiness checks, preserve each run's logs, and stop after at most two full acceptance attempts rather than rerunning a matrix blindly.
+
+Publish once only after native acceptance: preserve the old immutable APK, release environment and unchanged live server identity for rollback; install the accepted APK at its immutable path, change only the three release values and restart the canonical server because its APK snapshot is startup-bound. Do not rebuild or replace the server for release-config-only changes. Read back the authenticated same-origin manifest and downloaded APK bytes: versionCode, package and SHA-256 must match the exact signed accepted candidate; unauthenticated protection and the live server source/binary must remain unchanged. On an older normally enrolled isolated consumer, exercise actual **Check updates** and retain the **Update available** offer without approving Android installer/unknown-source safety prompts. This offer proof and the exact-candidate native gate are separate; a blocked provider-consent installation is not an upgrade pass.
 
 Install each immutable release at a fixed, service-readable path and restart the server to select it. If any value is absent, the file cannot be read, or its size is empty or exceeds the bound, both endpoints fail closed with `503 Service Unavailable`. The server never accepts a request-provided file path. Keep APKs private; do not place signing keys or credentials in this configuration or repository.
 
