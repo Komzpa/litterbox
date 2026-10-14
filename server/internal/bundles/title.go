@@ -11,13 +11,11 @@ type TitleMember struct {
  Sender string `json:"sender"`
 }
 
-// HumanTitle preserves an independently named topic, but never presents a
-// member's dated subject as the topic of the whole bundle. Sender domains are
-// presentation fallbacks only; they do not affect clustering or membership.
-func HumanTitle(stored string, members []TitleMember) string {
- seeded := stored == "" || strings.HasPrefix(stored, "sender:")
- for _, m := range members { if stored == m.Subject { seeded = true } }
- if !seeded { return stored }
+// HumanTitle preserves independent and unknown-origin topics. Only a recorded
+// generated title (or an absent title) may use sender-domain presentation.
+// Domains never change clustering or membership.
+func HumanTitle(stored string, origin string, members []TitleMember) string {
+ if stored != "" && origin != "seed" { return stored }
  domains := map[string]bool{}
  for _, m := range members {
   address := strings.TrimSpace(m.Sender)
@@ -30,3 +28,7 @@ func HumanTitle(stored string, members []TitleMember) string {
  if len(names) == 0 { return "Related mail" }
  return strings.Join(names, ", ")
 }
+
+// Producers may refresh their own generated titles, never an independent or
+// unknown-origin topic. All title writers use this same preservation rule.
+const upsertTitle = `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key,title_origin) VALUES ($1,gen_random_uuid(),$2,'{}',$3,$4) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=CASE WHEN bundles.title_origin IN ('seed','topic') THEN EXCLUDED.title ELSE bundles.title END, title_origin=CASE WHEN bundles.title_origin IN ('seed','topic') THEN EXCLUDED.title_origin ELSE bundles.title_origin END RETURNING id`

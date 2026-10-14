@@ -2,7 +2,6 @@ package mailhtml
 
 import (
  "strings"
- "unicode/utf8"
 
  "golang.org/x/net/html"
 )
@@ -37,8 +36,5 @@ func PreviewText(body string) string {
  }
  walk(root)
  flush()
- // Prefer a prose block over short navigation, promotional labels and image
- // captions. Short messages and genuine link-only mail retain their text.
- for _, line := range blocks { if utf8.RuneCountInString(line) >= 80 { return line } }
  return strings.Join(blocks, "\n")
 }

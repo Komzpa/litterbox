@@ -29,7 +29,7 @@ func TestPostgresBundleActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql"} {
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/020_bundle_title_origin.sql"} {
 		sql, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
