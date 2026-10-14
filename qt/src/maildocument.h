@@ -16,6 +16,9 @@ inline QString mailDocument(const QString &html)
         "font-family:sans-serif;font-size:16px;line-height:1.45;color:#263b3a;background-color:white}"
         // Break only otherwise unbreakable URLs; ordinary words stay intact.
         "*{min-width:0!important;box-sizing:border-box;word-break:normal!important;overflow-wrap:break-word}"
+        // Email preheaders marked hidden for Outlook must not create text boxes
+        // when responsive wrapping expands their otherwise zero-size container.
+        "[style*='mso-hide: all']{display:none!important}"
         "img{max-width:100%!important;height:auto}"
         "table[align=center] img{margin-inline:auto}"
         "table{max-width:100%!important}"

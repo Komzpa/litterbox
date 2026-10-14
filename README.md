@@ -162,7 +162,8 @@ The existing server sanitizer removes scripts, event handlers, active embeds and
 tracking pixels; permitted remote images are fetched by the server with its
 existing SSRF protections and embedded as data URLs. Both renderers use the same
 viewport stylesheet: layout tables reflow on phones, images shrink to fit, and
-wide data tables scroll only inside their own box. Ordinary words wrap at spaces;
+wide data tables scroll only inside their own box. Hidden email preheaders stay
+out of layout during responsive reflow. Ordinary words wrap at spaces;
 plain-text messages retain line breaks. Clicked HTTP(S)/mailto links open
 externally, and cached-file links use the existing attachment opener.
 
