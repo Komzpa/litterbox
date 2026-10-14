@@ -32,7 +32,7 @@ func TestClusterFakeEmbedderMergesSimilarKeepsTakeOutSeparateAndSplitsTopics(t *
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/019_card_embeddings.sql"} {
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/019_card_embeddings.sql", "../../db/020_bundle_title_origin.sql"} {
 		b, e := os.ReadFile(path)
 		if e != nil {
 			t.Fatal(e)

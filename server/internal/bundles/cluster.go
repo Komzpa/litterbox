@@ -281,7 +281,7 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 		for _, c := range g.cards {
 			members = append(members, TitleMember{Subject: c.subject, Sender: c.sender})
 		}
-		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, HumanTitle("", members), g.key).Scan(&bundleID); err != nil {
+		if err := tx.QueryRow(ctx, upsertTitle, tenant, HumanTitle("", "seed", members), g.key, "seed").Scan(&bundleID); err != nil {
 			return err
 		}
 		for _, c := range g.cards {
@@ -367,7 +367,7 @@ func assignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cards []*mai
 			title = key
 		}
 		var bundleID uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO bundles (tenant_id,id,title,centroid,bundle_key) VALUES ($1,gen_random_uuid(),$2,'{}',$3) ON CONFLICT (tenant_id,bundle_key) WHERE bundle_key IS NOT NULL DO UPDATE SET title=EXCLUDED.title RETURNING id`, tenant, title, key).Scan(&bundleID); err != nil {
+		if err := tx.QueryRow(ctx, upsertTitle, tenant, title, key, "topic").Scan(&bundleID); err != nil {
 			return err
 		}
 		for _, c := range groups[key] {

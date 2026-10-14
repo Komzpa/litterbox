@@ -37,14 +37,22 @@ The socket uses `FreeBind=yes` so the LAN address may be assigned after the list
 
 ## Server Debian package install and rollback
 
-The 2026-10-14 Techship desktop/server delivery integrates both preserved repair
-histories with the common mail/settings sources from published Android v19.
-This does not publish an Android update. Preview/title changes are read-time
-projections: archived production cards and stored bodies require no migration.
-Build packages out of tree and preserve installed packages/binaries for rollback.
-Prove the merged server through the real CardStore/QML consumer in an isolated
-profile. Do not drive or restart the owner desktop to adopt the installed package;
-an existing process mapped to the old executable is an explicit serving gap.
+The Techship desktop/server release uses desktop package 0.1-31 and a server
+package stamped with the frozen composite commit. It preserves both authored
+repair histories and the published Android v19 common mail/settings sources;
+no Android update is published. Apply migration 020 for explicit title origin.
+Read-time preview/title projections leave archived cards and stored bodies intact.
+An unknown legacy title may be marked as a generated seed only from independently
+recorded provenance, using an exact expected-value guard and preserved rollback;
+never infer provenance from title/subject equality or run a broad backfill.
+
+Build packages out of tree; preserve installed binaries, unit and packages.
+Prove the frozen server through real CardStore/QML in an isolated profile before
+publication or installation. Installed desktop clients use the existing
+UpdateWatcher: after the package replaces the executable and the replacement is
+stable with package-manager locks released, it starts a replacement user service
+and quits normally. Do not drive or restart the owner desktop. Observe executable
+mappings to confirm adoption; otherwise report the exact remaining serving gap.
 
 Cut over production only through the `litterbox-server` `.deb`: build it with `deploy/server/debian/build.sh` from the pinned release binary (packaging sources in `deploy/server/debian`), which installs the binary at `/opt/litterbox/server/litterbox` (root-owned, mode 0755), the unit at `/lib/systemd/system/litterbox-server.service`, and reference operator migrations under `/usr/share/litterbox-server/db`. Credentials and environment in `/etc/litterbox` are never bundled. Install with `dpkg -i litterbox-server_<version>_<arch>.deb` (postinst reloads systemd only), apply any pending operator-owned SQL migration from the packaged `db/` files through the database owner role, then restart explicitly with `systemctl restart litterbox-server.service`. The `card_bodies` table (migration `011`) requires `GRANT SELECT, INSERT, UPDATE, DELETE ON card_bodies TO litterbox_app;` on the production database; row-level security stays enforced. Before every cutover, preserve the running binary, the effective unit file, and the exact grant state for rollback; on a failed post-install, restore the preserved binary and unit and restart the same service (grants and RLS are safe to leave). Verify after cutover with `dpkg -s litterbox-server`, the installed executable's SHA-256 against the pinned candidate, `systemctl is-active litterbox-server.service`, the running process executable mapping, the loopback listener, `GET /healthz` returning `200`, and an unauthenticated `/v1/cards` returning `401`.
 

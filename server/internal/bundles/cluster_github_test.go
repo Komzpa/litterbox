@@ -45,7 +45,7 @@ func TestClusterGitHubSplitWithoutEmbedder(t *testing.T) {
 	if _, err := conn.Exec(ctx, `GRANT USAGE ON SCHEMA public TO PUBLIC`); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/019_card_embeddings.sql"} {
+	for _, path := range []string{"../../db/001_mail.sql", "../../db/002_security.sql", "../../db/003_agent_cards.sql", "../../db/008_bundles.sql", "../../db/019_card_embeddings.sql", "../../db/020_bundle_title_origin.sql"} {
 		sql, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
