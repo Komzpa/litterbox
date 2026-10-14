@@ -25,6 +25,18 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+### Qt settings — 2026-10-14
+
+Open **Inbox commands → Settings** to edit and save the server URL, see the
+enrollment state and connected accounts, or **Check updates** on Android.
+A saved bearer token suppresses the invite form and the Enroll device menu item.
+New enrollments save the device name, device ID and tenant ID for Settings;
+older token-only installs show that device details were not saved. Bearer tokens
+are not displayed. Server URL and bearer persistence still use the existing
+QSettings connections. Scoped phone-width proof: `qt/tests/tst_settingsmenu.qml`
+(412 and 480 dp), run with `qmltestrunner` on an owned Xvfb display.
+
+
 ### Qt change — 2026-10-13
 
 Callback-driven Qt GETs use high network priority; signal-only cache prefetches
