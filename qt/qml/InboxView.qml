@@ -886,7 +886,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; text: window.compactInbox ? title : bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: 0
                                                 Layout.column: window.compactInbox ? 1 : 2

@@ -61,13 +61,18 @@ TestCase {
         inbox.close()
     }
     function test_senderSummary_data() {
-        return [
+        const cases = [
             {tag: "one-sender", names: ["LinkedIn", "LinkedIn"], title: "LinkedIn", preview: "LinkedIn"},
             {tag: "two-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn"], title: "LinkedIn, LinkedIn Job Alerts", preview: "LinkedIn, LinkedIn Job Alerts"},
             {tag: "more-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn", "Recruiting", "Careers"], title: "LinkedIn, LinkedIn Job Alerts +2", preview: "LinkedIn, LinkedIn Job Alerts +2"},
             {tag: "domain-fallback", names: [undefined, ""], title: "linkedin.com", preview: "linkedin.com"},
             {tag: "topic-title", names: ["LinkedIn", "LinkedIn Job Alerts"], bundle: "Career opportunities", title: "Career opportunities", preview: "LinkedIn, LinkedIn Job Alerts"}
         ]
+        const rows = []
+        for (const width of [412, 520, 1356])
+            for (const data of cases)
+                rows.push(Object.assign({}, data, {tag: data.tag + "-" + width, width: width}))
+        return rows
     }
     function test_senderSummary(data) {
         const bundle = data.bundle || "sender:messages-noreply@linkedin.com"
@@ -77,7 +82,7 @@ TestCase {
         }))
         verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
         const inbox = createTemporaryObject(inboxComponent, this, {
-            store: store, api: api, updater: updater, timeRules: timeRules, width: 520, height: 900
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 915
         })
         verify(inbox)
         const list = findChild(inbox, "inboxList")
@@ -86,17 +91,22 @@ TestCase {
         const toggle = findChild(row, "bundleToggle-sender-0")
         tryCompare(toggle, "text", data.title)
         const sender = findChild(row, "bundleAccountLabel-sender-0")
-        compare(sender.text, data.preview)
+        compare(sender.text, data.preview + " · test@example.test")
         const latest = findChild(row, "bundleLatestLabel-sender-0")
         verify(latest && latest.visible && latest.height > 0, "Collapsed preview must show the latest email snippet")
-        compare(latest.text, "New projects and conversations from your network.")
+        compare(latest.text, data.width < 640 ? "New projects and conversations from your network." : "Latest: Your latest career update")
         const title = findChild(row, "bundleTitleLabel-sender-0")
-        compare(title.text, "Your latest career update")
-        verify(!title.truncated, "Distinct sender names must remain readable at 520 px")
+        compare(title.text, data.title, "The rendered group label must use the canonical topic, not a member subject")
+        verify(title.visible && title.width > 0 && title.height > 0 && !title.truncated)
+        capture(inbox, "sender-summary-" + data.tag + "-collapsed")
         mouseClick(toggle, toggle.width / 2, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, true)
         const expandedLatest = findChild(list.itemAtIndex(0), "bundleLatestLabel-sender-0")
         verify(!expandedLatest.visible, "Expanded cards show their subjects instead of the collapsed preview")
+        const expandedTitle = findChild(list.itemAtIndex(0), "bundleTitleLabel-sender-0")
+        compare(expandedTitle.text, data.title, "Expansion must preserve the rendered canonical topic")
+        verify(expandedTitle.visible && expandedTitle.width > 0 && expandedTitle.height > 0 && !expandedTitle.truncated)
+        capture(inbox, "sender-summary-" + data.tag + "-expanded")
         inbox.close()
     }
     function test_receiptTitleUsesNarrowCardWidth() {
