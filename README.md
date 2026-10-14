@@ -25,6 +25,26 @@ The goal is Inbox Zero that is actually reachable.
 The server and Flutter client implement the inbox. Decisions remain numbered in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+## Server tests: disposable databases only
+
+From `server/`, run the complete Go suite with PostgreSQL integration enabled:
+
+```sh
+pg_virtualenv bash -c 'unset DATABASE_URL; createdb litterbox_test_suite && export PGDATABASE=litterbox_test_suite CARD_TEST_POSTGRES=1 BUNDLE_TEST_POSTGRES=1 AGENT_TEST_POSTGRES=1 && go test ./...'
+```
+
+`pg_virtualenv` exports `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` and
+`PGDATABASE=postgres`; it does not create a Litterbox test database. The command
+creates one in its throw-away cluster and explicitly selects it. Never print
+`PGPASSWORD` or use a production `DATABASE_URL` for tests.
+
+Every DDL helper goes through `internal/testdb.Setup`: it refuses a missing
+`PGDATABASE`, a resolved database without a nonempty `litterbox_test_` prefix
+(including `kom`), or a connected database without that prefix before any DDL. Each test
+then owns a unique schema and application role, removed on cleanup. Neither
+test-enabling flags nor being inside `pg_virtualenv` bypass the database guard.
+
+
 ### Qt change — 2026-10-13
 
 Callback-driven Qt GETs use high network priority; signal-only cache prefetches

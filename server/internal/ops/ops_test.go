@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,23 +21,8 @@ func TestOperationReplayIsIdempotent(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("set CARD_TEST_POSTGRES=1 to run PostgreSQL integration test")
 	}
-	dsn := os.Getenv("DATABASE_URL")
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	schema := "ops_test_" + uuid.NewString()[:8]
-	if _, err = pool.Exec(context.Background(), `CREATE SCHEMA `+schema); err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Exec(context.Background(), `DROP SCHEMA `+schema+` CASCADE`)
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.ConnConfig.RuntimeParams["search_path"] = schema
-	testPool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	tdb := testdb.Setup(t)
+	testPool, err := pgxpool.New(context.Background(), tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,23 +69,8 @@ func TestManualCreateAndReorderOperationsAreTenantScoped(t *testing.T) {
 	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
 		t.Skip("set CARD_TEST_POSTGRES=1 to run PostgreSQL integration test")
 	}
-	dsn := os.Getenv("DATABASE_URL")
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	schema := "ops_manual_test_" + uuid.NewString()[:8]
-	if _, err = pool.Exec(context.Background(), `CREATE SCHEMA `+schema); err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Exec(context.Background(), `DROP SCHEMA `+schema+` CASCADE`)
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.ConnConfig.RuntimeParams["search_path"] = schema
-	db, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	tdb := testdb.Setup(t)
+	db, err := pgxpool.New(context.Background(), tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,19 +166,8 @@ func TestJournalCreateReplayArchiveAndTenantIsolation(t *testing.T) {
 		t.Skip("set CARD_TEST_POSTGRES=1 to run PostgreSQL integration test")
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	schema := "ops_journal_test_" + uuid.NewString()[:8]
-	if _, err := pool.Exec(ctx, `CREATE SCHEMA `+schema); err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Exec(ctx, `DROP SCHEMA `+schema+` CASCADE`)
-	cfg := pool.Config().Copy()
-	cfg.ConnConfig.RuntimeParams["search_path"] = schema
-	db, err := pgxpool.NewWithConfig(ctx, cfg)
+	tdb := testdb.Setup(t)
+	db, err := pgxpool.New(ctx, tdb.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
