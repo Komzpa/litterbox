@@ -12,8 +12,9 @@ of {path, sha256, artifacts: [names], accepted: true, bindings: {dotted_key: val
 Each artifact needs a receipt binding its hash and source; accepted receipts must
 have status PASS/ACCEPTED/accepted. target contains host, service, environment,
 server_binary, desktop_binary, unit_path, origins, credential_loader, aapt,
-apksigner, publisher_inputs/before_receipt ({path,sha256}), and rollback_debs
-(server/desktop {path,sha256}). All paths are absolute. Receipts contain no tokens.
+apksigner, publisher_inputs/before_receipt ({path,sha256}), rollback_debs
+(server/desktop {path,sha256}), and drop_ins (exact list of {path,sha256}, [] for
+none). All paths are absolute. Receipts contain no tokens.
 
 --install-mobile DEVICE_KEY opts into only this app's package upgrade. mobile
 binds helper {path,sha256}, registry, lock_path, adb, endpoint, serial, model and
@@ -22,7 +23,8 @@ public identity methods and canonical phone lock are reused; no GUI, permission,
 pairing, debug setup, ADB server restart, uninstall or other package is allowed.
 
 The rollback packet is root-private, includes the exact old packages, executable,
-environment and unit bytes, and survives partial failure. Rollback is explicit:
+all environment sources, unit and declared drop-in bytes/ownership/modes, and
+survives partial failure. Rollback is explicit:
 Android downgrade/data restoration cannot safely be automatic. Never uninstall.
 """
 import argparse
@@ -143,12 +145,48 @@ def proof_gates(manifest):
 
 def service(target):
     fields = run("systemctl", "show", target["service"], "--property=ActiveState,MainPID,ExecStart,EnvironmentFiles,FragmentPath,DropInPaths")
-    result = dict(line.split("=", 1) for line in fields.splitlines())
+    result = {"EnvironmentFiles": []}
+    for line in fields.splitlines():
+        key, value = line.split("=", 1)
+        if key == "EnvironmentFiles":
+            # systemctl show emits one path (ignore_errors=yes/no) per source.
+            match = re.fullmatch(r"(.*) \(ignore_errors=(yes|no)\)", value)
+            require(match is not None, "invalid systemd EnvironmentFiles entry")
+            result[key].append({"path": match[1], "ignore_errors": match[2]})
+        else:
+            result[key] = value
     require(result["ActiveState"] == "active", "server service is not active")
     require("path=" + target["server_binary"] + " ;" in result["ExecStart"], "service executable mismatch")
-    require(target["environment"] + " " in result["EnvironmentFiles"], "service environment mismatch")
+    require(any(entry["path"] == target["environment"] for entry in result["EnvironmentFiles"]),
+            "service environment mismatch")
     require(result["FragmentPath"] == target["unit_path"], "service unit path mismatch")
+    declared = target["drop_ins"]
+    require(isinstance(declared, list), "drop_ins must be an explicit list")
+    paths = [ref["path"] for ref in declared]
+    require(len(paths) == len(set(paths)), "duplicate declared drop-in")
+    require(set(shlex.split(result["DropInPaths"])) == set(paths), "service drop-in set mismatch")
+    for ref in declared:
+        checked(ref)
     return result
+
+
+def composition(target, state):
+    sources = state["EnvironmentFiles"]
+    paths = dict.fromkeys([entry["path"] for entry in sources] + [ref["path"] for ref in target["drop_ins"]])
+    files = []
+    for path in paths:
+        source = Path(path)
+        require(source.is_absolute(), "service composition path must be absolute")
+        if not source.exists():
+            require(all(entry["ignore_errors"] == "yes" for entry in sources if entry["path"] == path),
+                    "service environment source missing")
+            files.append({"path": path, "absent": True})
+            continue
+        require(source.is_file(), "service composition source must be a file")
+        stat = source.stat()
+        files.append({"path": path, "sha256": digest(source), "mode": stat.st_mode & 0o7777,
+                      "uid": stat.st_uid, "gid": stat.st_gid})
+    return {"environment_files": sources, "files": files}
 
 
 def desktop_processes(target):
@@ -331,7 +369,7 @@ def validate(manifest, args):
                 require(not any((Path(temporary) / p).exists() for p in ("preinst", "prerm", "postrm")), "unexpected server maintainer script")
     state = service(target)
     require(digest("/proc/" + state["MainPID"] + "/exe") == inputs["server_binary_sha256"], "live server executable mismatch")
-    require(not state["DropInPaths"], "service overrides require explicit rollback mapping")
+    current_composition = composition(target, state)
     staged = Path(inputs["proposed_immutable_apk_path"])
     require(staged.parent == Path(target["server_binary"]).parent and
             staged.name == "litterbox-qt-v%s-%s.apk" % (candidate["version_code"], candidate["sha256"][:8]), "APK immutable path mismatch")
@@ -343,7 +381,7 @@ def validate(manifest, args):
     run("dpkg", "--no-act", "--install", artifacts["server"]["path"], artifacts["desktop"]["path"])
     if args.install_mobile:
         mobile(manifest, args.install_mobile)
-    return inputs, before, token, desktop_processes(target)
+    return inputs, before, token, desktop_processes(target), current_composition
 
 
 def atomic_bytes(path, data, mode=None):
@@ -353,9 +391,9 @@ def atomic_bytes(path, data, mode=None):
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
-            os.fchmod(stream.fileno(), mode if mode is not None else previous.st_mode & 0o777)
             if previous:
                 os.fchown(stream.fileno(), previous.st_uid, previous.st_gid)
+            os.fchmod(stream.fileno(), mode if mode is not None else previous.st_mode & 0o7777)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -373,13 +411,14 @@ def save(path, value):
     atomic_bytes(path, (json.dumps(value, indent=2) + "\n").encode(), 0o600)
 
 
-def verify_installed(manifest, token, prior, timeout):
+def verify_installed(manifest, token, prior, timeout, expected_composition):
     target, artifacts = manifest["target"], manifest["artifacts"]
     for name, binary in (("server", target["server_binary"]), ("desktop", target["desktop_binary"])):
         ref = artifacts[name]
         require(installed(ref["package"]) == [ref["version"], ref["architecture"]], "installed package identity mismatch")
         require(digest(binary) == ref["binary_sha256"], "installed executable mismatch")
     state = service(target)
+    require(composition(target, state) == expected_composition, "service composition changed")
     require(digest("/proc/" + state["MainPID"] + "/exe") == artifacts["server"]["binary_sha256"], "server did not adopt release")
     live(target, manifest["source_sha"], artifacts["android"], token)
     if not prior:
@@ -396,7 +435,7 @@ def verify_installed(manifest, token, prior, timeout):
 
 
 def apply(manifest, args, validated):
-    inputs, before, token, prior = validated
+    inputs, before, token, prior, current_composition = validated
     require(os.geteuid() == 0, "apply requires root")
     root = Path(args.receipt)
     require(root.is_absolute() and not root.exists() and root.parent.is_dir(), "receipt must be a new absolute directory with existing parent")
@@ -405,15 +444,19 @@ def apply(manifest, args, validated):
     receipt = {"status": "preparing", "source_sha": manifest["source_sha"], "artifacts": {name: "validated" for name in artifacts},
                "mobile": "not_requested", "rollback_command": shlex.join([sys.executable, str(Path(__file__).resolve()), "rollback", str(root)])}
     backup = {"host": target["host"], "target": target, "files": [], "packages": [], "before": before,
-              "server_source": inputs["server_source"], "desktop_processes": prior, "adoption_timeout": args.adoption_timeout}
+              "server_source": inputs["server_source"], "desktop_processes": prior, "adoption_timeout": args.adoption_timeout,
+              "composition": current_composition}
     try:
         # Durable exact backups and copied artifacts precede all installation.
-        for index, path in enumerate((target["environment"], target["unit_path"], target["server_binary"], target["desktop_binary"], inputs["rollback_apk_preserve"])):
+        paths = dict.fromkeys([target["environment"], target["unit_path"], target["server_binary"], target["desktop_binary"],
+                              inputs["rollback_apk_preserve"]] +
+                             [ref["path"] for ref in current_composition["files"] if not ref.get("absent")])
+        for index, path in enumerate(paths):
             source = Path(path)
             dest = root / ("old-file-%d" % index)
             shutil.copy2(source, dest)
             stat = source.stat()
-            backup["files"].append({"path": path, "backup": str(dest), "sha256": digest(dest), "mode": stat.st_mode & 0o777,
+            backup["files"].append({"path": path, "backup": str(dest), "sha256": digest(dest), "mode": stat.st_mode & 0o7777,
                                     "uid": stat.st_uid, "gid": stat.st_gid})
         for name in ("server", "desktop"):
             dest = root / ("old-" + name + ".deb")
@@ -427,6 +470,7 @@ def apply(manifest, args, validated):
         save(root / "rollback.json", backup)
         save(root / "cohort.json", manifest)
         save(root / "receipt.json", receipt)
+        require(composition(target, service(target)) == current_composition, "service composition changed before installation")
         for name, ref in artifacts.items():
             dest = root / ("new-" + name + (".apk" if name == "android" else ".deb"))
             shutil.copy2(checked(ref), dest)
@@ -456,7 +500,11 @@ def apply(manifest, args, validated):
             require(count == 1, "release key missing or duplicated")
         atomic_bytes(target["environment"], updated)
         run("systemctl", "restart", target["service"])
-        receipt["desktop_adoption"] = verify_installed(manifest, token, prior, args.adoption_timeout)
+        expected_composition = dict(current_composition, files=[dict(ref) for ref in current_composition["files"]])
+        for ref in expected_composition["files"]:
+            if ref["path"] == target["environment"]:
+                ref["sha256"] = hashlib.sha256(updated).hexdigest()
+        receipt["desktop_adoption"] = verify_installed(manifest, token, prior, args.adoption_timeout, expected_composition)
         receipt["artifacts"] = {"server": "installed_verified", "desktop": "installed_verified", "android": "published_verified"}
         if args.install_mobile:
             receipt["mobile"] = "installation_attempted"
@@ -495,15 +543,19 @@ def rollback(root):
         for ref in packet["files"]:
             atomic_bytes(ref["path"], Path(ref["backup"]).read_bytes(), ref["mode"])
             os.chown(ref["path"], ref["uid"], ref["gid"])
+            os.chmod(ref["path"], ref["mode"])
         run("systemctl", "daemon-reload")
         run("systemctl", "restart", packet["target"]["service"])
         for ref in packet["files"]:
             require(digest(ref["path"]) == ref["sha256"], "restored file mismatch")
+            stat = Path(ref["path"]).stat()
+            require((stat.st_mode & 0o7777, stat.st_uid, stat.st_gid) == (ref["mode"], ref["uid"], ref["gid"]),
+                    "restored file metadata mismatch")
         before = packet["before"]
         android = {"version_code": before["manifest"]["version"], "package": before["manifest"]["package"], "sha256": before["apk_sha256"]}
         restored["artifacts"]["android"] = android
         result["desktop_adoption"] = verify_installed(restored, load(packet["target"]["credential_loader"])["token"],
-                                                     packet["desktop_processes"], packet["adoption_timeout"])
+                                                     packet["desktop_processes"], packet["adoption_timeout"], packet["composition"])
         result["status"] = "server_desktop_publication_restored"
     finally:
         save(output, result)
@@ -527,7 +579,7 @@ def main():
         validated = validate(manifest, args)
         if args.action == "plan":
             print(json.dumps({"status": "validated_dry_run", "source_sha": manifest["source_sha"],
-                              "steps": ["save old debs, binaries, environment, unit and APK to private rollback packet",
+                              "steps": ["save old debs, binaries, all environment sources, unit, declared drop-ins and APK to private rollback packet",
                                         "stage all three hash-checked artifacts; install both debs with dpkg",
                                         "atomically replace only three Android environment keys; restart server once",
                                         "read all origin manifests/downloads, executable hashes and desktop adoption",

@@ -85,6 +85,13 @@ Prepare a private absolute-path `cohort.json` with this contract (no credentials
 - `target`: `host`, `service`, `environment`, `server_binary`, `desktop_binary`,
   `unit_path`, `origins`, `credential_loader`, `aapt`, `apksigner`, plus hash-bound
   `publisher_inputs`, `before_receipt`, `rollback_debs.server/desktop` references.
+  `drop_ins` is an explicit list of `{path, sha256}` references for every effective
+  absolute systemd drop-in path (use `[]` for none). The live `DropInPaths` set must
+  match exactly, and every declared file must match its hash before mutation.
+  Repeated `EnvironmentFiles` properties are separate ordered sources with their
+  `ignore_errors` flags, not a dictionary's last value; the configured environment
+  must be an exact path entry. The CLI snapshots every environment source and
+  declared drop-in, without printing their contents.
   The credential loader is a private JSON file with an enrolled-device `token`;
   neither its contents nor child-command output is printed.
 - Publisher inputs bind `host`, `service`, `environment_path`,
@@ -112,10 +119,15 @@ sudo --preserve-env=HOME,XDG_STATE_HOME python3 deploy/release.py rollback /var/
 
 `plan` performs all hash/source/signature/proof/live-state checks and the Debian
 no-act check without installation. `apply` repeats every preflight before any
-installation, preserves old packages/APK, executable/environment/unit bytes in a
-root-private rollback packet, stages all three candidates, installs both Debian
-packages together, atomically replaces only the three Android keys, and restarts
-the server once. Other environment bytes and ownership/mode are preserved.
+installation, preserves old packages/APK, executable/environment/unit bytes and
+all declared drop-ins and existing environment sources (deduplicated by path) in
+a root-private rollback packet with hashes, ownership and modes. It stages all
+three candidates, installs both Debian packages together, atomically replaces
+only the three Android keys, and restarts the server once. Other environment
+bytes and ownership/mode are preserved. Composition is checked again before
+installation and after restart, including repeated environment entries and flags,
+drop-in paths/hashes, and unchanged source bytes/ownership/modes (except the three
+intentional release-key changes). Unlisted or changed drop-ins fail preflight.
 It verifies installed package/executable identities, the running server mapping
 and source revision, authenticated manifests/download hashes at every origin,
 anonymous rejection, and passive desktop adoption. It never drives the owner GUI.
@@ -128,9 +140,10 @@ Without `--install-mobile`, the phone is untouched and the receipt says
 `mobile: not_requested`; publication success is not all-three installed completion.
 Any failed readback leaves `status: failed`, never a success claim. Keep the
 printed receipt and exact CLI hash. Explicit rollback verifies its saved hashes,
-reinstalls both old Debian packages, restores exact old files, restarts the same
-service and verifies old package/process/publication identities and desktop
-adoption. The old phone APK is preserved, but Android downgrade/uninstall/data
+reinstalls both old Debian packages, restores exact old files including declared
+drop-ins and all saved environment sources with ownership/modes, restarts the same
+service and rechecks complete composition, old package/process/publication identities
+and desktop adoption. The old phone APK is preserved, but Android downgrade/uninstall/data
 restoration is never automatic; rollback explicitly reports that phone limitation.
 
 ## Android update release
@@ -151,7 +164,7 @@ Every shared Qt release uses the unified cohort above; a desktop package, source
 
 Prove R42 on that exact signed file first: a fresh owned native emulator enrolls through the normal UI with no `LB_SERVER` and no pre-enrolled profile and reaches Online against the intended deployed origin. Record any dedicated test-device production enrollment API requests and their tenant scope/rollback. Then retain exact-candidate phone-size inbox/mail/topic captures: at least four complete collapsed/standalone cards, three expanded Techship member previews with the shared identity rendered once, the real mail card's retained body, and neighboring Settings. A desktop Qt wrapper, launch-only or disposable-server-only receipt does not pass the native gate. Use the existing owned-runtime/proof recipes after contract and readiness checks, preserve each run's logs, and stop after at most two full acceptance attempts rather than rerunning a matrix blindly.
 
-After native and lead acceptance, publish and install the entire cohort through `deploy/release.py` above. The server source/binary must become the accepted cohort identity, not remain the previous release; its startup-bound APK snapshot must match the same accepted cohort. Read back the authenticated same-origin manifest and downloaded bytes, with anonymous protection retained. On an older normally enrolled isolated consumer, exercise actual **Check updates** and retain **Update available** without approving installer/unknown-source safety prompts. This offer proof is separate from native acceptance and explicit device installation; a blocked provider-consent installation is not an upgrade pass.
+After native and lead acceptance, publish and install the entire cohort through `deploy/release.py` above. The server source/binary must become the accepted cohort identity, not remain the previous release; its startup-bound APK snapshot must match the same accepted cohort. Read back the authenticated same-origin manifest and downloaded bytes, with anonymous protection retained. Normal Android delivery requires authenticated APK publication and an older normally enrolled isolated consumer's actual **Check updates** offer of **Update available** for the published version, retained without approving installer/unknown-source safety prompts; physical-phone ADB is never a release prerequisite. Optional standalone maintenance with explicit `--install-mobile` remains separate from normal delivery and requires the authorization and identity checks above. This offer proof is separate from native acceptance and explicit device installation; a blocked provider-consent installation is not an upgrade pass.
 
 Install each immutable release at a fixed, service-readable path and restart the server to select it. If any value is absent, the file cannot be read, or its size is empty or exceeds the bound, both endpoints fail closed with `503 Service Unavailable`. The server never accepts a request-provided file path. Keep APKs private; do not place signing keys or credentials in this configuration or repository.
 
