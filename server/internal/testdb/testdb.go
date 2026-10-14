@@ -32,7 +32,7 @@ type DB struct {
 // t.Skip and before opening connections with DSN.
 func Setup(t *testing.T) *DB {
 	t.Helper()
-	base := os.Getenv("DATABASE_URL")
+	base := guardedDSN(t)
 	// One identifier per test keeps concurrent packages from creating the same
 	// role or replacing each other's objects.
 	suffix := strings.ReplaceAll(uuid.NewString(), "-", "")
@@ -48,6 +48,13 @@ func Setup(t *testing.T) *DB {
 		t.Fatal(err)
 	}
 	defer admin.Close(ctx)
+	var actual string
+	if err := admin.QueryRow(ctx, "SELECT current_database()").Scan(&actual); err != nil {
+		t.Fatal("testdb: cannot verify connected database")
+	}
+	if !strings.HasPrefix(actual, "litterbox_test_") || actual == "litterbox_test_" {
+		t.Fatalf("testdb: refusing DDL in connected database %q", actual)
+	}
 	// The migrations grant table privileges to Role, but PostgreSQL also
 	// requires schema USAGE; grant it broadly the way the shared public schema
 	// did before, since Role does not exist until the migrations run.
@@ -72,6 +79,39 @@ func Setup(t *testing.T) *DB {
 	return db
 }
 
+// guardedDSN refuses implicit libpq database defaults and production names
+// Keep an explicit database name in the DSN, including when DATABASE_URL is unset.
+func guardedDSN(t *testing.T) string {
+	t.Helper()
+	if os.Getenv("PGDATABASE") == "" {
+		t.Fatal("testdb: refusing DDL: PGDATABASE must explicitly name a litterbox_test_ database")
+	}
+	cfg, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal("testdb: invalid database configuration")
+	}
+	if !strings.HasPrefix(cfg.Database, "litterbox_test_") || cfg.Database == "litterbox_test_" {
+		t.Fatalf("testdb: refusing DDL in database %q: require litterbox_test_ prefix", cfg.Database)
+	}
+	base := os.Getenv("DATABASE_URL")
+	if base == "" {
+		return (&url.URL{Scheme: "postgresql", Path: "/" + cfg.Database}).String()
+	}
+	if strings.HasPrefix(base, "postgres://") || strings.HasPrefix(base, "postgresql://") {
+		u, err := url.Parse(base)
+		if err != nil {
+			t.Fatal("testdb: invalid database URL")
+		}
+		u.Path = "/" + cfg.Database
+		q := u.Query()
+		q.Set("dbname", cfg.Database)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+	name := strings.ReplaceAll(strings.ReplaceAll(cfg.Database, `\`, `\\`), `'`, `\'`)
+	return base + " dbname='" + name + "'"
+}
+
 // Migration rewrites the shared identifiers in migration SQL so the objects and
 // grants it creates stay private to this test's schema and role.
 func (d *DB) Migration(sql string) string {
@@ -90,8 +130,6 @@ func (d *DB) Migration(sql string) string {
 func withSearchPath(base, schema string) string {
 	value := "search_path=" + schema
 	switch {
-	case base == "":
-		return value
 	case strings.HasPrefix(base, "postgres://"), strings.HasPrefix(base, "postgresql://"):
 		separator := "?"
 		if strings.Contains(base, "?") {
