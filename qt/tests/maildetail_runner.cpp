@@ -33,7 +33,8 @@ public:
     }
     Q_INVOKABLE QString read(const QString &name)
     {
-        QFile file(QStringLiteral(LB_MAIL_FIXTURES_DIR) + QStringLiteral("/mail-") + name + QStringLiteral(".html"));
+        const QString directory = qEnvironmentVariable("LB_MAIL_INPUT_DIR", QStringLiteral(LB_MAIL_FIXTURES_DIR));
+        QFile file(directory + QStringLiteral("/mail-") + name + QStringLiteral(".html"));
         if (!file.open(QIODevice::ReadOnly)) qFatal("Missing mail fixture");
         return QString::fromUtf8(file.readAll());
     }

@@ -143,7 +143,7 @@ the phone screen. `tst_inboxlayout` also counts painted card interiors at 412,
 Stop the local server with Ctrl-C and exit the `pg_virtualenv` shell to remove
 its cluster after review.
 
-## Reading mail on desktop
+## Reading mail on desktop and phone
 
 Click a mail card's text or preview to read the message inside Litterbox.
 **Back to inbox** returns to the saved list position; opening never archives
@@ -156,12 +156,23 @@ return to the saved inbox position immediately, without waiting for sync.
 Press **e** to archive the open message; the shortcut is disabled while a
 dialog is open, so it does not interrupt note or snooze entry.
 
-The detail page uses Qt rich text, not a JavaScript-capable web browser. The
-existing server sanitizer removes scripts, event handlers, active embeds and
+The detail page uses an isolated QtWebEngine view on desktop and Android's
+native WebView on phones, with JavaScript and network resource loading disabled.
+The existing server sanitizer removes scripts, event handlers, active embeds and
 tracking pixels; permitted remote images are fetched by the server with its
-existing SSRF protections and embedded as data URLs, never loaded directly by
-the desktop. Plain-text messages retain line breaks and spacing while long
-lines wrap. Only explicitly clicked HTTP(S)/mailto links open externally.
+existing SSRF protections and embedded as data URLs. Both renderers use the same
+viewport stylesheet: layout tables reflow on phones, images shrink to fit, and
+wide data tables scroll only inside their own box. Hidden email preheaders stay
+out of layout during responsive reflow. Ordinary words wrap at spaces;
+plain-text messages retain line breaks. Clicked HTTP(S)/mailto links open
+externally, and cached-file links use the existing attachment opener.
+
+`test_phoneMailWidth` covers four scrubbed real mails at 360, 412 and 1440 pixels
+for both document paths. On a desktop test host the Android wrapper uses
+QtWebEngine to exercise the shared HTML/CSS; those captures do not prove Android
+native-view positioning. The former QTextDocument path was removed because its
+HTML/CSS subset does not support email media queries or responsive image/table
+constraints; forcing its parsed tables to fit still clipped text and split words.
 
 Focused UI regression checks use Xvfb so separate inbox windows can receive
 keyboard focus. Configure with `-DLB_TEST_PLATFORM=xcb`, then run with an

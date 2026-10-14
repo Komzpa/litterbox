@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Desktop uses a network-isolated browser; Android keeps its native rich-text view.
+// Offline browser renderers preserve real HTML and responsive email layouts.
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
@@ -56,6 +56,7 @@ Kirigami.Page {
     property string errorText: ""
     property string html: ""
     property string sourceUrl: ""
+    property string bodySource: Qt.platform.os === "android" ? "MailBodyAndroid.qml" : "MailBodyDesktop.qml"
 
     title: root.sourceUrl !== "" ? qsTr("Message") : qsTr("Details")
 
@@ -135,7 +136,9 @@ Kirigami.Page {
 
         spacing: Kirigami.Units.largeSpacing
 
-        RowLayout {
+        GridLayout {
+            objectName: "mailActionRow"
+            columns: messageColumn.width < 600 ? 2 : 4
             Layout.fillWidth: true
             Connections {
                 target: root.store
@@ -155,7 +158,7 @@ Kirigami.Page {
                 implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                 onClicked: root.QQC2.StackView.view.pop()
             }
-            Item { Layout.fillWidth: true }
+            Item { Layout.fillWidth: true; visible: messageColumn.width >= 600 }
             MailActionButton {
                 objectName: "openInGmail"
                 text: qsTr("Open in Gmail")
@@ -249,7 +252,7 @@ Kirigami.Page {
             background: Rectangle { color: root.surface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
             contentItem: Loader {
                 id: bodyLoader
-                source: Qt.platform.os === "android" ? "MailBodyAndroid.qml" : "MailBodyDesktop.qml"
+                source: root.bodySource
                 onLoaded: item.html = Qt.binding(function() { return root.html })
                 Connections {
                     target: bodyLoader.item
