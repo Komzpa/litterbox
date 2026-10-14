@@ -1,4 +1,5 @@
 #include "maildocumentprofile.h"
+#include "maildocument.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -79,26 +80,6 @@ MailDocumentProfile::MailDocumentProfile(QObject *parent)
 
 QUrl MailDocumentProfile::documentUrl(const QString &html)
 {
-    // CSP precedes the sender's markup. The final stylesheet constrains only
-    // overflow; the sender's table structure, spacing and responsive CSS survive.
-    m_handler->document = QByteArrayLiteral(
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        "<meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; "
-        "img-src data:; style-src 'unsafe-inline'; script-src 'none'; "
-        "frame-src 'none'; object-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'\">"
-        "</head><body>") + html.toUtf8() + QByteArrayLiteral(
-        "<style>html{color-scheme:light;background:white}"
-        "body{margin:0;overflow-wrap:anywhere;font-family:sans-serif;font-size:medium;line-height:1.45;color:#263b3a;background-color:white}"
-        // max-width is forced so no image leaves the column; height stays a
-        // normal-priority rule so the sender's inline height (Google's 40px
-        // logo) still wins while width/height attributes keep their aspect ratio.
-        "img{max-width:100%!important;height:auto}"
-        "table{max-width:100%!important;min-width:0!important}"
-        // Newsletter columns carry fixed min-widths sized for a 600px canvas and
-        // their own media queries stop at 480px, so a ~500px card would overflow.
-        "*{min-width:0!important}"
-        "td,th{overflow-wrap:anywhere}"
-        "pre{white-space:pre-wrap!important;overflow-wrap:anywhere}"
-        "</style></body></html>");
+    m_handler->document = mailDocument(html).toUtf8();
     return QUrl(QStringLiteral("litterbox-mail://message/body?revision=%1").arg(++m_revision));
 }

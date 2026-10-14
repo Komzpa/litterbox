@@ -36,6 +36,8 @@ if(NOT ANDROID)
     target_sources(litterbox-qt PRIVATE src/maildocumentprofile.h src/maildocumentprofile.cpp
         src/updatewatcher.h src/updatewatcher.cpp)
     target_link_libraries(litterbox-qt PRIVATE Qt6::WebEngineQuick)
+else()
+    target_sources(litterbox-qt PRIVATE src/androidmailview.h src/androidmailview.cpp)
 endif()
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
@@ -81,6 +83,7 @@ qt_add_resources(litterbox-qt "lb_pages"
         pages/MailActionButton.qml
         pages/BackToInboxBar.qml
         pages/MailBodyAndroid.qml
+        pages/MailBodyNative.qml
         pages/ReminderDialog.qml
 )
 if(NOT ANDROID)

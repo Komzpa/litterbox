@@ -3,7 +3,9 @@
 #include "a2astream.h"
 #include "CardStore.h"
 #include "timerules.h"
-#ifndef Q_OS_ANDROID
+#ifdef Q_OS_ANDROID
+#include "androidmailview.h"
+#else
 #include "maildocumentprofile.h"
 #include "updatewatcher.h"
 #endif
@@ -117,6 +119,9 @@ int main(int argc, char *argv[])
     MailDocumentProfile::initialize();
 #endif
     QGuiApplication app(argc, argv);
+#ifdef Q_OS_ANDROID
+    AndroidMailView::initialize();
+#endif
     app.setApplicationName(QStringLiteral("Litterbox"));
     app.setOrganizationName(QStringLiteral("Litterbox"));
     // UI stall meter (opt-in via LITTERBOX_STALL_LOG=1, off by default):

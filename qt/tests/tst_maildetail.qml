@@ -39,12 +39,13 @@ TestCase {
     // Lays out one message at the given width and returns what a reader sees:
     // document width against its column, images against the column, any
     // image painted over text, and the longest GUI-thread stall while opening.
-    function openMessage(html, viewWidth) {
+    function openMessage(html, viewWidth, renderer) {
         storeStub.cached = {"card": {html: html, source_url: "https://mail.google.com/mail/?authuser=reader%40example.test#all/fixture"}}
         testCase.width = viewWidth
         mailFixtures.startHeartbeat()
         const page = createTemporaryObject(pageComponent, testCase, {
-            store: storeStub, cardId: "card", width: viewWidth, height: 879, openLinks: false
+            store: storeStub, cardId: "card", width: viewWidth, height: 879, openLinks: false,
+            bodySource: renderer === "android" ? "MailBodyAndroid.qml" : "MailBodyDesktop.qml"
         })
         verify(page)
         let body = null
@@ -119,6 +120,34 @@ TestCase {
         // The message column follows the window; it is never squeezed narrow.
         verify(shown.body.width >= Math.min(row.viewWidth, 1200) - 120,
                row.tag + " body is squeezed to " + shown.body.width + "px")
+    }
+
+    function test_phoneMailWidth_data() {
+        const rows = []
+        for (const fixture of ["googleone", "github", "newsletter", "plain"])
+            for (const renderer of ["android", "desktop"])
+                for (const viewWidth of [360, 412, 1440])
+                    rows.push({tag: fixture + "-" + renderer + "-" + viewWidth, fixture: fixture, renderer: renderer, viewWidth: viewWidth})
+        return rows
+    }
+    function test_phoneMailWidth(row) {
+        const fixture = row.fixture === "plain" ? "plain" : "phone-" + row.fixture
+        const shown = openMessage(mailFixtures.read(fixture), row.viewWidth, row.renderer)
+        if (row.viewWidth !== 360) {
+            const shot = grabImage(shown.page)
+            shot.save(mailFixtures.screenshotPath(row.tag + ".png"))
+        }
+        let right = 0
+        for (const name of ["backToInbox", "openInGmail", "archiveMail"]) {
+            const button = findChild(shown.page, name)
+            const position = button.mapToItem(shown.page, 0, 0)
+            right = Math.max(right, position.x + button.width)
+        }
+        console.log("PHONE_WIDTH", row.tag, "actionsRight=" + right, "viewport=" + row.viewWidth,
+                    "bodyWidth=" + shown.body.width, "overflow=" + shown.overflow)
+        verify(right <= row.viewWidth, "action row exceeds viewport: " + right)
+        verify(shown.body.width <= row.viewWidth, "mail view exceeds viewport")
+        verify(shown.overflow <= 1, "mail content exceeds viewport: " + shown.overflow)
     }
 
     function test_longMessageWheelScroll() {
