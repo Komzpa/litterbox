@@ -25,6 +25,41 @@ ApplicationWindow {
     readonly property int actionIconSize: 20
     // R65: Android "remove animations" / tests can switch motion off.
     property bool reduceMotion: typeof platformMotion !== "undefined" && platformMotion.reduced
+    // R63: thin margins and gaps on phones.
+    readonly property real cardGap: compactInbox ? 4 : edgeSpacing
+    // R67: stable initials avatar per sender; server images can replace it later.
+    readonly property var avatarPalette: ["#397d73", "#5b6abf", "#b0592f", "#7a5aa6", "#2f7fa8", "#9a6a12", "#a3465f", "#4f7d2f"]
+    function avatarColor(name) {
+        let hash = 0
+        const text = String(name || "?").toLowerCase()
+        for (let i = 0; i < text.length; ++i) hash = (hash * 31 + text.charCodeAt(i)) >>> 0
+        return avatarPalette[hash % avatarPalette.length]
+    }
+    function avatarInitials(name) {
+        const words = String(name || "").replace(/\[bot\]|[<>"@].*$/gi, "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(w => w.length)
+        if (!words.length) return "?"
+        return (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase()
+    }
+    // R63 item 13: mail preheaders often start with invisible or unrenderable
+    // characters (zero-width, combining grapheme joiner, BOM, private use,
+    // variation selectors, pictographs the phone font lacks).
+    function cleanPreview(text) {
+        return String(text || "").replace(/^[\s\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ue000-\uf8ff\p{Extended_Pictographic}\u{1f3fb}-\u{1f3ff}\u{e0000}-\u{e007f}]+/u, "")
+    }
+    component SenderAvatar: Rectangle {
+        property string name: ""
+        width: 32
+        height: 32
+        radius: width / 2
+        color: window.avatarColor(name)
+        Label {
+            anchors.centerIn: parent
+            text: window.avatarInitials(parent.name)
+            color: "#ffffff"
+            font.pointSize: Math.max(7, Kirigami.Theme.defaultFont.pointSize - 2)
+            font.weight: Font.DemiBold
+        }
+    }
     component InboxMenuItem: MenuItem {
         id: entry
         implicitWidth: Math.max(200, contentItem.implicitWidth + leftPadding + rightPadding)
@@ -753,6 +788,7 @@ ApplicationWindow {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
                                 }
+                                if (card.received_at && (!summary.latestAt || card.received_at > summary.latestAt)) summary.latestAt = card.received_at
                                 const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
                                 if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
                             }
@@ -836,7 +872,8 @@ ApplicationWindow {
                     readonly property bool showMemberSender: !bundled || bundleSummary.senders.length !== 1 || bundleSummary.senders[0] !== window.mailSender(card)
                     readonly property bool showMemberAccount: !bundled || bundleSummary.accounts.length !== 1 || bundleSummary.accounts[0] !== card.account_name
                     readonly property bool lastMember: bundleSummary.lastId === cardId
-                    readonly property real bundleTextInset: window.compactInbox ? 0 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
+                    readonly property var latestCard: bundleSummary.latestAt && (!card.received_at || bundleSummary.latestAt > card.received_at) ? Object.assign({}, card, {received_at: bundleSummary.latestAt}) : card
+                    readonly property real bundleTextInset: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
                     function unregisterControls() {
@@ -867,22 +904,23 @@ ApplicationWindow {
                     }
                     visible: !bundled || card.bundle_leader !== false || bundleExpanded
                     width: ListView.view.width
-                    height: (!bundled || card.bundle_leader !== false || bundleExpanded) ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.edgeSpacing) : 0
+                    height: (!bundled || card.bundle_leader !== false || bundleExpanded) ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.cardGap) : 0
                     z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
                     Item {
                         id: sectionHeader
                         width: parent.width
-                        height: window.sectionStarts[cardId] ? sectionHeading.implicitHeight + 2 * window.edgeSpacing : 0
+                        height: window.sectionStarts[cardId] ? sectionHeading.implicitHeight + (window.compactInbox ? 12 : 2 * window.edgeSpacing) : 0
                         visible: height > 0
                         Label {
                             id: sectionHeading
                             width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
-                            anchors.topMargin: window.edgeSpacing
+                            anchors.topMargin: window.compactInbox ? 6 : window.edgeSpacing
+                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
                             text: (cardRow.displaySection === "pinned" ? qsTr("Pinned") : cardRow.displaySection === "now" ? qsTr("Now") : cardRow.displaySection === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
-                            font: Kirigami.Theme.defaultFont
+                            font.family: Kirigami.Theme.defaultFont.family
                             color: window.mutedInk
                             padding: 0
                         }
@@ -894,6 +932,9 @@ ApplicationWindow {
                         x: (parent.width - width) / 2
                         y: sectionHeader.height + (cardRow.lifted ? window.dragOffset : 0)
                         padding: window.edgeSpacing
+                        topPadding: window.compactInbox ? 6 : window.edgeSpacing
+                        bottomPadding: window.compactInbox ? 6 : window.edgeSpacing
+                        rightPadding: window.compactInbox ? 0 : window.edgeSpacing
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : window.surface
                             border.color: cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
@@ -934,7 +975,6 @@ ApplicationWindow {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
                                     Layout.fillWidth: true
-                                    Layout.columnSpan: window.compactInbox ? 2 : 1
                                     Layout.minimumWidth: 48
                                     implicitHeight: Math.max(48, contentItem.implicitHeight)
                                     padding: 0
@@ -991,14 +1031,15 @@ ApplicationWindow {
                                         }
                                         Label {
                                             objectName: "bundleLatestLabel-" + cardId
-                                            text: window.compactInbox ? (card.snippet || "") : qsTr("Latest: %1").arg(title)
+                                            text: window.compactInbox ? window.cleanPreview(card.snippet) : qsTr("Latest: %1").arg(title)
                                             visible: !cardRow.bundleExpanded && text.length > 0
                                             color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
+                                            font.family: Kirigami.Theme.defaultFont.family
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
-                                            wrapMode: Text.Wrap
-                                            maximumLineCount: window.compactInbox ? 3 : Infinity
+                                            wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
+                                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 1 : Kirigami.Theme.defaultFont.pointSize
+                                            maximumLineCount: window.compactInbox ? 1 : Infinity
                                             elide: Text.ElideRight
                                         }
                                         Label {
@@ -1014,6 +1055,12 @@ ApplicationWindow {
                                             wrapMode: Text.Wrap
                                         }
                                     }
+                                    SenderAvatar {
+                                        visible: window.compactInbox
+                                        x: 0
+                                        y: 2
+                                        name: (cardRow.bundleSummary.senders || [])[0] || bundleToggle.text
+                                    }
                                     onClicked: window.toggleBundle(card.bundle_id)
                                     Keys.onReturnPressed: clicked()
                                     Keys.onEnterPressed: clicked()
@@ -1022,15 +1069,15 @@ ApplicationWindow {
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
                                 ColumnLayout {
-                                    Layout.columnSpan: window.compactInbox ? 2 : 1
-                                    Layout.fillWidth: window.compactInbox
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.fillWidth: false
                                     Layout.preferredWidth: window.compactInbox ? -1 : 120
                                     Layout.minimumWidth: window.compactInbox ? 0 : 120
                                     Layout.maximumWidth: window.compactInbox ? Infinity : 120
-                                    spacing: Kirigami.Units.smallSpacing
+                                    spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "bundleDate-" + cardId
-                                        text: window.mailArrival(card)
+                                        text: window.mailArrival(cardRow.latestCard)
                                         visible: !window.compactInbox && text.length > 0
                                         color: window.mutedInk
                                         font: Kirigami.Theme.defaultFont
@@ -1039,15 +1086,13 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.alignment: Qt.AlignRight
-                                        Layout.fillWidth: window.compactInbox
-                                        spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
+                                        spacing: 0
                                         Label {
                                             objectName: "phoneBundleDate-" + cardId
                                             visible: window.compactInbox
-                                            text: window.mailArrival(card)
+                                            text: window.mailArrival(cardRow.latestCard)
                                             color: window.mutedInk
                                             font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
-                                            Layout.fillWidth: true
                                         }
                                 Button {
                                     id: archiveBundle

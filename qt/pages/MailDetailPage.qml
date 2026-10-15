@@ -141,6 +141,15 @@ Kirigami.Page {
         Accessible.name: text
         QQC2.ToolTip.text: text
         QQC2.ToolTip.visible: hovered
+        // Kirigami resolves the bundled/theme icon on every style; a bare
+        // ToolButton icon renders nothing under some desktop styles.
+        contentItem: Kirigami.Icon {
+            source: barButton.icon.name
+            isMask: true
+            color: root.ink
+            implicitWidth: 24
+            implicitHeight: 24
+        }
         background: Rectangle {
             radius: 24
             color: barButton.down ? "#e8eeed" : barButton.hovered ? "#eef3f2" : root.surface
@@ -273,12 +282,6 @@ Kirigami.Page {
             }
         }
 
-        QQC2.BusyIndicator {
-            visible: root.loading
-            running: root.loading
-            Layout.alignment: Qt.AlignHCenter
-        }
-
         QQC2.Label {
             visible: root.errorText !== "" && !root.loading
             text: root.errorText
@@ -290,9 +293,20 @@ Kirigami.Page {
 
         Item {
             objectName: "messageDocument"
-            visible: root.html !== ""
+            visible: root.html !== "" || root.loading
             Layout.fillWidth: true
             Layout.fillHeight: true
+            QQC2.BusyIndicator {
+                // Refreshing a cached message never pushes the document down.
+                z: 1
+                visible: root.loading
+                running: root.loading
+                width: 32
+                height: 32
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: 8
+            }
             Loader {
                 id: bodyLoader
                 anchors.fill: parent
@@ -314,6 +328,6 @@ Kirigami.Page {
                 }
             }
         }
-        Item { Layout.fillHeight: true; visible: root.html === "" }
+        Item { Layout.fillHeight: true; visible: root.html === "" && !root.loading }
     }
 }
