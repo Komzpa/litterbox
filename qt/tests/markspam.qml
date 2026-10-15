@@ -64,7 +64,7 @@ TestCase {
         mouseClick(spam)
         tryVerify(function() { return bundleStore.cardIds().length === 0 })
         compare(bundleStore.pendingOps, 1)
-        compare(inbox.bundleArchiveStatus, "Marked as spam. You can undo this action.")
+        compare(inbox.bundleArchiveStatus, "Marked as spam")
         verify(inbox.undoBundleArchive())
         compare(bundleStore.cardIds().length, 1)
         compare(bundleStore.pendingOps, 0)

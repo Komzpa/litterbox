@@ -167,7 +167,7 @@ TestCase {
         })
         verify(inbox)
         inbox.show()
-        const bar = findChild(inbox, "bundleArchiveUndoBar")
+        const bar = findChild(inbox, "reconnectBanner")
         tryCompare(bar, "visible", true)
         shot(inbox, "banner", "inbox-expired", data.width)
         inbox.openPage("GmailAccountsPage", {api: api, openLinks: false})

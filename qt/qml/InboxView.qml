@@ -23,6 +23,8 @@ ApplicationWindow {
     readonly property bool compactInbox: width < 640
     readonly property real edgeSpacing: compactInbox ? 8 : Math.max(18, Kirigami.Units.largeSpacing)
     readonly property int actionIconSize: 20
+    // R65: Android "remove animations" / tests can switch motion off.
+    property bool reduceMotion: typeof platformMotion !== "undefined" && platformMotion.reduced
     component InboxMenuItem: MenuItem {
         id: entry
         implicitWidth: Math.max(200, contentItem.implicitWidth + leftPadding + rightPadding)
@@ -177,14 +179,14 @@ ApplicationWindow {
         bundleArchiveToken = result.token
         mailArchiveUndoOp = ""
         archiveUndoAvailable = true
-        bundleArchiveStatus = qsTr("Archived %1. You can undo this action.").arg(emailCountText(result.count))
+        bundleArchiveStatus = Number(result.count) === 1 ? qsTr("Archived") : qsTr("Archived %1").arg(emailCountText(result.count))
         return true
     }
     function showArchiveUndo(opId, action) {
         mailArchiveUndoOp = action === "spam" ? opId : ""
         archiveUndoAvailable = true
         bundleArchiveToken = action === "archive" ? opId : ""
-        bundleArchiveStatus = action === "spam" ? qsTr("Marked as spam. You can undo this action.") : qsTr("Archived %1. You can undo this action.").arg(emailCountText(1))
+        bundleArchiveStatus = action === "spam" ? qsTr("Marked as spam") : qsTr("Archived")
     }
     function showOperationFailure(opId, status, response) {
         if (opId === mailArchiveUndoOp) {
@@ -367,33 +369,63 @@ ApplicationWindow {
     }
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
 
+    // R55: online is silent; offline is one actionable line.
+    property double lastSyncAt: store.online ? Date.now() : 0
+    property bool offlineDetailsShown: false
+    Connections {
+        target: store
+        ignoreUnknownSignals: true
+        function onOnlineChanged() {
+            if (store.online) { window.lastSyncAt = Date.now(); window.offlineDetailsShown = false }
+        }
+    }
+    function offlineSummary() {
+        let text = qsTr("Can't reach the server")
+        if (store.pendingOps > 0)
+            text += " · " + (store.pendingOps === 1 ? qsTr("1 change waiting") : qsTr("%1 changes waiting").arg(store.pendingOps))
+        if (window.lastSyncAt > 0)
+            text += " · " + qsTr("synced %1").arg(Qt.formatTime(new Date(window.lastSyncAt), "HH:mm"))
+        return text
+    }
+
+    // R63: one slim app bar; the reader (R59) brings its own bar instead.
     header: ToolBar {
-        padding: window.edgeSpacing
-        background: Rectangle { color: window.surface }
+        visible: !(stack.depth > 1 && stack.currentItem === window.mailDetailPage)
+        padding: 0
+        leftPadding: window.edgeSpacing
+        rightPadding: window.edgeSpacing
+        background: Rectangle {
+            color: window.surface
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e0e9e6" }
+        }
         ColumnLayout {
-            width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
+            width: Math.min(parent.width, 1200)
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
+            spacing: 0
             RowLayout {
-                spacing: window.compactInbox ? 4 : Kirigami.Units.mediumSpacing
+                spacing: 0
                 Layout.fillWidth: true
-                Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: 2; Layout.fillWidth: true }
-                Button {
+                Layout.preferredHeight: 52
+                Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: window.compactInbox ? 3 : 2; Layout.fillWidth: true }
+                ToolButton {
                     id: addCardButton
                     objectName: "addCardButton"
                     text: qsTr("Add card")
                     icon.name: "list-add"
-                    icon.width: Kirigami.Units.iconSizes.small
-                    icon.height: Kirigami.Units.iconSizes.small
-                    icon.color: window.surface
-                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                    leftPadding: window.compactInbox ? 10 : Kirigami.Units.largeSpacing
-                    rightPadding: window.compactInbox ? 10 : Kirigami.Units.largeSpacing
-                    Material.foreground: window.surface
-                    palette.buttonText: window.surface
+                    icon.width: 24
+                    icon.height: 24
+                    icon.color: window.accent
+                    display: window.compactInbox ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                    implicitHeight: 48
+                    implicitWidth: window.compactInbox ? 48 : implicitContentWidth + leftPadding + rightPadding
+                    Material.foreground: window.accent
+                    palette.buttonText: window.accent
+                    Accessible.name: text
+                    ToolTip.text: text
+                    ToolTip.visible: hovered
                     background: Rectangle {
-                        radius: Kirigami.Units.cornerRadius
-                        color: addCardButton.down ? "#286358" : addCardButton.hovered ? "#326f65" : window.accent
+                        radius: 24
+                        color: addCardButton.down ? "#e7f1ee" : addCardButton.hovered ? "#f3f7f6" : "transparent"
                         border.width: addCardButton.visualFocus ? 2 : 0
                         border.color: window.ink
                     }
@@ -403,12 +435,12 @@ ApplicationWindow {
                 ToolButton {
                     objectName: "inboxCommands"
                     icon.name: "application-menu"
-                    icon.width: window.actionIconSize
-                    icon.height: window.actionIconSize
+                    icon.width: 24
+                    icon.height: 24
                     text: qsTr("Inbox commands")
                     display: AbstractButton.IconOnly
-                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                    implicitWidth: 48
+                    implicitHeight: 48
                     Accessible.name: qsTr("Inbox commands")
                     ToolTip.text: Accessible.name
                     onClicked: headerMenu.open()
@@ -437,69 +469,70 @@ ApplicationWindow {
                     }
                 }
             }
-            Label {
-                objectName: "connectionStatus"
-                text: store.online ? qsTr("Online · changes sync across devices")
-                    : store.offlineReason ? qsTr("Offline: %1 · changes saved on this device").arg(store.offlineReason)
-                    : qsTr("Offline · changes saved on this device")
-                color: window.mutedInk
-                font.family: Kirigami.Theme.defaultFont.family
-                font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+            RowLayout {
+                objectName: "connectionStatusRow"
+                visible: !store.online
                 Layout.fillWidth: true
-                Layout.bottomMargin: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
-                wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
-                elide: Text.ElideRight
+                spacing: 4
+                Label {
+                    objectName: "connectionStatus"
+                    text: store.online ? "" : window.offlineSummary()
+                    color: window.mutedInk
+                    font.family: Kirigami.Theme.defaultFont.family
+                    font.pointSize: Kirigami.Theme.defaultFont.pointSize - 1
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    TapHandler { onTapped: window.offlineDetailsShown = !window.offlineDetailsShown }
+                }
+                ToolButton {
+                    objectName: "offlineRetry"
+                    text: qsTr("Retry")
+                    implicitHeight: 40
+                    Material.foreground: window.accent
+                    palette.buttonText: window.accent
+                    onClicked: store.refresh()
+                }
             }
-            Label { text: window.updateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
-            Rectangle {
-                id: bundleArchiveUndoBar
-                objectName: "bundleArchiveUndoBar"
-                visible: window.archiveUndoAvailable || window.reconnectStatus.length > 0 || window.bundleArchiveStatus.length > 0
+            Label {
+                objectName: "offlineDetails"
+                visible: !store.online && window.offlineDetailsShown && store.offlineReason.length > 0
+                text: qsTr("Details: %1").arg(store.offlineReason)
+                color: window.mutedInk
+                font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                wrapMode: Text.Wrap
                 Layout.fillWidth: true
-                implicitHeight: Math.max(48, undoBarRow.implicitHeight) + 12
+                Layout.bottomMargin: 4
+            }
+            Label { objectName: "updateStatus"; text: window.updateStatus; visible: text.length > 0; color: window.mutedInk; elide: Text.ElideRight; Layout.fillWidth: true }
+            // Reconnect stays a persistent actionable banner (R51, R52), never
+            // part of the dismissible Undo bar (R57).
+            Rectangle {
+                objectName: "reconnectBanner"
+                visible: window.reconnectStatus.length > 0
+                Layout.fillWidth: true
+                Layout.bottomMargin: 6
+                implicitHeight: Math.max(48, reconnectRow.implicitHeight) + 8
                 radius: Kirigami.Units.cornerRadius
-                color: window.reconnectAddress.length > 0 ? "#fff4df" : window.surface
-                border.color: window.reconnectAddress.length > 0 ? "#e2c993" : "#dce5e3"
+                color: "#fff4df"
+                border.color: "#e2c993"
                 RowLayout {
-                    id: undoBarRow
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
+                    id: reconnectRow
+                    anchors.fill: parent
                     anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 12
+                    anchors.rightMargin: 6
+                    spacing: 8
                     Label {
-                        objectName: "bundleArchiveUndoMessage"
-                        text: window.reconnectStatus || window.bundleArchiveStatus
+                        objectName: "reconnectBannerMessage"
+                        text: window.reconnectStatus
                         color: window.ink
-                        font: Kirigami.Theme.defaultFont
-                        Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                    }
-                    Button {
-                        id: bundleArchiveUndoButton
-                        objectName: "bundleArchiveUndoButton"
-                        visible: window.archiveUndoAvailable
-                        text: qsTr("Undo")
-                        implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
-                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                        leftPadding: Kirigami.Units.smallSpacing
-                        rightPadding: Kirigami.Units.smallSpacing
-                        Material.theme: Material.Light
-                        Material.foreground: window.accent
-                        palette.buttonText: window.accent
-                        background: Rectangle {
-                            radius: Kirigami.Units.cornerRadius
-                            color: bundleArchiveUndoButton.down ? "#e7f1ee" : bundleArchiveUndoButton.hovered ? "#f3f7f6" : window.surface
-                            border.width: bundleArchiveUndoButton.visualFocus ? 2 : 0
-                            border.color: window.accent
-                        }
-                        onClicked: window.undoBundleArchive()
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
                     Button {
                         objectName: "reconnectBannerButton"
                         text: qsTr("Reconnect")
-                        visible: window.reconnectAddress.length > 0
                         implicitHeight: 48
                         contentItem: Label { text: parent.text; color: window.ink; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
                         background: Rectangle { radius: 4; color: "#ffffff"; border.color: "#e2c993" }
@@ -507,7 +540,60 @@ ApplicationWindow {
                     }
                 }
             }
-             Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
+            Label { text: window.dragFeedback; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
+        }
+    }
+    // R57: one-line Undo snackbar over the bottom of the list; it never
+    // reflows the inbox. The store owns how long Undo stays valid.
+    Rectangle {
+        id: bundleArchiveUndoBar
+        objectName: "bundleArchiveUndoBar"
+        parent: window.contentItem
+        z: 50
+        visible: (window.archiveUndoAvailable || window.bundleArchiveStatus.length > 0) && stack.depth === 1
+        opacity: visible ? 1 : 0
+        Behavior on opacity { enabled: !window.reduceMotion; NumberAnimation { duration: 180 } }
+        width: Math.min(parent.width - 2 * 12, 560)
+        height: Math.max(48, undoBarRow.implicitHeight + 8)
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 16
+        radius: 8
+        color: "#263b3a"
+        RowLayout {
+            id: undoBarRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: 16
+            anchors.rightMargin: 4
+            spacing: 8
+            Label {
+                objectName: "bundleArchiveUndoMessage"
+                text: window.bundleArchiveStatus
+                color: "#ffffff"
+                font: Kirigami.Theme.defaultFont
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                Layout.fillWidth: true
+            }
+            Button {
+                id: bundleArchiveUndoButton
+                objectName: "bundleArchiveUndoButton"
+                visible: window.archiveUndoAvailable
+                text: qsTr("Undo")
+                implicitWidth: Math.max(64, implicitContentWidth + leftPadding + rightPadding)
+                implicitHeight: 48
+                flat: true
+                contentItem: Label { text: bundleArchiveUndoButton.text; color: "#9fe0d3"; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle {
+                    radius: 4
+                    color: bundleArchiveUndoButton.down ? "#3a5553" : "transparent"
+                    border.width: bundleArchiveUndoButton.visualFocus ? 2 : 0
+                    border.color: "#9fe0d3"
+                }
+                onClicked: window.undoBundleArchive()
+            }
         }
     }
     Connections {
