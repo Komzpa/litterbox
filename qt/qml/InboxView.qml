@@ -838,13 +838,47 @@ ApplicationWindow {
                         }
                         window.sectionStarts = headings
                         const position = inboxList.contentY - inboxList.originY
+                        const anchor = captureAnchor()
                         if (presentationModel.count > ordered.length)
                             presentationModel.remove(ordered.length, presentationModel.count - ordered.length)
                         rows = ordered
                         while (presentationModel.count < ordered.length)
                             presentationModel.append({slot: presentationModel.count})
                         inboxList.forceLayout()
-                        inboxList.contentY = inboxList.originY + position
+                        if (!restoreAnchor(anchor, ordered))
+                            inboxList.contentY = inboxList.originY + position
+                    }
+                    // R68: keep the visual anchor across archive, Undo and snapshots.
+                    // The first visible card stays at the same offset; if it is gone,
+                    // the next surviving card from the old order takes its place.
+                    function captureAnchor() {
+                        if (!rows.length || inboxList.atYBeginning) return null
+                        const top = inboxList.indexAt(inboxList.width / 2, inboxList.contentY + 1)
+                        if (top < 0) return null
+                        const item = inboxList.itemAtIndex(top)
+                        if (!item) return null
+                        const ids = []
+                        for (let i = top; i < rows.length && ids.length < 64; ++i)
+                            if (rows[i] && rows[i].cardId) ids.push(rows[i].cardId)
+                        return {ids: ids, offset: item.y - inboxList.contentY}
+                    }
+                    function restoreAnchor(anchor, ordered) {
+                        if (!anchor) return false
+                        const index = {}
+                        for (let i = 0; i < ordered.length; ++i) index[ordered[i].cardId] = i
+                        for (const id of anchor.ids) {
+                            const at = index[id]
+                            if (at === undefined) continue
+                            const card = ordered[at].card
+                            if (card.bundle_leader === false && !window.expandedBundles[card.bundle_id]) continue
+                            inboxList.positionViewAtIndex(at, ListView.Beginning)
+                            const item = inboxList.itemAtIndex(at)
+                            if (!item) return false
+                            const maxY = inboxList.originY + Math.max(0, inboxList.contentHeight - inboxList.height)
+                            inboxList.contentY = Math.max(inboxList.originY, Math.min(maxY, item.y - anchor.offset))
+                            return true
+                        }
+                        return false
                     }
                     Component.onCompleted: rebuildPresentation()
                     onCountChanged: Qt.callLater(rebuildPresentation)

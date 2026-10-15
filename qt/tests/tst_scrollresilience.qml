@@ -27,6 +27,47 @@ TestCase {
             important: false, timed: false, has_body: false, summary: "", note: "",
             account_name: "test@example.test"}, extra || {})
     }
+    // R68: archiving or a fresh server snapshot must keep the visual anchor:
+    // the first visible card stays first; if it is the removed one, the next
+    // card takes its place. Never jump to the top or elsewhere.
+    function test_snapshotKeepsVisualAnchor() {
+        const ids = []
+        const cards = []
+        for (let i = 0; i < 200; ++i) { ids.push("row-" + i); cards.push(card("row-" + i, "", {title: "Row " + i})) }
+        verify(bundleStore.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: bundleStore, api: api, updater: updater, timeRules: timeRules, width: 549, height: 1280
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        list.positionViewAtIndex(100, ListView.Beginning)
+        list.forceLayout()
+        wait(50)
+        function topId() {
+            list.forceLayout()
+            const index = list.indexAt(list.width / 2, list.contentY + 2)
+            const item = index >= 0 ? list.itemAtIndex(index) : null
+            return item ? item.cardId : ""
+        }
+        const anchor = topId()
+        verify(anchor.length > 0 && anchor !== "row-0", "scrolled to the middle: " + anchor)
+        const anchorIndex = ids.indexOf(anchor)
+        function snapshotWithout(removed) {
+            const next = cards.filter(function(c) { return removed.indexOf(c.id) < 0 })
+            verify(bundleStore.applyRemoteCards({now: next, later: [], missed: []}))
+            wait(100)
+        }
+        // A card above the viewport disappears: the anchor stays on top.
+        snapshotWithout(["row-10"])
+        compare(topId(), anchor)
+        // The same snapshot again (stale refresh) changes nothing.
+        snapshotWithout(["row-10"])
+        compare(topId(), anchor)
+        // The top card itself is archived: the next card takes its place.
+        snapshotWithout(["row-10", anchor])
+        compare(topId(), ids[anchorIndex + 1])
+    }
     function test_expand308AndWheelScroll() {
         const cards = []
         // Non-adjacent members reproduce the installed 86eb78c path, not an
