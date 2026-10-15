@@ -96,6 +96,22 @@ public:
         });
     }
 };
+// Drives the same request IDs and CardStore gate used by main.cpp.
+class SnapshotConsumer {
+public:
+    CardStore &store;
+    quint64 latestRequest = 0;
+    QMetaObject::Connection connection;
+    explicit SnapshotConsumer(CardStore &value) : store(value) {
+        connection = QObject::connect(&store, &CardStore::requestCards, &store,
+            [this](const QString &, quint64 requestId) { latestRequest = requestId; });
+    }
+    ~SnapshotConsumer() { QObject::disconnect(connection); }
+    bool apply(quint64 requestId, const QVariantMap &sections) {
+        return store.applyRemoteCards(sections, requestId);
+    }
+};
+
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
@@ -1059,6 +1075,134 @@ private slots:
         QCOMPARE(store.cachedMailBody(hiddenId).value(QStringLiteral("html")).toString(), hiddenUrl);
         QCOMPARE(store.openCachedFile(hiddenId, hiddenUrl), QString());
     }
+    void reconnectSnapshotsAcrossArchiveAckDiscoverUnseenCard() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("reconnect-snapshot.sqlite")));
+        const QVariantMap mail{{"id", cardId}, {"source", "mail"}, {"state", "open"}};
+        const QVariantMap unseen{{"id", "B"}, {"source", "manual"}, {"state", "open"}};
+        const QVariantMap full{{"now", QVariantList{mail}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap committed{{"now", QVariantList{unseen}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(full));
+        const QString archive = store.enqueueOp(cardId, "archive");
+        SnapshotConsumer snapshots(store);
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        store.setOnline(true);
+        const quint64 reconnect = snapshots.latestRequest;
+        QTRY_COMPARE(posted.size(), 1);
+        store.refresh(); // Archive SSE event requests another snapshot before ACK.
+        const quint64 sse = snapshots.latestRequest;
+        store.reportPostResult(archive, 200, {{"ok", true}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        snapshots.apply(reconnect, committed);
+        QCOMPARE(store.cardIds(), QStringList{"B"});
+        snapshots.apply(sse, committed);
+        QCOMPARE(store.cardIds(), QStringList{"B"});
+        // Older responses cannot undo a newer response; a drop fetches a replacement.
+        store.refresh();
+        const quint64 newer = snapshots.latestRequest;
+        const QVariantMap later{{"now", QVariantList{unseen, QVariantMap{{"id", "C"}, {"source", "manual"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(snapshots.apply(newer, later));
+        QVERIFY(!snapshots.apply(sse, committed));
+        QVERIFY(snapshots.latestRequest > newer);
+        QCOMPARE(store.cardIds(), QStringList({"B", "C"}));
+    }
+    void postInverseAckSnapshotWithoutCardReleasesRestoreOverlay() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("fresh-absent-snapshot.sqlite")));
+        const QVariantMap full{{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "mail"}, {"state", "open"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap absent{{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(full));
+        SnapshotConsumer snapshots(store);
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        store.setOnline(true);
+        const QString archive = store.enqueueOp(cardId, "archive");
+        QTRY_COMPARE(posted.size(), 1);
+        store.reportPostResult(archive, 200, {{"ok", true}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QVERIFY(store.undoBundleArchive(archive));
+        QTRY_COMPARE(posted.size(), 2);
+        store.refresh();
+        const quint64 beforeAck = snapshots.latestRequest;
+        store.reportPostResult(posted.last().at(0).toString(), 200, {{"ok", true}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        const quint64 afterAck = snapshots.latestRequest;
+        QVERIFY(afterAck > beforeAck);
+        snapshots.apply(beforeAck, absent);
+        QCOMPARE(store.cardIds(), QStringList{cardId});
+        // Another device archived it before any confirming full snapshot arrived.
+        snapshots.apply(afterAck, absent);
+        QCOMPARE(store.rowCount(), 0);
+        store.refresh();
+        QVERIFY(snapshots.apply(snapshots.latestRequest, absent));
+        QCOMPARE(store.rowCount(), 0); // No retained mutation reinserts a ghost.
+    }
+    void lostAckUndoAuthFailuresRemainArchivedAndQueued_data() {
+        QTest::addColumn<int>("status");
+        QTest::addColumn<bool>("inverseFailure");
+        for (int status : {401, 403, 500, 0}) {
+            QTest::newRow(qPrintable(QString::number(status) + "-archive-retry")) << status << false;
+            QTest::newRow(qPrintable(QString::number(status) + "-inverse")) << status << true;
+        }
+    }
+    void lostAckUndoAuthFailuresRemainArchivedAndQueued() {
+        QFETCH(int, status);
+        QFETCH(bool, inverseFailure);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("lost-ack-auth.sqlite");
+        CardStore store;
+        QVERIFY(store.open(path));
+        const QVariantMap full{{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "mail"}, {"state", "open"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap absent{{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(full));
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        const QString archive = store.enqueueOp(cardId, "archive");
+        QTRY_COMPARE(posted.size(), 1);
+        store.reportPostResult(archive, 0, {}); // Server committed; ACK was lost.
+        QVERIFY(store.undoBundleArchive(archive));
+        QTRY_COMPARE(posted.size(), 2);
+        QCOMPARE(posted.last().at(0).toString(), archive);
+        if (inverseFailure) {
+            store.reportPostResult(archive, 200, {{"ok", true}}); // Receipt-deduplicated retry.
+            QTRY_COMPARE(posted.size(), 3);
+        }
+        store.reportPostResult(posted.last().at(0).toString(), status, {{"error", "unavailable"}});
+        QCOMPARE(store.cardIds(), QStringList{});
+        QCOMPARE(store.pendingOps(), inverseFailure ? 1 : 2);
+        QCOMPARE(failed.size(), 0);
+        QVERIFY(store.applyRemoteCards(absent));
+        QCOMPARE(store.rowCount(), 0);
+        QVERIFY(store.applyRemoteCards(full)); // Even a stale open snapshot cannot resurrect it.
+        QCOMPARE(store.rowCount(), 0);
+        // Archive must remain ahead of its inverse, so an inverse 401 cannot
+        // overtake a retry that is still unauthenticated.
+        if (!inverseFailure) {
+            CardStore durable;
+            QVERIFY(durable.open(path));
+            QSignalSpy replayed(&durable, &CardStore::requestPost);
+            durable.setOnline(true);
+            QTRY_COMPARE(replayed.size(), 1);
+            QCOMPARE(replayed.first().at(0).toString(), archive);
+            QCOMPARE(durable.pendingOps(), 2);
+        }
+        // Re-authentication resumes the same ordered operations, not replacements.
+        const int beforeRetry = posted.size();
+        QTRY_COMPARE_WITH_TIMEOUT(posted.size(), beforeRetry + 1, 5000);
+        store.reportPostResult(posted.last().at(0).toString(), 200, {{"ok", true}});
+        if (!inverseFailure) {
+            QTRY_COMPARE(posted.size(), beforeRetry + 2);
+            store.reportPostResult(posted.last().at(0).toString(), 200, {{"ok", true}});
+        }
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QVERIFY(store.applyRemoteCards(full));
+        QCOMPARE(store.cardIds(), QStringList{cardId});
+    }
     void delayedArchivedSnapshotAfterInverseAckKeepsRestoredCard() {
         QTemporaryDir directory;
         const QString path = directory.filePath("delayed-snapshot.sqlite");
@@ -1069,6 +1213,7 @@ private slots:
             CardStore store;
             QVERIFY(store.open(path));
             QVERIFY(store.applyRemoteCards(full));
+            SnapshotConsumer snapshots(store);
             QSignalSpy posted(&store, &CardStore::requestPost);
             store.setOnline(true);
             const QString archive = store.enqueueOp(cardId, "archive");
@@ -1077,11 +1222,12 @@ private slots:
             QTRY_COMPARE(store.pendingOps(), 0);
             // This archived snapshot was requested before Undo and returns last.
             store.refresh();
+            const quint64 delayed = snapshots.latestRequest;
             QVERIFY(store.undoBundleArchive(archive));
             QTRY_COMPARE(posted.size(), 2);
             store.reportPostResult(posted.last().at(0).toString(), 200, {{"ok", true}});
             QTRY_COMPARE(store.pendingOps(), 0);
-            QVERIFY(store.applyRemoteCards(absent));
+            QVERIFY(snapshots.apply(delayed, absent));
             QCOMPARE(store.cardIds(), QStringList{cardId});
             QVERIFY(store.applyRemoteCards(full));
             QCOMPARE(store.cardIds(), QStringList{cardId});

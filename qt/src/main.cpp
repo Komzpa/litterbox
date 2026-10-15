@@ -355,15 +355,14 @@ int main(int argc, char *argv[])
     // Preserve the existing v1 note/done routes. Other queued actions use
     // the server operation API, which acknowledges durable outbox entries.
     QHash<int, quint64> cardsRequests;
-    int latestCardsResponse = -1;
     QHash<int, QString> operationRequests;
     QHash<int, QString> mailBodyRequests;
     QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
         [&](const QString &cardId, const QString &path) {
             mailBodyRequests.insert(api.get(path), cardId);
         });
-    QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path) {
-        cardsRequests.insert(api.get(path), store.snapshotRevision());
+    QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path, quint64 requestId) {
+        cardsRequests.insert(api.get(path), requestId);
     });
     QObject::connect(&store, &CardStore::requestPost, &app,
         [&](const QString &opId, const QString &requestPath, const QVariantMap &payload) {
@@ -394,11 +393,7 @@ int main(int argc, char *argv[])
                 return;
             }
             if (cardsRequests.contains(id)) {
-                const quint64 revision = cardsRequests.take(id);
-                if (revision == store.snapshotRevision() && id > latestCardsResponse) {
-                    latestCardsResponse = id;
-                    store.applyRemoteCards(data.toObject().toVariantMap());
-                }
+                store.applyRemoteCards(data.toObject().toVariantMap(), cardsRequests.take(id));
                 return;
             }
             if (operationRequests.contains(id)) {
