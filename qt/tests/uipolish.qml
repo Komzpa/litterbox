@@ -257,7 +257,7 @@ TestCase {
         const sender = findChild(row, "mailSender-" + id(0))
         const preview = findChild(row, "mailSnippet-" + id(0))
         verify(sender.width > 0 && preview.width > 100)
-        compare(preview.maximumLineCount, inbox.compactInbox ? 3 : 1)
+        compare(preview.maximumLineCount, 1) // R63: one preview line on phones too
         compare(preview.elide, Text.ElideRight)
         verify(preview.mapToItem(list, 0, 0).x >= inbox.edgeSpacing)
         const frame = findChild(row, "inboxCard")

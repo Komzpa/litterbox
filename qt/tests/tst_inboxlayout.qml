@@ -90,12 +90,14 @@ TestCase {
             const more = findChild(row, "inboxActions")
             for (const action of [primary, more]) {
                 verify(action.visible && action.enabled)
-                verify(action.width >= 48 && action.height >= 48)
+                // R63: the overflow is one narrow 28x48 control beside the 48x48 archive on phones.
+                verify(action.width >= (inbox.compactInbox && action === more ? 28 : 48) && action.height >= 48)
                 const p = action.mapToItem(frame, 0, 0)
                 verify(p.x >= 0 && p.y >= 0 && p.x + action.width <= frame.width + 1 && p.y + action.height <= frame.height + 1,
                        "action clipped for " + sources[i])
                 const textBottom = title.mapToItem(frame, 0, title.height).y
-                verify(inbox.compactInbox ? p.y >= textBottom : p.x >= title.mapToItem(frame, title.width, 0).x,
+                // R63: phone actions sit in a right column beside the text, not in a row below it.
+                verify(p.x >= title.mapToItem(frame, title.width, 0).x,
                        "action overlaps text for " + sources[i])
             }
         }
@@ -248,7 +250,8 @@ TestCase {
         for (const member of shared) {
             verify(!member.account, "Same-account bundle member must omit repeated account")
             verify(!member.sender, "Same-sender bundle member must omit repeated sender")
-            verify(!member.context, "Repeated-only context row must collapse")
+            // R63: on phones the context line also carries the arrival time, so it stays.
+            verify(!member.context || data.viewWidth < 640, "Repeated-only context row must collapse")
         }
         verify(headerHasAccount, "Shared account identity must remain on the bundle summary")
         verify(mixedAccountVisible, "Mixed-account child must retain its own identity")

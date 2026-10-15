@@ -127,7 +127,8 @@ TestCase {
             const frame = findChild(row, "inboxCard")
             const title = findChild(row, "bundleTitleLabel-receipt-leader")
             const badge = findChild(row, "bundleMemberCount-receipt-leader").parent
-            verify(title.width >= frame.width * 0.6, "At 412 px the title must use at least 60% of the card width")
+            // R67: the avatar column (48 px) precedes the title on phones.
+            verify(title.width >= (frame.width - 48) * 0.6, "At 412 px the title must use at least 60% of the card width beside the avatar: " + title.width + " / " + frame.width)
             compare(title.wrapMode, Text.WordWrap, "Narrow titles must never wrap mid-word")
             const titleTop = title.mapToItem(frame, 0, 0)
             const badgeTop = badge.mapToItem(frame, 0, 0)

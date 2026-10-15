@@ -44,7 +44,9 @@ ApplicationWindow {
     // characters (zero-width, combining grapheme joiner, BOM, private use,
     // variation selectors, pictographs the phone font lacks).
     function cleanPreview(text) {
-        return String(text || "").replace(/^[\s\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ue000-\uf8ff\p{Extended_Pictographic}\u{1f3fb}-\u{1f3ff}\u{e0000}-\u{e007f}]+/u, "")
+        // R63: drop leading invisible, private-use, variation-selector and emoji
+        // characters. Spelled with surrogate pairs: the QML engine has no \p{}.
+        return String(text || "").replace(/^(?:[\s\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2190-\u21ff\u2300-\u23ff\u2460-\u27bf\u2900-\u297f\u2b00-\u2bff\u3164\ufe00-\ufe0f\ufeff\uffa0\ue000-\uf8ff]|\ud83c[\udc00-\udfff]|\ud83d[\udc00-\udfff]|\ud83e[\udc00-\udfff]|\udb40[\udc00-\udc7f]|[\udb80-\udbff][\udc00-\udfff])+/, "")
     }
     component SenderAvatar: Rectangle {
         property string name: ""
@@ -1016,7 +1018,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: 0
                                                 Layout.column: window.compactInbox ? 1 : 2
@@ -1084,11 +1086,16 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignRight
                                     }
-                                    RowLayout {
+                                    GridLayout {
+                                        // R63: phones stack the newest time over the archive so the title keeps the width.
                                         Layout.alignment: Qt.AlignRight
-                                        spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
+                                        columns: window.compactInbox ? 2 : 3
+                                        rowSpacing: 0
+                                        columnSpacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                         Label {
                                             objectName: "phoneBundleDate-" + cardId
+                                            Layout.alignment: Qt.AlignRight
+                                            Layout.columnSpan: window.compactInbox ? 2 : 1
                                             visible: window.compactInbox
                                             text: window.mailArrival(cardRow.latestCard)
                                             color: window.mutedInk
@@ -1165,19 +1172,27 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.minimumHeight: window.width >= 640 ? 84 : 0
                                 Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
-                                columnSpacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
-                                rowSpacing: window.compactInbox ? 2 : 0
+                                columnSpacing: window.compactInbox ? 8 : Kirigami.Units.smallSpacing
+                                rowSpacing: 0
                                 ToolButton {
                                     id: dragHandle
                                     objectName: "reorderHandle-" + cardId
-                                    Layout.row: window.compactInbox ? 1 : 0
-                                    Layout.column: window.compactInbox ? 1 : 0
-                                    Layout.minimumWidth: window.compactInbox ? 48 : -1
-                                    Layout.preferredWidth: window.compactInbox ? 48 : -1
-                                    Layout.maximumWidth: window.compactInbox ? 48 : Infinity
+                                    Layout.row: 0
+                                    Layout.column: 0
+                                    // R63: on phones the sender avatar is the reorder handle;
+                                    // a touch reorder starts only after a long press (R56).
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.minimumWidth: window.compactInbox ? 40 : -1
+                                    Layout.preferredWidth: window.compactInbox ? 40 : -1
+                                    Layout.maximumWidth: window.compactInbox ? 40 : Infinity
                                     visible: !cardRow.bundled
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 40 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 40 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    SenderAvatar {
+                                        anchors.centerIn: parent
+                                        visible: window.compactInbox
+                                        name: card.source === "mail" ? window.mailSender(card) : window.cardKindLabel(card)
+                                    }
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
                                     readonly property bool reorderable: pinned || !card.timed
                                     // Timed rows stay visible but cannot be dragged;
@@ -1187,7 +1202,7 @@ ApplicationWindow {
                                     // The list-level surface keeps the pointer throughout
                                     // the drag, beyond this handle's hit target.
                                     display: AbstractButton.IconOnly
-                                    icon.name: "transform-move"
+                                    icon.name: window.compactInbox ? "" : "transform-move"
                                     icon.width: Kirigami.Units.iconSizes.smallMedium
                                     icon.height: Kirigami.Units.iconSizes.smallMedium
                                     icon.color: window.ink
@@ -1203,8 +1218,8 @@ ApplicationWindow {
                                     id: cardText
                                     objectName: "openCard-" + cardId
                                     Layout.row: 0
-                                    Layout.column: window.compactInbox ? 0 : 1
-                                    Layout.columnSpan: window.compactInbox ? 3 : 1
+                                    Layout.column: 1
+                                    Layout.columnSpan: 1
                                     function openCard() {
                                         if (card.source === "mail" || card.has_body) cardActions.readCachedRequested()
                                         else cardActions.openRequested()
@@ -1214,7 +1229,8 @@ ApplicationWindow {
                                     Accessible.name: qsTr("Open %1").arg(title)
                                     Keys.onReturnPressed: openCard()
                                     Keys.onSpacePressed: openCard()
-                                    TapHandler { onTapped: cardText.openCard() }
+                                    // R63: long press opens the card's action sheet on touch.
+                                    TapHandler { onTapped: cardText.openCard(); onLongPressed: cardActions.clicked() }
                                     HoverHandler { cursorShape: cardText.activeFocusOnTab ? Qt.PointingHandCursor : Qt.ArrowCursor }
                                     Keys.onPressed: function(event) {
                                         if (event.key === Qt.Key_Delete) {
@@ -1232,7 +1248,7 @@ ApplicationWindow {
                                     spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
-                                        visible: card.source === "mail" && ((cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
+                                        visible: card.source === "mail" && (window.compactInbox || (cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing
                                         Label {
@@ -1257,6 +1273,15 @@ ApplicationWindow {
                                             elide: Text.ElideLeft
                                             Layout.maximumWidth: Math.min(180, cardText.width / 2)
                                         }
+                                        Item { Layout.fillWidth: true; visible: window.compactInbox && !mailSenderLabel.visible }
+                                        // R63: the arrival time sits on the header line, right-aligned.
+                                        Label {
+                                            objectName: "phoneMailDate-" + cardId
+                                            visible: window.compactInbox && card.source === "mail" && text.length > 0
+                                            text: card.source === "mail" ? window.mailArrival(card) : ""
+                                            color: window.mutedInk
+                                            font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                                        }
                                     }
                                     Label {
                                         text: window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
@@ -1273,43 +1298,37 @@ ApplicationWindow {
                                         text: title
                                         color: window.ink
                                         level: 4
-                                        wrapMode: Text.Wrap
-                                        maximumLineCount: window.compactInbox ? 2 : Infinity
+                                        font.weight: window.compactInbox ? Font.DemiBold : Font.Normal
+                                        wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
+                                        maximumLineCount: window.compactInbox ? 1 : Infinity
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     Label {
                                         objectName: "mailSnippet-" + cardId
-                                        text: card.source === "mail" ? (card.snippet || "") : (card.summary || "")
+                                        text: card.source === "mail" ? window.cleanPreview(card.snippet) : (card.summary || "")
                                         visible: text.length > 0
                                         color: window.mutedInk
-                                        font: Kirigami.Theme.defaultFont
+                                        font.family: Kirigami.Theme.defaultFont.family
+                                        font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 1 : Kirigami.Theme.defaultFont.pointSize
                                         textFormat: Text.PlainText
-                                        wrapMode: window.compactInbox ? Text.Wrap : Text.NoWrap
-                                        maximumLineCount: window.compactInbox && card.source !== "mail" ? 2 : window.compactInbox ? 3 : 1
+                                        wrapMode: window.compactInbox && card.source !== "mail" ? Text.Wrap : Text.NoWrap
+                                        // R63: a single mail is header + subject + one preview line.
+                                        maximumLineCount: window.compactInbox && card.source !== "mail" ? 2 : 1
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; maximumLineCount: window.compactInbox ? 2 : Infinity; elide: Text.ElideRight; Layout.fillWidth: true }
                                     Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
                                 }
-                                Label {
-                                    objectName: "phoneMailDate-" + cardId
-                                    visible: window.compactInbox && card.source === "mail"
-                                    Layout.row: 1
-                                    Layout.column: 0
-                                    Layout.fillWidth: true
-                                    text: card.source === "mail" ? window.mailArrival(card) : ""
-                                    color: window.mutedInk
-                                    font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
-                                }
                                 ColumnLayout {
-                                    Layout.row: window.compactInbox ? 1 : 0
+                                    Layout.row: 0
                                     Layout.column: 2
-                                    Layout.preferredWidth: window.compactInbox ? 96 : 120
-                                    Layout.minimumWidth: window.compactInbox ? 96 : 120
-                                    Layout.maximumWidth: window.compactInbox ? 96 : 120
-                                    spacing: Kirigami.Units.smallSpacing
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.preferredWidth: window.compactInbox ? 76 : 120
+                                    Layout.minimumWidth: window.compactInbox ? 76 : 120
+                                    Layout.maximumWidth: window.compactInbox ? 76 : 120
+                                    spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "mailDate-" + cardId
                                         text: window.mailArrival(card)
@@ -1319,9 +1338,13 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignRight
                                     }
-                                    RowLayout {
+                                    GridLayout {
+                                        // R63: phones keep one narrow overflow beside the archive; no resting icon row.
                                         Layout.alignment: Qt.AlignRight
-                                        spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
+                                        columns: 2
+                                        layoutDirection: window.compactInbox ? Qt.RightToLeft : Qt.LeftToRight
+                                        rowSpacing: 0
+                                        columnSpacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
                                     text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
@@ -1341,8 +1364,10 @@ ApplicationWindow {
                                 Litterbox.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 28 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    icon.width: window.compactInbox ? 16 : 20
+                                    icon.height: window.compactInbox ? 16 : 20
                                     store: window.cardStore
                                     cardKey: cardId
                                     source: card.source || ""
@@ -1442,6 +1467,11 @@ ApplicationWindow {
                 property real pressY: 0
                 property real pointerY: 0
                 property bool moved: false
+                // R56/R63: a touch press on the avatar handle only scrolls until it is
+                // held; the reorder arms on press-and-hold. Mouse presses drag at once.
+                property bool touchPending: false
+                property real touchLastY: 0
+                pressAndHoldInterval: 400
                 function updateTarget() {
                     const point = mapToItem(inboxList, 24, pointerY)
                     const target = inboxList.indexAt(point.x, point.y + inboxList.contentY)
@@ -1514,7 +1544,19 @@ ApplicationWindow {
                     }
                     mouse.accepted = false
                 }
-                onPressed: function (mouse) { reorderSurface.startDragAt(mouse) }
+                onPressed: function (mouse) {
+                    reorderSurface.startDragAt(mouse)
+                    reorderSurface.touchPending = mouse.accepted && mouse.source !== Qt.MouseEventNotSynthesized
+                    reorderSurface.touchLastY = mouse.y
+                }
+                onPressAndHold: function (mouse) {
+                    if (reorderSurface.touchPending && reorderSurface.draggingId.length > 0) {
+                        reorderSurface.touchPending = false
+                        reorderSurface.pressY = mouse.y
+                        reorderSurface.pointerY = mouse.y
+                        window.dragCardId = reorderSurface.draggingId
+                    }
+                }
                 // A press that lands on the same point as the previous release within
                 // the double-click interval arrives as a double click, not as a press;
                 // grabbing the handle twice in a row must still start a drag.
@@ -1524,6 +1566,13 @@ ApplicationWindow {
                 onPositionChanged: function (mouse) {
                     if (reorderSurface.draggingId.length === 0) {
                         mouse.accepted = false
+                        return
+                    }
+                    if (touchPending) {
+                        // Not held yet: pass the finger travel to the list as a scroll.
+                        const maxY = Math.max(0, inboxList.contentHeight - inboxList.height)
+                        inboxList.contentY = Math.max(0, Math.min(maxY, inboxList.contentY + touchLastY - mouse.y))
+                        touchLastY = mouse.y
                         return
                     }
                     pointerY = mouse.y
@@ -1536,6 +1585,12 @@ ApplicationWindow {
                 onReleased: function (mouse) {
                     if (reorderSurface.draggingId.length === 0) {
                         mouse.accepted = false
+                        return
+                    }
+                    if (touchPending) {
+                        touchPending = false
+                        reorderSurface.draggingId = ""
+                        window.dragCardId = ""
                         return
                     }
                     const cardId = reorderSurface.draggingId
@@ -1554,6 +1609,7 @@ ApplicationWindow {
                 // canceled() carries no event argument; a drag that was taken away is
                 // never committed from here.
                 onCanceled: function () {
+                    touchPending = false
                     reorderSurface.draggingId = ""
                     window.dragCardId = ""
                     window.dragTargetIndex = -1

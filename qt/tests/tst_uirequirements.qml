@@ -99,7 +99,8 @@ TestCase {
         const moreActions = findChild(row, "inboxActions")
         verify(moreActions)
         compare(moreActions.icon.name, "overflow-menu")
-        verify(moreActions.implicitWidth >= 48)
+        // R63: phones keep one narrow 28x48 overflow beside the 48 px archive target.
+        verify(moreActions.implicitWidth >= (inbox.compactInbox ? 28 : 48))
         verify(moreActions.implicitHeight >= 48)
 
         const done = findChild(row, "doneButton-card-1")

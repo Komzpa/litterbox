@@ -139,7 +139,30 @@ TestCase {
     function test_captureInboxOnline() {
         const shown = openInbox(true)
         save(shown.inbox, "inbox-online")
-        console.log("MOBILEUX density single mails per screen:", fullyVisibleSingleMails(shown.list))
+        const density = fullyVisibleSingleMails(shown.list)
+        console.log("MOBILEUX density single mails per screen:", density)
+        // R63 oracle: at least 10 single mails per 549x1280 phone screen.
+        verify(density >= 10, "single mails per screen: " + density)
+        let polisRow = null
+        for (let i = 0; i < shown.list.count; ++i) {
+            const item = shown.list.itemAtIndex(i)
+            if (item && item.cardId === "polis-1") polisRow = item
+        }
+        verify(polisRow)
+        // R63: previews drop leading invisible characters and emoji.
+        compare(findChild(polisRow, "mailSnippet-polis-1").text, "Туристическая страховка для поездки в Европу")
+        // Time sits on the sender header line; archive and overflow stay at the right edge.
+        const sender = findChild(polisRow, "mailSender-polis-1")
+        const time = findChild(polisRow, "phoneMailDate-polis-1")
+        verify(time.visible)
+        fuzzyCompare(time.mapToItem(polisRow, 0, 0).y, sender.mapToItem(polisRow, 0, 0).y, 4)
+        const archive = findChild(polisRow, "doneButton-polis-1")
+        verify(archive.visible)
+        verify(archive.mapToItem(polisRow, 0, 0).x + archive.width > polisRow.width - 64)
+        const more = findChild(polisRow, "inboxActions")
+        verify(more.visible)
+        // One row: the narrow overflow sits beside the archive, not below it.
+        fuzzyCompare(more.mapToItem(polisRow, 0, 0).y, archive.mapToItem(polisRow, 0, 0).y, 1)
     }
     function test_captureInboxOffline() {
         const shown = openInbox(false)
