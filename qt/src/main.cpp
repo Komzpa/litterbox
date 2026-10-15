@@ -342,6 +342,23 @@ int main(int argc, char *argv[])
     QObject::connect(&api, &Api::tokenChanged, &app, [&] {
         if (!api.token().isEmpty()) { store.setOnline(true); store.refresh(); }
     });
+#ifdef Q_OS_ANDROID
+    // R64: check and predownload by itself on start, on resume, when the
+    // connection comes back and hourly while running; AndroidUpdater rate
+    // limits (6 h after success, backoff after failure) and skips offline.
+    if (!captureMode && !profileMode) {
+        updater.setOnline(store.online());
+        QObject::connect(&store, &CardStore::onlineChanged, &updater, [&] {
+            updater.setOnline(store.online());
+            if (store.online()) updater.checkAutomatically();
+        });
+        QObject::connect(&app, &QGuiApplication::applicationStateChanged, &updater, [&](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive) updater.checkAutomatically();
+        });
+        updater.setAutoCheckPeriod(60 * 60 * 1000);
+        QTimer::singleShot(5000, &updater, [&] { updater.checkAutomatically(); });
+    }
+#endif
 
     TimeRules timeRules;
     QQmlApplicationEngine engine;

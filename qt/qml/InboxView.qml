@@ -541,6 +541,24 @@ ApplicationWindow {
                 Layout.bottomMargin: 4
             }
             Label { objectName: "updateStatus"; text: window.updateStatus; visible: text.length > 0; color: window.mutedInk; elide: Text.ElideRight; Layout.fillWidth: true }
+            RowLayout {
+                objectName: "updateReadyBar"
+                visible: window.updateVersion.length > 0
+                Layout.fillWidth: true
+                spacing: 8
+                Label {
+                    text: qsTr("Update ready")
+                    color: window.ink
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+                Button {
+                    objectName: "updateInstall"
+                    text: qsTr("Install")
+                    Layout.minimumHeight: 48
+                    onClicked: updater.installDownloadedUpdate()
+                }
+            }
             // Reconnect stays a persistent actionable banner (R51, R52), never
             // part of the dismissible Undo bar (R57).
             Rectangle {
@@ -635,12 +653,14 @@ ApplicationWindow {
     }
     Connections {
         target: updater
-        function onBusyChanged() { window.updateStatus = updater.busy ? qsTr("Checking for updates…") : "" }
+        // R64: automatic checks are silent; only a manual check shows progress.
+        function onBusyChanged() { window.updateStatus = updater.busy && !updater.automatic ? qsTr("Checking for updates…") : "" }
         function onNoUpdateAvailable() { window.updateStatus = qsTr("No update available") }
+        // R64: a verified predownload shows one non-blocking Install line;
+        // tapping it opens Android's installer directly.
         function onUpdateReady(version, sha256) {
             window.updateVersion = version
-            window.updateStatus = qsTr("Update %1 downloaded and verified").arg(version)
-            updateDialog.open()
+            window.updateStatus = ""
         }
         function onInstallConsentRequired() {
             window.updateStatus = qsTr("Allow installs from Litterbox in Android settings, then tap Install again")

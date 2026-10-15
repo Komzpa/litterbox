@@ -1,8 +1,10 @@
 #include "androidupdater.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -44,6 +46,51 @@ AndroidUpdater::AndroidUpdater(QObject *parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
 {
+    connect(&m_autoTimer, &QTimer::timeout, this, [this] { checkAutomatically(); });
+}
+
+void AndroidUpdater::setOnline(bool online)
+{
+    if (m_online == online)
+        return;
+    m_online = online;
+    emit onlineChanged();
+}
+
+void AndroidUpdater::setAutoCheckPeriod(int milliseconds)
+{
+    m_autoTimer.stop();
+    if (milliseconds > 0) {
+        m_autoTimer.setInterval(milliseconds);
+        m_autoTimer.start();
+    }
+}
+
+qint64 AndroidUpdater::nowMs() const
+{
+    return m_clockOverrideMs >= 0 ? m_clockOverrideMs : QDateTime::currentMSecsSinceEpoch();
+}
+
+void AndroidUpdater::scheduleAfter(bool success)
+{
+    if (success) {
+        m_autoFailures = 0;
+        m_nextAutoCheckMs = nowMs() + kAutoSuccessIntervalMs;
+        return;
+    }
+    ++m_autoFailures;
+    qint64 delay = kAutoFailureBaseMs;
+    for (int i = 1; i < m_autoFailures && delay < kAutoSuccessIntervalMs; ++i)
+        delay *= 2;
+    m_nextAutoCheckMs = nowMs() + qMin(delay, kAutoSuccessIntervalMs);
+}
+
+bool AndroidUpdater::checkAutomatically()
+{
+    if (m_busy || !m_online || m_baseUrl.isEmpty() || m_packageId.isEmpty() || m_token.isEmpty()
+        || m_installedVersionCode <= 0 || nowMs() < m_nextAutoCheckMs)
+        return false;
+    return startCheck(true);
 }
 
 AndroidUpdater::~AndroidUpdater()
@@ -160,27 +207,33 @@ void AndroidUpdater::setBusy(bool value)
 
 void AndroidUpdater::checkForUpdates()
 {
+    startCheck(false);
+}
+
+bool AndroidUpdater::startCheck(bool automatic)
+{
     if (m_busy)
-        return;
+        return false;
+    m_automaticRun = automatic;
     if (m_baseUrl.isEmpty() || m_packageId.isEmpty() || m_token.isEmpty()) {
-        emit errorOccurred(QStringLiteral("update server, package, and device token are required"));
-        return;
+        finishWithError(QStringLiteral("update server, package, and device token are required"));
+        return false;
     }
     const QUrl origin(m_baseUrl);
     if (!origin.isValid() || (origin.scheme() != QStringLiteral("https")
                               && origin.scheme() != QStringLiteral("http"))
         || origin.host().isEmpty() || !origin.userInfo().isEmpty() || !origin.query().isEmpty()
         || !origin.fragment().isEmpty()) {
-        emit errorOccurred(QStringLiteral("update server URL is invalid"));
-        return;
+        finishWithError(QStringLiteral("update server URL is invalid"));
+        return false;
     }
     if (m_installedVersionCode <= 0) {
-        emit errorOccurred(QStringLiteral("installed Android version is unavailable"));
-        return;
+        finishWithError(QStringLiteral("installed Android version is unavailable"));
+        return false;
     }
 
-    if (!m_apkPath.isEmpty())
-        QFile::remove(m_apkPath);
+    // A verified APK from an earlier check stays until the manifest names a
+    // different release (R64: never download the same version twice).
     m_apkPath.clear();
     m_pendingVersion.clear();
     m_pendingSha256.clear();
@@ -190,6 +243,37 @@ void AndroidUpdater::checkForUpdates()
     m_manifestReply = m_nam->get(buildRequest(QLatin1String(kManifestPath), "application/json"));
     connect(m_manifestReply, &QNetworkReply::readyRead, this, &AndroidUpdater::onManifestReadyRead);
     connect(m_manifestReply, &QNetworkReply::finished, this, &AndroidUpdater::onManifestFinished);
+    return true;
+}
+
+void AndroidUpdater::finishNoUpdate()
+{
+    const bool automatic = m_automaticRun;
+    scheduleAfter(true);
+    setBusy(false);
+    m_automaticRun = false;
+    if (!automatic)
+        emit noUpdateAvailable();
+}
+
+void AndroidUpdater::finishReady()
+{
+    scheduleAfter(true);
+    setBusy(false);
+    m_automaticRun = false;
+    emit updateReady(m_readyVersion, m_readySha256);
+}
+
+void AndroidUpdater::discardReady()
+{
+    if (!m_readyApkPath.isEmpty())
+        QFile::remove(m_readyApkPath);
+    m_readyApkPath.clear();
+    m_readySha256.clear();
+    if (!m_readyVersion.isEmpty()) {
+        m_readyVersion.clear();
+        emit readyVersionChanged();
+    }
 }
 
 void AndroidUpdater::onManifestReadyRead()
@@ -225,8 +309,7 @@ void AndroidUpdater::onManifestFinished()
     }
     if (transportError || status != 200) {
         if (!transportError && status == 503) {
-            setBusy(false);
-            emit noUpdateAvailable();
+            finishNoUpdate();
             return;
         }
         finishWithError(QStringLiteral("update manifest unavailable (HTTP %1)").arg(status));
@@ -269,11 +352,17 @@ void AndroidUpdater::onManifestFinished()
         return;
     }
     if (remoteCode <= m_installedVersionCode) {
-        setBusy(false);
-        emit noUpdateAvailable();
+        discardReady();
+        finishNoUpdate();
         return;
     }
 
+    if (version == m_readyVersion && sha256.toLower() == m_readySha256
+        && QFileInfo::exists(m_readyApkPath)) {
+        finishReady();
+        return;
+    }
+    discardReady();
     m_pendingVersion = version;
     m_pendingSha256 = sha256.toLower();
     startDownload(downloadPath);
@@ -287,6 +376,13 @@ void AndroidUpdater::startDownload(const QString &relativePath)
         return;
     }
     m_apkPath = dir + QStringLiteral("/update-%1.apk").arg(m_pendingVersion);
+    // Keep at most one pending APK: drop leftovers of other releases.
+    const QStringList stale = QDir(dir).entryList({QStringLiteral("update-*.apk")}, QDir::Files);
+    for (const QString &name : stale) {
+        const QString path = dir + QLatin1Char('/') + name;
+        if (path != m_apkPath)
+            QFile::remove(path);
+    }
     m_downloadFile = new QSaveFile(m_apkPath);
     if (!m_downloadFile->open(QIODevice::WriteOnly)) {
         discardDownload();
@@ -373,8 +469,12 @@ void AndroidUpdater::onDownloadFinished()
     }
     delete m_downloadFile;
     m_downloadFile = nullptr;
-    setBusy(false);
-    emit updateReady(m_pendingVersion, m_pendingSha256);
+    m_readyApkPath = m_apkPath;
+    m_readySha256 = m_pendingSha256;
+    m_readyVersion = m_pendingVersion;
+    m_apkPath.clear();
+    emit readyVersionChanged();
+    finishReady();
 }
 
 void AndroidUpdater::discardDownload()
@@ -391,7 +491,7 @@ void AndroidUpdater::discardDownload()
 
 void AndroidUpdater::installDownloadedUpdate()
 {
-    if (m_apkPath.isEmpty()) {
+    if (m_readyApkPath.isEmpty()) {
         emit errorOccurred(QStringLiteral("no verified update is ready to install"));
         return;
     }
@@ -403,7 +503,7 @@ void AndroidUpdater::installDownloadedUpdate()
     }
     const QString authority = m_packageId + QStringLiteral(".qtprovider");
     QJniObject file("java/io/File", "(Ljava/lang/String;)V",
-                    QJniObject::fromString(m_apkPath).object());
+                    QJniObject::fromString(m_readyApkPath).object());
     QJniObject uri = QJniObject::callStaticObjectMethod(
         "androidx/core/content/FileProvider", "getUriForFile",
         "(Landroid/content/Context;Ljava/lang/String;Ljava/io/File;)Landroid/net/Uri;",
@@ -449,6 +549,13 @@ void AndroidUpdater::installDownloadedUpdate()
 
 void AndroidUpdater::finishWithError(const QString &message)
 {
+    const bool automatic = m_automaticRun;
+    scheduleAfter(false);
     setBusy(false);
-    emit errorOccurred(message);
+    m_automaticRun = false;
+    // R55/R64: background checks never print errors on the owner's screen.
+    if (automatic)
+        emit automaticCheckFailed(message);
+    else
+        emit errorOccurred(message);
 }

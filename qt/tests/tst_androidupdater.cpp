@@ -288,6 +288,120 @@ private slots:
         QVERIFY(!QFileInfo::exists(downloadedPath(QStringLiteral("4"))));
         QVERIFY(!updater.busy());
     }
+    // R64: the start/resume/periodic trigger predownloads silently, the
+    // verified APK is reused and never fetched twice for the same release.
+    void automaticCheckPredownloadsOnceAndIsRateLimited()
+    {
+        UpdateServer server;
+        QVERIFY(server.listen());
+        const QByteArray digest = QCryptographicHash::hash(kApkBytes, QCryptographicHash::Sha256).toHex();
+        server.manifestBody = manifest(QStringLiteral("5"), QString::fromLatin1(kPackageId),
+                                       QString::fromLatin1(digest), QStringLiteral("/v1/android/update.apk"));
+        QFile leftover(downloadedPath(QStringLiteral("2")));
+        QVERIFY(leftover.open(QIODevice::WriteOnly));
+        leftover.write("old");
+        leftover.close();
+
+        AndroidUpdater updater;
+        configure(updater, server);
+        updater.setClockForTesting(1000);
+        QSignalSpy ready(&updater, &AndroidUpdater::updateReady);
+        QSignalSpy noUpdate(&updater, &AndroidUpdater::noUpdateAvailable);
+        QSignalSpy errors(&updater, &AndroidUpdater::errorOccurred);
+        QVERIFY(updater.checkAutomatically());
+        QVERIFY(updater.automatic());
+        QTRY_COMPARE(ready.size(), 1);
+        QCOMPARE(updater.readyVersion(), QStringLiteral("5"));
+        QCOMPARE(server.requestCount("/v1/android/update.apk "), 1);
+        QVERIFY(QFileInfo::exists(downloadedPath(QStringLiteral("5"))));
+        QVERIFY(!QFileInfo::exists(downloadedPath(QStringLiteral("2"))));
+        QVERIFY(!updater.automatic());
+
+        // Immediately again (e.g. a resume): rate limited, no request at all.
+        QVERIFY(!updater.checkAutomatically());
+        QCOMPARE(server.requests.size(), 2);
+
+        // Hours later the same release is still served: reuse, no download.
+        updater.setClockForTesting(1000 + AndroidUpdater::kAutoSuccessIntervalMs);
+        QVERIFY(updater.checkAutomatically());
+        QTRY_COMPARE(ready.size(), 2);
+        QCOMPARE(server.requestCount("/v1/android/update "), 2);
+        QCOMPARE(server.requestCount("/v1/android/update.apk "), 1);
+        // A manual check also reuses the verified file.
+        updater.checkForUpdates();
+        QTRY_COMPARE(ready.size(), 3);
+        QCOMPARE(server.requestCount("/v1/android/update.apk "), 1);
+        QCOMPARE(noUpdate.size(), 0);
+        QCOMPARE(errors.size(), 0);
+        QFile::remove(downloadedPath(QStringLiteral("5")));
+    }
+
+    // R64/R55: no checks while offline; background failures stay off screen
+    // and back off 15 min, 30 min, ... instead of retrying on every resume.
+    void automaticCheckSkipsOfflineAndBacksOffSilently()
+    {
+        UpdateServer server;
+        QVERIFY(server.listen());
+        server.manifestStatus = 500;
+        server.manifestBody = "{}";
+
+        AndroidUpdater updater;
+        configure(updater, server);
+        updater.setClockForTesting(0);
+        QSignalSpy failed(&updater, &AndroidUpdater::automaticCheckFailed);
+        QSignalSpy errors(&updater, &AndroidUpdater::errorOccurred);
+        QSignalSpy noUpdate(&updater, &AndroidUpdater::noUpdateAvailable);
+
+        updater.setOnline(false);
+        QVERIFY(!updater.checkAutomatically());
+        QCOMPARE(server.requests.size(), 0);
+
+        updater.setOnline(true);
+        QVERIFY(updater.checkAutomatically());
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(errors.size(), 0);
+        QCOMPARE(updater.nextAutomaticCheckMs(), AndroidUpdater::kAutoFailureBaseMs);
+        QVERIFY(!updater.checkAutomatically());
+        QCOMPARE(server.requests.size(), 1);
+
+        updater.setClockForTesting(AndroidUpdater::kAutoFailureBaseMs);
+        QVERIFY(updater.checkAutomatically());
+        QTRY_COMPARE(failed.size(), 2);
+        QCOMPARE(updater.nextAutomaticCheckMs(), 3 * AndroidUpdater::kAutoFailureBaseMs);
+
+        // Recovery: the next due check succeeds silently (no toast) and the
+        // schedule returns to the normal interval.
+        server.manifestStatus = 200;
+        server.manifestBody = manifest(QStringLiteral("3"), QString::fromLatin1(kPackageId),
+                                       QString(64, QLatin1Char('a')), QStringLiteral("/v1/android/update.apk"));
+        updater.setClockForTesting(3 * AndroidUpdater::kAutoFailureBaseMs);
+        QVERIFY(updater.checkAutomatically());
+        QTRY_VERIFY(!updater.busy());
+        QCOMPARE(noUpdate.size(), 0);
+        QCOMPARE(errors.size(), 0);
+        QCOMPARE(updater.nextAutomaticCheckMs(),
+                 3 * AndroidUpdater::kAutoFailureBaseMs + AndroidUpdater::kAutoSuccessIntervalMs);
+        QCOMPARE(server.requestCount("/v1/android/update.apk "), 0);
+    }
+
+    // R64: an automatic predownload with a wrong digest is never offered.
+    void automaticChecksumMismatchIsNotOffered()
+    {
+        UpdateServer server;
+        QVERIFY(server.listen());
+        server.manifestBody = manifest(QStringLiteral("6"), QString::fromLatin1(kPackageId),
+                                       QString(64, QLatin1Char('0')), QStringLiteral("/v1/android/update.apk"));
+        AndroidUpdater updater;
+        configure(updater, server);
+        updater.setClockForTesting(0);
+        QSignalSpy ready(&updater, &AndroidUpdater::updateReady);
+        QSignalSpy failed(&updater, &AndroidUpdater::automaticCheckFailed);
+        QVERIFY(updater.checkAutomatically());
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(ready.size(), 0);
+        QVERIFY(updater.readyVersion().isEmpty());
+        QVERIFY(!QFileInfo::exists(downloadedPath(QStringLiteral("6"))));
+    }
 };
 
 QTEST_GUILESS_MAIN(AndroidUpdaterTest)
