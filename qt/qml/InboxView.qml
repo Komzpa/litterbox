@@ -15,6 +15,11 @@ ApplicationWindow {
     // Sol V5 owns a light content surface, independent of the host's color scheme.
     // Set both Controls and Kirigami colors: neither may inherit dark-theme ink
     // while the other paints the approved white cards and header.
+    // Read the platform font once: Kirigami.Theme.defaultFont inside a row
+    // creates a Theme attached object per item, ~0.2 ms each, which made
+    // every new dense inbox row expensive (scroll collapse regression).
+    readonly property font themeFont: Kirigami.Theme.defaultFont
+    readonly property color themeHighlight: Kirigami.Theme.highlightColor
     readonly property color ink: "#263b3a"
     readonly property color mutedInk: "#586d70"
     readonly property color surface: "#ffffff"
@@ -60,7 +65,7 @@ ApplicationWindow {
             anchors.centerIn: parent
             text: window.avatarInitials(parent.name)
             color: "#ffffff"
-            font.pointSize: Math.max(7, Kirigami.Theme.defaultFont.pointSize - 2)
+            font.pointSize: Math.max(7, window.themeFont.pointSize - 2)
             font.weight: Font.DemiBold
         }
     }
@@ -87,7 +92,7 @@ ApplicationWindow {
             Label {
                 text: entry.text
                 color: entry.enabled ? window.ink : window.mutedInk
-                font: Kirigami.Theme.defaultFont
+                font: window.themeFont
                 elide: Text.ElideRight
                 Layout.fillWidth: true
                 verticalAlignment: Text.AlignVCenter
@@ -517,8 +522,8 @@ ApplicationWindow {
                     objectName: "connectionStatus"
                     text: store.online ? "" : window.offlineSummary()
                     color: window.mutedInk
-                    font.family: Kirigami.Theme.defaultFont.family
-                    font.pointSize: Kirigami.Theme.defaultFont.pointSize - 1
+                    font.family: window.themeFont.family
+                    font.pointSize: window.themeFont.pointSize - 1
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                     TapHandler { onTapped: window.offlineDetailsShown = !window.offlineDetailsShown }
@@ -537,7 +542,7 @@ ApplicationWindow {
                 visible: !store.online && window.offlineDetailsShown && store.offlineReason.length > 0
                 text: qsTr("Details: %1").arg(store.offlineReason)
                 color: window.mutedInk
-                font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                font.pointSize: window.themeFont.pointSize - 2
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 Layout.bottomMargin: 4
@@ -629,7 +634,7 @@ ApplicationWindow {
                 objectName: "bundleArchiveUndoMessage"
                 text: window.bundleArchiveStatus
                 color: "#ffffff"
-                font: Kirigami.Theme.defaultFont
+                font: window.themeFont
                 elide: Text.ElideRight
                 maximumLineCount: 1
                 Layout.fillWidth: true
@@ -976,9 +981,9 @@ ApplicationWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
                             anchors.topMargin: window.compactInbox ? 6 : window.edgeSpacing
-                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                             text: (cardRow.displaySection === "pinned" ? qsTr("Pinned") : cardRow.displaySection === "now" ? qsTr("Now") : cardRow.displaySection === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
-                            font.family: Kirigami.Theme.defaultFont.family
+                            font.family: window.themeFont.family
                             color: window.mutedInk
                             padding: 0
                         }
@@ -1056,8 +1061,8 @@ ApplicationWindow {
                                             objectName: "bundleAccountLabel-" + cardId
                                             text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
                                             color: window.mutedInk
-                                            font.family: Kirigami.Theme.defaultFont.family
-                                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+                                            font.family: window.themeFont.family
+                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
                                             wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
@@ -1074,7 +1079,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
                                             Rectangle {
                                                 Layout.row: 0
                                                 Layout.column: window.compactInbox ? 1 : 2
@@ -1083,7 +1088,7 @@ ApplicationWindow {
                                                 implicitHeight: countLabel.implicitHeight + (window.compactInbox ? 4 : 8)
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
-                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: Kirigami.Theme.defaultFont.family; font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize }
+                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: window.themeFont.family; font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize }
                                             }
                                             Item { visible: window.width >= 640; Layout.fillWidth: true }
                                         }
@@ -1092,11 +1097,11 @@ ApplicationWindow {
                                             text: window.compactInbox ? window.cleanPreview(card.snippet) : qsTr("Latest: %1").arg(title)
                                             visible: !cardRow.bundleExpanded && text.length > 0
                                             color: window.mutedInk
-                                            font.family: Kirigami.Theme.defaultFont.family
+                                            font.family: window.themeFont.family
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
                                             wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
-                                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 1 : Kirigami.Theme.defaultFont.pointSize
+                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 1 : window.themeFont.pointSize
                                             maximumLineCount: window.compactInbox ? 1 : Infinity
                                             elide: Text.ElideRight
                                         }
@@ -1107,7 +1112,7 @@ ApplicationWindow {
                                                 : qsTr("%1 important emails stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
                                             objectName: "importantDisclosure-" + cardId
                                             color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
+                                            font: window.themeFont
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
                                             wrapMode: Text.Wrap
@@ -1138,7 +1143,7 @@ ApplicationWindow {
                                         text: window.mailArrival(cardRow.latestCard)
                                         visible: !window.compactInbox && text.length > 0
                                         color: window.mutedInk
-                                        font: Kirigami.Theme.defaultFont
+                                        font: window.themeFont
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignRight
                                     }
@@ -1155,7 +1160,7 @@ ApplicationWindow {
                                             visible: window.compactInbox
                                             text: window.mailArrival(cardRow.latestCard)
                                             color: window.mutedInk
-                                            font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                                            font.pointSize: window.themeFont.pointSize - 2
                                         }
                                 Button {
                                     id: archiveBundle
@@ -1196,23 +1201,31 @@ ApplicationWindow {
                                     Accessible.name: text
                                     ToolTip.text: text
                                     ToolTip.visible: hovered
-                                    onClicked: bundleDetails.open()
-                                    Menu {
-                                        id: bundleDetails
-                                        width: 320
-                                        x: window.width - width - 3 * window.edgeSpacing
-                                        background: Rectangle { color: window.surface; border.color: "#dce5e3"; radius: Kirigami.Units.cornerRadius }
-                                        MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.ink; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
-                                        MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.mutedInk; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
-                                        MenuItem {
-                                            objectName: "bundleSpam-" + cardId
-                                            text: qsTr("Mark bundle as spam · %1").arg(cardRow.bundleSummary.accounts.join(", "))
-                                            icon.name: "mail-mark-junk"
-                                            Accessible.name: text
-                                            implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                            onTriggered: {
-                                                const operation = window.cardStore.enqueueOp(cardId, "bundle_spam", {bundle_id: card.bundle_id})
-                                                if (operation) window.showArchiveUndo(operation, "spam")
+                                    onClicked: { bundleDetailsLoader.active = true; bundleDetailsLoader.item.open() }
+                                    // Built on first open: a Menu per row slowed creating every inbox row.
+                                    Loader {
+                                        id: bundleDetailsLoader
+                                        active: false
+                                        sourceComponent: Component {
+                                            Menu {
+                                                parent: bundleOptions
+                                                id: bundleDetails
+                                                width: 320
+                                                x: window.width - width - 3 * window.edgeSpacing
+                                                background: Rectangle { color: window.surface; border.color: "#dce5e3"; radius: Kirigami.Units.cornerRadius }
+                                                MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.ink; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
+                                                MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.mutedInk; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
+                                                MenuItem {
+                                                    objectName: "bundleSpam-" + cardId
+                                                    text: qsTr("Mark bundle as spam · %1").arg(cardRow.bundleSummary.accounts.join(", "))
+                                                    icon.name: "mail-mark-junk"
+                                                    Accessible.name: text
+                                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                                    onTriggered: {
+                                                        const operation = window.cardStore.enqueueOp(cardId, "bundle_spam", {bundle_id: card.bundle_id})
+                                                        if (operation) window.showArchiveUndo(operation, "spam")
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1316,8 +1329,8 @@ ApplicationWindow {
                                             text: window.mailSender(card)
                                             visible: text.length > 0 && cardRow.showMemberSender
                                             color: window.mutedInk
-                                            font.family: Kirigami.Theme.defaultFont.family
-                                            font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+                                            font.family: window.themeFont.family
+                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                             elide: Text.ElideRight
                                             Layout.minimumWidth: 0
                                             Layout.fillWidth: window.compactInbox
@@ -1328,7 +1341,7 @@ ApplicationWindow {
                                             text: card.account_name || ""
                                             visible: text.length > 0 && cardRow.showMemberAccount && (!window.compactInbox || cardRow.bundled)
                                             color: window.mutedInk
-                                            font: Kirigami.Theme.defaultFont
+                                            font: window.themeFont
                                             elide: Text.ElideLeft
                                             Layout.maximumWidth: Math.min(180, cardText.width / 2)
                                         }
@@ -1339,15 +1352,15 @@ ApplicationWindow {
                                             visible: window.compactInbox && card.source === "mail" && text.length > 0
                                             text: card.source === "mail" ? window.mailArrival(card) : ""
                                             color: window.mutedInk
-                                            font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                                            font.pointSize: window.themeFont.pointSize - 2
                                         }
                                     }
                                     Label {
                                         text: window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
                                         visible: card.source !== "mail"
                                         color: window.mutedInk
-                                        font.family: Kirigami.Theme.defaultFont.family
-                                        font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 2 : Kirigami.Theme.defaultFont.pointSize
+                                        font.family: window.themeFont.family
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                         wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -1357,6 +1370,8 @@ ApplicationWindow {
                                         text: title
                                         color: window.ink
                                         level: 4
+                                        // Same as Kirigami's level-4 size without a per-row Theme object.
+                                        font.pointSize: window.themeFont.pointSize * 1.10
                                         font.weight: window.compactInbox ? Font.DemiBold : Font.Normal
                                         wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
                                         maximumLineCount: window.compactInbox ? 1 : Infinity
@@ -1368,8 +1383,8 @@ ApplicationWindow {
                                         text: card.source === "mail" ? window.cleanPreview(card.snippet) : (card.summary || "")
                                         visible: text.length > 0
                                         color: window.mutedInk
-                                        font.family: Kirigami.Theme.defaultFont.family
-                                        font.pointSize: window.compactInbox ? Kirigami.Theme.defaultFont.pointSize - 1 : Kirigami.Theme.defaultFont.pointSize
+                                        font.family: window.themeFont.family
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 1 : window.themeFont.pointSize
                                         textFormat: Text.PlainText
                                         wrapMode: window.compactInbox && card.source !== "mail" ? Text.Wrap : Text.NoWrap
                                         // R63: a single mail is header + subject + one preview line.
@@ -1378,7 +1393,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                     }
                                     Label { text: card.note || ""; color: window.mutedInk; visible: text.length > 0; font.italic: true; wrapMode: Text.Wrap; maximumLineCount: window.compactInbox ? 2 : Infinity; elide: Text.ElideRight; Layout.fillWidth: true }
-                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: Kirigami.Theme.defaultFont }
+                                    Label { text: window.clock(card); visible: text.length > 0; color: window.mutedInk; font: window.themeFont }
                                 }
                                 ColumnLayout {
                                     Layout.row: 0
@@ -1393,7 +1408,7 @@ ApplicationWindow {
                                         text: window.mailArrival(card)
                                         visible: !window.compactInbox && card.source === "mail" && text.length > 0
                                         color: window.mutedInk
-                                        font: Kirigami.Theme.defaultFont
+                                        font: window.themeFont
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignRight
                                     }
@@ -1466,7 +1481,7 @@ ApplicationWindow {
                         anchors.left: cardFrame.left
                         anchors.right: cardFrame.right
                         height: 2
-                        color: Kirigami.Theme.highlightColor
+                        color: window.themeHighlight
                         z: 1
                     }
                 }
@@ -1759,7 +1774,7 @@ ApplicationWindow {
                     wrapMode: TextEdit.Wrap
                     selectByMouse: true
                     color: Kirigami.Theme.textColor
-                    selectionColor: Kirigami.Theme.highlightColor
+                    selectionColor: window.themeHighlight
                     selectedTextColor: Kirigami.Theme.highlightedTextColor
                     Accessible.role: Accessible.EditableText
                 }
