@@ -1135,7 +1135,7 @@ ApplicationWindow {
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 28 : Math.max(48, Kirigami.Units.gridUnit * 3) // R63: narrow overflow like single cards
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: text
                                     ToolTip.text: text
@@ -1188,10 +1188,13 @@ ApplicationWindow {
                                     visible: !cardRow.bundled
                                     implicitWidth: window.compactInbox ? 40 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 40 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    SenderAvatar {
+                                    // Loaded only where shown: collapsed bundle members stay cheap (scrollresilience).
+                                    Loader {
                                         anchors.centerIn: parent
-                                        visible: window.compactInbox
-                                        name: card.source === "mail" ? window.mailSender(card) : window.cardKindLabel(card)
+                                        active: window.compactInbox && cardRow.visible && !cardRow.bundled
+                                        sourceComponent: SenderAvatar {
+                                            name: card.source === "mail" ? window.mailSender(card) : window.cardKindLabel(card)
+                                        }
                                     }
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
                                     readonly property bool reorderable: pinned || !card.timed
