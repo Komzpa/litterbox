@@ -282,7 +282,7 @@ None.
 
 - **R38 Manual card creation and order** (decided, owner 2026-09-29; grab-and-drag restated 2026-09-30; named move icon replaces the tiny `=` on 2026-10-03 to match R36 and the owner's restart-layout correction). The Qt desktop/Android inbox exposes an obvious Add card control that creates an open manual card with title and optional details; creation is saved locally and sent through the authenticated idempotent operation API. Each card exposes a visible named move-icon drag handle: the owner presses it and drags the card to the position where it must land, then releases. The drop moves the card to that position; a press with no movement changes nothing. The drag never overrides an order the server decides elsewhere: a pinned card moves only within the pinned block (R21), and a card whose position is anchored to its time (R30) does not move. Order changes persist offline and sync through the same operation API across clients. The server accepts reorder only for the complete current open-card set and updates `note_order`; manually created cards use a tenant-scoped manual identity and appear in the inbox. Oracle: Qt offscreen app capture opens the visible add-card dialog and records a frame of it, then drags the rendered move handle with real pointer events to a target row (both up and down), verifies the rendered new card and the card's changed position, verifies a pinned drag stays inside the pinned block and a time-anchored drag is refused, verifies a press on the handle with no movement leaves both the order and the queue unchanged, verifies the rendered Note and Done controls beside the drag surface still respond to real pointer clicks, and independently confirms local cache/outbox operations; server operation test verifies tenant-scoped create/reorder and rejects unknown/closed IDs.
   Create card and Card note dialogs retain the same explicit light palette under forced Material Dark, with English footer labels. Oracle: run `tst_uirequirements.qml` under forced Material Dark, then run `capture.sh <commit>` and inspect `material-dark-action-sheet.png` and `create-card-material-dark.png` for white dialog chrome, `#263b3a` ink, `#397d73` actions, and explicit English button labels. The R38 pointer/no-motion, pinned-clamp, timed-refusal, and cache/outbox checks remain required; use the capture scenario below for those behavioral proofs.
-- **R39 Android self-update** (decided, owner 2026-09-30). Android users can explicitly check for updates from the app. The client uses the configured API origin and enrolled device Bearer token for the manifest and its fixed same-origin APK route; it rejects a package ID that differs from the running app, treats `version` as a decimal Android `versionCode`, and offers only strictly newer releases. It streams the complete APK to a temporary file and verifies SHA-256 against the authenticated manifest before showing Install/Later; invalid metadata, transport failure, or checksum mismatch must not launch an installer or replace the installed app. Install is always an explicit user action followed by Android's installer confirmation; if Android requires permission for this source, the user must grant it in system settings and explicitly retry. The app never grants installer permission or installs silently. Cancelling or denying either platform prompt leaves the old app and its data intact. Oracle: `tst_androidupdater` exercises the real updater with a loopback HTTP server and verifies authenticated fixed-route requests, valid newer-release readiness only after complete-byte digest match, no APK fetch for equal/older versions, and rejection of package/path/checksum mismatches. Device acceptance additionally requires a same-package, signature-compatible upgrade initiated from the in-app UI, observed Android installer/consent UI with no automated approval, then installed package/version readback and app-data preservation; an `adb install` result or toolbar screenshot alone does not satisfy this oracle.
+- **R39 Android self-update** (decided, owner 2026-09-30). Android users can explicitly check for updates from the app. The client uses the configured API origin and enrolled device Bearer token for the manifest and its fixed same-origin APK route; it rejects a package ID that differs from the running app, treats `version` as a decimal Android `versionCode`, and offers only strictly newer releases. It streams the complete APK to a temporary file and verifies SHA-256 against the authenticated manifest before showing Install/Later; invalid metadata, transport failure, or checksum mismatch must not launch an installer or replace the installed app. Install is always an explicit user action followed by Android's installer confirmation; if Android requires permission for this source, the user must grant it in system settings and explicitly retry. The app never grants installer permission or installs silently. Cancelling or denying either platform prompt leaves the old app and its data intact. Oracle: `tst_androidupdater` exercises the real updater with a loopback HTTP server and verifies authenticated fixed-route requests, valid newer-release readiness only after complete-byte digest match, no APK fetch for equal/older versions, and rejection of package/path/checksum mismatches. Device acceptance additionally requires a same-package, signature-compatible upgrade initiated from the in-app UI, observed Android installer/consent UI with no automated approval, then installed package/version readback and app-data preservation; an `adb install` result or toolbar screenshot alone does not satisfy this oracle. Amended 2026-10-15 by R64: the check and verified download now also run automatically; installation stays an explicit tap plus Android's confirmation.
   Release completion for shared Qt fixes requires ONE same-source cohort: server Debian package, ordinary desktop Debian package and signed Android APK, installed/published through canonical `deploy/release.py plan/apply/rollback`, not independent ad-hoc cutovers. Bind every artifact, full source SHA, exact binary hash, signing identity and accepted proof before any install; desktop provenance uses the normal build receipt, not an injected ELF note. Record the release CLI commit/hash separately from the frozen artifact source. Normal Android delivery requires authenticated APK publication and an older normally enrolled isolated client's actual **Check updates** offer of **Update available** for the published version; physical-phone ADB is never a release prerequisite. Preserve old packages/APK and exact environment/unit/executables in a root-private rollback packet, including every manifest-declared absolute path/SHA256-bound service drop-in and every existing environment source with ownership/modes. Read repeated systemd EnvironmentFiles entries independently and require the configured environment by exact path; require the effective DropInPaths set and each file hash to match the manifest before mutation, rejecting unlisted or changed drop-ins. Stage all three, install both Debian packages together, atomically change only the three Android release keys preserving other secrets and environment sources, and restart the canonical server once; recheck complete service composition after apply and rollback, restoring exact saved bytes/ownership/modes on rollback. Completion requires installed package/binary identities, passive desktop adoption without owner GUI actions, live server revision and authenticated same-origin manifest/download hashes plus anonymous protection. Optional standalone maintenance with an explicitly authorized `--install-mobile` selection additionally requires the canonical phone registry/lock, independent transport and hardware identity checks, Litterbox-only `install -r`, and installed package/version/hash readback; no default phone, pairing, debugging setup, unlock, app launch or permission approval. Without that option the phone stays untouched and the receipt must say `not_requested`, not claim all-three installation. Partial readback is failure. Explicit rollback restores and verifies old server/desktop/publication state; it preserves the old phone APK but never automatically downgrades/uninstalls Android or restores app data.
   Android acceptance still requires a signed candidate whose decimal versionCode exceeds served and recorded installed versions, with package/signing lineage, TLS runtimes and QML imports retained. Exact-candidate native normal enrollment without `LB_SERVER` or a pre-enrolled profile must reach Online on the intended deployed route; phone-size inbox/mail/topic review shows four complete collapsed/standalone cards, three expanded Techship previews with shared identity once, retained real mail body and neighboring Settings. An older normally enrolled isolated client must offer **Update available** through actual **Check updates**. Keep scoped enrollment requests and each run's script/log/capture identities. Explicit authorized release installation does not replace the in-app installer-consent oracle above, and an observed offer is not completed consent or upgrade. Disposable real-CLI plan/apply/rollback and forced-failure restoration must be proved, alongside source/hash/signer pre-install rejections, before production use.
 ## Developer tooling
@@ -301,7 +301,7 @@ None.
 - **R50 Desktop card grid polish** (decided, owner 2026-10-12). Mail and bundle archive/overflow roles use 20px icons inside existing 48px minimum hit targets. Desktop date/action columns are 120px, not 230px; text keeps the available column, account context is bounded, previews retain one clean elided plain-text line. Existing centered 1200px maximum cards, 18px gutters and continuous expanded-bundle framing stay intact. Oracle: `uipolish` icon/preview/bounds assertions and before/after inbox and expanded-bundle captures; retain `tst_inboxlayout.qml` and `tst_bundleexpand.qml` regressions.
   Preview/source oracle (owner, 2026-10-14): derive previews at read time from stored MIME alternatives, excluding structural decoration while retaining visible linked prose and meaningful candidates in source order. Preserve the document's distinction between a multi-column presentation-table label band and the body of a following heading-led article cell: the article's prose supplies the preview, not the template labels or article heading. Ordinary introductory text, data tables and unsectioned correspondence remain in source order. Length, CSS classes and promotional vocabulary are not meaning classifiers; existing subject/signature rejection must see the content candidates. Empty or unusable HTML projection must not discard a usable plain alternative. Do not rewrite full text/HTML. `TestNewsletterPersistedList` must pass exact article-paragraph expectations on disposable copies of the three immutable archived Techship inputs (October 14 cellular module prices, October 7 high-speed 5G modules, September 23 Standalone/Non-Standalone 5G), with unchanged full-body SHA-256 values. `TestPreviewConsumerPreservation`, `TestPreviewText`, `TestMailSnippetRules` and production-body controls retain short replies, link-only text, entities, punctuation and ordinary newsletters. Qt remains a plain-text, single-line right-elided consumer; no sender-specific filter, model/network call on List, or UI cleanup is allowed.
 - **R51 Accounts and connection chrome** (decided, owner 2026-10-12). Accounts uses a centered column at most 720px wide, a normal content-width Connect account button, 84px account rows separated by 12px, email/status text, and consistent light secondary buttons. A `reconnect_required` status or known failed-account address exposes inline Reconnect; device enrollment has a page heading and 48px minimum fields. Gmail-access errors are warm tinted banners with a visible Reconnect action. This presentation does not prove successful OAuth or clear historical failures by itself. Oracle: accounts/settings/expired-banner screenshots at 1440 and 900px plus accounts/enrollment behavior tests. Server status transport and successful-reconnect acknowledgement remain separate from these visual requirements.
-- **R53 Every pushed page has a visible exit** (decided, owner 2026-10-12; source: "пищдец, из этого стейта нет выхода" on the Accounts page, whose only exit was the mouse side button). Accounts, Enroll device, MCP tokens and the mail reader each show a labelled **Back to inbox** button (`go-previous` icon, 48px minimum, left edge of the centered content column, objectName `backToInbox`), and Escape or Alt+Left returns to the inbox from any pushed page; an open menu or dialog takes Escape first. The header Inbox commands menu stays visible and usable on the subpage. Oracle: `uipolish` `test_backExit` at 1440 and 900px (button, Escape, Alt+Left per page, stack depth 2 to 1), plus `accounts-*`/`enroll-*` captures in `<receipt>/back/`.
+- **R53 Every pushed page has a visible exit** (decided, owner 2026-10-12; source: "пищдец, из этого стейта нет выхода" on the Accounts page, whose only exit was the mouse side button). Accounts, Enroll device, MCP tokens and the mail reader each show a labelled **Back to inbox** button (`go-previous` icon, 48px minimum, left edge of the centered content column, objectName `backToInbox`), and Escape or Alt+Left returns to the inbox from any pushed page; an open menu or dialog takes Escape first. The header Inbox commands menu stays visible and usable on the subpage. Oracle: `uipolish` `test_backExit` at 1440 and 900px (button, Escape, Alt+Left per page, stack depth 2 to 1), plus `accounts-*`/`enroll-*` captures in `<receipt>/back/`. Amended 2026-10-15 by R59 (owner msg 15890 «Кнопки говно»): the mail reader keeps the exit but as the back-arrow icon in its slim app bar (still objectName `backToInbox`, 48px hit target) instead of a labelled button, and the reader hides the inbox commands menu; Escape and Alt+Left are unchanged.
 
   Headless proof (never the user's display): `cmake -S qt -B build-ui -G Ninja && cmake --build build-ui --target tst_mailresize -j2`; create `<receipt>/before` and `<receipt>/after`, then run `xvfb-run -a env QT_QPA_PLATFORM=xcb QT_QUICK_CONTROLS_STYLE=org.kde.desktop QT_QUICK_BACKEND=software LB_UI_PROOF_DIR=<receipt> build-ui/tests/tst_mailresize -input qt/tests/uipolish.qml -import qt/tests/qml-imports UiPolish::test_after UiPolish::test_geometry`. `UiPolish::test_before` captures the same screens on the baseline checkout. Screens are inbox, overflow, bundle-expanded, mail, accounts, settings, offline, and empty; each is captured at 1440×1000 and 900×1000. The existing native Qt fixture and isolated cache are sufficient; no WebAssembly target is required.
 
@@ -318,3 +318,181 @@ None.
 - **R43 Production feed excludes proof/test cards** (decided, owner 2026-10-02). No proof, test, fixture, or smoke run may create a card in a production feed. Producer tick proofs must use a disposable Litterbox endpoint, tenant, and source token; the proof harness refuses production ingest targets and never loads production source credentials. Oracle: run the native producer tick against a disposable receiver and confirm it creates the expected card only there, then use the production device-token feed readback to verify zero proof/test/fixture/smoke cards while genuine mail and reminder cards remain visible.
 
 - **R45 Open-mail page shows sender and arrival** (decided, owner 2026-10-04, source: the open-mail page showed only the subject and the owner's own address). The open-mail page shows, directly under the subject, the sender as name and address (`Cerebras Systems <welcome@cerebras.net>`) and when the mail arrived in the local zone: time only (`· 11:43`) for mail received today, day and month plus time (`· 4 Oct 11:43`) for mail from this year, and the full date (`· 4 Oct 2026 11:43`) otherwise. A card without an arrival time shows no separator and no time. The card API carries `received_at` (the card's latest `messages.received_at`, RFC3339 UTC, omitted for non-mail cards) and `sender_address`; the Qt card model and SQLite cache carry both. Oracle: `tst_maildetail.qml` loads the open-mail page with a fixed `received_at` and asserts the rendered line for all three date branches plus a no-stray-separator negative control, and `TestCardArrivalAndSenderAddress` asserts both API fields and their omission for non-mail cards.
+
+## Mobile UX (owner reports 2026-10-14 and 2026-10-15)
+
+The owner reported these on the installed Android app (0.1-29 on 2026-10-14,
+0.1-34 on 2026-10-15) in Telegram. Quotes are verbatim, typos included.
+Screenshots are kept privately on the assistant host; the path and SHA-256
+bind later visual comparison to the exact evidence. On 2026-10-14 this set was
+drafted only as uncommitted edits on a stale release branch (numbered R54-R60
+there, colliding with R54 above) and never shipped. These ids replace that
+draft. The shared visual oracle for R55-R69 is a headless phone-width
+(549x1280) capture of one fixture before and after the change. The fixture
+holds Polis.ge mail with an emoji preheader, a PostGIS bot-review bundle of 2
+and of 4, single mails, agent cards with and without a source mail, the offline
+state, and the reader on a long mail. Owner screen proof on the shipped APK is
+the final acceptance; until he sees it each item is partial.
+
+- **R55 Actionable offline status, silent when online** (decided, Darafei
+  2026-10-14 msg 15785 «Можно литтербокск не срать мне ошибками в экран?
+  Спасибо», screenshot `img_96882716abd0.jpg` sha256
+  `1562577bdf78c1b4765dfcaca1688d071a1a18db328db0ce967faf78e0349ab1`;
+  2026-10-15 msg 15880 «Broken layout still, useless errors», screenshot
+  `img_bd2367fd722c.jpg` sha256
+  `bc8fdfb680153a7a41551c3e90cc1ec9b4aa92fa76d96e455ec8caa8c4b5d134`; msg
+  15884 item «Online · changes sync across devices» line wastes a row). The
+  inbox never shows a raw socket/errno string such as «Software caused
+  connection abort». When online and synced nothing is shown. When the server
+  is unreachable, one slim line says what is unreachable, the last successful
+  sync time, the number of changes waiting on this device, and offers Retry;
+  the app keeps retrying on its own with backoff. Raw error text is only in an
+  expandable Details view and in diagnostics. Auth and data-save failures
+  stay actionable (R51, R52) and are never hidden behind this line. Oracle:
+  QML test drives offline with reason «Software caused connection abort» and
+  asserts the rendered text omits it, shows pending count and Retry; online
+  renders no status row.
+- **R56 Touch scrolling never activates** (decided, Darafei 2026-10-14 msg
+  15786 «Еще надо починить скролл: когда происходит скролл тачем, не должно
+  быть изменений на экране, все так должно оставаться чтобы скриншот тул от
+  телефона мог снять приложение с прокруткой и по пути не происходило
+  селектов», screenshot `img_eaa36e28f1ad.jpg`, same bytes as R55's). A touch
+  drag or flick that starts on card text or an action icon only scrolls: no
+  selection, open, action or pressed residue. Taps and long presses still
+  work. Oracle: QML test flicks across a card and its controls and asserts no
+  open, action or selection.
+- **R57 Compact bottom Undo** (decided, Darafei 2026-10-14 msg 15790 «Вот эта
+  штука про ю кен анду тоже очень плохо смотрится, надо целиком переработать
+  ее юикс», screenshot `img_86c78dcd3196.jpg` sha256
+  `43945a9996ed9705dc8345321841a1760231a74f4bc682c09e09b3f0eb7507b9`;
+  2026-10-15 msg 15884 item 10). After Archive or Spam, one line overlays the
+  bottom of the list above the system navigation, for example «Archived ·
+  Undo» or «Archived 3 · Undo», with no explanatory sentence. It does not
+  reflow the list, dismisses itself after a bounded time, and Undo restores
+  exactly the indicated action with the semantics already on main (Undo kept
+  after server acknowledgement and across stale snapshots). It never carries
+  the reconnect or auth banner: those stay a separate persistent banner
+  (resolves the 2026-10-14 draft's conflict with R51 and R52). Oracle:
+  tst_bundleexpand and markspam Undo cases pass with the bar outside the list
+  layout; list y of the first card is unchanged while the bar is shown.
+- **R58 Agent results open in full** (decided, Darafei 2026-10-14 msg 15792
+  «Сообщения от агентов нельзя раскрыть и что-то с ними сделать, очень плохо»,
+  screenshot `img_919e62b26e8b.jpg` sha256
+  `9862166bdd34e11eb547b9b1f908c0c5447355351d5105cbb324678b39731222`). Tapping
+  an agent card opens its full text in the reader, with links and copy and the
+  existing local Archive/Done/Undo actions; no invented replies or sends.
+  Back returns to the same scroll position. Oracle: QML test opens a long
+  agent card and finds its last paragraph rendered.
+- **R59 Reader is one page scroll with a slim icon app bar** (decided,
+  Darafei 2026-10-14 msg 15794 «Юай занимает пол экрана, письмо надо читать в
+  скролле спичечной коробки, на переработку юикс отправьте», screenshot
+  `img_d31a4badb7b2.jpg` sha256
+  `e7bae710961723a040fdf712dbd9a7cca543d9035ff0948525d33abb2dbe433c`;
+  re-reported 2026-10-15 msg 15890 «Проблема что письмо скроллится в
+  половинке экрана все еще не решена. Кнопки говно. Отправь на перепроверку
+  все требования от вчера, что они потерялись», screenshot
+  `img_ffcd9f3b483f.jpg` sha256
+  `fb4234433d55ec82b57b8e3c4be8ee0dacfc1ca01c68f6452e788db087749fec`). The
+  mail reader has no inner bordered scroll box: subject, sender line and body
+  scroll together as one page. The inbox chrome (Add card, menu, sync line) is
+  absent in the reader. On top is one slim app bar that fits one row at 549px:
+  a back arrow icon, the truncated title, and icon actions Archive, Open in
+  Gmail and overflow, each a 48dp hit target with a 24px icon and no
+  labelled pill buttons. This amends R53 for the mail reader only. Oracle: QML
+  test at 549x1280 asserts one Flickable owns the body, the toolbar is one row
+  under 64px, and the body text starts in the top quarter of the screen.
+- **R60 Overflow is actions only and fits the screen** (decided, Darafei
+  2026-10-14 msg 15796 «Я нажал многоточие вверху и попал в полностью
+  разъебанный юикс», screenshot `img_4974f0d45498.jpg` sha256
+  `02b2234fc1fc2ae2d06e03cde529eddaaab17949d4893b2ae2739f37598bcfa4`). The
+  overflow menu lists actions only, never mail content, fits the phone
+  viewport, and dismisses on outside tap or Back with the position kept.
+  Spam is visually distinct. Oracle: QML test at 549x1280 opens overflow and
+  asserts it is within the window and contains only action items.
+- **R61 Preserve the exact original email body** (decided, Darafei
+  2026-10-14 msg 15798 «Тут полностью сломано письмо», screenshot
+  `img_c63f7a65bd36.jpg` sha256
+  `c506409971e1d8bbcd7ffbd64540caece1b996eee99160da1d8a6006a15efd4e`, mail
+  «Шаблон B2B-договора TwójStartup»). Establish the message's identity and
+  source bytes from an authorized read-only source before judging rendering;
+  never invent a body or substitute the subject. Open until that source is
+  traced.
+- **R62 The app collects its own crashes** (decided, Darafei 2026-10-14 msg
+  15800 «Какой то креш литтербокса произошел. У тебя будет стектрейс? Если
+  нет надо допилить коллектор», msg 15803 «Не надейся на адб, прилага должна
+  сама»). The Android app records Java crashes, native crash and ANR exit
+  information into a bounded private on-device spool with build identity,
+  and uploads it on next start through the authenticated app API, with no
+  message bodies, addresses or tokens. ADB is never part of the path. Owner:
+  crash-collector work (wip commit f583489, to be rebased).
+- **R63 Dense inbox cards** (decided, Darafei 2026-10-15 msg 15880 items
+  2-6 and msg 15884 «Тут много лишнего на экране и занимает много визуально
+  спейса 3оторый сог бы быть занят чем полезным», screenshot
+  `img_d7c0bc99e309.jpg` sha256
+  `24549ca15f2723e47282a631174e1b3fd6048db0dbe896aebcafc4f03a315ed8`). A
+  single mail is a header line (sender, time on the right) plus at most two
+  text lines: subject primary, preview one smaller secondary line. No resting
+  row of date, move, mail and overflow icons and no blank gap; actions are
+  swipe, long-press and one small overflow, and drag reorder starts with a
+  long press. The inbox header is one slim app bar (title, compact add icon,
+  menu). Bundle heads collapse an empty snippet line and show and sort by the
+  newest member time; nested members align with the card padding and do not
+  repeat a full action row. Previews drop leading invisible or unrenderable
+  characters (zero-width, private-use, variation selectors). Target: at least
+  10 single mails per 549x1280 screen at default font scale. This raises the
+  R33-V floor for phone builds. Oracle: QML test counts fully visible single
+  mail delegates on the fixture at 549x1280 (>=10) and asserts the stripped
+  Polis.ge preview.
+- **R64 Updater checks and predownloads by itself** (decided, Darafei
+  2026-10-15 msg 15882 «Make updater predownload apk and not make me check for
+  updates manually. Add animations where makes sense»). The Android app checks
+  for updates on start, on resume and periodically while running (at most a
+  few times a day, backoff on failure, no checks while offline). A newer build
+  downloads in the background to app-private storage, is verified against
+  the manifest SHA-256, size, package and strictly newer versionCode, only one
+  pending APK is kept and the same version is not downloaded twice. Then one
+  non-blocking «Update ready · Install» prompt appears; tapping it opens the
+  Android installer directly. This amends R39: the check and download are
+  automatic; installation is still the owner's tap plus Android's own
+  confirmation, never silent. Oracle: tst_androidupdater covers the automatic
+  trigger, predownload, hash mismatch rejection, offline backoff and no
+  second download of the same version.
+- **R65 Short purposeful animations** (decided, Darafei 2026-10-15 msg
+  15882). Bundle expand and collapse, item removal on Archive/Spam/swipe,
+  the Undo bar and the offline or update line animate for 150-250 ms. They
+  never delay input or move the scroll anchor, and are off when Android's
+  remove-animations setting is on.
+- **R66 Agent cards sit with their sources** (decided, Darafei 2026-10-15
+  msg 15886 «Агентские сообщения не группируются с их источниками и вообще
+  организованы странно», screenshot `img_657995c87bc0.jpg` sha256
+  `d33466a778007678eb547f592b078fee2e2d4c704ac1621704f2af10b4d4d9b9`). An agent
+  card carries source references (mail thread or external issue key) from the
+  server. When its source mail is in the inbox, the agent card renders as the
+  head of that source group, never as a sibling elsewhere; when the source is
+  archived it shows a compact source line. Agent cards without a source go to
+  one collapsible Agent digest section instead of being interleaved by time.
+  The label names the agent and source, not bare «Agent»; the card shows its
+  time and any deadline; boilerplate such as «What happened:» is not the
+  preview. Expired deadline items collapse with Undo. Oracle: server test for
+  source refs in the cards API, and a QML fixture where agent card and source
+  mail render as one group.
+- **R67 Sender avatars** (decided, Darafei 2026-10-15 msg 15887 «Аватарок не
+  хватает»). Every sender line (single cards, bundle heads, nested members,
+  agent cards) shows a compact avatar (about 28dp) on the first text line
+  without adding height. The fallback is a circle with initials in a stable
+  per-sender colour; forge, domain and Gravatar images, when added, come only
+  through the server and are cached on the device. Remote images inside mail
+  bodies stay blocked.
+- **R68 Scroll stays put after Archive** (decided, Darafei 2026-10-15 msg
+  15893 «После архивации сообщений скролл еуда-то улетает постоянно»).
+  Archive, Spam, swipe and Undo keep the visual position: the next card takes
+  the removed card's place, also when a server snapshot arrives afterwards.
+  Oracle: archive card N in a 200-card list scrolled to the middle, deliver a
+  stale and a new snapshot; the first visible card id is unchanged except for
+  the removed one.
+- **R69 No freeze, no black screen on return** (decided, Darafei 2026-10-15
+  msg 15894 «14:49 юай простотзалип и завис», msg 15895 «Переключился
+  туда-назад - черный экран»). Archive and snapshot handling never block the
+  GUI thread for more than 200 ms, and switching away and back on Android
+  shows the content, not a black surface. Oracle: archive storm plus snapshot
+  fixture with a frame-time log, and an emulator pause/resume journey.
