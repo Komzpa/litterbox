@@ -1,3 +1,16 @@
+litterbox-qt (0.1-35) unstable; urgency=medium
+
+  * Compact phone inbox: avatars, time in the card header, one-line subject
+    and preview, side actions; at least ten single mails per phone screen.
+  * Reader scrolls as one page under a slim app bar; offline banner is one
+    actionable line; Undo snackbar overlays the bottom.
+  * Keep the visual scroll anchor across archive, Undo and snapshots.
+  * Never block the GUI thread on the Android main thread; repaint on resume.
+  * Check for Android updates automatically and predownload the verified APK.
+  * Collect source-less agent cards into one Agent digest bundle.
+
+ -- Litterbox <litterbox@example.com>  Thu, 15 Oct 2026 16:00:00 +0400
+
 litterbox-qt (0.1-32) unstable; urgency=medium
 
   * Render the canonical bundle topic label at compact and desktop widths.
