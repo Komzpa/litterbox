@@ -464,6 +464,14 @@ int main(int argc, char *argv[])
     });
     engine.load(pageUrl);
     if (engine.rootObjects().isEmpty()) return 1;
+    // R69: after the app returns from the background Android may hand Qt a
+    // fresh surface; repaint at once instead of showing a black window until
+    // the next model change.
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &engine, [&engine](Qt::ApplicationState state) {
+        if (state != Qt::ApplicationActive) return;
+        for (QObject *root : engine.rootObjects())
+            if (auto *window = qobject_cast<QQuickWindow *>(root)) window->update();
+    });
 #ifndef Q_OS_ANDROID
     // Window placement is persisted so an upgrade restart (UpdateWatcher)
     // comes back where the user left it. Capture harnesses resize their own

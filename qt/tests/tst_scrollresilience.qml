@@ -68,6 +68,40 @@ TestCase {
         snapshotWithout(["row-10", anchor])
         compare(topId(), ids[anchorIndex + 1])
     }
+    // R69: an archive storm (each archive followed by a server snapshot) on a
+    // large inbox never blocks the GUI thread for more than 200 ms per step.
+    function test_archiveStormStaysResponsive() {
+        const cards = []
+        for (let i = 0; i < 1100; ++i)
+            cards.push(card("storm-" + i, i % 7 === 0 ? "bundle-" + (i % 3) : "", {title: "Storm " + i}))
+        verify(bundleStore.applyRemoteCards({now: cards, later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: bundleStore, api: api, updater: updater, timeRules: timeRules, width: 549, height: 1280
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        list.positionViewAtIndex(400, ListView.Beginning)
+        list.forceLayout()
+        wait(50)
+        let remaining = cards.slice()
+        let worst = 0
+        for (let step = 0; step < 30; ++step) {
+            const index = list.indexAt(list.width / 2, list.contentY + 2)
+            const item = index >= 0 ? list.itemAtIndex(index) : null
+            verify(item && item.cardId, "visible card at step " + step)
+            const removed = item.cardId
+            remaining = remaining.filter(function(c) { return c.id !== removed })
+            const start = Date.now()
+            verify(bundleStore.applyRemoteCards({now: remaining, later: [], missed: []}))
+            wait(0)
+            list.forceLayout()
+            worst = Math.max(worst, Date.now() - start)
+        }
+        console.log("ARCHIVE_STORM_WORST", worst, "ms")
+        verify(worst < 200, "archive storm step blocked the GUI thread for " + worst + " ms (limit <200 ms)")
+        inbox.close()
+    }
     function test_expand308AndWheelScroll() {
         const cards = []
         // Non-adjacent members reproduce the installed 86eb78c path, not an

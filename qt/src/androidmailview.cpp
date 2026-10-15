@@ -2,6 +2,7 @@
 #include "maildocument.h"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QHash>
 #include <QJniEnvironment>
 #include <QQmlEngine>
@@ -42,6 +43,34 @@ AndroidMailView::AndroidMailView(QQuickItem *parent) : QQuickItem(parent), m_id(
         synchronize();
     });
     connect(this, &QQuickItem::visibleChanged, this, &AndroidMailView::synchronize);
+    // R69: hide the native view while the app is in the background and place
+    // it again on return; Android may have recreated the Qt surface meanwhile,
+    // so the cached rectangle is not trusted and the scene is redrawn.
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+        if (state == Qt::ApplicationActive) {
+            invalidatePlacement();
+            if (window()) window()->update();
+        }
+        synchronize();
+    });
+}
+
+void AndroidMailView::invalidatePlacement()
+{
+    m_rect = QRect(-1, -1, -1, -1);
+}
+
+void AndroidMailView::adoptView(const QJniObject &view)
+{
+    m_creating = false;
+    if (!view.isValid()) qFatal("Cannot construct Android mail WebView");
+    m_view = view;
+    const QString document = mailDocument(m_html);
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([view, document] {
+        view.callMethod<void>("loadMail", "(Ljava/lang/String;)V", QJniObject::fromString(document).object());
+    });
+    invalidatePlacement();
+    synchronize();
 }
 
 AndroidMailView::~AndroidMailView()
@@ -70,20 +99,26 @@ void AndroidMailView::setHtml(const QString &html)
 
 void AndroidMailView::synchronize()
 {
-    const bool visible = window() && window()->isVisible() && isVisible() && width() > 0 && height() > 0;
+    const bool visible = window() && window()->isVisible() && isVisible() && width() > 0 && height() > 0
+        && QGuiApplication::applicationState() == Qt::ApplicationActive;
     if (!m_view.isValid()) {
-        if (!visible) return;
+        if (!visible || m_creating) return;
+        m_creating = true;
         const auto context = QNativeInterface::QAndroidApplication::context();
         const qint64 id = m_id;
-        QNativeInterface::QAndroidApplication::runOnAndroidMainThread([this, context, id] {
-            m_view = QJniObject(javaClass, "(Landroid/content/Context;J)V", context.object(), jlong(id));
-        }).waitForFinished();
-        if (!m_view.isValid()) qFatal("Cannot construct Android mail WebView");
-        const auto view = m_view;
-        const QString document = mailDocument(m_html);
-        QNativeInterface::QAndroidApplication::runOnAndroidMainThread([view, document] {
-            view.callMethod<void>("loadMail", "(Ljava/lang/String;)V", QJniObject::fromString(document).object());
+        QNativeInterface::QAndroidApplication::runOnAndroidMainThread([context, id] {
+            QJniObject created(javaClass, "(Landroid/content/Context;J)V", context.object(), jlong(id));
+            QMetaObject::invokeMethod(QCoreApplication::instance(), [id, created] {
+                if (auto *view = views.value(id)) {
+                    view->adoptView(created);
+                } else if (created.isValid()) {
+                    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([created] {
+                        created.callMethod<void>("dispose", "()V");
+                    });
+                }
+            }, Qt::QueuedConnection);
         });
+        return;
     }
     QRect rect;
     if (window()) {

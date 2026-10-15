@@ -18,9 +18,14 @@ signals:
     void linkActivated(const QString &link);
 private:
     void synchronize();
+    void adoptView(const QJniObject &view);
+    void invalidatePlacement();
     QString m_html;
     QJniObject m_view;
     QRect m_rect;
     bool m_visible = false;
+    // R69: the WebView is constructed asynchronously; the Qt GUI thread never
+    // waits on the Android main thread (that wait froze the UI on pause/resume).
+    bool m_creating = false;
     qint64 m_id;
 };
