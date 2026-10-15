@@ -1086,7 +1086,7 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.alignment: Qt.AlignRight
-                                        spacing: 0
+                                        spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                         Label {
                                             objectName: "phoneBundleDate-" + cardId
                                             visible: window.compactInbox
