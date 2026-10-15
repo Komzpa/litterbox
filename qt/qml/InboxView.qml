@@ -47,6 +47,8 @@ ApplicationWindow {
         // R63: drop leading invisible, private-use, variation-selector and emoji
         // characters. Spelled with surrogate pairs: the QML engine has no \p{}.
         return String(text || "").replace(/^(?:[\s\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2190-\u21ff\u2300-\u23ff\u2460-\u27bf\u2900-\u297f\u2b00-\u2bff\u3164\ufe00-\ufe0f\ufeff\uffa0\ue000-\uf8ff]|\ud83c[\udc00-\udfff]|\ud83d[\udc00-\udfff]|\ud83e[\udc00-\udfff]|\udb40[\udc00-\udc7f]|[\udb80-\udbff][\udc00-\udfff])+/, "")
+            // R66: agent report boilerplate labels are not the preview.
+            .replace(/^(?:\**\s*(?:What happened|Summary|Result|Итог|Что сделано)\s*:\s*\**\s*)/i, "")
     }
     component SenderAvatar: Rectangle {
         property string name: ""

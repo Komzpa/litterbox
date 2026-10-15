@@ -242,6 +242,9 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
 		return err
 	}
+	if err := assignAgentDigest(ctx, tx, tenant); err != nil {
+		return err
+	}
 	if embeddingFailed {
 		if err := fallback(ctx, tx, tenant, cards); err != nil {
 			return err

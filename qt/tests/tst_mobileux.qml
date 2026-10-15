@@ -164,6 +164,16 @@ TestCase {
         // One row: the narrow overflow sits beside the archive, not below it.
         fuzzyCompare(more.mapToItem(polisRow, 0, 0).y, archive.mapToItem(polisRow, 0, 0).y, 1)
     }
+    // R66: agent report boilerplate is not the preview; mail text is untouched.
+    function test_agentPreviewBoilerplate() {
+        const inbox = createTemporaryObject(inboxComponent, testCase, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 549, height: 1280
+        })
+        verify(inbox)
+        compare(inbox.cleanPreview("What happened: CI fixed on main"), "CI fixed on main")
+        compare(inbox.cleanPreview("**Summary:** three PRs merged"), "three PRs merged")
+        compare(inbox.cleanPreview("Meeting: what happened at 5"), "Meeting: what happened at 5")
+    }
     function test_captureInboxOffline() {
         const shown = openInbox(false)
         save(shown.inbox, "inbox-offline")

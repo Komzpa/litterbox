@@ -475,7 +475,10 @@ the final acceptance; until he sees it each item is partial.
   time and any deadline; boilerplate such as «What happened:» is not the
   preview. Expired deadline items collapse with Undo. Oracle: server test for
   source refs in the cards API, and a QML fixture where agent card and source
-  mail render as one group.
+  mail render as one group. Status 2026-10-15: the Agent digest bundle and
+  boilerplate-free preview are implemented (`TestClusterCollectsAgentCardsIntoDigest`);
+  nesting under a source mail stays open because agent producers do not yet
+  report a source mail or issue key.
 - **R67 Sender avatars** (decided, Darafei 2026-10-15 msg 15887 «Аватарок не
   хватает»). Every sender line (single cards, bundle heads, nested members,
   agent cards) shows a compact avatar (about 28dp) on the first text line
