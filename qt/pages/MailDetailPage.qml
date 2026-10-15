@@ -7,8 +7,8 @@ import QtQuick.Controls.Material
 import org.kde.kirigami as Kirigami
 import litterbox 1.0 as Litterbox
 
-// A plain Page: the message body scrolls itself inside the remaining height,
-// so a browser view never has to report its document height back to QML.
+// A plain Page: one browser document holds subject, account and body and is the
+// page's only scroll, so a browser view never reports its height back to QML.
 Kirigami.Page {
     id: root
     readonly property color ink: "#263b3a"
@@ -37,7 +37,6 @@ Kirigami.Page {
     palette.buttonText: ink
     palette.highlight: accent
     palette.highlightedText: surface
-    padding: Math.max(18, Kirigami.Units.largeSpacing)
     background: Rectangle { color: canvas }
 
     required property var store
@@ -63,6 +62,7 @@ Kirigami.Page {
     function readCache() {
         const body = store.cachedMailBody(cardId)
         html = body.html || ""
+        if (!html && (root.card || {}).source !== "mail") html = fallbackHtml()
         sourceUrl = body.source_url || ""
         errorText = html ? "" : qsTr("This message is not cached on this device yet.")
     }
@@ -127,19 +127,59 @@ Kirigami.Page {
             reload()
     }
 
+    // R59: one slim app bar, then a single page scroll. Subject, account and
+    // body live in one document, so metadata scrolls away with the message and
+    // there is no inner bordered scroll box under half-screen chrome.
+    component BarButton: QQC2.ToolButton {
+        id: barButton
+        display: QQC2.AbstractButton.IconOnly
+        icon.width: 24
+        icon.height: 24
+        icon.color: root.ink
+        implicitWidth: 48
+        implicitHeight: 48
+        Accessible.name: text
+        QQC2.ToolTip.text: text
+        QQC2.ToolTip.visible: hovered
+        background: Rectangle {
+            radius: 24
+            color: barButton.down ? "#e8eeed" : barButton.hovered ? "#eef3f2" : root.surface
+            border.width: barButton.visualFocus ? 2 : 0
+            border.color: root.ink
+        }
+    }
+
+    function escapeHtml(text) {
+        return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+    // R58: agent and other non-mail cards without a cached body still open in
+    // full: their complete summary becomes the document, links stay links.
+    function fallbackHtml() {
+        const c = root.card || {}
+        const text = String(c.summary || c.snippet || "")
+        if (!text) return ""
+        const linked = escapeHtml(text).replace(/(https?:\/\/[^\s<]+)/g, "<a href='$1'>$1</a>")
+        return linked.split(/\n{2,}/).map(function(part) { return "<p>" + part.replace(/\n/g, "<br>") + "</p>" }).join("")
+    }
+    readonly property string headerHtml: "<div style='padding:4px 0 12px'><h2 style='font-size:20px;line-height:1.3;margin:0 0 4px'>"
+        + escapeHtml(root.cardTitle || root.title) + "</h2>"
+        + (root.accountName ? "<div style='color:#586d70;font-size:14px'>" + escapeHtml(root.accountName) + "</div>" : "")
+        + "</div>"
+    readonly property string documentHtml: root.html === "" ? "" : "<div style='padding:0 16px'>" + headerHtml + "</div>"
+        + "<div style='padding:0 16px 24px'>" + root.html + "</div>"
+
+    padding: 0
     ColumnLayout {
         id: messageColumn
-        width: Math.min(parent.width, 1200)
-        height: root.html !== "" ? parent.height : implicitHeight
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.fill: parent
+        spacing: 0
 
-        spacing: Kirigami.Units.largeSpacing
-
-        GridLayout {
-            objectName: "mailActionRow"
-            columns: messageColumn.width < 600 ? 2 : 4
+        Rectangle {
+            objectName: "mailAppBar"
             Layout.fillWidth: true
+            implicitHeight: 56
+            color: root.surface
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#dce5e3" }
             Connections {
                 target: root.store
                 // Keep pin/bundle state current even if the inbox delegate moves away.
@@ -150,84 +190,89 @@ Kirigami.Page {
                         root.card = root.store.data(root.store.index(row, 0), Litterbox.CardStore.CardRole)
                 }
             }
-            MailActionButton {
-                objectName: "backToInbox"
-                text: qsTr("Back to inbox")
-                icon.name: "go-previous"
-                icon.color: root.ink
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                onClicked: root.QQC2.StackView.view.pop()
-            }
-            Item { Layout.fillWidth: true; visible: messageColumn.width >= 600 }
-            MailActionButton {
-                objectName: "openInGmail"
-                text: qsTr("Open in Gmail")
-                icon.name: "document-open"
-                icon.color: root.ink
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
-                visible: root.sourceUrl !== ""
-                onClicked: root.openInGmail()
-            }
-            MailActionButton {
-                id: archiveButton
-                objectName: "archiveMail"
-                text: mailActions.source === "mail" || mailActions.source === "journal" ? qsTr("Archive") : qsTr("Done")
-                icon.name: mailActions.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
-                Accessible.name: mailActions.primaryName
-                onClicked: mailActions.primaryAction()
-                Shortcut {
-                    sequence: "E"
-                    enabled: root.QQC2.StackView.status === QQC2.StackView.Active && (!root.QQC2.Overlay.overlay || !root.QQC2.Overlay.overlay.visible)
-                    onActivated: mailActions.primaryAction()
+            RowLayout {
+                objectName: "mailActionRow"
+                anchors.fill: parent
+                anchors.leftMargin: 4
+                anchors.rightMargin: 4
+                spacing: 0
+                BarButton {
+                    objectName: "backToInbox"
+                    text: qsTr("Back to inbox")
+                    icon.name: "go-previous"
+                    onClicked: root.QQC2.StackView.view.pop()
                 }
-            }
-            Litterbox.CardActions {
-                id: mailActions
-                objectName: "mailActions"
-                store: root.store
-                cardKey: root.cardId
-                source: root.card.source || ""
-                hasBody: !!root.card.has_body
-                bundleId: root.card.bundle_id || ""
-                pinnedRank: root.card.pinned_rank
-                cardTitle: root.cardTitle
-                accountName: root.accountName
-                canOpenSource: root.sourceUrl !== ""
-                onOpenRequested: root.openInGmail()
-                onReadCachedRequested: root.reload()
-                onNoteRequested: { if (root.requestNote) root.requestNote(root.cardId, root.card.note || "") }
-                onCardHandled: function(operation, action) {
-                    root.QQC2.StackView.view.pop()
-                    if (operation && root.requestArchiveUndo) root.requestArchiveUndo(operation, action)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 4
+                    spacing: 0
+                    QQC2.Label {
+                        objectName: "mailBarTitle"
+                        text: root.cardTitle || root.title
+                        textFormat: Text.PlainText
+                        color: root.ink
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        Layout.fillWidth: true
+                    }
+                    QQC2.Label {
+                        objectName: "mailArrival"
+                        text: root.arrivalLine()
+                        textFormat: Text.PlainText
+                        color: root.mutedInk
+                        font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
+                        visible: text !== ""
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        Layout.fillWidth: true
+                    }
+                }
+                BarButton {
+                    id: archiveButton
+                    objectName: "archiveMail"
+                    text: mailActions.source === "mail" || mailActions.source === "journal" ? qsTr("Archive") : qsTr("Done")
+                    icon.name: mailActions.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
+                    Accessible.name: mailActions.primaryName
+                    onClicked: mailActions.primaryAction()
+                    Shortcut {
+                        sequence: "E"
+                        enabled: root.QQC2.StackView.status === QQC2.StackView.Active && (!root.QQC2.Overlay.overlay || !root.QQC2.Overlay.overlay.visible)
+                        onActivated: mailActions.primaryAction()
+                    }
+                }
+                BarButton {
+                    objectName: "openInGmail"
+                    text: qsTr("Open in Gmail")
+                    icon.name: "document-open"
+                    visible: root.sourceUrl !== ""
+                    onClicked: root.openInGmail()
+                }
+                Litterbox.CardActions {
+                    id: mailActions
+                    objectName: "mailActions"
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    store: root.store
+                    cardKey: root.cardId
+                    source: root.card.source || ""
+                    hasBody: !!root.card.has_body
+                    bundleId: root.card.bundle_id || ""
+                    pinnedRank: root.card.pinned_rank
+                    cardTitle: root.cardTitle
+                    accountName: root.accountName
+                    canOpenSource: root.sourceUrl !== ""
+                    onOpenRequested: root.openInGmail()
+                    onReadCachedRequested: root.reload()
+                    onNoteRequested: { if (root.requestNote) root.requestNote(root.cardId, root.card.note || "") }
+                    onCardHandled: function(operation, action) {
+                        root.QQC2.StackView.view.pop()
+                        if (operation && root.requestArchiveUndo) root.requestArchiveUndo(operation, action)
+                    }
                 }
             }
         }
 
-        Kirigami.Heading {
-            text: root.cardTitle || root.title
-            textFormat: Text.PlainText
-            color: root.ink
-            level: 2
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
-        }
-        QQC2.Label {
-            objectName: "mailArrival"
-            text: root.arrivalLine()
-            textFormat: Text.PlainText
-            color: root.mutedInk
-            visible: text !== ""
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
-        }
-        QQC2.Label {
-            text: root.accountName
-            textFormat: Text.PlainText
-            color: root.mutedInk
-            visible: text !== ""
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
-        }
         QQC2.BusyIndicator {
             visible: root.loading
             running: root.loading
@@ -239,21 +284,20 @@ Kirigami.Page {
             text: root.errorText
             color: Kirigami.Theme.negativeTextColor
             wrapMode: Text.Wrap
+            padding: 16
             Layout.fillWidth: true
         }
 
-        QQC2.Frame {
+        Item {
             objectName: "messageDocument"
             visible: root.html !== ""
-            padding: Math.max(18, Kirigami.Units.largeSpacing)
             Layout.fillWidth: true
-            Layout.fillHeight: root.html !== ""
-            Layout.preferredWidth: 0
-            background: Rectangle { color: root.surface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
-            contentItem: Loader {
+            Layout.fillHeight: true
+            Loader {
                 id: bodyLoader
+                anchors.fill: parent
                 source: root.bodySource
-                onLoaded: item.html = Qt.binding(function() { return root.html })
+                onLoaded: item.html = Qt.binding(function() { return root.documentHtml })
                 Connections {
                     target: bodyLoader.item
                     function onLinkActivated(link) {
@@ -270,5 +314,6 @@ Kirigami.Page {
                 }
             }
         }
+        Item { Layout.fillHeight: true; visible: root.html === "" }
     }
 }
