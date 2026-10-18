@@ -26,6 +26,7 @@ TestCase {
     }
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
+    SignalSpy { id: inboxFrames; signalName: "frameSwapped" }
 
     // Model real open inbox snapshots: archiveBundleNow intentionally excludes
     // missing/non-open state as well as pinned cards, not important cards.
@@ -90,16 +91,17 @@ TestCase {
         verify(inbox)
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
-        // A delegate exists before the desktop rail/split has polished its bounds.
-        // Deliver the real click only after its final window coordinates render.
+        // InboxView is already visible. Polish the whole adaptive window, then
+        // observe a fresh presented frame, not an incidental layout repaint.
+        // QQuickWindow.update() always schedules a repaint, even for an unchanged
+        // scene; register the spy first so software rendering cannot outrun it.
         verify(waitForPolish(inbox), "The adaptive inbox must finish layout before the bundle click")
-        // createTemporaryObject() never show()s the window. waitForRendering() only awaits a
-        // rendered frame, and at compact widths (412/520) nothing schedules one, so it times
-        // out below (at 1356 the desktop rail/split polish repaints and masks this). Map the
-        // window first -- the visibility prerequisite every other render-gated suite performs
-        // -- so its expose paints the frame at the polished bounds that the click then uses.
-        inbox.show()
-        verify(waitForRendering(list), "The bundle viewport must render before pointer delivery")
+        inboxFrames.target = inbox
+        verify(inboxFrames.valid)
+        inboxFrames.clear()
+        inbox.update()
+        inboxFrames.wait()
+        inboxFrames.target = null
         const row = list.itemAtIndex(0)
         const toggle = findChild(row, "bundleToggle-sender-0")
         const expectedTitle = data.bundle || cards[0].title
