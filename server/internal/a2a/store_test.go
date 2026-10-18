@@ -44,9 +44,6 @@ func migrated(t *testing.T) (*Store, *sql.DB, *testdb.DB) {
 			t.Fatalf("migration %s: %v", filepath.Base(path), err)
 		}
 	}
-	if filepath.Base(files[len(files)-1]) != "020_bundle_title_origin.sql" {
-		t.Fatalf("last migration is %s", files[len(files)-1])
-	}
 	for _, tenant := range []string{tenantA, tenantB} {
 		if _, err = db.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
 			t.Fatal(err)

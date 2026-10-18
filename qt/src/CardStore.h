@@ -84,7 +84,8 @@ public:
     // Durable per-card body cache, independent of the open-card set.
     // Mail and has_body agent result bodies share the same mail_bodies table
     // so full results and file links survive restart and read offline.
-    // cachedMailBody returns {html, source_url} or an empty map on a miss.
+    // cachedMailBody returns {html, source_url, messages} or an empty map on a miss.
+    // messages is a JSON array retained verbatim for offline thread reading.
     Q_INVOKABLE QVariantMap cachedMailBody(const QString &cardId) const;
     // Fetch a mail or has_body agent card's body through the authenticated
     // API while online. Plain cards without has_body have no fetchable body.

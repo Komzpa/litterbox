@@ -201,13 +201,37 @@ TestCase {
         compare(page.errorText, "")
     }
 
+    function test_embeddedBackInvokesCloseCallbackAndCanReopen() {
+        storeStub.cached = {"embedded": {html: "<p>Retained reader</p>"}}
+        let closeCount = 0
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "embedded", cardTitle: "Retained field report",
+            embeddedMode: true, width: 598, height: 879, openLinks: false,
+            requestClose: function() { ++closeCount; page.visible = false }
+        })
+        verify(page)
+        const back = findChild(page, "backToInbox")
+        verify(back && back.visible)
+        mouseClick(back)
+        compare(closeCount, 1)
+        compare(page.visible, false, "embedded Back must call the owner's real visibility transition")
+        page.closeReader()
+        compare(closeCount, 1, "a repeated close must not invoke the callback twice")
+        page.visible = true
+        tryCompare(page, "closing", false)
+        mouseClick(back)
+        compare(closeCount, 2, "the same retained page must be closable after reopening")
+        compare(page.visible, false)
+    }
+
     // Fixed arrival instant 2026-10-04T07:43:00Z rendered in the pinned test
     // zone (Asia/Tbilisi, UTC+4): 11:43. Branches cover today, this year and
     // older mail.
     function test_arrivalLineShowsSenderAndLocalArrival() {
         storeStub.cached = {"card": {html: "<p>Hi</p>"}}
         const page = createTemporaryObject(pageComponent, testCase, {
-            store: storeStub, cardId: "card", openLinks: false,
+            store: storeStub, cardId: "card", cardTitle: "Synthetic arrival report", openLinks: false,
+            width: 598, height: 879,
             card: {source: "mail", sender_name: "Cerebras Systems",
                    sender_address: "welcome@cerebras.net", received_at: "2026-10-04T07:43:00Z"},
             arrivalNow: new Date("2026-10-04T08:00:00Z").getTime()
@@ -216,6 +240,25 @@ TestCase {
         const line = findChild(page, "mailArrival")
         verify(line, "arrival line missing under the subject")
         compare(line.text, "Cerebras Systems <welcome@cerebras.net> · 11:43")
+        const title = findChild(page, "mailBarTitle")
+        const bar = findChild(page, "mailAppBar")
+        const document = findChild(page, "messageDocument")
+        verify(title && title.visible && line.visible && bar && document)
+        tryVerify(function() { return title.width > 0 && line.width > 0 && document.height > 0 })
+        for (const landmark of [title, line]) {
+            const p = landmark.mapToItem(bar, 0, 0)
+            verify(landmark.height > 0 && p.x >= 0 && p.y >= 0 &&
+                   p.x + landmark.width <= bar.width + 1 && p.y + landmark.height <= bar.height + 1,
+                   landmark.objectName + " must fit inside the reader header")
+        }
+        const titleBox = title.mapToItem(bar, 0, 0)
+        const arrivalBox = line.mapToItem(bar, 0, 0)
+        verify(arrivalBox.y >= titleBox.y + title.height - 1, "source/arrival landmark belongs below the subject")
+        verify(title.font.pointSize > line.font.pointSize && title.font.weight > line.font.weight,
+               "reader subject must dominate source/arrival metadata")
+        const barBox = bar.mapToItem(page, 0, 0)
+        const documentBox = document.mapToItem(page, 0, 0)
+        verify(documentBox.y >= barBox.y + bar.height - 1, "message document must not overlap header landmarks")
         // Same year, another day: day + month + time.
         page.arrivalNow = new Date("2026-11-20T08:00:00Z").getTime()
         compare(line.text, "Cerebras Systems <welcome@cerebras.net> · 4 Oct 11:43")
@@ -236,5 +279,48 @@ TestCase {
         verify(line, "sender line missing under the subject")
         compare(line.text, "Cerebras Systems <welcome@cerebras.net>")
         verify(line.text.indexOf("·") < 0, "stray separator without arrival time: " + line.text)
+    }
+    function test_originalThreadUsesNativeDisclosureInsideSingleDocumentScroll() {
+        storeStub.cached = {"thread": {source_url: "https://mail.synthetic.test/thread/42", messages: [
+            {id: "orig-1", gmail_message_id: "gmail-1", sender_name: "Older historian", sender_address: "old@synthetic.test",
+             received_at: "2026-10-02T10:00:00Z", html: "<p>First field note</p>"},
+            {id: "orig-2", gmail_message_id: "gmail-2", sender_name: "Newer historian", sender_address: "new@synthetic.test",
+             received_at: "2026-10-03T11:00:00Z", html: "<p>Second field note</p>"},
+            {id: "orig-3", gmail_message_id: "gmail-3", sender_name: "Latest historian", sender_address: "latest@synthetic.test",
+             received_at: "2026-10-04T12:00:00Z", html: "<p>Latest field note</p>"}
+        ]}}
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "thread", cardTitle: "Synthetic field report", openLinks: false,
+            card: {source: "mail", title: "Synthetic field report"}, width: 598, height: 879,
+            arrivalNow: new Date("2026-10-05T12:00:00Z").getTime()
+        })
+        verify(page)
+        compare(page.html, "<p>Latest field note</p>")
+        const body = findChild(page, "body")
+        verify(body && body.runJavaScript !== undefined)
+        tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
+        let result = null
+        body.runJavaScript(`({details: Array.from(document.querySelectorAll('details')).map(d => ({open: d.open,
+            summary: d.querySelector('summary').innerText, body: d.querySelector('.lb-original').innerText})),
+            latest: document.querySelector('.lb-latest').innerText,
+            sections: document.querySelectorAll('.lb-original').length,
+            scrollHeight: document.scrollingElement.scrollHeight,
+            clientHeight: document.scrollingElement.clientHeight,
+            nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length})`,
+            WebEngineScript.ApplicationWorld, value => result = value)
+        tryVerify(function() { return result !== null })
+        compare(result.details.map(d => d.open), [false, false])
+        compare(result.details.map(d => d.body), ["First field note", "Second field note"])
+        verify(result.details[0].summary.indexOf("Older historian <old@synthetic.test>") >= 0)
+        verify(result.details[1].summary.indexOf("Newer historian <new@synthetic.test>") >= 0)
+        verify(result.latest.indexOf("Latest historian <latest@synthetic.test>") >= 0)
+        verify(result.latest.indexOf("Latest field note") < 0)
+        compare(result.sections, 3)
+        compare(result.nestedScrolls, 0)
+        verify(result.scrollHeight > result.clientHeight)
+        let scrollTop = null
+        body.runJavaScript("document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight; document.scrollingElement.scrollTop",
+            WebEngineScript.ApplicationWorld, value => scrollTop = value)
+        tryVerify(function() { return scrollTop !== null && scrollTop > 0 })
     }
 }

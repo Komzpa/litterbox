@@ -74,7 +74,14 @@ func (f *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if i > 1 {
 				labels = []string{"INBOX"}
 			}
-			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": "LinkedIn <messages-noreply@linkedin.com>"}}}})
+			// Each original carries its own From header: the reply comes from a
+			// different sender than the opener, so a test can prove messages keep
+			// per-message senders instead of inheriting the card's newest one.
+			from := "LinkedIn <messages-noreply@linkedin.com>"
+			if i > 1 {
+				from = "Second Sender <second@example.test>"
+			}
+			msgs = append(msgs, map[string]any{"id": "m" + string(rune('0'+i)), "threadId": "thread-1", "internalDate": "1780000000000", "labelIds": labels, "payload": map[string]any{"headers": []any{map[string]string{"name": "Subject", "value": "Hello"}, map[string]string{"name": "From", "value": from}}}})
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "thread-1", "historyId": f.history, "messages": msgs})
 	case strings.HasPrefix(r.URL.Path, "/gmail/v1/users/me/messages/"):
@@ -114,7 +121,7 @@ func testPool(t *testing.T) (*pgxpool.Pool, *testdb.DB) {
 		t.Fatal(e)
 	}
 	t.Cleanup(db.Close)
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql", "017_card_sender_name.sql", "019_card_embeddings.sql", "020_bundle_title_origin.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql", "017_card_sender_name.sql", "019_card_embeddings.sql", "020_bundle_title_origin.sql", "021_message_sender.sql"} {
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)
@@ -217,6 +224,19 @@ func TestInitialSyncExternalArchiveReopenAndAccountArchive(t *testing.T) {
 	}
 	if !strings.Contains(cardHTML, "First message") || !strings.Contains(cardHTML, "Second message") || strings.Contains(cardHTML, "script") {
 		t.Fatalf("aggregate offline card body incorrect: %s", cardHTML)
+	}
+	// Every original keeps the sender parsed from its own MIME From header, so
+	// the older opener is never relabeled with the reply's (card-level) sender.
+	type senderRow struct{ name, address string }
+	var first, second senderRow
+	if e := db.QueryRow(ctx, `SELECT sender_name,sender_address FROM messages WHERE card_id=$1 AND gmail_message_id='m1'`, cardID).Scan(&first.name, &first.address); e != nil {
+		t.Fatal(e)
+	}
+	if e := db.QueryRow(ctx, `SELECT sender_name,sender_address FROM messages WHERE card_id=$1 AND gmail_message_id='m2'`, cardID).Scan(&second.name, &second.address); e != nil {
+		t.Fatal(e)
+	}
+	if first != (senderRow{"LinkedIn", "messages-noreply@linkedin.com"}) || second != (senderRow{"Second Sender", "second@example.test"}) {
+		t.Fatalf("per-message senders = %+v / %+v", first, second)
 	}
 	useTestOps(func(ctx context.Context, tx pgx.Tx, tenantID, card uuid.UUID) (*Client, string, error) {
 		var stored uuid.UUID

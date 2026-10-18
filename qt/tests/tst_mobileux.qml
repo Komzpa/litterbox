@@ -22,6 +22,11 @@ TestCase {
         property string offlineReason: ""
         property int pendingOps: 0
         property var cached: ({})
+        property var operations: []
+        function enqueueOp(cardId, operation, args) {
+            operations = operations.concat([{cardId: cardId, type: operation, args: args}])
+            return "fixture-operation"
+        }
         signal mailBodyChanged(string cardId)
         signal mailBodyFailed(string cardId)
         function cardIds() { const ids = []; for (let i = 0; i < count; ++i) ids.push(get(i).cardId); return ids }
@@ -67,6 +72,7 @@ TestCase {
         store.online = true
         store.offlineReason = ""
         store.pendingOps = 0
+        store.operations = []
         const rows = []
         rows.push(mail("polis-1", "Polis.ge", "Туристическая страховка: скидка 20% до конца октября", testCase.polisPreheader, "2026-10-15T10:20:00Z"))
         // PostGIS bot-review bundle of 4 (leader first, members hidden until expanded).
@@ -163,6 +169,76 @@ TestCase {
         verify(more.visible)
         // One row: the narrow overflow sits beside the archive, not below it.
         fuzzyCompare(more.mapToItem(polisRow, 0, 0).y, archive.mapToItem(polisRow, 0, 0).y, 1)
+    }
+    function test_phoneDrawerSearchClearAndTouchTargets() {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        compare(inbox.desktopNavigation, false)
+        compare(inbox.desktopReader, false)
+        const drawerButton = findChild(inbox, "openNavigation")
+        verify(drawerButton && drawerButton.visible && drawerButton.width >= 48 && drawerButton.height >= 48)
+        mouseClick(drawerButton)
+        const drawer = findChild(inbox, "navigationDrawer")
+        tryVerify(function() { return drawer.visible })
+        for (const name of ["navInbox", "navAccounts", "navAgents", "navSettings"]) {
+            const nav = findChild(drawer, name)
+            verify(nav && nav.visible && nav.width >= 48 && nav.height >= 48, name + " must be a reachable labeled destination")
+            verify(nav.Accessible.name.length > 0)
+        }
+        mouseClick(findChild(drawer, "navSettings"))
+        tryVerify(function() { return inbox.pageStack.depth === 2 && !drawer.visible })
+        compare(inbox.pageStack.currentItem.objectName, "settingsPage")
+        inbox.handleBack()
+        tryCompare(inbox.pageStack, "depth", 1)
+        const toggle = findChild(inbox, "toggleSearch")
+        verify(toggle && toggle.width >= 48 && toggle.height >= 48)
+        mouseClick(toggle)
+        const search = findChild(inbox, "inboxSearch")
+        verify(search && search.visible && search.height >= 48)
+        search.text = "Home Assistant synthetic"
+        search.textEdited(search.text)
+        tryVerify(function() { shown.list.forceLayout(); return shown.list.count === 0 })
+        inbox.handleBack()
+        tryVerify(function() { return inbox.searchQuery === "" && shown.list.count === store.count })
+        compare(store.cardIds().length, store.count)
+        const first = shown.list.itemAtIndex(0)
+        const archive = findChild(first, "doneButton-polis-1")
+        const overflow = findChild(first, "inboxActions")
+        verify(archive.width >= 48 && archive.height >= 48)
+        verify(overflow.height >= 48 && overflow.width >= 28)
+        compare(store.operations.length, 0)
+        inbox.close()
+    }
+    function test_searchTextFiltersRealFixtureAndClearRestoresAllCards() {
+        const shown = openInbox(true)
+        mouseClick(findChild(shown.inbox, "toggleSearch"))
+        const search = findChild(shown.inbox, "inboxSearch")
+        verify(search && search.visible)
+        const before = store.cardIds()
+        search.text = "QGIS training"
+        search.textEdited(search.text)
+        tryVerify(function() { shown.list.forceLayout(); return shown.list.count === 1 })
+        compare(shown.list.itemAtIndex(0).cardId, "single-9")
+        compare(store.cardIds(), before)
+        mouseClick(findChild(shown.inbox, "clearInboxSearch"))
+        tryCompare(shown.list, "count", before.length)
+        compare(store.cardIds(), before)
+        shown.inbox.close()
+    }
+    function test_onlineHeaderIsQuietAndOfflineRetryIsActionable() {
+        const online = openInbox(true)
+        const connection = findChild(online.inbox, "connectionStatusRow")
+        verify(!connection.visible, "synced Online state must not consume header height")
+        online.inbox.close()
+        const offline = openInbox(false)
+        const offlineRow = findChild(offline.inbox, "connectionStatusRow")
+        verify(offlineRow && offlineRow.visible)
+        const text = textOf(offlineRow)
+        verify(text.indexOf("Software caused connection abort") < 0)
+        verify(text.indexOf("2") >= 0)
+        const retry = findChild(offlineRow, "offlineRetry")
+        verify(retry && retry.visible && retry.enabled)
+        offline.inbox.close()
     }
     // R66: agent report boilerplate is not the preview; mail text is untouched.
     function test_agentPreviewBoilerplate() {

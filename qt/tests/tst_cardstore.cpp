@@ -1018,6 +1018,78 @@ private slots:
         QCOMPARE(restored.cachedMailBody(agentId).value(QStringLiteral("source_url")).toString(), QStringLiteral(""));
         QVERIFY(restored.cachedMailBody(manualId).isEmpty());
     }
+    void originalThreadHistorySurvivesRestartAndExplicitEmptyClears() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("thread-history.sqlite"));
+        const QVariantList originals{
+            QVariantMap{{"id", "old-1"}, {"gmail_message_id", "gmail-old-1"}, {"sender_name", "Older writer"},
+                {"sender_address", "older@synthetic.test"}, {"received_at", "2026-10-16T08:00:00Z"}, {"html", "<p>First original</p>"}},
+            QVariantMap{{"id", "new-2"}, {"gmail_message_id", "gmail-new-2"}, {"sender_name", "Newest writer"},
+                {"sender_address", "newest@synthetic.test"}, {"received_at", "2026-10-17T09:30:00Z"}, {"html", "<p>Newest original</p>"}}
+        };
+        const QString card = QStringLiteral("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            store.applyRemoteMailBody(card, {{"html", "<p>Newest original</p>"},
+                {"source_url", "https://mail.synthetic.test/thread/fixture"}, {"messages", originals}});
+            QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+            QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 1, 5000);
+            QCOMPARE(store.cachedMailBody(card).value("messages").toList(), originals);
+            store.applyRemoteMailBody(card, {{"html", "<p>Newest original</p>"}, {"source_url", "https://mail.synthetic.test/thread/fixture"}});
+            QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 2, 5000);
+            QCOMPARE(store.cachedMailBody(card).value("messages").toList(), originals);
+        }
+        {
+            CardStore restored;
+            QVERIFY(restored.open(path));
+            const QVariantMap body = restored.cachedMailBody(card);
+            QCOMPARE(body.value("messages").toList(), originals);
+            QCOMPARE(body.value("html").toString(), QStringLiteral("<p>Newest original</p>"));
+            QCOMPARE(body.value("source_url").toString(), QStringLiteral("https://mail.synthetic.test/thread/fixture"));
+            restored.applyRemoteMailBody(card, {{"html", "<p>Newest original</p>"},
+                {"source_url", "https://mail.synthetic.test/thread/fixture"}, {"messages", QVariantList{}}});
+            QSignalSpy changed(&restored, &CardStore::mailBodyChanged);
+            QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 1, 5000);
+            QCOMPARE(restored.cachedMailBody(card).value("messages").toList(), QVariantList{});
+            QCOMPARE(restored.cachedMailBody(card).value("html").toString(), QStringLiteral("<p>Newest original</p>"));
+        }
+        {
+            CardStore restoredAgain;
+            QVERIFY(restoredAgain.open(path));
+            QCOMPARE(restoredAgain.cachedMailBody(card).value("messages").toList(), QVariantList{});
+            QVERIFY(restoredAgain.cachedMailBody(QStringLiteral("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")).isEmpty());
+        }
+    }
+    void legacyMailBodyMigrationPreservesHtmlAndSourceUrl() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("legacy-mail.sqlite"));
+        const QString card = QStringLiteral("ffffffff-ffff-4fff-8fff-ffffffffffff");
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("legacy-fixture"));
+            db.setDatabaseName(path);
+            QVERIFY(db.open());
+            {
+                QSqlQuery query(db);
+                QVERIFY(query.exec(QStringLiteral("CREATE TABLE mail_bodies(card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL)")));
+                query.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url) VALUES(?,?,?)"));
+                query.addBindValue(card);
+                query.addBindValue(QStringLiteral("<p>Legacy cached original</p>"));
+                query.addBindValue(QStringLiteral("https://mail.synthetic.test/legacy"));
+                QVERIFY(query.exec());
+            }
+             db.close();
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        const QVariantMap cached = store.cachedMailBody(card);
+        QCOMPARE(cached.value("html").toString(), QStringLiteral("<p>Legacy cached original</p>"));
+        QCOMPARE(cached.value("source_url").toString(), QStringLiteral("https://mail.synthetic.test/legacy"));
+        QVERIFY(cached.contains("messages"));
+        QCOMPARE(cached.value("messages").toList(), QVariantList{});
+    }
     void openCachedFileWritesBytesAndRejectsUnsafe() {
         QStandardPaths::setTestModeEnabled(true);
         QTemporaryDir directory;

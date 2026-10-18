@@ -8,6 +8,7 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QPointer>
 #include <QSet>
 #include <QSqlError>
@@ -86,7 +87,13 @@ bool CardStore::open(const QString &path) {
         if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
-            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL)"))) return;
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]')"))) return;
+        QSqlQuery bodyColumns(m_db);
+        if (!bodyColumns.exec(QStringLiteral("PRAGMA table_info(mail_bodies)"))) return;
+        bool hasMessages = false;
+        while (bodyColumns.next())
+            if (bodyColumns.value(1).toString() == QStringLiteral("messages")) hasMessages = true;
+        if (!hasMessages && !execute(QStringLiteral("ALTER TABLE mail_bodies ADD COLUMN messages TEXT NOT NULL DEFAULT '[]'"))) return;
         QSqlQuery columns(m_db);
         if (!columns.exec(QStringLiteral("PRAGMA table_info(cards)"))) return;
         bool hasSenderName = false;
@@ -107,8 +114,13 @@ bool CardStore::open(const QString &path) {
         }
         if (!q.exec(QStringLiteral("SELECT payload FROM outbox ORDER BY seq"))) return;
         while (q.next()) outbox.append(QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap());
-        if (!q.exec(QStringLiteral("SELECT card_id,html,source_url FROM mail_bodies"))) return;
-        while (q.next()) bodies.insert(q.value(0).toString(), {{QStringLiteral("html"), q.value(1)}, {QStringLiteral("source_url"), q.value(2)}});
+        if (!q.exec(QStringLiteral("SELECT card_id,html,source_url,messages FROM mail_bodies"))) return;
+        while (q.next()) {
+            const QJsonDocument messages = QJsonDocument::fromJson(q.value(3).toByteArray());
+            bodies.insert(q.value(0).toString(), {{QStringLiteral("html"), q.value(1)},
+                {QStringLiteral("source_url"), q.value(2)},
+                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}});
+        }
         opened = true;
     }, Qt::BlockingQueuedConnection);
     if (!opened) return false;
@@ -999,7 +1011,10 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     }, Qt::QueuedConnection);
 }
 QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
-    return m_mailBodies.value(cardId);
+    QVariantMap body = m_mailBodies.value(cardId);
+    if (!body.isEmpty() && !body.contains(QStringLiteral("messages")))
+        body.insert(QStringLiteral("messages"), QVariantList{});
+    return body;
 }
 void CardStore::queueMailBodyPrefetch() {
     if (!m_online || !m_open) return;
@@ -1073,17 +1088,24 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     m_bodyPrefetchQueue.removeAll(cardId);
     const QString html = body.value(QStringLiteral("html")).toString();
     QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
+    const bool hasMessages = body.contains(QStringLiteral("messages"));
+    const QVariantList messages = hasMessages ? body.value(QStringLiteral("messages")).toList() : QVariantList{};
+    const QString messagesJson = QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(messages)).toJson(QJsonDocument::Compact));
     // Body responses omit empty source_url; SQLite requires a non-null string.
     if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
     // A malformed/error response must not replace a usable cached body.
     if (html.trimmed().isEmpty()) { emit mailBodyFailed(cardId); return; }
     const auto previous = m_mailBodies.value(cardId);
-    m_mailBodies.insert(cardId, {{QStringLiteral("html"), html}, {QStringLiteral("source_url"), sourceUrl}});
-    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, previous] {
+    QVariantMap updated{{QStringLiteral("html"), html}, {QStringLiteral("source_url"), sourceUrl}};
+    updated.insert(QStringLiteral("messages"), hasMessages ? QVariant(messages) : previous.value(QStringLiteral("messages"), QVariantList{}));
+    m_mailBodies.insert(cardId, updated);
+    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, messagesJson, previous, hasMessages] {
+        const QString persistedMessages = hasMessages ? messagesJson : QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(previous.value(QStringLiteral("messages")).toList())).toJson(QJsonDocument::Compact));
         QSqlQuery q(m_db);
-        q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url) VALUES(?,?,?) "
-                                 "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url"));
+        q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages) VALUES(?,?,?,?) "
+                                 "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages"));
         q.addBindValue(cardId); q.addBindValue(html); q.addBindValue(sourceUrl);
+        q.addBindValue(persistedMessages);
         const bool ok = q.exec();
         const QString error = q.lastError().text();
         QMetaObject::invokeMethod(this, [this, cardId, previous, ok, error] {

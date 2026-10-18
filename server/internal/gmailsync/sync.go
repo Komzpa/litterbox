@@ -79,11 +79,24 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) (err error) {
 }
 
 func senderDisplayName(header string) string {
- 	address, err := mail.ParseAddress(header)
- 	if err != nil {
- 		return ""
- 	}
- 	return address.Name
+	name, _ := senderFields(header)
+	return name
+}
+
+type senderInfo struct {
+	name    string
+	address string
+}
+
+// senderFields parses an RFC 5322 From header with net/mail, the same MIME
+// parser the card-level name uses. A missing or malformed legacy header yields
+// empty strings so an old message is never attributed to another sender.
+func senderFields(header string) (string, string) {
+	parsed, err := mail.ParseAddress(header)
+	if err != nil {
+		return "", ""
+	}
+	return parsed.Name, parsed.Address
 }
 
 // senderBackfillBatch caps thread metadata fetches per sync pass so a large
@@ -339,6 +352,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		}
 		return e
 	}
+	preparedSenders := make([]senderInfo, len(t.Messages))
 	prepared := make([]mailhtml.Message, len(t.Messages))
 	fetcher := s.Images
 	if fetcher == nil {
@@ -364,7 +378,16 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 				return err
 			}
 		}
+		from := ""
+		for _, header := range m.Payload.Headers {
+			if strings.EqualFold(header.Name, "From") {
+				from = header.Value
+				break
+			}
+		}
+		name, address := senderFields(from)
 		prepared[i] = *parsed
+		preparedSenders[i] = senderInfo{name: name, address: address}
 	}
  subject, sender := "", ""
  var newest time.Time
@@ -396,10 +419,6 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		return e
 	}
 	defer tx.Rollback(ctx)
- _, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, newest)
-	if e != nil {
-		return e
-	}
 	var cardID uuid.UUID
 	e = tx.QueryRow(ctx, "SELECT id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3", a.TenantID, a.ID, threadID).Scan(&cardID)
 	if e != nil {
@@ -412,7 +431,8 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
 		received := time.UnixMilli(millis).UTC()
 		message := prepared[i]
-		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received)
+		senderMeta := preparedSenders[i]
+		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received, senderMeta.name, senderMeta.address)
 		if e != nil {
 			return e
 		}

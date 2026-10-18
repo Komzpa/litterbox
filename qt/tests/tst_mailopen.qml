@@ -78,16 +78,8 @@ TestCase {
         verify(before > 0)
         const row = list.itemAtIndex(8)
         verify(row)
-        function preview(item) {
-            if (item.text === "Click this preview to read the message") return item
-            for (const child of item.children || []) {
-                const found = preview(child)
-                if (found) return found
-            }
-            return null
-        }
-        const summary = preview(row)
-        verify(summary)
+        const summary = findChild(row, "mailSnippet-mail-8")
+        verify(summary && summary.visible)
         mouseClick(summary, summary.width / 2, summary.height / 2)
         const stack = findChild(inbox, "pageStack")
         tryCompare(stack, "depth", 2)
@@ -269,7 +261,8 @@ TestCase {
         verify(preview)
         mouseClick(preview, preview.width / 2, preview.height / 2)
         const stack = findChild(inbox, "pageStack")
-        tryCompare(stack, "depth", 2)
+        tryCompare(inbox, "readerOpen", true)
+        compare(stack.depth, inbox.desktopReader ? 1 : 2)
         tryCompare(stack, "busy", false)
         // The inbox reflows while the mail is open: a new row arrives above the
         // opened card (a refresh can also re-estimate row heights), which
@@ -281,10 +274,11 @@ TestCase {
             note: "", source_url: ""
         }})
         tryCompare(list, "count", 15, 2000, "the inbox must relayout while the mail is open")
-        const back = findChild(stack.currentItem, "backToInbox")
+        const back = findChild(inbox.mailDetailPage, "backToInbox")
         verify(back)
         mouseClick(back)
         tryCompare(stack, "depth", 1)
+        tryCompare(inbox, "readerOpen", false)
         tryCompare(stack, "busy", false)
         wait(200)
         list.forceLayout()
@@ -315,6 +309,129 @@ TestCase {
         verify(row)
         mouseClick(row, row.width / 2, row.height / 2)
         compare(findChild(inbox, "pageStack").depth, 1)
+        inbox.close()
+    }
+    function test_desktopSplitSelectionResizeNarrowBackAndArchiveClosure() {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 1480, height: 900
+        })
+        verify(inbox)
+        inbox.show()
+        inbox.requestActivate()
+        tryCompare(inbox, "active", true)
+        const list = findChild(inbox, "inboxList")
+        const split = findChild(inbox, "inboxSplit")
+        const rail = findChild(inbox, "desktopNavigation")
+        const reader = findChild(inbox, "desktopReaderHost")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(8) !== null && reader.visible })
+        verify(split.orientation === Qt.Horizontal)
+        verify(rail.visible && reader.visible && reader.width >= 520)
+        list.positionViewAtIndex(8, ListView.Beginning)
+        wait(100)
+        const anchorY = list.itemAtIndex(8).mapToItem(list, 0, 0).y
+        const selected = findChild(list.itemAtIndex(8), "openCard-mail-8")
+        mouseClick(selected)
+        tryCompare(inbox, "selectedCardId", "mail-8")
+        tryVerify(function() { return inbox.mailDetailPage && inbox.mailDetailPage.visible })
+        compare(store.operations, [])
+        const retainedReader = inbox.mailDetailPage
+        compare(retainedReader.embeddedMode, true)
+        verify(typeof retainedReader.requestClose === "function")
+        const selectedFrame = findChild(list.itemAtIndex(8), "inboxCard")
+        verify(selectedFrame.background.border.width >= 2,
+               "selected cached card must be visibly highlighted beside reader")
+        inbox.width = 1320
+        wait(150)
+        verify(reader.visible)
+        compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
+        inbox.width = 1180
+        tryVerify(function() { return !reader.visible && inbox.pageStack.depth === 2 })
+        compare(inbox.mailDetailPage, retainedReader)
+        compare(retainedReader.embeddedMode, false)
+        const back = findChild(inbox.pageStack.currentItem, "backToInbox")
+        verify(back)
+        mouseClick(back)
+        tryCompare(inbox.pageStack, "depth", 1)
+        compare(inbox.selectedCardId, "mail-8")
+        compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
+        compare(store.operations, [])
+        inbox.width = 1480
+        tryVerify(function() { return reader.visible && inbox.mailDetailPage.visible })
+        compare(inbox.mailDetailPage, retainedReader)
+        compare(retainedReader.embeddedMode, true)
+        mouseClick(findChild(retainedReader, "backToInbox"))
+        tryCompare(inbox, "readerOpen", false)
+        tryCompare(retainedReader, "visible", false)
+        compare(inbox.selectedCardId, "mail-8")
+        compare(store.operations, [], "embedded Back callback must close without archiving")
+        mouseClick(findChild(list.itemAtIndex(8), "openCard-mail-8"))
+        tryCompare(inbox, "readerOpen", true)
+        compare(inbox.mailDetailPage, retainedReader)
+        store.remove(store.cardIds().indexOf("mail-13"))
+        tryCompare(list, "count", 13)
+        compare(inbox.readerOpen, true, "removing a different card must retain the selected reader")
+        compare(retainedReader.visible, true)
+        compare(store.operations, [])
+        // A remote archive/snapshot removes a selected card from the store;
+        // it must not be implemented by invoking the local archive action.
+        store.remove(store.cardIds().indexOf("mail-8"))
+        tryCompare(list, "count", 12)
+        tryCompare(inbox, "readerOpen", false)
+        tryCompare(retainedReader, "visible", false)
+        compare(inbox.mailDetailPage, retainedReader)
+        compare(inbox.pageStack.depth, 1)
+        compare(store.operations, [], "external selected-card removal must not enqueue archive")
+        inbox.close()
+    }
+    function test_altLeftRoutesBackWhenFocusIsOutsideStack() {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        inbox.requestActivate()
+        tryCompare(inbox, "active", true)
+        const list = findChild(inbox, "inboxList")
+        list.forceLayout()
+        const opener = findChild(list.itemAtIndex(8), "openCard-mail-8")
+        mouseClick(opener)
+        tryCompare(inbox.pageStack, "depth", 2)
+        findChild(inbox, "addCardButton").forceActiveFocus()
+        tryVerify(function() { return findChild(inbox, "addCardButton").activeFocus })
+        keyClick(Qt.Key_Left, Qt.AltModifier)
+        tryCompare(inbox.pageStack, "depth", 1)
+        compare(store.operations, [])
+        inbox.close()
+    }
+    function test_searchFiltersWithoutReorderingAndClearRestoresAnchor() {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        const ids = store.cardIds()
+        list.forceLayout()
+        list.positionViewAtIndex(8, ListView.Beginning)
+        wait(100)
+        const anchor = list.itemAtIndex(8).mapToItem(list, 0, 0).y
+        mouseClick(findChild(inbox, "toggleSearch"))
+        const search = findChild(inbox, "inboxSearch")
+        verify(search && findChild(inbox, "inboxSearchRow").visible)
+        search.text = "Message 3"
+        search.textEdited(search.text)
+        tryVerify(function() { list.forceLayout(); return list.count > 0 && list.count < ids.length })
+        const matches = []
+        for (let i = 0; i < list.count; ++i) matches.push(list.itemAtIndex(i).cardId)
+        compare(matches, ["mail-3"])
+        compare(store.cardIds(), ids, "search must not mutate underlying CardStore order")
+        const clear = findChild(inbox, "clearInboxSearch")
+        verify(clear.enabled)
+        mouseClick(clear)
+        tryCompare(list, "count", ids.length)
+        compare(store.cardIds(), ids)
+        compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchor))
         inbox.close()
     }
 }

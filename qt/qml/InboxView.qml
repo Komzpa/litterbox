@@ -5,12 +5,13 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import litterbox 1.0 as Litterbox
+import "BundlePresentation.js" as BundlePresentation
 
 ApplicationWindow {
     id: window
     visible: true
-    width: 520
-    height: 800
+    width: Qt.platform.os === "android" ? 520 : 1280
+    height: Qt.platform.os === "android" ? 800 : 900
     title: "Litterbox"
     // Sol V5 owns a light content surface, independent of the host's color scheme.
     // Set both Controls and Kirigami colors: neither may inherit dark-theme ink
@@ -25,13 +26,110 @@ ApplicationWindow {
     readonly property color surface: "#ffffff"
     readonly property color canvas: "#f3f7f6"
     readonly property color accent: "#397d73"
-    readonly property bool compactInbox: width < 640
+    readonly property bool desktopNavigation: width >= 900
+    readonly property bool desktopReader: width >= Math.max(1220, Kirigami.Units.gridUnit * 70)
+    readonly property bool compactInbox: inboxList.width < 640
+    property string selectedCardId: ""
+    property bool readerOpen: false
+    property bool relocatingReader: false
+    onDesktopReaderChanged: Qt.callLater(placeReader)
+    property bool compactDensity: true
+    property bool searchShown: false
+    property string searchQuery: ""
+    readonly property bool searching: searchQuery.trim().length > 0
+    property bool wasSearching: false
+    property var searchAnchor: null
+    property real searchScrollPosition: 0
+    property var searchCollapsedBundles: ({})
+    property bool inboxReady: false
+    property var dateStarts: ({})
+    readonly property string activeLocation: {
+        const name = stack.currentItem ? stack.currentItem.objectName : ""
+        if (name === "gmailAccountsPage") return qsTr("Accounts")
+        if (name === "agentThreadsPage" || name === "agentChatPage") return qsTr("Agents")
+        if (name === "settingsPage") return qsTr("Settings")
+        return stack.depth === 1 || stack.currentItem === mailDetailPage ? qsTr("Inbox") : (stack.currentItem.title || qsTr("Inbox"))
+    }
+    FontMetrics { id: inboxFontMetrics; font: window.themeFont }
+    readonly property bool largeText: inboxFontMetrics.height > 24
+    onCompactDensityChanged: {
+        if (!inboxReady) return
+        const anchor = bundleModel.captureAnchor()
+        Qt.callLater(function() { bundleModel.restoreAnchor(anchor, bundleModel.rows) })
+    }
+    onSearchQueryChanged: {
+        if (!inboxReady) return
+        if (searching && !wasSearching) {
+            searchAnchor = bundleModel.captureAnchor()
+            searchScrollPosition = inboxList.contentY - inboxList.originY
+        }
+        searchCollapsedBundles = ({})
+        bundleModel.rebuildPresentation(false)
+        if (!searching && wasSearching) {
+            if (!bundleModel.restoreAnchor(searchAnchor, bundleModel.rows))
+                inboxList.contentY = inboxList.originY + searchScrollPosition
+        } else if (searching) inboxList.positionViewAtBeginning()
+        wasSearching = searching
+    }
+    function matchesSearch(entry) {
+        const card = entry.card
+        const text = [entry.title, card.snippet, card.summary, card.note, card.sender_name,
+            card.sender_address, card.account_name, cardKindLabel(card), card.bundle_id ? bundleTitle(card) : ""].join(" ").toLocaleLowerCase()
+        return searchQuery.trim().toLocaleLowerCase().split(/\s+/).every(word => text.indexOf(word) >= 0)
+    }
+    function dateLandmark(card) {
+        const stamp = card.received_at || (card.timed ? card.at : "")
+        if (!stamp) return ""
+        const date = new Date(stamp)
+        if (isNaN(date.getTime())) return ""
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const yesterday = new Date(today)
+        yesterday.setDate(yesterday.getDate() - 1)
+        if (date >= today) return date < new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1) ? qsTr("Today") : qsTr("Upcoming")
+        return date >= yesterday ? qsTr("Yesterday") : qsTr("Earlier")
+    }
+    function navigateTo(name) {
+        navigationDrawer.close()
+        if (stack.depth > 1) {
+            if (stack.currentItem === mailDetailPage) readerOpen = false
+            stack.pop(null, StackView.Immediate)
+        }
+        if (name) openPage(name)
+        else inboxList.forceActiveFocus()
+    }
+    component DestinationButton: ToolButton {
+        required property string destination
+        required property string location
+        text: location
+        checked: window.activeLocation === location
+        checkable: true
+        display: AbstractButton.TextBesideIcon
+        implicitHeight: Math.max(48, implicitContentHeight + topPadding + bottomPadding)
+        Accessible.name: location
+        ToolTip.text: location
+        ToolTip.visible: hovered || visualFocus
+        background: Rectangle {
+            radius: 8
+            color: parent.checked ? "#dcece7" : parent.hovered ? "#eaf2ef" : "transparent"
+            border.width: parent.visualFocus ? 2 : 0
+            border.color: window.accent
+        }
+        onClicked: window.navigateTo(destination)
+    }
+    component Destinations: ColumnLayout {
+        spacing: 4
+        DestinationButton { objectName: "navInbox"; destination: ""; location: qsTr("Inbox"); icon.name: "mail-receive"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navAccounts"; destination: "GmailAccountsPage"; location: qsTr("Accounts"); icon.name: "mail-receive"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navAgents"; destination: "AgentThreadsPage"; location: qsTr("Agents"); icon.name: "user-identity"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navSettings"; destination: "SettingsPage"; location: qsTr("Settings"); icon.name: "application-menu"; Layout.fillWidth: true }
+    }
     readonly property real edgeSpacing: compactInbox ? 8 : Math.max(18, Kirigami.Units.largeSpacing)
     readonly property int actionIconSize: 20
     // R65: Android "remove animations" / tests can switch motion off.
     property bool reduceMotion: typeof platformMotion !== "undefined" && platformMotion.reduced
     // R63: thin margins and gaps on phones.
-    readonly property real cardGap: compactInbox ? 4 : edgeSpacing
+    readonly property real cardGap: compactDensity ? 4 : 12
     // R67: stable initials avatar per sender; server images can replace it later.
     readonly property var avatarPalette: ["#397d73", "#5b6abf", "#b0592f", "#7a5aa6", "#2f7fa8", "#9a6a12", "#a3465f", "#4f7d2f"]
     function avatarColor(name) {
@@ -150,7 +248,7 @@ ApplicationWindow {
             if (!error && response && Array.isArray(response.body)) gmailAccounts = response.body
         })
     }
-    Component.onCompleted: reloadGmailAccounts()
+    Component.onCompleted: { inboxReady = true; reloadGmailAccounts() }
     onActiveChanged: if (active) reloadGmailAccounts()
     property var captureActions: ({})
     property var cardHandles: ({})
@@ -164,13 +262,7 @@ ApplicationWindow {
     property var bundleSummaries: ({})
     property var bundleOpeners: ({})
     function bundleTitle(card) {
-        const title = card.bundle_title || ""
-        if (!title.startsWith("sender:")) return title || qsTr("Bundle")
-        const summary = bundleSummaries[card.bundle_id]
-        if (summary && summary.senderLabel) return summary.senderLabel
-        const sender = title.slice(7)
-        const domain = sender.slice(sender.lastIndexOf("@") + 1).replace(/[<>]/g, "")
-        return domain || qsTr("Bundle")
+        return BundlePresentation.title(card, bundleSummaries[card.bundle_id])
     }
     function mailSender(card) {
         const name = String(card.sender_name || "").trim()
@@ -199,9 +291,10 @@ ApplicationWindow {
     function toggleBundle(bundleId) {
         const opener = bundleOpeners[bundleId]
         const headerY = opener ? opener.mapToItem(inboxList, 0, 0).y : 0
-        const next = Object.assign({}, expandedBundles)
+        const next = Object.assign({}, searching ? searchCollapsedBundles : expandedBundles)
         next[bundleId] = !next[bundleId]
-        expandedBundles = next
+        if (searching) searchCollapsedBundles = next
+        else expandedBundles = next
         bundleModel.rebuildPresentation(false)
         // Layouts polish after callLater; anchor against their rendered geometry.
         window.frameSwapped.connect(function restoreHeader() {
@@ -343,17 +436,58 @@ ApplicationWindow {
         return store.pinnedCardIds()[0] === cardId ? "moved" : "unchanged"
     }
     onClosing: function(close) {
-        if (Qt.platform.os === "android" && stack.depth > 1) {
-            stack.pop()
-            close.accepted = false
-        } else {
-            close.accepted = true
-        }
+        close.accepted = !(Qt.platform.os === "android" && handleBack())
     }
     function handleBack() {
-        if (stack.depth <= 1) return false
-        stack.pop()
-        return true
+        if (navigationDrawer.visible) { navigationDrawer.close(); return true }
+        if (headerMenu.visible) { headerMenu.close(); return true }
+        if (noteDialog.visible) { noteDialog.reject(); return true }
+        if (createDialog.visible) { createDialog.reject(); return true }
+        // Other popups own their Back/Escape; never pop a reader beneath one.
+        if (Overlay.overlay.visible) return true
+        if (stack.depth > 1) {
+            if (stack.currentItem === mailDetailPage) readerOpen = false
+            stack.pop()
+            return true
+        }
+        if (readerOpen) {
+            closeReader()
+            return true
+        }
+        if (searching || (searchShown && !desktopNavigation)) {
+            searchQuery = ""
+            inboxSearch.clear()
+            searchShown = false
+            inboxList.forceActiveFocus()
+            return true
+        }
+        return false
+    }
+    function closeReader() {
+        readerOpen = false
+        if (stack.currentItem === mailDetailPage && stack.depth > 1) stack.pop()
+        else if (mailDetailPage) mailDetailPage.visible = false
+        inboxList.forceActiveFocus()
+    }
+    // Move the same reader, not a second document, across the breakpoint.
+    // StackView never owns this explicitly created item, so pop cannot destroy it.
+    function placeReader() {
+        if (!mailDetailPage || !readerOpen || relocatingReader) return
+        relocatingReader = true
+        if (desktopReader) {
+            if (stack.currentItem === mailDetailPage) stack.pop(StackView.Immediate)
+            mailDetailPage.parent = readerHost
+            mailDetailPage.embeddedMode = true
+            mailDetailPage.anchors.fill = readerHost
+            mailDetailPage.visible = true
+        } else if (stack.currentItem !== mailDetailPage) {
+            saveInboxScroll(selectedCardId)
+            mailDetailPage.anchors.fill = null
+            mailDetailPage.parent = stack
+            mailDetailPage.embeddedMode = false
+            stack.push(mailDetailPage, StackView.Immediate)
+        }
+        relocatingReader = false
     }
     property real inboxScrollPosition: 0
     // Raw contentY drifts a few px when Back re-runs layout (rows re-estimated
@@ -371,6 +505,15 @@ ApplicationWindow {
             inboxScrollAnchorId = cardId
             inboxScrollAnchorY = item.mapToItem(inboxList, 0, 0).y
             break
+        }
+        // Desktop readers do not lock the list to the selected card. When it
+        // has scrolled away, remember the current visible anchor for phone Back.
+        if (!inboxScrollAnchorId) {
+            const anchor = bundleModel.captureAnchor()
+            if (anchor) {
+                inboxScrollAnchorId = anchor.ids[0]
+                inboxScrollAnchorY = anchor.offset
+            }
         }
     }
     function restoreInboxScroll() {
@@ -394,7 +537,11 @@ ApplicationWindow {
         if (stack.depth === 1) saveInboxScroll((properties || {}).cardId || "")
         const page = pagesDir.toString() + name + ".qml"
         if (name === "MailDetailPage") {
-            const values = Object.assign({store: window.cardStore, cardTitle: "", accountName: "", openLinks: true}, properties || {})
+            const values = Object.assign({store: window.cardStore, cardTitle: "", accountName: "", openLinks: true}, properties || {}, {
+                embeddedMode: desktopReader,
+                requestClose: function() { window.closeReader() }
+            })
+            selectedCardId = values.cardId || ""
             if (!mailDetailPage) {
                 // An existing item is not owned/destroyed by StackView on pop.
                 const component = Qt.createComponent(page)
@@ -403,8 +550,11 @@ ApplicationWindow {
                 for (const key of Object.keys(values)) mailDetailPage[key] = values[key]
                 mailDetailPage.reload()
             }
-            stack.push(mailDetailPage)
+            if (!mailDetailPage) return
+            readerOpen = true
+            placeReader()
         } else {
+            if (readerOpen) closeReader()
             const values = Object.assign({api: api}, properties || {})
             if (name === "GmailAccountsPage") values.accountsLoaded = function(accounts) { window.gmailAccounts = accounts }
             if (name === "SettingsPage") values.updater = window.updater
@@ -443,14 +593,40 @@ ApplicationWindow {
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e0e9e6" }
         }
         ColumnLayout {
-            width: Math.min(parent.width, 1200)
+            width: parent.width
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
             RowLayout {
                 spacing: 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: 52
-                Kirigami.Heading { text: qsTr("Inbox"); color: window.ink; level: window.compactInbox ? 3 : 2; Layout.fillWidth: true }
+                ToolButton {
+                    objectName: "openNavigation"
+                    visible: !window.desktopNavigation
+                    text: qsTr("Navigation")
+                    icon.name: "application-menu"
+                    display: AbstractButton.IconOnly
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    Accessible.name: text
+                    ToolTip.text: text
+                    ToolTip.visible: hovered || visualFocus
+                    onClicked: navigationDrawer.open()
+                }
+                Kirigami.Heading { text: window.activeLocation; color: window.ink; level: 3; Layout.fillWidth: true; elide: Text.ElideRight }
+                ToolButton {
+                    objectName: "toggleSearch"
+                    visible: !window.desktopNavigation && stack.depth === 1
+                    text: qsTr("Search inbox")
+                    icon.name: "edit-find"
+                    display: AbstractButton.IconOnly
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    Accessible.name: text
+                    ToolTip.text: text
+                    ToolTip.visible: hovered || visualFocus
+                    onClicked: { window.searchShown = !window.searchShown; if (window.searchShown) inboxSearch.forceActiveFocus() }
+                }
                 ToolButton {
                     id: addCardButton
                     objectName: "addCardButton"
@@ -510,7 +686,49 @@ ApplicationWindow {
                         InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; visible: !api.token; onTriggered: openPage("EnrollmentPage") }
                         InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; onTriggered: store.refresh() }
                         InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
+                        InboxMenuItem { text: qsTr("Comfortable density"); checkable: true; checked: !window.compactDensity; onTriggered: window.compactDensity = false }
+                        InboxMenuItem { text: qsTr("Compact density"); checkable: true; checked: window.compactDensity; onTriggered: window.compactDensity = true }
                     }
+                }
+            }
+            RowLayout {
+                objectName: "inboxSearchRow"
+                visible: stack.depth === 1 && (window.desktopNavigation || window.searchShown || window.searching)
+                Layout.fillWidth: true
+                spacing: 8
+                Label { text: qsTr("Search inbox"); visible: window.desktopNavigation; color: window.mutedInk }
+                TextField {
+                    id: inboxSearch
+                    objectName: "inboxSearch"
+                    Layout.fillWidth: true
+                    implicitHeight: Math.max(48, implicitContentHeight + topPadding + bottomPadding)
+                    placeholderText: qsTr("Search inbox")
+                    Accessible.name: qsTr("Search inbox")
+                    text: window.searchQuery
+                    onTextEdited: window.searchQuery = text
+                    selectByMouse: true
+                }
+                ToolButton {
+                    objectName: "clearInboxSearch"
+                    text: qsTr("Clear search")
+                    icon.name: "edit-clear"
+                    display: AbstractButton.IconOnly
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    enabled: window.searching
+                    Accessible.name: text
+                    ToolTip.text: text
+                    ToolTip.visible: hovered || visualFocus
+                    onClicked: { window.searchQuery = ""; inboxSearch.clear(); inboxList.forceActiveFocus() }
+                }
+                ComboBox {
+                    objectName: "inboxDensity"
+                    visible: window.desktopNavigation
+                    model: [qsTr("Comfortable"), qsTr("Compact")]
+                    currentIndex: window.compactDensity ? 1 : 0
+                    implicitHeight: 48
+                    Accessible.name: qsTr("Inbox density")
+                    onActivated: window.compactDensity = currentIndex === 1
                 }
             }
             RowLayout {
@@ -674,14 +892,83 @@ ApplicationWindow {
         }
         function onErrorOccurred(message) { window.updateStatus = message }
     }
+    Drawer {
+        id: navigationDrawer
+        objectName: "navigationDrawer"
+        width: Math.min(window.width - 48, Math.max(260, Kirigami.Units.gridUnit * 16))
+        height: window.height
+        edge: Qt.LeftEdge
+        background: Rectangle { color: window.surface }
+        contentItem: ScrollView {
+            clip: true
+            ColumnLayout {
+                width: navigationDrawer.availableWidth
+                spacing: 12
+                Label { text: qsTr("Litterbox"); font.family: window.themeFont.family; font.pointSize: window.themeFont.pointSize; font.bold: true; color: window.ink; padding: 16; Layout.fillWidth: true }
+                Destinations { Layout.fillWidth: true; Layout.margins: 8 }
+                ToolButton {
+                    text: qsTr("Search inbox")
+                    icon.name: "edit-find"
+                    implicitHeight: 48
+                    Layout.fillWidth: true
+                    onClicked: { window.navigateTo(""); window.searchShown = true; inboxSearch.forceActiveFocus() }
+                }
+                ToolButton { text: qsTr("Close navigation"); icon.name: "go-previous"; implicitHeight: 48; Layout.fillWidth: true; onClicked: navigationDrawer.close() }
+            }
+        }
+    }
+    Rectangle {
+        id: desktopNav
+        objectName: "desktopNavigation"
+        visible: window.desktopNavigation
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: Math.max(180, Kirigami.Units.gridUnit * 10)
+        color: "#edf4f1"
+        ScrollView {
+            anchors.fill: parent
+            anchors.margins: 12
+            clip: true
+            Destinations { width: desktopNav.width - 24 }
+        }
+    }
+    Shortcut {
+        sequence: "Alt+Left"
+        enabled: !Overlay.overlay.visible
+        onActivated: window.handleBack()
+    }
+    SplitView {
+        id: inboxSplit
+        objectName: "inboxSplit"
+        anchors.left: desktopNav.visible ? desktopNav.right : parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        orientation: Qt.Horizontal
+        handle: Rectangle {
+            implicitWidth: 12
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Slider
+            Accessible.name: qsTr("Inbox pane width")
+            Keys.onLeftPressed: stack.SplitView.preferredWidth = Math.max(400, stack.width - 32)
+            Keys.onRightPressed: stack.SplitView.preferredWidth = Math.min(inboxSplit.width - 532, stack.width + 32)
+            color: SplitHandle.pressed ? "#cbded8" : SplitHandle.hovered ? "#e0e9e6" : window.canvas
+            Rectangle {
+                anchors.centerIn: parent
+                width: 2
+                height: 40
+                radius: 1
+                color: window.mutedInk
+            }
+        }
     StackView {
         id: stack
         objectName: "pageStack"
         focus: true
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.top: parent.top
+        SplitView.minimumWidth: window.desktopReader ? 400 : 0
+        SplitView.preferredWidth: window.width * 0.43
+        SplitView.fillWidth: !readerHost.visible
         // Sliding the inbox moves its ListView viewport out of the window,
         // causing whole rows of Controls to be destroyed and recreated.
         pushExit: null
@@ -699,6 +986,8 @@ ApplicationWindow {
                 event.accepted = true
         }
         onCurrentItemChanged: {
+            if (!window.relocatingReader && depth === 1 && window.mailDetailPage && window.mailDetailPage.parent === stack)
+                window.readerOpen = false
             if (depth > 1 && currentItem && currentItem !== window.mailDetailPage)
                 currentItem.forceActiveFocus()
         }
@@ -714,6 +1003,13 @@ ApplicationWindow {
                 objectName: "inboxList"
                 anchors.fill: parent
                 clip: true
+                ScrollBar.vertical: ScrollBar { }
+                // Width changes reflow delegates; preserve the visible card and
+                // its offset rather than jumping to the selected (possibly offscreen) card.
+                onWidthChanged: {
+                    const anchor = bundleModel.captureAnchor()
+                    Qt.callLater(function() { bundleModel.restoreAnchor(anchor, bundleModel.rows) })
+                }
                 topMargin: window.edgeSpacing
                 bottomMargin: window.edgeSpacing
                 Component.onCompleted: forceActiveFocus()
@@ -817,19 +1113,22 @@ ApplicationWindow {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
                                 }
-                                if (card.received_at && (!summary.latestAt || card.received_at > summary.latestAt)) summary.latestAt = card.received_at
+                                if (!summary.latestAt || (card.received_at && card.received_at > summary.latestAt)) {
+                                    summary.latestAt = card.received_at || ""
+                                    summary.latestTitle = entry.title || ""
+                                }
                                 const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
                                 if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
                             }
                             if (card.bundle_leader === true) {
                                 sections[card.bundle_id] = card.section
                                 groups.push([entry])
-                                if (window.expandedBundles[card.bundle_id]) {
+                                if (window.expandedBundles[card.bundle_id] || window.searching) {
                                     const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
                                     groups.push(bucket)
                                 }
                             }
-                            else if (card.bundle_leader === false && window.expandedBundles[card.bundle_id]) {
+                            else if (card.bundle_leader === false && (window.expandedBundles[card.bundle_id] || window.searching)) {
                                 const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
                                 bucket.push(entry)
                             } else groups.push([entry])
@@ -842,7 +1141,17 @@ ApplicationWindow {
                             sourceEntries = entries
                             window.bundleSections = sections
                         }
-                        const ordered = [].concat(...groups)
+                        let ordered = [].concat(...groups)
+                        if (window.searching) {
+                            const matches = {}
+                            const matchingBundles = {}
+                            for (const entry of ordered) {
+                                if (!window.matchesSearch(entry)) continue
+                                matches[entry.cardId] = true
+                                if (entry.card.bundle_id) matchingBundles[entry.card.bundle_id] = true
+                            }
+                            ordered = ordered.filter(entry => matches[entry.cardId] || (entry.card.bundle_leader === true && matchingBundles[entry.card.bundle_id]))
+                        }
                         for (const bundle in summaries) summaries[bundle].lastId = ""
                         for (let i = 0; i < ordered.length; ++i) {
                             const entry = ordered[i]
@@ -853,17 +1162,24 @@ ApplicationWindow {
                         }
                         // Publish only after lastId is ready: nested object writes
                         // do not notify the delegates' bundleSummary bindings.
-                        if (refresh) window.bundleSummaries = summaries
+                        window.bundleSummaries = refresh ? summaries : Object.assign({}, summaries)
                         const headings = {}
+                        const dates = {}
+                        let previousDate = ""
                         let previousSection = ""
                         for (const entry of ordered) {
                             const card = entry.card
-                            if (card.bundle_leader === false && !window.expandedBundles[card.bundle_id]) continue
+                            if (card.bundle_leader === false && (window.searching ? window.searchCollapsedBundles[card.bundle_id] : !window.expandedBundles[card.bundle_id])) continue
                             const section = card.bundle_leader !== undefined ? sections[card.bundle_id] : card.section
                             headings[entry.cardId] = section !== previousSection
+                            const summary = summaries[card.bundle_id]
+                            const date = window.dateLandmark(card.bundle_leader === true && summary && summary.latestAt ? {received_at: summary.latestAt} : card)
+                            if (date && (date !== previousDate || section !== previousSection)) dates[entry.cardId] = date
+                            previousDate = date
                             previousSection = section
                         }
                         window.sectionStarts = headings
+                        window.dateStarts = dates
                         const position = inboxList.contentY - inboxList.originY
                         const anchor = captureAnchor()
                         if (presentationModel.count > ordered.length)
@@ -874,6 +1190,10 @@ ApplicationWindow {
                         inboxList.forceLayout()
                         if (!restoreAnchor(anchor, ordered))
                             inboxList.contentY = inboxList.originY + position
+                        if (refresh && window.readerOpen && !entries.some(entry => entry.cardId === window.selectedCardId))
+                            Qt.callLater(function() {
+                                if (window.readerOpen && store.cardIds().indexOf(window.selectedCardId) < 0) window.closeReader()
+                            })
                     }
                     // R68: keep the visual anchor across archive, Undo and snapshots.
                     // The first visible card stays at the same offset; if it is gone,
@@ -897,7 +1217,7 @@ ApplicationWindow {
                             const at = index[id]
                             if (at === undefined) continue
                             const card = ordered[at].card
-                            if (card.bundle_leader === false && !window.expandedBundles[card.bundle_id]) continue
+                            if (card.bundle_leader === false && !window.expandedBundles[card.bundle_id] && !window.searching) continue
                             inboxList.positionViewAtIndex(at, ListView.Beginning)
                             const item = inboxList.itemAtIndex(at)
                             if (!item) return false
@@ -924,12 +1244,13 @@ ApplicationWindow {
                     readonly property string cardId: entry.cardId
                     readonly property string title: entry.title
                     id: cardRow
+                    readonly property bool selected: cardId === window.selectedCardId
                     readonly property string displaySection: card.bundle_leader !== undefined
                         ? (window.bundleSections[card.bundle_id] || card.section) : card.section
                     HoverHandler { id: rowHover }
                     readonly property bool lifted: window.dragCardId === cardId
                     readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
-                    readonly property bool bundleExpanded: !!window.expandedBundles[card.bundle_id]
+                    readonly property bool bundleExpanded: window.searching ? !window.searchCollapsedBundles[card.bundle_id] : !!window.expandedBundles[card.bundle_id]
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
                     readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], senders: [], important: 0, unpinned: 0, lastId: cardId}
                     readonly property bool showMemberSender: !bundled || bundleSummary.senders.length !== 1 || bundleSummary.senders[0] !== window.mailSender(card)
@@ -973,16 +1294,18 @@ ApplicationWindow {
                     Item {
                         id: sectionHeader
                         width: parent.width
-                        height: window.sectionStarts[cardId] ? sectionHeading.implicitHeight + (window.compactInbox ? 12 : 2 * window.edgeSpacing) : 0
+                        height: window.sectionStarts[cardId] || window.dateStarts[cardId] ? sectionHeading.implicitHeight + (window.compactInbox ? 12 : 2 * window.edgeSpacing) : 0
                         visible: height > 0
                         Label {
                             id: sectionHeading
+                            objectName: "dateLandmark-" + cardId
                             width: Math.min(parent.width - 2 * window.edgeSpacing, 1200)
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
                             anchors.topMargin: window.compactInbox ? 6 : window.edgeSpacing
                             font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
-                            text: (cardRow.displaySection === "pinned" ? qsTr("Pinned") : cardRow.displaySection === "now" ? qsTr("Now") : cardRow.displaySection === "later" ? qsTr("Later") : qsTr("Missed")).toLocaleUpperCase()
+                            text: (window.sectionStarts[cardId] ? (cardRow.displaySection === "pinned" ? qsTr("Pinned") : cardRow.displaySection === "now" ? qsTr("Now") : cardRow.displaySection === "later" ? qsTr("Later") : qsTr("Missed")) : "")
+                                + (window.sectionStarts[cardId] && window.dateStarts[cardId] ? " · " : "") + (window.dateStarts[cardId] || "")
                             font.family: window.themeFont.family
                             color: window.mutedInk
                             padding: 0
@@ -995,13 +1318,13 @@ ApplicationWindow {
                         x: (parent.width - width) / 2
                         y: sectionHeader.height + (cardRow.lifted ? window.dragOffset : 0)
                         padding: window.edgeSpacing
-                        topPadding: window.compactInbox ? 6 : window.edgeSpacing
-                        bottomPadding: window.compactInbox ? 6 : window.edgeSpacing
+                        topPadding: window.compactDensity ? 6 : 12
+                        bottomPadding: window.compactDensity ? 6 : 12
                         rightPadding: window.compactInbox ? 0 : window.edgeSpacing
                         background: Rectangle {
-                            color: cardRow.lifted ? "#e4efed" : window.surface
-                            border.color: cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
-                            border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus ? 2 : 1
+                            color: cardRow.lifted ? "#e4efed" : cardRow.selected ? "#e7f1ee" : window.surface
+                            border.color: cardRow.selected || cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
+                            border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : cardRow.selected || cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus ? 2 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
                             // Adjacent delegates paint the sides of one group, not
                             // individual cards. Only its first/last row closes it.
@@ -1030,13 +1353,15 @@ ApplicationWindow {
                             GridLayout {
                                 visible: cardRow.bundleLeader
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: window.width >= 640 ? 84 : 0
+                                Layout.minimumHeight: window.compactDensity ? 0 : 84
                                 columnSpacing: Kirigami.Units.smallSpacing
                                 rowSpacing: Kirigami.Units.smallSpacing
-                                columns: 2
+                                columns: window.compactInbox ? 1 : 2
                                 Button {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
+                                    Layout.row: 0
+                                    Layout.column: 0
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 48
                                     implicitHeight: Math.max(48, contentItem.implicitHeight)
@@ -1057,6 +1382,31 @@ ApplicationWindow {
                                     }
                                     contentItem: ColumnLayout {
                                         spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
+                                        GridLayout {
+                                            Layout.fillWidth: true
+                                            columnSpacing: Kirigami.Units.smallSpacing
+                                            rowSpacing: Kirigami.Units.smallSpacing
+                                            columns: window.compactInbox ? 1 : 4
+                                            Item {
+                                                visible: !window.compactInbox
+                                                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                                implicitHeight: Kirigami.Units.iconSizes.smallMedium
+                                                Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
+                                            }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
+                                            Rectangle {
+                                                Layout.row: window.compactInbox ? 1 : 0
+                                                Layout.column: window.compactInbox ? 0 : 2
+                                                Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0
+                                                Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                                                implicitWidth: countLabel.implicitWidth + (window.compactInbox ? 10 : 16)
+                                                implicitHeight: countLabel.implicitHeight + (window.compactInbox ? 4 : 8)
+                                                radius: Kirigami.Units.cornerRadius
+                                                color: "#e7f1ee"
+                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: window.themeFont.family; font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize }
+                                            }
+                                            Item { visible: !window.compactInbox; Layout.fillWidth: true }
+                                        }
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
                                             text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
@@ -1068,33 +1418,9 @@ ApplicationWindow {
                                             wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
                                             elide: Text.ElideRight
                                         }
-                                        GridLayout {
-                                            Layout.fillWidth: true
-                                            columnSpacing: Kirigami.Units.smallSpacing
-                                            rowSpacing: Kirigami.Units.smallSpacing
-                                            columns: window.width < 640 ? 2 : 4
-                                            Item {
-                                                visible: !window.compactInbox
-                                                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
-                                                implicitHeight: Kirigami.Units.iconSizes.smallMedium
-                                                Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
-                                            }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
-                                            Rectangle {
-                                                Layout.row: 0
-                                                Layout.column: window.compactInbox ? 1 : 2
-                                                Layout.alignment: Qt.AlignTop
-                                                implicitWidth: countLabel.implicitWidth + (window.compactInbox ? 10 : 16)
-                                                implicitHeight: countLabel.implicitHeight + (window.compactInbox ? 4 : 8)
-                                                radius: Kirigami.Units.cornerRadius
-                                                color: "#e7f1ee"
-                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: window.themeFont.family; font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize }
-                                            }
-                                            Item { visible: window.width >= 640; Layout.fillWidth: true }
-                                        }
                                         Label {
                                             objectName: "bundleLatestLabel-" + cardId
-                                            text: window.compactInbox ? window.cleanPreview(card.snippet) : qsTr("Latest: %1").arg(title)
+                                            text: window.cleanPreview(card.snippet) || (cardRow.bundleSummary.latestTitle !== bundleToggle.text ? (cardRow.bundleSummary.latestTitle || title) : "")
                                             visible: !cardRow.bundleExpanded && text.length > 0
                                             color: window.mutedInk
                                             font.family: window.themeFont.family
@@ -1132,8 +1458,10 @@ ApplicationWindow {
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
                                 ColumnLayout {
+                                    Layout.row: window.compactInbox ? 1 : 0
+                                    Layout.column: window.compactInbox ? 0 : 1
                                     Layout.alignment: Qt.AlignTop
-                                    Layout.fillWidth: false
+                                    Layout.fillWidth: window.compactInbox
                                     Layout.preferredWidth: window.compactInbox ? -1 : 120
                                     Layout.minimumWidth: window.compactInbox ? 0 : 120
                                     Layout.maximumWidth: window.compactInbox ? Infinity : 120
@@ -1196,7 +1524,7 @@ ApplicationWindow {
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: window.compactInbox ? 28 : Math.max(48, Kirigami.Units.gridUnit * 3) // R63: narrow overflow like single cards
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: text
                                     ToolTip.text: text
@@ -1239,7 +1567,7 @@ ApplicationWindow {
                                 Layout.leftMargin: cardRow.bundled ? cardRow.bundleTextInset : 0
                                 visible: !cardRow.bundleLeader || cardRow.bundleExpanded
                                 Layout.fillWidth: true
-                                Layout.minimumHeight: window.width >= 640 ? 84 : 0
+                                Layout.minimumHeight: window.compactDensity ? 0 : 84
                                 Layout.topMargin: cardRow.bundleLeader ? Kirigami.Units.smallSpacing : 0
                                 columnSpacing: window.compactInbox ? 8 : Kirigami.Units.smallSpacing
                                 rowSpacing: 0
@@ -1251,12 +1579,12 @@ ApplicationWindow {
                                     // R63: on phones the sender avatar is the reorder handle;
                                     // a touch reorder starts only after a long press (R56).
                                     Layout.alignment: Qt.AlignTop
-                                    Layout.minimumWidth: window.compactInbox ? 40 : -1
-                                    Layout.preferredWidth: window.compactInbox ? 40 : -1
-                                    Layout.maximumWidth: window.compactInbox ? 40 : Infinity
+                                    Layout.minimumWidth: window.compactInbox ? 48 : -1
+                                    Layout.preferredWidth: window.compactInbox ? 48 : -1
+                                    Layout.maximumWidth: window.compactInbox ? 48 : Infinity
                                     visible: !cardRow.bundled
-                                    implicitWidth: window.compactInbox ? 40 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 40 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     // Loaded only where shown: collapsed bundle members stay cheap (scrollresilience).
                                     Loader {
                                         anchors.centerIn: parent
@@ -1318,6 +1646,19 @@ ApplicationWindow {
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
                                     spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
+                                    Kirigami.Heading {
+                                        objectName: "mailTitle-" + cardId
+                                        text: title
+                                        color: window.ink
+                                        level: 4
+                                        // Same as Kirigami's level-4 size without a per-row Theme object.
+                                        font.pointSize: window.themeFont.pointSize * 1.10
+                                        font.weight: Font.DemiBold
+                                        wrapMode: !window.compactDensity || window.largeText ? Text.Wrap : Text.NoWrap
+                                        maximumLineCount: !window.compactDensity || window.largeText ? 2 : 1
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
                                         visible: card.source === "mail" && (window.compactInbox || (cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
@@ -1356,25 +1697,13 @@ ApplicationWindow {
                                         }
                                     }
                                     Label {
+                                        objectName: "sourceLabel-" + cardId
                                         text: window.cardKindLabel(card) + (card.account_name ? " · " + card.account_name : "")
                                         visible: card.source !== "mail"
                                         color: window.mutedInk
                                         font.family: window.themeFont.family
                                         font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                         wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                    Kirigami.Heading {
-                                        objectName: "mailTitle-" + cardId
-                                        text: title
-                                        color: window.ink
-                                        level: 4
-                                        // Same as Kirigami's level-4 size without a per-row Theme object.
-                                        font.pointSize: window.themeFont.pointSize * 1.10
-                                        font.weight: window.compactInbox ? Font.DemiBold : Font.Normal
-                                        wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
-                                        maximumLineCount: window.compactInbox ? 1 : Infinity
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
@@ -1386,9 +1715,9 @@ ApplicationWindow {
                                         font.family: window.themeFont.family
                                         font.pointSize: window.compactInbox ? window.themeFont.pointSize - 1 : window.themeFont.pointSize
                                         textFormat: Text.PlainText
-                                        wrapMode: window.compactInbox && card.source !== "mail" ? Text.Wrap : Text.NoWrap
-                                        // R63: a single mail is header + subject + one preview line.
-                                        maximumLineCount: window.compactInbox && card.source !== "mail" ? 2 : 1
+                                        wrapMode: window.largeText || card.source !== "mail" ? Text.Wrap : Text.NoWrap
+                                        // Large platform text reflows instead of clipping the content.
+                                        maximumLineCount: window.largeText || card.source !== "mail" ? 2 : 1
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
@@ -1399,9 +1728,9 @@ ApplicationWindow {
                                     Layout.row: 0
                                     Layout.column: 2
                                     Layout.alignment: Qt.AlignTop
-                                    Layout.preferredWidth: window.compactInbox ? 76 : 120
-                                    Layout.minimumWidth: window.compactInbox ? 76 : 120
-                                    Layout.maximumWidth: window.compactInbox ? 76 : 120
+                                    Layout.preferredWidth: window.compactInbox ? 96 : Math.max(120, Kirigami.Units.gridUnit * 6)
+                                    Layout.minimumWidth: window.compactInbox ? 96 : Math.max(120, Kirigami.Units.gridUnit * 6)
+                                    Layout.maximumWidth: window.compactInbox ? 96 : Math.max(120, Kirigami.Units.gridUnit * 6)
                                     spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "mailDate-" + cardId
@@ -1432,13 +1761,13 @@ ApplicationWindow {
                                     opacity: 1
                                     Accessible.name: cardActions.primaryName
                                     ToolTip.text: Accessible.name
-                                    ToolTip.visible: hovered
+                                    ToolTip.visible: hovered || visualFocus
                                     onClicked: cardActions.primaryAction()
                                 }
                                 Litterbox.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
-                                    implicitWidth: window.compactInbox ? 28 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     icon.width: window.compactInbox ? 16 : 20
                                     icon.height: window.compactInbox ? 16 : 20
@@ -1504,25 +1833,28 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Kirigami.Heading {
-                        text: qsTr("You're all caught up")
+                        text: window.searching ? qsTr("No matching cards") : qsTr("You're all caught up")
                         color: window.ink
                         level: 3
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
                     }
                     Label {
-                        text: qsTr("New cards will appear here. Add a private note or task whenever you need one.")
+                        text: window.searching ? qsTr("Try another subject, sender, account or source, or clear the search to return to your inbox.") : qsTr("New cards will appear here. Add a private note or task whenever you need one.")
                         color: window.mutedInk
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
                     }
                     Button {
-                        text: qsTr("Add card")
-                        icon.name: "list-add"
+                        text: window.searching ? qsTr("Clear search") : qsTr("Add card")
+                        icon.name: window.searching ? "edit-clear" : "list-add"
                         implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                         Layout.alignment: Qt.AlignHCenter
-                        onClicked: createDialog.open()
+                        onClicked: {
+                            if (window.searching) { window.searchQuery = ""; inboxSearch.clear(); inboxList.forceActiveFocus() }
+                            else createDialog.open()
+                        }
                     }
                 }
             }
@@ -1689,6 +2021,44 @@ ApplicationWindow {
                     window.dragTargetIndex = -1
                     window.dragOffset = 0
                     moved = false
+                }
+            }
+        }
+    }
+        Item {
+            id: readerHost
+            objectName: "desktopReaderHost"
+            visible: window.desktopReader && stack.depth === 1
+            SplitView.minimumWidth: 520
+            SplitView.fillWidth: true
+            clip: true
+            Rectangle { anchors.fill: parent; color: window.surface; z: -1 }
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 400)
+                visible: !window.readerOpen
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Icon {
+                    source: "mail-message"
+                    color: window.mutedInk
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                Kirigami.Heading {
+                    text: qsTr("Select a card to read")
+                    color: window.ink
+                    level: 2
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+                Label {
+                    text: qsTr("Your inbox stays here while you read. Drag the divider to adjust the panes.")
+                    color: window.mutedInk
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
                 }
             }
         }

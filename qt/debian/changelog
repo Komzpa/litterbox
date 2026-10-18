@@ -1,3 +1,15 @@
+litterbox-qt (0.1-36) unstable; urgency=medium
+
+  * Ship the actual adaptive desktop list and reader with the phone Back,
+    touch and large-text handling they share.
+  * Give bundles meaningful subjects plus working navigation, search and
+    density controls.
+  * Keep original thread sender metadata and the offline cache on the
+    bundled mail.
+  * Make the card actions distinct and truthful about what they do.
+
+ -- Litterbox <litterbox@example.com>  Sun, 18 Oct 2026 20:31:00 +0400
+
 litterbox-qt (0.1-35) unstable; urgency=medium
 
   * Compact phone inbox: avatars, time in the card header, one-line subject

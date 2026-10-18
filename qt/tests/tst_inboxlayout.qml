@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import litterbox 1.0 as App
+import org.kde.kirigami as Kirigami
 import "previewcards.js" as Previews
 import "techshipcontext.js" as Techship
 
@@ -30,6 +31,73 @@ TestCase {
     }
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
+
+    function test_desktopRailSearchAndSplitGeometry_data() {
+        const splitWidth = Math.max(1220, Kirigami.Units.gridUnit * 70)
+        return [{tag: "narrow-negative-control", viewWidth: 899, rail: false, reader: false},
+                {tag: "desktop-rail-boundary", viewWidth: 900, rail: true, reader: false},
+                {tag: "before-split", viewWidth: splitWidth - 1, rail: true, reader: false},
+                {tag: "split-boundary", viewWidth: splitWidth, rail: true, reader: true},
+                {tag: "wide-split", viewWidth: splitWidth + 260, rail: true, reader: true}]
+    }
+    function test_desktopRailSearchAndSplitGeometry(data) {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: 900
+        })
+        verify(inbox)
+        inbox.show()
+        const canvas = inbox.contentItem
+        const rail = findChild(inbox, "desktopNavigation")
+        const split = findChild(inbox, "inboxSplit")
+        const reader = findChild(inbox, "desktopReaderHost")
+        const search = findChild(inbox, "inboxSearch")
+        const searchRow = findChild(inbox, "inboxSearchRow")
+        const density = findChild(inbox, "inboxDensity")
+        const clear = findChild(inbox, "clearInboxSearch")
+        tryCompare(rail, "visible", data.rail)
+        tryCompare(reader, "visible", data.reader)
+        compare(inbox.desktopNavigation, data.rail)
+        compare(inbox.desktopReader, data.reader)
+        compare(searchRow.visible, data.rail)
+        compare(findChild(inbox, "openNavigation").visible, !data.rail)
+        if (data.rail) {
+            tryVerify(function() { return search.width > 100 && rail.height > 0 && split.width > 0 })
+            const railBox = rail.mapToItem(canvas, 0, 0)
+            const splitBox = split.mapToItem(canvas, 0, 0)
+            fuzzyCompare(splitBox.x, railBox.x + rail.width, 1)
+            fuzzyCompare(splitBox.x + split.width, canvas.width, 1)
+            verify(rail.width >= 180 && split.height > 0)
+            for (const name of ["navInbox", "navAccounts", "navAgents", "navSettings"]) {
+                const nav = findChild(rail, name)
+                verify(nav && nav.visible && nav.width >= 48 && nav.height >= 48)
+                const p = nav.mapToItem(rail, 0, 0)
+                verify(p.x >= 0 && p.y >= 0 && p.x + nav.width <= rail.width + 1 && p.y + nav.height <= rail.height + 1,
+                       name + " must fit inside the desktop rail")
+            }
+            const searchBox = searchRow.mapToItem(canvas, 0, 0)
+            verify(searchBox.y + searchRow.height <= splitBox.y + 1, "search must not overlap the inbox panes")
+            let right = 0
+            for (const item of [search, clear, density]) {
+                verify(item.visible && item.height >= 48)
+                const p = item.mapToItem(searchRow, 0, 0)
+                verify(p.x >= right && p.y >= 0 && p.x + item.width <= searchRow.width + 1 && p.y + item.height <= searchRow.height + 1,
+                       item.objectName + " must be unclipped and nonoverlapping in desktop search")
+                right = p.x + item.width
+            }
+        }
+        if (data.reader) {
+            const stack = findChild(inbox, "pageStack")
+            tryVerify(function() { return stack.width >= 400 && reader.width >= 520 })
+            const stackBox = stack.mapToItem(split, 0, 0)
+            const readerBox = reader.mapToItem(split, 0, 0)
+            verify(readerBox.x >= stackBox.x + stack.width, "split reader must be beside, not over, the inbox")
+            verify(readerBox.x + reader.width <= split.width + 1)
+            fuzzyCompare(reader.height, stack.height, 1)
+        }
+        inbox.close()
+    }
 
     function test_mixedPhoneDensity_data() {
         return [{tag: "phone", viewWidth: 412, viewHeight: 915},
@@ -86,6 +154,22 @@ TestCase {
             if (top.y < 0 || top.y + frame.height > image.height) continue
             completeCards++
             const title = findChild(row, "mailTitle-mixed-" + i)
+            const source = findChild(row, sources[i] === "mail" ? "mailSender-mixed-" + i : "sourceLabel-mixed-" + i)
+            const snippet = findChild(row, "mailSnippet-mixed-" + i)
+            verify(title && title.visible && source && source.visible && snippet && snippet.visible)
+            for (const landmark of [title, source, snippet]) {
+                const p = landmark.mapToItem(frame, 0, 0)
+                verify(landmark.width > 0 && landmark.height > 0 && p.x >= 0 && p.y >= 0 &&
+                       p.x + landmark.width <= frame.width + 1 && p.y + landmark.height <= frame.height + 1,
+                       landmark.objectName + " must have a visible bbox inside its card")
+            }
+            const titleBox = title.mapToItem(frame, 0, 0)
+            const sourceBox = source.mapToItem(frame, 0, 0)
+            const snippetBox = snippet.mapToItem(frame, 0, 0)
+            verify(sourceBox.y >= titleBox.y + title.height - 1, "source landmark must sit below the subject")
+            verify(snippetBox.y >= sourceBox.y + source.height - 1, "preview must sit below source identity")
+            verify(title.font.pointSize > source.font.pointSize && title.font.weight > source.font.weight,
+                   "subject must retain stronger hierarchy than source metadata")
             const primary = findChild(row, "doneButton-mixed-" + i)
             const more = findChild(row, "inboxActions")
             for (const action of [primary, more]) {
@@ -177,6 +261,59 @@ TestCase {
         const collapsedFrame = findChild(collapsedLeader, "inboxCard")
         compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
     }
+    function test_senderBundlesUseOriginalSubjectsAndSkipPinnedMembers() {
+        store.clear()
+        const subjects = ["Synthetic river survey", "Synthetic bridge review", "Synthetic flood note"]
+        const ids = ["cinder-0", "cinder-1", "cinder-2"]
+        for (let i = 0; i < ids.length; ++i) {
+            const card = {id: ids[i], title: subjects[i], source: "mail", section: "now",
+                bundle_id: "generic-group-782", bundle_title: "sender:robot@synthetic.test",
+                bundle_leader: i === 0, bundle_member_count: 3, pinned_rank: null,
+                important: false, timed: false, has_body: false, snippet: "Synthetic unrelated project note",
+                summary: "", note: "", sender_name: "Synthetic robot", sender_address: "robot@synthetic.test",
+                account_name: "reader@synthetic.test", received_at: "2026-10-1" + (i + 1) + "T12:00:00Z"}
+            store.append({cardId: ids[i], title: subjects[i], section: "now", card: card})
+        }
+        const pinned = {id: "cinder-pinned", title: "Pinned synthetic outlier", source: "mail", section: "pinned",
+            bundle_id: "generic-group-782", bundle_title: "sender:robot@synthetic.test", bundle_leader: true,
+            bundle_member_count: 1, pinned_rank: 1, important: false, timed: false, has_body: false,
+            snippet: "Pinned record must not be bulk archived", summary: "", note: "",
+            sender_name: "Different pinned writer", sender_address: "pinned@synthetic.test",
+            account_name: "other@synthetic.test", received_at: "2026-10-12T12:00:00Z"}
+        store.insert(0, {cardId: pinned.id, title: pinned.title, section: "pinned", card: pinned})
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 900
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1) !== null })
+        const summary = list.itemAtIndex(0)
+        compare(findChild(summary, "bundleTitleLabel-cinder-0").text, "Synthetic flood note")
+        verify(findChild(summary, "bundleTitleLabel-cinder-0").text.indexOf("sender:") < 0)
+        verify(!list.itemAtIndex(1).visible, "bundle members remain collapsed until expanded")
+        const originalOrder = ids.concat([pinned.id])
+        compare(store.cardIds(), originalOrder)
+        mouseClick(findChild(summary, "bundleToggle-cinder-0"))
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1).visible })
+        for (let i = 0; i < 3; ++i) compare(list.itemAtIndex(i).card.title, subjects[i])
+        compare(list.itemAtIndex(3).cardId, pinned.id)
+        const landmark = findChild(summary, "dateLandmark-cinder-0")
+        verify(landmark && landmark.visible && landmark.text.length > 0)
+        const summaryFrame = findChild(summary, "inboxCard")
+        const landmarkBox = landmark.mapToItem(summary, 0, 0)
+        verify(landmark.width > 0 && landmark.height > 0 && landmarkBox.y + landmark.height <= summaryFrame.y + 1,
+               "date landmark must occupy its own bbox above the card")
+        inbox.compactDensity = false
+        wait(100)
+        const comfortableHeight = findChild(summary, "inboxCard").height
+        inbox.compactDensity = true
+        wait(100)
+        const compactHeight = findChild(summary, "inboxCard").height
+        verify(compactHeight < comfortableHeight, "density changes geometry without changing content order")
+        compare(store.cardIds(), originalOrder)
+        inbox.close()
+    }
     function test_expandedMemberContext_data() {
         return [{tag: "desktop", viewWidth: 1356, viewHeight: 475},
                 {tag: "phone", viewWidth: 412, viewHeight: 915}]
@@ -246,12 +383,13 @@ TestCase {
         compare(mixedSender.text, "Different sender")
         console.log("CONTEXT_ORACLE", JSON.stringify({width: data.viewWidth, shared: shared,
                     headerHasAccount: headerHasAccount, mixedAccount: mixedAccountVisible, mixedSender: mixedSenderVisible}))
+        const compactPane = inbox.compactInbox
         inbox.close()
         for (const member of shared) {
             verify(!member.account, "Same-account bundle member must omit repeated account")
             verify(!member.sender, "Same-sender bundle member must omit repeated sender")
-            // R63: on phones the context line also carries the arrival time, so it stays.
-            verify(!member.context || data.viewWidth < 640, "Repeated-only context row must collapse")
+            // A compact desktop split pane also keeps the context-line arrival time.
+            verify(!member.context || compactPane, "Repeated-only context row must collapse outside compact panes")
         }
         verify(headerHasAccount, "Shared account identity must remain on the bundle summary")
         verify(mixedAccountVisible, "Mixed-account child must retain its own identity")

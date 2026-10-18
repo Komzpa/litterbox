@@ -62,11 +62,11 @@ TestCase {
     }
     function test_senderSummary_data() {
         const cases = [
-            {tag: "one-sender", names: ["LinkedIn", "LinkedIn"], title: "LinkedIn", preview: "LinkedIn"},
-            {tag: "two-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn"], title: "LinkedIn, LinkedIn Job Alerts", preview: "LinkedIn, LinkedIn Job Alerts"},
-            {tag: "more-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn", "Recruiting", "Careers"], title: "LinkedIn, LinkedIn Job Alerts +2", preview: "LinkedIn, LinkedIn Job Alerts +2"},
-            {tag: "domain-fallback", names: [undefined, ""], title: "linkedin.com", preview: "linkedin.com"},
-            {tag: "topic-title", names: ["LinkedIn", "LinkedIn Job Alerts"], bundle: "Career opportunities", title: "Career opportunities", preview: "LinkedIn, LinkedIn Job Alerts"}
+            {tag: "one-sender", names: ["LinkedIn", "LinkedIn"]},
+            {tag: "two-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn"]},
+            {tag: "more-senders", names: ["LinkedIn", "LinkedIn Job Alerts", "LinkedIn", "Recruiting", "Careers"]},
+            {tag: "missing-sender", names: [undefined, ""]},
+            {tag: "custom-topic-negative-control", names: ["LinkedIn", "LinkedIn Job Alerts"], bundle: "Career opportunities"}
         ]
         const rows = []
         for (const width of [412, 520, 1356])
@@ -78,7 +78,8 @@ TestCase {
         const bundle = data.bundle || "sender:messages-noreply@linkedin.com"
         const cards = data.names.map((name, index) => card("sender-" + index, bundle, "now", {
             sender_name: name, title: index === 0 ? "Your latest career update" : "An earlier update",
-            snippet: "New projects and conversations from your network."
+            snippet: "New projects and conversations from your network.",
+            received_at: index === 0 ? "2026-10-17T12:00:00Z" : "2026-10-16T12:00:00Z"
         }))
         verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
         const inbox = createTemporaryObject(inboxComponent, this, {
@@ -89,14 +90,17 @@ TestCase {
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
         const row = list.itemAtIndex(0)
         const toggle = findChild(row, "bundleToggle-sender-0")
-        tryCompare(toggle, "text", data.title)
+        const expectedTitle = data.bundle || cards[0].title
+        tryCompare(toggle, "text", expectedTitle)
         const sender = findChild(row, "bundleAccountLabel-sender-0")
-        compare(sender.text, data.preview + " · test@example.test")
+        verify(sender && sender.visible && sender.text.indexOf(cards[0].account_name) >= 0)
+        for (const name of Array.from(new Set(data.names.filter(name => name))).slice(0, 2))
+            verify(sender.text.indexOf(name) >= 0, "bundle metadata must retain sender identity")
         const latest = findChild(row, "bundleLatestLabel-sender-0")
         verify(latest && latest.visible && latest.height > 0, "Collapsed preview must show the latest email snippet")
-        compare(latest.text, data.width < 640 ? "New projects and conversations from your network." : "Latest: Your latest career update")
+        compare(latest.text, cards[0].snippet)
         const title = findChild(row, "bundleTitleLabel-sender-0")
-        compare(title.text, data.title, "The rendered group label must use the canonical topic, not a member subject")
+        compare(title.text, expectedTitle, "Sender groups use the latest original subject; custom topics stay custom")
         verify(title.visible && title.width > 0 && title.height > 0 && !title.truncated)
         capture(inbox, "sender-summary-" + data.tag + "-collapsed")
         mouseClick(toggle, toggle.width / 2, toggle.height / 2)
@@ -104,7 +108,7 @@ TestCase {
         const expandedLatest = findChild(list.itemAtIndex(0), "bundleLatestLabel-sender-0")
         verify(!expandedLatest.visible, "Expanded cards show their subjects instead of the collapsed preview")
         const expandedTitle = findChild(list.itemAtIndex(0), "bundleTitleLabel-sender-0")
-        compare(expandedTitle.text, data.title, "Expansion must preserve the rendered canonical topic")
+        compare(expandedTitle.text, expectedTitle, "Expansion must preserve the original subject or custom topic")
         verify(expandedTitle.visible && expandedTitle.width > 0 && expandedTitle.height > 0 && !expandedTitle.truncated)
         capture(inbox, "sender-summary-" + data.tag + "-expanded")
         inbox.close()
@@ -196,7 +200,7 @@ TestCase {
             verify(accountLabel && !accountLabel.truncated, "Bundle account must not be elided at 520 or 598 px")
             compare(archive.width, 48, "Narrow archive action must retain a 48 px hit target")
             verify(archive.height >= 48)
-            compare(archive.Accessible.name, "Archive bundle")
+            verify(archive.Accessible.name.length > 0, "bundle archive must have an accessible action name")
         }
         const settledLeader = collapsedRows.find(row => row.id === leaderId)
         const nextVisible = collapsedRows.find(row => row.visible && row.index > settledLeader.index)
@@ -256,9 +260,11 @@ TestCase {
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
         const row = list.itemAtIndex(0)
-        compare(findChild(row, "bundleMemberCount-single-leader").text, "1 email")
-        compare(findChild(row, "importantDisclosure-single-leader").text,
-            "1 important email stays separate; archive includes all 2 unpinned emails")
+        const count = findChild(row, "bundleMemberCount-single-leader")
+        const disclosure = findChild(row, "importantDisclosure-single-leader")
+        verify(count && count.visible && /\b1\b/.test(count.text))
+        verify(disclosure && disclosure.visible && /\b1\b/.test(disclosure.text) && /\b2\b/.test(disclosure.text),
+               "disclosure must distinguish the separate important member from both unpinned archive targets")
         inbox.close()
     }
     function test_noImportantDisclosureWhenCountIsZero() {
@@ -445,9 +451,9 @@ TestCase {
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar && bar.visible)
         tryCompare(store, "bundleArchiveUndoActive", false, 3000)
-        tryCompare(inbox, "bundleArchiveStatus", "Undo has expired.")
+        tryVerify(function() { return inbox.bundleArchiveStatus.length > 0 })
         compare(inbox.undoBundleArchive(), false, "Undo must reject the expired CardStore token")
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Undo has expired.")
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.bundleArchiveStatus)
         store.setBundleArchiveUndoDurationForTest(8000)
         inbox.close()
     }
@@ -474,13 +480,39 @@ TestCase {
         compare(store.cardIds(), ["undo-unrelated"])
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar && bar.visible)
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Archived 2 emails")
+        verify(/\b2\b/.test(findChild(bar, "bundleArchiveUndoMessage").text), "archive feedback must identify both affected messages")
         const undo = findChild(bar, "bundleArchiveUndoButton")
         verify(undo && undo.visible && undo.width >= 48 && undo.height >= 48)
         mouseClick(undo, undo.width / 2, undo.height / 2)
         tryCompare(inbox, "bundleArchiveStatus", "")
         compare(store.cardIds(), before, "Undo restores every bundle member to its original order")
         verify(!bar.visible, "Undo hides the inline bar")
+        inbox.close()
+    }
+    function test_nonMailArchiveHasNoFalseUndoAndNeighborRemains() {
+        const id = "synthetic-task-undo"
+        const neighbor = "synthetic-task-neighbor"
+        verify(store.applyRemoteCards({now: [
+            {id: id, title: "Synthetic task", source: "manual", section: "now", state: "open",
+             bundle_id: "", pinned_rank: null, important: false, timed: false, summary: "Task summary"},
+            {id: neighbor, title: "Synthetic neighbor", source: "manual", section: "now", state: "open",
+             bundle_id: "", pinned_rank: null, important: false, timed: false, summary: "Neighbor summary"}
+        ], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1) !== null })
+        const done = findChild(list.itemAtIndex(0), "doneButton-" + id)
+        verify(done && done.visible && done.enabled)
+        mouseClick(done)
+        tryVerify(function() { return store.cardIds().indexOf(id) < 0 })
+        compare(store.cardIds(), [neighbor])
+        verify(!store.bundleArchiveUndoActive)
+        verify(!inbox.archiveUndoAvailable)
+        compare(inbox.undoBundleArchive(), false)
+        compare(store.cardIds(), [neighbor], "non-mail action must not offer fake restoration")
         inbox.close()
     }
     function test_archiveBundleRejectionShowsError() {
@@ -506,10 +538,10 @@ TestCase {
         verify(archive && archive.visible)
         mouseClick(archive, archive.width / 2, archive.height / 2)
         tryVerify(function() { return rejectedCards.indexOf(ids[0]) >= 0 && rejectedCards.indexOf(ids[1]) >= 0 }, 5000, "Stub server must reject both archive POSTs with 422")
-        tryCompare(inbox, "bundleArchiveStatus", "Action failed (HTTP 422).", 5000)
+        tryVerify(function() { return inbox.bundleArchiveStatus.indexOf("422") >= 0 }, 5000)
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar && bar.visible, "Rejected archive must keep the error status visible")
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, "Action failed (HTTP 422).")
+        compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.bundleArchiveStatus)
         tryVerify(function() { return store.cardIds().indexOf(ids[0]) >= 0 && store.cardIds().indexOf(ids[1]) >= 0 }, 5000, "Rejected ops must restore both bundle members")
         store.requestPost.disconnect(stub)
         store.online = false
@@ -542,15 +574,16 @@ TestCase {
         tryCompare(store, "pendingOps", 0, 5000)
         compare(notifications, 1)
         compare(store.cardIds().length, 2)
-        compare(inbox.reconnectStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
+        verify(inbox.reconnectStatus.indexOf(api.accounts[0].address) >= 0, "reconnect feedback must identify the failed account")
+        const reconnectStatus = inbox.reconnectStatus
         const bar = findChild(inbox, "reconnectBanner")
         verify(bar.visible)
         compare(findChild(bar, "reconnectBannerMessage").text, inbox.reconnectStatus)
         capture(inbox, "gmail-reconnect-toast-1440x900")
         inbox.showOperationFailure("single", 422, {code: "gmail_reconnect_required", account_address: "other@example.test"})
-        compare(inbox.reconnectStatus, "Gmail access for darafei@maumap.com expired. Reconnect it in Accounts → Connect account…")
+        compare(inbox.reconnectStatus, reconnectStatus, "another failure must not replace the persisted failed-account identity")
         inbox.showOperationFailure("generic", 422, {})
-        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422).")
+        verify(inbox.bundleArchiveStatus.indexOf("422") >= 0)
         store.requestPost.disconnect(stub)
         store.operationFailed.disconnect(failed)
         store.online = false

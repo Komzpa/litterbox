@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -16,6 +16,15 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/mailhtml/trackers"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 )
+
+type threadMessage struct {
+	ID             string `json:"id"`
+	GmailMessageID string `json:"gmail_message_id"`
+	SenderName     string `json:"sender_name"`
+	SenderAddress  string `json:"sender_address"`
+	ReceivedAt     string `json:"received_at"`
+	HTML           string `json:"html"`
+}
 
 type Handler struct {
 	DB     *sql.DB
@@ -55,6 +64,31 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
+	messages := []threadMessage{}
+	if source == "mail" {
+		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html FROM messages WHERE tenant_id=$1 AND card_id=$2 ORDER BY received_at ASC,id ASC`, tenantID, cardID)
+		if queryErr != nil {
+			http.Error(w, "internal server error", 500)
+			return
+		}
+		for rows.Next() {
+			var message threadMessage
+			var received time.Time
+			if queryErr = rows.Scan(&message.ID, &message.GmailMessageID, &message.SenderName, &message.SenderAddress, &received, &message.HTML); queryErr != nil {
+				rows.Close()
+				http.Error(w, "internal server error", 500)
+				return
+			}
+			message.ReceivedAt = received.UTC().Format(time.RFC3339Nano)
+			messages = append(messages, message)
+		}
+		queryErr = rows.Err()
+		rows.Close()
+		if queryErr != nil {
+			http.Error(w, "internal server error", 500)
+			return
+		}
+	}
 	// Mail bodies keep the Sanitize pipeline and the account-aware Gmail URL.
 	// Any other source is a server-built document: serve it exactly as stored,
 	// with no account, thread or external destination.
@@ -75,14 +109,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "private, no-store")
 	if err := json.NewEncoder(w).Encode(struct {
-		HTML      string `json:"html"`
-		ThreadID  string `json:"threadId"`
-		AccountID string `json:"accountId"`
-		// SourceURL is the authoritative account-aware external destination:
-		// the tenant's stored account address selects the session via
-		// authuser, never an account UUID or a guessed /u/0 browser index.
-		SourceURL string `json:"source_url,omitempty"`
-	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String)}); err != nil {
+		HTML      string          `json:"html"`
+		ThreadID  string          `json:"threadId"`
+		AccountID string          `json:"accountId"`
+		SourceURL string          `json:"source_url,omitempty"`
+		Messages  []threadMessage `json:"messages"`
+	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages}); err != nil {
 		return
 	}
 }
