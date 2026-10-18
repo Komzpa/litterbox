@@ -101,9 +101,9 @@ Kirigami.Page {
     function closeReader() {
         if (closing) return
         closing = true
-        if (embeddedMode) {
-            if (requestClose) requestClose()
-        } else {
+        if (requestClose) {
+            requestClose()
+        } else if (!embeddedMode) {
             const view = root.QQC2.StackView.view
             if (view && view.depth > 1) view.pop()
         }

@@ -56,7 +56,8 @@ TestCase {
         compare(spam.icon.name, "mail-mark-junk")
         verify(spam.height >= 48 && spam.width >= 48)
         verify(spam.y >= archive.y + archive.height)
-        verify(spam.y < archive.y + archive.height + 2)
+        fuzzyCompare(spam.y - archive.y - archive.height, spam.parent.spacing, 1,
+                     "Spam must be the next distinct action, with only the action list's normal gap")
         if (bundleProofDirectory) {
             console.log("SPAM_MENU_READY", row.width)
             wait(6000)

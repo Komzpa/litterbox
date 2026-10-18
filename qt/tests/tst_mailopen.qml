@@ -137,6 +137,28 @@ TestCase {
         compare(store.operations, [])
         inbox.close()
     }
+    function test_narrowDesktopBackClosesReaderWithoutArchive() {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 598, height: 900
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryCompare(list, "count", 14)
+        const row = findChild(list.itemAtIndex(0), "openCard-mail-0")
+        verify(row)
+        mouseClick(row)
+        const stack = findChild(inbox, "pageStack")
+        tryCompare(stack, "depth", 2)
+        compare(inbox.readerOpen, true)
+        mouseClick(inbox.contentItem, inbox.width / 2, inbox.height / 2, Qt.BackButton)
+        tryCompare(stack, "depth", 1)
+        tryCompare(inbox, "readerOpen", false)
+        compare(inbox.selectedCardId, "mail-0")
+        compare(store.operations, [])
+        inbox.close()
+    }
 
     function test_keyboardOpensAndClosesMail() {
         const inbox = createTemporaryObject(inboxComponent, this, {
@@ -323,6 +345,7 @@ TestCase {
         const list = findChild(inbox, "inboxList")
         const split = findChild(inbox, "inboxSplit")
         const rail = findChild(inbox, "desktopNavigation")
+        const stack = findChild(inbox, "pageStack")
         const reader = findChild(inbox, "desktopReaderHost")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(8) !== null && reader.visible })
         verify(split.orientation === Qt.Horizontal)
@@ -346,18 +369,21 @@ TestCase {
         verify(reader.visible)
         compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
         inbox.width = 1180
-        tryVerify(function() { return !reader.visible && inbox.pageStack.depth === 2 })
+        tryVerify(function() { return !reader.visible && stack.depth === 2 })
         compare(inbox.mailDetailPage, retainedReader)
         compare(retainedReader.embeddedMode, false)
-        const back = findChild(inbox.pageStack.currentItem, "backToInbox")
+        const back = findChild(stack.currentItem, "backToInbox")
         verify(back)
         mouseClick(back)
-        tryCompare(inbox.pageStack, "depth", 1)
+        tryCompare(stack, "depth", 1)
         compare(inbox.selectedCardId, "mail-8")
         compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
         compare(store.operations, [])
         inbox.width = 1480
-        tryVerify(function() { return reader.visible && inbox.mailDetailPage.visible })
+        tryVerify(function() { return reader.visible && !inbox.mailDetailPage.visible })
+        compare(inbox.readerOpen, false, "Back must stay closed when the desktop pane returns")
+        mouseClick(findChild(list.itemAtIndex(8), "openCard-mail-8"))
+        tryCompare(inbox, "readerOpen", true)
         compare(inbox.mailDetailPage, retainedReader)
         compare(retainedReader.embeddedMode, true)
         mouseClick(findChild(retainedReader, "backToInbox"))
@@ -380,7 +406,7 @@ TestCase {
         tryCompare(inbox, "readerOpen", false)
         tryCompare(retainedReader, "visible", false)
         compare(inbox.mailDetailPage, retainedReader)
-        compare(inbox.pageStack.depth, 1)
+        compare(stack.depth, 1)
         compare(store.operations, [], "external selected-card removal must not enqueue archive")
         inbox.close()
     }
@@ -396,11 +422,12 @@ TestCase {
         list.forceLayout()
         const opener = findChild(list.itemAtIndex(8), "openCard-mail-8")
         mouseClick(opener)
-        tryCompare(inbox.pageStack, "depth", 2)
+        const stack = findChild(inbox, "pageStack")
+        tryCompare(stack, "depth", 2)
         findChild(inbox, "addCardButton").forceActiveFocus()
         tryVerify(function() { return findChild(inbox, "addCardButton").activeFocus })
         keyClick(Qt.Key_Left, Qt.AltModifier)
-        tryCompare(inbox.pageStack, "depth", 1)
+        tryCompare(stack, "depth", 1)
         compare(store.operations, [])
         inbox.close()
     }

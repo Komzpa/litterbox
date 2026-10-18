@@ -53,12 +53,16 @@ ApplicationWindow {
     FontMetrics { id: inboxFontMetrics; font: window.themeFont }
     readonly property bool largeText: inboxFontMetrics.height > 24
     onCompactDensityChanged: {
-        if (!inboxReady) return
+        if (!inboxReady || !bundleModel) return
         const anchor = bundleModel.captureAnchor()
-        Qt.callLater(function() { bundleModel.restoreAnchor(anchor, bundleModel.rows) })
+        Qt.callLater(function() {
+            if (bundleModel) bundleModel.restoreAnchor(anchor, bundleModel.rows)
+        })
     }
-    onSearchQueryChanged: {
-        if (!inboxReady) return
+    // Let the derived searching binding settle before filtering or restoring its anchor.
+    onSearchQueryChanged: Qt.callLater(applyInboxSearch)
+    function applyInboxSearch() {
+        if (!inboxReady || !bundleModel) return
         if (searching && !wasSearching) {
             searchAnchor = bundleModel.captureAnchor()
             searchScrollPosition = inboxList.contentY - inboxList.originY
@@ -438,16 +442,19 @@ ApplicationWindow {
     onClosing: function(close) {
         close.accepted = !(Qt.platform.os === "android" && handleBack())
     }
+    function actualPopupVisible() {
+        return !!((navigationDrawer && navigationDrawer.visible) || (headerMenu && headerMenu.visible)
+            || (noteDialog && noteDialog.visible) || (createDialog && createDialog.visible))
+    }
     function handleBack() {
         if (navigationDrawer.visible) { navigationDrawer.close(); return true }
         if (headerMenu.visible) { headerMenu.close(); return true }
         if (noteDialog.visible) { noteDialog.reject(); return true }
         if (createDialog.visible) { createDialog.reject(); return true }
-        // Other popups own their Back/Escape; never pop a reader beneath one.
-        if (Overlay.overlay.visible) return true
+        // The overlay item also exists without a popup; it must not swallow Back.
         if (stack.depth > 1) {
-            if (stack.currentItem === mailDetailPage) readerOpen = false
-            stack.pop()
+            if (stack.currentItem === mailDetailPage) closeReader()
+            else stack.pop()
             return true
         }
         if (readerOpen) {
@@ -464,6 +471,8 @@ ApplicationWindow {
         return false
     }
     function closeReader() {
+        if (!readerOpen && (!mailDetailPage || !mailDetailPage.visible)) return
+        saveInboxScroll(selectedCardId)
         readerOpen = false
         if (stack.currentItem === mailDetailPage && stack.depth > 1) stack.pop()
         else if (mailDetailPage) mailDetailPage.visible = false
@@ -700,8 +709,9 @@ ApplicationWindow {
                 TextField {
                     id: inboxSearch
                     objectName: "inboxSearch"
+                    Layout.minimumHeight: 48
                     Layout.fillWidth: true
-                    implicitHeight: Math.max(48, implicitContentHeight + topPadding + bottomPadding)
+                    implicitHeight: Math.max(48, contentHeight + topPadding + bottomPadding)
                     placeholderText: qsTr("Search inbox")
                     Accessible.name: qsTr("Search inbox")
                     text: window.searchQuery
@@ -715,6 +725,7 @@ ApplicationWindow {
                     display: AbstractButton.IconOnly
                     implicitWidth: 48
                     implicitHeight: 48
+                    Layout.minimumHeight: 48
                     enabled: window.searching
                     Accessible.name: text
                     ToolTip.text: text
@@ -726,6 +737,7 @@ ApplicationWindow {
                     visible: window.desktopNavigation
                     model: [qsTr("Comfortable"), qsTr("Compact")]
                     currentIndex: window.compactDensity ? 1 : 0
+                    Layout.minimumHeight: 48
                     implicitHeight: 48
                     Accessible.name: qsTr("Inbox density")
                     onActivated: window.compactDensity = currentIndex === 1
@@ -935,7 +947,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Alt+Left"
-        enabled: !Overlay.overlay.visible
+        enabled: !window.actualPopupVisible()
         onActivated: window.handleBack()
     }
     SplitView {
@@ -1007,8 +1019,12 @@ ApplicationWindow {
                 // Width changes reflow delegates; preserve the visible card and
                 // its offset rather than jumping to the selected (possibly offscreen) card.
                 onWidthChanged: {
+                    if (!bundleModel) return
                     const anchor = bundleModel.captureAnchor()
-                    Qt.callLater(function() { bundleModel.restoreAnchor(anchor, bundleModel.rows) })
+                    Qt.callLater(function() {
+                        if (!bundleModel) return
+                        bundleModel.restoreAnchor(anchor, bundleModel.rows)
+                    })
                 }
                 topMargin: window.edgeSpacing
                 bottomMargin: window.edgeSpacing
@@ -1106,7 +1122,7 @@ ApplicationWindow {
                             const entry = refresh ? {card: source.card, cardId: source.cardId, title: source.title} : entries[i]
                             if (refresh) entries.push(entry)
                             const card = entry.card
-                            if (refresh && card.bundle_id) {
+                            if (refresh && card.bundle_id && card.bundle_leader !== undefined) {
                                 const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], senders: [], important: 0, unpinned: 0, lastId: ""})
                                 if (card.account_name && summary.accounts.indexOf(card.account_name) < 0) summary.accounts.push(card.account_name)
                                 if (card.pinned_rank == null && card.section !== "pinned") {
@@ -1257,7 +1273,7 @@ ApplicationWindow {
                     readonly property bool showMemberAccount: !bundled || bundleSummary.accounts.length !== 1 || bundleSummary.accounts[0] !== card.account_name
                     readonly property bool lastMember: bundleSummary.lastId === cardId
                     readonly property var latestCard: bundleSummary.latestAt && (!card.received_at || bundleSummary.latestAt > card.received_at) ? Object.assign({}, card, {received_at: bundleSummary.latestAt}) : card
-                    readonly property real bundleTextInset: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
+                    readonly property real bundleTextInset: window.compactInbox ? 56 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
                     function unregisterControls() {
@@ -1393,7 +1409,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: window.compactInbox ? Infinity : implicitWidth }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: Infinity }
                                             Rectangle {
                                                 Layout.row: window.compactInbox ? 1 : 0
                                                 Layout.column: window.compactInbox ? 0 : 2

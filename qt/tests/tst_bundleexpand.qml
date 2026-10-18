@@ -113,6 +113,64 @@ TestCase {
         capture(inbox, "sender-summary-" + data.tag + "-expanded")
         inbox.close()
     }
+    function test_senderBundlesUseOriginalSubjectsAndSkipPinnedMembers() {
+        const subjects = ["Synthetic river survey", "Synthetic bridge review", "Synthetic flood note"]
+        const ids = ["42111111-1111-4111-8111-111111111111", "42111111-1111-4111-8111-111111111112", "42111111-1111-4111-8111-111111111113"]
+        const bundle = "generic-group-782"
+        const cards = ids.map((id, index) => card(id, bundle, "now", {
+            title: subjects[index], bundle_title: "sender:robot@synthetic.test", state: "open",
+            snippet: "Synthetic unrelated project note", sender_name: "Synthetic robot", sender_address: "robot@synthetic.test",
+            received_at: "2026-10-1" + (index + 1) + "T12:00:00Z"
+        }))
+        const pinned = card("42111111-1111-4111-8111-111111111114", bundle, "pinned", {
+            title: "Pinned synthetic outlier", bundle_title: "sender:robot@synthetic.test", state: "open", pinned_rank: 1,
+            sender_name: "Different pinned writer", sender_address: "pinned@synthetic.test",
+            account_name: "other@synthetic.test", received_at: "2026-10-16T12:00:00Z"
+        })
+        verify(store.applyRemoteCards({now: cards.concat([pinned]), later: [], missed: []}))
+        const originalOrder = [pinned.id].concat(ids)
+        compare(store.cardIds(), originalOrder)
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(3) !== null })
+        const pinnedRow = list.itemAtIndex(0)
+        const summary = list.itemAtIndex(1)
+        compare(pinnedRow.cardId, pinned.id)
+        verify(pinnedRow.visible && !pinnedRow.bundleLeader && !pinnedRow.bundled, "Pinned mail stays standalone")
+        const title = findChild(summary, "bundleTitleLabel-" + ids[0])
+        compare(title.text, subjects[2], "Newest unpinned original subject wins, not the newer pinned outlier")
+        verify(title.text.indexOf("sender:") < 0)
+        const metadata = findChild(summary, "bundleAccountLabel-" + ids[0])
+        verify(metadata.text.indexOf("Different pinned writer") < 0 && metadata.text.indexOf("other@synthetic.test") < 0)
+        verify(!list.itemAtIndex(2).visible && !list.itemAtIndex(3).visible)
+        mouseClick(findChild(summary, "bundleToggle-" + ids[0]))
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(2).visible && list.itemAtIndex(3).visible })
+        for (let i = 0; i < 3; ++i) compare(list.itemAtIndex(i + 1).card.title, subjects[i])
+        const landmark = findChild(summary, "dateLandmark-" + ids[0])
+        verify(landmark && landmark.visible && landmark.text.length > 0)
+        const frame = findChild(summary, "inboxCard")
+        const landmarkBox = landmark.mapToItem(summary, 0, 0)
+        verify(landmark.width > 0 && landmark.height > 0 && landmarkBox.y + landmark.height <= frame.y + 1,
+               "Date landmark must occupy its own bbox above the card")
+        inbox.compactDensity = false
+        wait(100)
+        const comfortableHeight = frame.height
+        inbox.compactDensity = true
+        wait(100)
+        verify(frame.height < comfortableHeight, "Density changes geometry without changing content order")
+        compare(store.cardIds(), originalOrder)
+        mouseClick(findChild(summary, "archiveBundle-" + ids[0]))
+        tryVerify(function() { return store.cardIds().length === 1 })
+        compare(store.cardIds(), [pinned.id], "Bulk archive excludes the pinned outlier")
+        mouseClick(findChild(inbox, "bundleArchiveUndoButton"))
+        tryVerify(function() { return store.cardIds().length === originalOrder.length })
+        compare(store.cardIds(), originalOrder)
+        inbox.close()
+    }
     function test_receiptTitleUsesNarrowCardWidth() {
         const bundle = "topic:receipts"
         const titleText = "Your receipt from NOVA SCENT PRIVATE LIMITED #2547-5714"
@@ -490,8 +548,8 @@ TestCase {
         inbox.close()
     }
     function test_nonMailArchiveHasNoFalseUndoAndNeighborRemains() {
-        const id = "synthetic-task-undo"
-        const neighbor = "synthetic-task-neighbor"
+        const id = "41111111-1111-4111-8111-111111111111"
+        const neighbor = "41111111-1111-4111-8111-111111111112"
         verify(store.applyRemoteCards({now: [
             {id: id, title: "Synthetic task", source: "manual", section: "now", state: "open",
              bundle_id: "", pinned_rank: null, important: false, timed: false, summary: "Task summary"},

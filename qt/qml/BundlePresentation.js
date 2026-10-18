@@ -12,10 +12,6 @@ function title(card, summary) {
     if (latestTitle.trim().length > 0)
         return latestTitle
 
-    const cardTitle = card.title || ""
-    if (cardTitle.trim().length > 0)
-        return cardTitle
-
     const sender = card.sender_name || card.sender_address || bundleTitle.slice(7)
     const cleanSender = sender.replace(/[<>]/g, "").trim()
     const at = cleanSender.lastIndexOf("@")

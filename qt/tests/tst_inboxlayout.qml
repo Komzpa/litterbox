@@ -261,59 +261,6 @@ TestCase {
         const collapsedFrame = findChild(collapsedLeader, "inboxCard")
         compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
     }
-    function test_senderBundlesUseOriginalSubjectsAndSkipPinnedMembers() {
-        store.clear()
-        const subjects = ["Synthetic river survey", "Synthetic bridge review", "Synthetic flood note"]
-        const ids = ["cinder-0", "cinder-1", "cinder-2"]
-        for (let i = 0; i < ids.length; ++i) {
-            const card = {id: ids[i], title: subjects[i], source: "mail", section: "now",
-                bundle_id: "generic-group-782", bundle_title: "sender:robot@synthetic.test",
-                bundle_leader: i === 0, bundle_member_count: 3, pinned_rank: null,
-                important: false, timed: false, has_body: false, snippet: "Synthetic unrelated project note",
-                summary: "", note: "", sender_name: "Synthetic robot", sender_address: "robot@synthetic.test",
-                account_name: "reader@synthetic.test", received_at: "2026-10-1" + (i + 1) + "T12:00:00Z"}
-            store.append({cardId: ids[i], title: subjects[i], section: "now", card: card})
-        }
-        const pinned = {id: "cinder-pinned", title: "Pinned synthetic outlier", source: "mail", section: "pinned",
-            bundle_id: "generic-group-782", bundle_title: "sender:robot@synthetic.test", bundle_leader: true,
-            bundle_member_count: 1, pinned_rank: 1, important: false, timed: false, has_body: false,
-            snippet: "Pinned record must not be bulk archived", summary: "", note: "",
-            sender_name: "Different pinned writer", sender_address: "pinned@synthetic.test",
-            account_name: "other@synthetic.test", received_at: "2026-10-12T12:00:00Z"}
-        store.insert(0, {cardId: pinned.id, title: pinned.title, section: "pinned", card: pinned})
-        const inbox = createTemporaryObject(inboxComponent, this, {
-            store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 900
-        })
-        verify(inbox)
-        inbox.show()
-        const list = findChild(inbox, "inboxList")
-        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1) !== null })
-        const summary = list.itemAtIndex(0)
-        compare(findChild(summary, "bundleTitleLabel-cinder-0").text, "Synthetic flood note")
-        verify(findChild(summary, "bundleTitleLabel-cinder-0").text.indexOf("sender:") < 0)
-        verify(!list.itemAtIndex(1).visible, "bundle members remain collapsed until expanded")
-        const originalOrder = ids.concat([pinned.id])
-        compare(store.cardIds(), originalOrder)
-        mouseClick(findChild(summary, "bundleToggle-cinder-0"))
-        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1).visible })
-        for (let i = 0; i < 3; ++i) compare(list.itemAtIndex(i).card.title, subjects[i])
-        compare(list.itemAtIndex(3).cardId, pinned.id)
-        const landmark = findChild(summary, "dateLandmark-cinder-0")
-        verify(landmark && landmark.visible && landmark.text.length > 0)
-        const summaryFrame = findChild(summary, "inboxCard")
-        const landmarkBox = landmark.mapToItem(summary, 0, 0)
-        verify(landmark.width > 0 && landmark.height > 0 && landmarkBox.y + landmark.height <= summaryFrame.y + 1,
-               "date landmark must occupy its own bbox above the card")
-        inbox.compactDensity = false
-        wait(100)
-        const comfortableHeight = findChild(summary, "inboxCard").height
-        inbox.compactDensity = true
-        wait(100)
-        const compactHeight = findChild(summary, "inboxCard").height
-        verify(compactHeight < comfortableHeight, "density changes geometry without changing content order")
-        compare(store.cardIds(), originalOrder)
-        inbox.close()
-    }
     function test_expandedMemberContext_data() {
         return [{tag: "desktop", viewWidth: 1356, viewHeight: 475},
                 {tag: "phone", viewWidth: 412, viewHeight: 915}]

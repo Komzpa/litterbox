@@ -281,11 +281,12 @@ TestCase {
         verify(line.text.indexOf("·") < 0, "stray separator without arrival time: " + line.text)
     }
     function test_originalThreadUsesNativeDisclosureInsideSingleDocumentScroll() {
+        const historyText = "Second field note. " + "The survey records preserve the river level, bridge observations, and the original field measurements. ".repeat(80)
         storeStub.cached = {"thread": {source_url: "https://mail.synthetic.test/thread/42", messages: [
             {id: "orig-1", gmail_message_id: "gmail-1", sender_name: "Older historian", sender_address: "old@synthetic.test",
-             received_at: "2026-10-02T10:00:00Z", html: "<p>First field note</p>"},
+             received_at: "2026-10-02T10:00:00Z", html: "<p>First <b>field</b> note</p>"},
             {id: "orig-2", gmail_message_id: "gmail-2", sender_name: "Newer historian", sender_address: "new@synthetic.test",
-             received_at: "2026-10-03T11:00:00Z", html: "<p>Second field note</p>"},
+             received_at: "2026-10-03T11:00:00Z", html: "<p>" + historyText + "</p>"},
             {id: "orig-3", gmail_message_id: "gmail-3", sender_name: "Latest historian", sender_address: "latest@synthetic.test",
              received_at: "2026-10-04T12:00:00Z", html: "<p>Latest field note</p>"}
         ]}}
@@ -301,8 +302,8 @@ TestCase {
         tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
         let result = null
         body.runJavaScript(`({details: Array.from(document.querySelectorAll('details')).map(d => ({open: d.open,
-            summary: d.querySelector('summary').innerText, body: d.querySelector('.lb-original').innerText})),
-            latest: document.querySelector('.lb-latest').innerText,
+            summary: d.querySelector('summary').innerText, body: d.querySelector('.lb-original').textContent.trim()})),
+            latest: document.querySelector('.lb-latest').innerText, originalHtml: Array.from(document.querySelectorAll('.lb-original')).map(e => e.innerHTML),
             sections: document.querySelectorAll('.lb-original').length,
             scrollHeight: document.scrollingElement.scrollHeight,
             clientHeight: document.scrollingElement.clientHeight,
@@ -310,17 +311,49 @@ TestCase {
             WebEngineScript.ApplicationWorld, value => result = value)
         tryVerify(function() { return result !== null })
         compare(result.details.map(d => d.open), [false, false])
-        compare(result.details.map(d => d.body), ["First field note", "Second field note"])
+        compare(result.details.map(d => d.body), ["First field note", historyText.trim()])
+        verify(result.originalHtml[0].indexOf("<b>field</b>") >= 0, "Collapsed originals retain their HTML")
         verify(result.details[0].summary.indexOf("Older historian <old@synthetic.test>") >= 0)
         verify(result.details[1].summary.indexOf("Newer historian <new@synthetic.test>") >= 0)
         verify(result.latest.indexOf("Latest historian <latest@synthetic.test>") >= 0)
         verify(result.latest.indexOf("Latest field note") < 0)
         compare(result.sections, 3)
         compare(result.nestedScrolls, 0)
-        verify(result.scrollHeight > result.clientHeight)
-        let scrollTop = null
-        body.runJavaScript("document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight; document.scrollingElement.scrollTop",
-            WebEngineScript.ApplicationWorld, value => scrollTop = value)
-        tryVerify(function() { return scrollTop !== null && scrollTop > 0 })
+        let summaryBox = null
+        body.runJavaScript(`(() => { const summary = document.querySelector('details summary');
+            summary.scrollIntoView(); const box = summary.getBoundingClientRect();
+            return {x: box.x + box.width / 2, y: box.y + box.height / 2}; })()`,
+            WebEngineScript.ApplicationWorld, value => summaryBox = value)
+        tryVerify(function() { return summaryBox !== null })
+        mouseClick(body, summaryBox.x, summaryBox.y)
+        let opened = null
+        body.runJavaScript(`(() => { const details = document.querySelector('details');
+            const original = details.querySelector('.lb-original');
+            return {open: details.open, text: original.innerText, height: original.getBoundingClientRect().height,
+                nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
+            WebEngineScript.ApplicationWorld, value => opened = value)
+        tryVerify(function() { return opened !== null })
+        verify(opened.open && opened.height > 0)
+        compare(opened.text.trim(), "First field note", "Clicking the native summary renders the original")
+        compare(opened.nestedScrolls, 0)
+        summaryBox = null
+        body.runJavaScript(`(() => { const summary = document.querySelectorAll('details summary')[1];
+            summary.scrollIntoView(); const box = summary.getBoundingClientRect();
+            return {x: box.x + box.width / 2, y: box.y + box.height / 2}; })()`,
+            WebEngineScript.ApplicationWorld, value => summaryBox = value)
+        tryVerify(function() { return summaryBox !== null })
+        mouseClick(body, summaryBox.x, summaryBox.y)
+        let scroll = null
+        body.runJavaScript(`(() => { const details = document.querySelectorAll('details')[1];
+            const documentScroll = document.scrollingElement;
+            documentScroll.scrollTop = documentScroll.scrollHeight;
+            return {open: details.open, top: documentScroll.scrollTop,
+                height: documentScroll.scrollHeight, viewport: documentScroll.clientHeight,
+                nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
+            WebEngineScript.ApplicationWorld, value => scroll = value)
+        tryVerify(function() { return scroll !== null })
+        verify(scroll.open && scroll.height > scroll.viewport && scroll.top > 0,
+               "Expanded long history scrolls in the original document")
+        compare(scroll.nestedScrolls, 0)
     }
 }

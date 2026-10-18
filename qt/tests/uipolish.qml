@@ -241,8 +241,10 @@ TestCase {
         tryCompare(menu, "opened", true)
         wait(100)
         const refresh = findChild(inbox, "headerMenuRefresh")
-        compare(menu.height, menu.topPadding + menu.bottomPadding + accounts.height + findChild(inbox, "headerMenuAgents").height + findChild(inbox, "headerMenuSettings").height + findChild(inbox, "headerMenuEnroll").height + refresh.height,
-                "Unsupported updates must leave no empty menu tail")
+        const visibleRows = Array.from({length: menu.count}, (_, index) => menu.itemAt(index))
+            .filter(item => item && item.visible)
+        compare(menu.height, menu.topPadding + menu.bottomPadding + visibleRows.reduce((height, item) => height + item.height, 0),
+                "Hidden menu commands must not leave an empty tail")
         compare(accounts.icon.width, 20)
         compare(accounts.icon.height, 20)
         verify(accounts.background.x >= 0 && menu.padding >= 4, "Highlight stays inside padded menu")

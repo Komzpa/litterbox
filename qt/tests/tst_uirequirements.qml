@@ -110,8 +110,8 @@ TestCase {
         verify(done.implicitHeight >= 48)
 
         mouseClick(moreActions)
-        const sheet = findChild(moreActions, "cardActionSheet-card-1")
-        verify(sheet)
+        let sheet = null
+        tryVerify(function() { sheet = findChild(moreActions, "cardActionSheet-card-1"); return sheet !== null })
         tryVerify(function() { return sheet.visible && sheet.contentItem !== null })
         sheet.Material.theme = Material.Dark
         verify(Qt.colorEqual(sheet.contentItem.palette.window, "#ffffff"))
