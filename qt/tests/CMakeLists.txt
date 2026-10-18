@@ -38,6 +38,11 @@ if(NOT ANDROID)
 endif()
 
 # Real CardStore consumer proof; optionally load a copied desktop cache.
+# Consumer contract: bundle fixtures carry state=open; important members stay
+# standalone but participate in Archive/Undo, while pinned members never do.
+# Pointer consumers wait for adaptive layouts to polish/render, not just for a
+# delegate to exist or StackView.depth/busy to settle. Keep the real click,
+# original subject/topic, exact anchor, 48px target and popup/palette oracles.
 find_package(Qt6 REQUIRED COMPONENTS QuickTest)
 add_executable(tst_bundleexpand bundle_runner.cpp ../src/CardStore.cpp ../src/CardStore.h)
 target_include_directories(tst_bundleexpand PRIVATE ../src)

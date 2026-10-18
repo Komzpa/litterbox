@@ -5,6 +5,7 @@ import litterbox 1.0 as App
 
 TestCase {
     name: "UiRequirements"
+    when: windowShown
     width: 520
     height: 800
     readonly property string testCardId: "44111111-1111-4111-8111-111111111111"
@@ -96,13 +97,15 @@ TestCase {
         verify(list)
         list.forceLayout()
         compare(list.count, 1)
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        verify(waitForPolish(inbox), "Inbox layout must settle before measuring real action targets")
         const row = list.itemAtIndex(0)
         verify(row)
         const moreActions = findChild(row, "inboxActions")
         verify(moreActions)
         compare(moreActions.icon.name, "overflow-menu")
-        // R63: phones keep one narrow 28x48 overflow beside the 48 px archive target.
-        verify(moreActions.implicitWidth >= (inbox.compactInbox ? 28 : 48))
+        verify(moreActions.implicitWidth >= 48)
+        verify(moreActions.width >= 48 && moreActions.height >= 48)
         verify(moreActions.implicitHeight >= 48)
 
         const done = findChild(row, "doneButton-" + testCardId)
@@ -110,6 +113,7 @@ TestCase {
         verify(done.icon.name.length > 0 || done.text.length > 0)
         verify(done.implicitWidth >= 48)
         verify(done.implicitHeight >= 48)
+        verify(done.width >= 48 && done.height >= 48)
 
         mouseClick(moreActions)
         const sheet = moreActions.actionSheetItem()

@@ -27,9 +27,11 @@ TestCase {
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
 
+    // Model real open inbox snapshots: archiveBundleNow intentionally excludes
+    // missing/non-open state as well as pinned cards, not important cards.
     function card(id, bundle, section, extra) {
         return Object.assign({id: id, title: id, source: "mail", section: section,
-            bundle_id: bundle, bundle_title: bundle, pinned_rank: null, important: false,
+            state: "open", bundle_id: bundle, bundle_title: bundle, pinned_rank: null, important: false,
             timed: false, has_body: false, summary: "", note: "", account_name: "test@example.test"}, extra || {})
     }
     function snapshot(list, ids) {
@@ -88,6 +90,10 @@ TestCase {
         verify(inbox)
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        // A delegate exists before the desktop rail/split has polished its bounds.
+        // Deliver the real click only after its final window coordinates render.
+        verify(waitForPolish(inbox), "The adaptive inbox must finish layout before the bundle click")
+        verify(waitForRendering(list), "The bundle viewport must render before pointer delivery")
         const row = list.itemAtIndex(0)
         const toggle = findChild(row, "bundleToggle-sender-0")
         const expectedTitle = data.bundle || cards[0].title

@@ -4,6 +4,7 @@ import litterbox 1.0 as App
 
 TestCase {
     name: "MailCardOpening"
+    when: windowShown
     width: 700
     height: 800
     property url pagesDir: Qt.resolvedUrl("../pages/")
@@ -96,6 +97,10 @@ TestCase {
         tryCompare(inbox.mailDetailPage, "html", "<p>Hello <b>reader</b></p>")
         compare(store.operations, [])
         tryCompare(stack, "busy", false)
+        // StackView.Immediate updates depth before hiding the inbox header has
+        // polished the reader's app-bar coordinates. busy === false is not a frame.
+        verify(waitForPolish(inbox), "Reader layout must settle before clicking Back")
+        verify(waitForRendering(inbox.mailDetailPage), "The real reader must render before clicking Back")
         const back = findChild(inbox.mailDetailPage, "backToInbox")
         verify(back)
         verify(back.width >= 48 && back.height >= 48)
@@ -226,6 +231,8 @@ TestCase {
         const stack = findChild(inbox, "pageStack")
         tryCompare(stack, "depth", 2)
         tryCompare(stack, "busy", false)
+        verify(waitForPolish(inbox), "Reader layout must settle before clicking a primary action")
+        verify(waitForRendering(inbox.mailDetailPage), "The real reader must render before pointer delivery")
         const archive = findChild(inbox.mailDetailPage, "archiveMail")
         verify(archive && archive.visible, "Archive must be available while reading")
         if (row.action === "key") {

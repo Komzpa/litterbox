@@ -416,17 +416,43 @@ TestCase {
                    "Primary and overflow hit targets must not overlap")
             const left = Math.min(a.x, b.x)
             const right = Math.max(a.x + primary.width, b.x + overflow.width)
+            const top = Math.min(a.y, b.y)
+            const bottom = Math.max(a.y + primary.height, b.y + overflow.height)
             const frameBox = frame.mapToItem(list, 0, 0)
             verify(left >= frameBox.x && right <= frameBox.x + frame.width,
                    "Both actions must remain inside the card bbox")
-            return {left: left, right: right}
+            verify(top >= frameBox.y && bottom <= frameBox.y + frame.height,
+                   "Both actions must remain vertically inside the card bbox")
+            return {left: left, right: right, top: top, bottom: bottom}
         }
         const mailActions = actionGroup(mailRow, "doneButton-jasmine", "inboxActions")
         const bundleActions = actionGroup(bundleRow, "archiveBundle-odm", "bundleOptions-odm")
         compare(mailActions.left, bundleActions.left)
         compare(mailActions.right, bundleActions.right)
-        compare(x(mailRow, "mailDate-jasmine"), x(bundleRow, "bundleDate-odm"))
-        compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
+        // R36/R50 use the list pane, not the 1440px window, as the breakpoint.
+        // Hidden desktop dates have no layout position in a compact split.
+        const mailDateName = (inbox.compactInbox ? "phoneMailDate-" : "mailDate-") + "jasmine"
+        const bundleDateName = (inbox.compactInbox ? "phoneBundleDate-" : "bundleDate-") + "odm"
+        const mailDate = findChild(mailRow, mailDateName)
+        const bundleDate = findChild(bundleRow, bundleDateName)
+        for (const pair of [[mailRow, mailDate], [bundleRow, bundleDate]]) {
+            const frame = findChild(pair[0], "inboxCard")
+            const date = pair[1]
+            verify(date && date.visible && date.width > 0 && date.height > 0)
+            const p = date.mapToItem(frame, 0, 0)
+            verify(p.x >= 0 && p.y >= 0 && p.x + date.width <= frame.width && p.y + date.height <= frame.height,
+                   "The visible arrival date must fit inside its card")
+        }
+        if (inbox.compactInbox) {
+            const mailTitle = findChild(mailRow, "mailTitle-jasmine")
+            verify(mailDate.mapToItem(list, mailDate.width, 0).x <= mailTitle.mapToItem(list, mailTitle.width, 0).x,
+                   "Compact mail arrival stays in the main text column, clear of the action group")
+            verify(bundleDate.mapToItem(list, 0, bundleDate.height).y <= bundleActions.top,
+                   "Compact bundle arrival stays above its action group")
+        } else {
+            compare(x(mailRow, mailDateName), x(bundleRow, bundleDateName))
+            compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
+        }
         inbox.close()
     }
     function test_additionalScreenshot_data() { return test_cleanPreviewGrid_data() }

@@ -69,7 +69,9 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewEvents("")
+	// LISTEN is database-scoped: use the same explicit DSN as the persisted
+	// cards, not pgx's environment-default database.
+	events := NewEvents(tdb.DSN)
 	eventsCtx, stopEvents := context.WithCancel(context.Background())
 	defer stopEvents()
 	go events.Run(eventsCtx)

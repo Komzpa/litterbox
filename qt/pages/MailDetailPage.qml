@@ -251,6 +251,7 @@ Kirigami.Page {
 
         Rectangle {
             objectName: "mailAppBar"
+            z: 1
             Layout.fillWidth: true
             implicitHeight: Math.max(56, actionRow.implicitHeight + 8)
             color: root.surface
