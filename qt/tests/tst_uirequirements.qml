@@ -7,11 +7,12 @@ TestCase {
     name: "UiRequirements"
     width: 520
     height: 800
+    readonly property string testCardId: "44111111-1111-4111-8111-111111111111"
 
     ListModel {
         id: store
         property bool online: false
-        function cardIds() { return ["card-1"] }
+        function cardIds() { return [testCardId] }
         function pinnedCardIds() { return [] }
         function sourceLabel(card) { return card.source }
         function dismiss(cardId) {}
@@ -41,8 +42,8 @@ TestCase {
 
     function init() {
         store.clear()
-        store.append({cardId: "card-1", title: "UI requirements card", section: "now", card: {
-            id: "card-1", title: "UI requirements card", source: "manual", section: "now",
+        store.append({cardId: testCardId, title: "UI requirements card", section: "now", card: {
+            id: testCardId, title: "UI requirements card", source: "manual", section: "now",
             has_body: false, pinned_rank: null, bundle_id: "", important: false,
             timed: false, note: "", summary: "", account_name: ""
         }})
@@ -50,7 +51,8 @@ TestCase {
 
     function createInbox() {
         const inbox = createTemporaryObject(inboxComponent, this, {
-            store: store, api: api, updater: updater, timeRules: timeRules
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 520, height: 800
         })
         verify(inbox)
         inbox.show()
@@ -103,28 +105,28 @@ TestCase {
         verify(moreActions.implicitWidth >= (inbox.compactInbox ? 28 : 48))
         verify(moreActions.implicitHeight >= 48)
 
-        const done = findChild(row, "doneButton-card-1")
+        const done = findChild(row, "doneButton-" + testCardId)
         verify(done)
         verify(done.icon.name.length > 0 || done.text.length > 0)
         verify(done.implicitWidth >= 48)
         verify(done.implicitHeight >= 48)
 
         mouseClick(moreActions)
-        let sheet = null
-        tryVerify(function() { sheet = findChild(moreActions, "cardActionSheet-card-1"); return sheet !== null })
+        const sheet = moreActions.actionSheetItem()
+        verify(sheet, "The real overlay-owned sheet must be created by the action control")
         tryVerify(function() { return sheet.visible && sheet.contentItem !== null })
         sheet.Material.theme = Material.Dark
         verify(Qt.colorEqual(sheet.contentItem.palette.window, "#ffffff"))
         verify(Qt.colorEqual(sheet.contentItem.palette.base, "#ffffff"))
 
-        const close = findChild(sheet, "actionSheetClose-card-1")
+        const close = findChild(sheet, "actionSheetClose-" + testCardId)
         verify(close)
         verify(close.text.length > 0)
         verify(close.implicitWidth >= 48)
         verify(close.implicitHeight >= 48)
         let checkedActions = 0
         for (const name of ["primary", "spam", "open", "cached", "note", "snooze", "pin", "takeout"]) {
-            const control = findChild(sheet, "actionRow-" + name + "-card-1")
+            const control = findChild(sheet, "actionRow-" + name + "-" + testCardId)
             verify(control, "missing real action row " + name)
             if (!control.visible) continue
             checkedActions++

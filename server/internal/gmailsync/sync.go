@@ -419,6 +419,10 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		return e
 	}
 	defer tx.Rollback(ctx)
+ _, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, newest)
+	if e != nil {
+		return e
+	}
 	var cardID uuid.UUID
 	e = tx.QueryRow(ctx, "SELECT id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3", a.TenantID, a.ID, threadID).Scan(&cardID)
 	if e != nil {

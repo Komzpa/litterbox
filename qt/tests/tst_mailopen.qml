@@ -44,14 +44,27 @@ TestCase {
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
 
+    function mailId(index) {
+        return "43111111-1111-4111-8111-" + String(index + 1).padStart(12, "0")
+    }
+    function positionRow(list, index) {
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        wait(200)
+        list.positionViewAtIndex(index, ListView.Beginning)
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(index) !== null })
+        wait(200)
+        list.positionViewAtIndex(index, ListView.Beginning)
+        wait(100)
+    }
     function populateStore(source) {
         store.clear()
         store.operations = []
-        store.cached = ({"mail-8": {html: "<p>Hello <b>reader</b></p>"}})
-        for (let i = 0; i < 14; ++i) {
-            const id = "mail-" + i
-            store.append({cardId: id, title: "Message " + i, section: "now", card: {
-                id: id, source: source, section: "now", account_name: "fixture@example.test",
+        store.cached = ({[mailId(8)]: {html: "<p>Hello <b>reader</b></p>"}})
+        for (let i = 0; i < 40; ++i) {
+            const id = mailId(i)
+            const title = i < 14 ? "Message " + i : "Additional mail"
+            store.append({cardId: id, title: title, section: "now", card: {
+                id: id, title: title, source: source, section: "now", account_name: "fixture@example.test",
                 summary: "Click this preview to read the message",
                 snippet: "Click this preview to read the message", has_body: true,
                 pinned_rank: null, bundle_id: "", important: false, timed: false,
@@ -69,31 +82,28 @@ TestCase {
         verify(inbox)
         inbox.show()
         const list = findChild(inbox, "inboxList")
-        tryCompare(list, "count", 14)
-        wait(100)
-        list.forceLayout()
-        list.positionViewAtIndex(8, ListView.Beginning)
-        wait(100)
+        tryCompare(list, "count", 40)
+        positionRow(list, 8)
         const before = list.contentY
         verify(before > 0)
         const row = list.itemAtIndex(8)
         verify(row)
-        const summary = findChild(row, "mailSnippet-mail-8")
+        const summary = findChild(row, "mailSnippet-" + mailId(8))
         verify(summary && summary.visible)
         mouseClick(summary, summary.width / 2, summary.height / 2)
         const stack = findChild(inbox, "pageStack")
         tryCompare(stack, "depth", 2)
-        tryCompare(stack.currentItem, "html", "<p>Hello <b>reader</b></p>")
+        tryCompare(inbox.mailDetailPage, "html", "<p>Hello <b>reader</b></p>")
         compare(store.operations, [])
         tryCompare(stack, "busy", false)
-        const back = findChild(stack.currentItem, "backToInbox")
+        const back = findChild(inbox.mailDetailPage, "backToInbox")
         verify(back)
         verify(back.width >= 48 && back.height >= 48)
         mouseClick(back)
         tryCompare(stack, "depth", 1)
         tryCompare(stack, "busy", false)
         compare(list.contentY, before)
-        compare(list.itemAtIndex(8).cardId, "mail-8")
+        compare(list.itemAtIndex(8).cardId, mailId(8))
         inbox.close()
     }
     function test_escapeAndMouseBackRestoreInboxPosition_data() {
@@ -111,29 +121,27 @@ TestCase {
         inbox.requestActivate()
         tryCompare(inbox, "active", true)
         const list = findChild(inbox, "inboxList")
-        tryCompare(list, "count", 14)
-        list.forceLayout()
-        list.positionViewAtIndex(8, ListView.Beginning)
-        wait(100)
+        tryCompare(list, "count", 40)
+        positionRow(list, 8)
         const before = list.contentY - list.originY
         verify(before > 0)
 
-        const preview = findChild(list.itemAtIndex(8), "mailSnippet-mail-8")
+        const preview = findChild(list.itemAtIndex(8), "mailSnippet-" + mailId(8))
         verify(preview)
         mouseClick(preview, preview.width / 2, preview.height / 2)
         const stack = findChild(inbox, "pageStack")
         tryCompare(stack, "depth", 2)
-        tryCompare(stack.currentItem, "html", "<p>Hello <b>reader</b></p>")
+        tryCompare(inbox.mailDetailPage, "html", "<p>Hello <b>reader</b></p>")
 
         if (row.action === "escape") {
-            stack.currentItem.forceActiveFocus()
+            inbox.mailDetailPage.forceActiveFocus()
             keyClick(Qt.Key_Escape)
         } else {
             mouseClick(inbox.contentItem, inbox.width / 2, inbox.height / 2, Qt.BackButton)
         }
         tryCompare(stack, "depth", 1)
         tryCompare(list, "contentY", list.originY + before)
-        compare(list.itemAtIndex(8).cardId, "mail-8")
+        compare(list.itemAtIndex(8).cardId, mailId(8))
         compare(store.operations, [])
         inbox.close()
     }
@@ -145,8 +153,9 @@ TestCase {
         verify(inbox)
         inbox.show()
         const list = findChild(inbox, "inboxList")
-        tryCompare(list, "count", 14)
-        const row = findChild(list.itemAtIndex(0), "openCard-mail-0")
+        tryCompare(list, "count", 40)
+        positionRow(list, 0)
+        const row = findChild(list.itemAtIndex(0), "openCard-" + mailId(0))
         verify(row)
         mouseClick(row)
         const stack = findChild(inbox, "pageStack")
@@ -155,7 +164,7 @@ TestCase {
         mouseClick(inbox.contentItem, inbox.width / 2, inbox.height / 2, Qt.BackButton)
         tryCompare(stack, "depth", 1)
         tryCompare(inbox, "readerOpen", false)
-        compare(inbox.selectedCardId, "mail-0")
+        compare(inbox.selectedCardId, mailId(0))
         compare(store.operations, [])
         inbox.close()
     }
@@ -170,8 +179,8 @@ TestCase {
         inbox.requestActivate()
         tryCompare(inbox, "active", true)
         const list = findChild(inbox, "inboxList")
-        list.forceLayout()
-        const card = findChild(list.itemAtIndex(0), "openCard-mail-0")
+        positionRow(list, 0)
+        const card = findChild(list.itemAtIndex(0), "openCard-" + mailId(0))
         verify(card)
         list.forceActiveFocus()
         for (let i = 0; i < 20 && !card.activeFocus; ++i)
@@ -206,26 +215,24 @@ TestCase {
         inbox.requestActivate()
         tryCompare(inbox, "active", true)
         const list = findChild(inbox, "inboxList")
-        tryCompare(list, "count", 14)
-        list.forceLayout()
-        list.positionViewAtIndex(6, ListView.Beginning)
-        wait(100)
+        tryCompare(list, "count", 40)
+        positionRow(list, 6)
         const before = list.contentY - list.originY
         const anchorY = list.itemAtIndex(6).mapToItem(list, 0, 0).y
         verify(before > 0)
-        const preview = findChild(list.itemAtIndex(8), "openCard-mail-8")
+        const preview = findChild(list.itemAtIndex(8), "openCard-" + mailId(8))
         verify(preview)
         mouseClick(preview, preview.width / 2, preview.height / 2)
         const stack = findChild(inbox, "pageStack")
         tryCompare(stack, "depth", 2)
         tryCompare(stack, "busy", false)
-        const archive = findChild(stack.currentItem, "archiveMail")
+        const archive = findChild(inbox.mailDetailPage, "archiveMail")
         verify(archive && archive.visible, "Archive must be available while reading")
         if (row.action === "key") {
             archive.forceActiveFocus()
             keyClick(Qt.Key_E)
         } else if (row.action === "snooze") {
-            const actions = findChild(stack.currentItem, "mailActions")
+            const actions = findChild(inbox.mailDetailPage, "mailActions")
             verify(actions)
             actions.chooseSnoozeDateTime()
             const dateTime = findChild(actions, "snoozeDateTime")
@@ -242,10 +249,10 @@ TestCase {
         tryCompare(stack, "busy", false)
         compare(list.contentY - list.originY, before)
         compare(Math.round(list.itemAtIndex(6).mapToItem(list, 0, 0).y), Math.round(anchorY))
-        verify(store.cardIds().indexOf("mail-8") < 0)
+        verify(store.cardIds().indexOf(mailId(8)) < 0)
         compare(store.operations.length, 1)
         compare(store.operations[0].type, row.action === "snooze" || row.action === "done" ? row.action : "archive")
-        compare(store.operations[0].cardId, "mail-8")
+        compare(store.operations[0].cardId, mailId(8))
         inbox.close()
     }
 
@@ -261,11 +268,8 @@ TestCase {
         verify(inbox)
         inbox.show()
         const list = findChild(inbox, "inboxList")
-        tryCompare(list, "count", 14)
-        list.forceLayout()
-        list.positionViewAtIndex(6, ListView.Beginning)
-        wait(200)
-        list.forceLayout()
+        tryCompare(list, "count", 40)
+        positionRow(list, 6)
         verify(list.contentY - list.originY > 0)
         // The reflow inserts a row above the opened card, so index lookups are
         // stale afterwards; track the card by id throughout.
@@ -276,10 +280,10 @@ TestCase {
             }
             return null
         }
-        const openedCard = rowOf("mail-8")
+        const openedCard = rowOf(mailId(8))
         verify(openedCard)
         const beforeY = openedCard.mapToItem(list, 0, 0).y
-        const preview = findChild(openedCard, "openCard-mail-8")
+        const preview = findChild(openedCard, "openCard-" + mailId(8))
         verify(preview)
         mouseClick(preview, preview.width / 2, preview.height / 2)
         const stack = findChild(inbox, "pageStack")
@@ -289,13 +293,13 @@ TestCase {
         // The inbox reflows while the mail is open: a new row arrives above the
         // opened card (a refresh can also re-estimate row heights), which
         // invalidates the raw contentY that the old Back path restored.
-        store.insert(0, {cardId: "mail-reflow", title: "Message reflow", section: "now", card: {
-            id: "mail-reflow", source: "mail", section: "now", account_name: "fixture@example.test",
+        store.insert(0, {cardId: mailId(40), title: "Message reflow", section: "now", card: {
+            id: mailId(40), title: "Message reflow", source: "mail", section: "now", account_name: "fixture@example.test",
             summary: "Arrived while reading", snippet: "Arrived while reading", has_body: true,
             pinned_rank: null, bundle_id: "", important: false, timed: false,
             note: "", source_url: ""
         }})
-        tryCompare(list, "count", 15, 2000, "the inbox must relayout while the mail is open")
+        tryCompare(list, "count", 41, 2000, "the inbox must relayout while the mail is open")
         const back = findChild(inbox.mailDetailPage, "backToInbox")
         verify(back)
         mouseClick(back)
@@ -304,7 +308,7 @@ TestCase {
         tryCompare(stack, "busy", false)
         wait(200)
         list.forceLayout()
-        const restoredCard = rowOf("mail-8")
+        const restoredCard = rowOf(mailId(8))
         verify(restoredCard)
         const afterY = restoredCard.mapToItem(list, 0, 0).y
         verify(afterY === beforeY,
@@ -315,8 +319,8 @@ TestCase {
 
     function test_bodylessCardDoesNotOpenEmptyDetail() {
         store.clear()
-        store.append({cardId: "manual-1", title: "Plain task", section: "now", card: {
-            id: "manual-1", source: "manual", section: "now", has_body: false,
+        store.append({cardId: mailId(41), title: "Plain task", section: "now", card: {
+            id: mailId(41), title: "Plain task", source: "manual", section: "now", has_body: false,
             pinned_rank: null, bundle_id: "", important: false, timed: false,
             summary: "", note: "", account_name: "", source_url: ""
         }})
@@ -347,15 +351,14 @@ TestCase {
         const rail = findChild(inbox, "desktopNavigation")
         const stack = findChild(inbox, "pageStack")
         const reader = findChild(inbox, "desktopReaderHost")
-        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(8) !== null && reader.visible })
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null && reader.visible })
         verify(split.orientation === Qt.Horizontal)
         verify(rail.visible && reader.visible && reader.width >= 520)
-        list.positionViewAtIndex(8, ListView.Beginning)
-        wait(100)
+        positionRow(list, 8)
         const anchorY = list.itemAtIndex(8).mapToItem(list, 0, 0).y
-        const selected = findChild(list.itemAtIndex(8), "openCard-mail-8")
+        const selected = findChild(list.itemAtIndex(8), "openCard-" + mailId(8))
         mouseClick(selected)
-        tryCompare(inbox, "selectedCardId", "mail-8")
+        tryCompare(inbox, "selectedCardId", mailId(8))
         tryVerify(function() { return inbox.mailDetailPage && inbox.mailDetailPage.visible })
         compare(store.operations, [])
         const retainedReader = inbox.mailDetailPage
@@ -372,37 +375,37 @@ TestCase {
         tryVerify(function() { return !reader.visible && stack.depth === 2 })
         compare(inbox.mailDetailPage, retainedReader)
         compare(retainedReader.embeddedMode, false)
-        const back = findChild(stack.currentItem, "backToInbox")
+        const back = findChild(retainedReader, "backToInbox")
         verify(back)
         mouseClick(back)
         tryCompare(stack, "depth", 1)
-        compare(inbox.selectedCardId, "mail-8")
+        compare(inbox.selectedCardId, mailId(8))
         compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
         compare(store.operations, [])
         inbox.width = 1480
         tryVerify(function() { return reader.visible && !inbox.mailDetailPage.visible })
         compare(inbox.readerOpen, false, "Back must stay closed when the desktop pane returns")
-        mouseClick(findChild(list.itemAtIndex(8), "openCard-mail-8"))
+        mouseClick(findChild(list.itemAtIndex(8), "openCard-" + mailId(8)))
         tryCompare(inbox, "readerOpen", true)
         compare(inbox.mailDetailPage, retainedReader)
         compare(retainedReader.embeddedMode, true)
         mouseClick(findChild(retainedReader, "backToInbox"))
         tryCompare(inbox, "readerOpen", false)
         tryCompare(retainedReader, "visible", false)
-        compare(inbox.selectedCardId, "mail-8")
+        compare(inbox.selectedCardId, mailId(8))
         compare(store.operations, [], "embedded Back callback must close without archiving")
-        mouseClick(findChild(list.itemAtIndex(8), "openCard-mail-8"))
+        mouseClick(findChild(list.itemAtIndex(8), "openCard-" + mailId(8)))
         tryCompare(inbox, "readerOpen", true)
         compare(inbox.mailDetailPage, retainedReader)
-        store.remove(store.cardIds().indexOf("mail-13"))
-        tryCompare(list, "count", 13)
+        store.remove(store.cardIds().indexOf(mailId(13)))
+        tryCompare(list, "count", 39)
         compare(inbox.readerOpen, true, "removing a different card must retain the selected reader")
         compare(retainedReader.visible, true)
         compare(store.operations, [])
         // A remote archive/snapshot removes a selected card from the store;
         // it must not be implemented by invoking the local archive action.
-        store.remove(store.cardIds().indexOf("mail-8"))
-        tryCompare(list, "count", 12)
+        store.remove(store.cardIds().indexOf(mailId(8)))
+        tryCompare(list, "count", 38)
         tryCompare(inbox, "readerOpen", false)
         tryCompare(retainedReader, "visible", false)
         compare(inbox.mailDetailPage, retainedReader)
@@ -419,8 +422,8 @@ TestCase {
         inbox.requestActivate()
         tryCompare(inbox, "active", true)
         const list = findChild(inbox, "inboxList")
-        list.forceLayout()
-        const opener = findChild(list.itemAtIndex(8), "openCard-mail-8")
+        positionRow(list, 8)
+        const opener = findChild(list.itemAtIndex(8), "openCard-" + mailId(8))
         mouseClick(opener)
         const stack = findChild(inbox, "pageStack")
         tryCompare(stack, "depth", 2)
@@ -439,19 +442,17 @@ TestCase {
         inbox.show()
         const list = findChild(inbox, "inboxList")
         const ids = store.cardIds()
-        list.forceLayout()
-        list.positionViewAtIndex(8, ListView.Beginning)
-        wait(100)
+        positionRow(list, 8)
         const anchor = list.itemAtIndex(8).mapToItem(list, 0, 0).y
         mouseClick(findChild(inbox, "toggleSearch"))
         const search = findChild(inbox, "inboxSearch")
         verify(search && findChild(inbox, "inboxSearchRow").visible)
         search.text = "Message 3"
-        search.textEdited(search.text)
+        search.textEdited()
         tryVerify(function() { list.forceLayout(); return list.count > 0 && list.count < ids.length })
         const matches = []
         for (let i = 0; i < list.count; ++i) matches.push(list.itemAtIndex(i).cardId)
-        compare(matches, ["mail-3"])
+        compare(matches, [mailId(3), mailId(13)])
         compare(store.cardIds(), ids, "search must not mutate underlying CardStore order")
         const clear = findChild(inbox, "clearInboxSearch")
         verify(clear.enabled)
@@ -459,6 +460,84 @@ TestCase {
         tryCompare(list, "count", ids.length)
         compare(store.cardIds(), ids)
         compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchor))
+        inbox.close()
+    }
+    function test_realPopupsProtectRetainedReaderAndArchiveShortcut_data() {
+        return ["drawer", "header", "note", "create", "actions", "snooze"].map(
+            popup => ({tag: popup, popup: popup}))
+    }
+
+    function test_realPopupsProtectRetainedReaderAndArchiveShortcut(data) {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 1440, height: 900
+        })
+        verify(inbox)
+        inbox.show()
+        inbox.requestActivate()
+        tryCompare(inbox, "active", true)
+        const list = findChild(inbox, "inboxList")
+        positionRow(list, 8)
+        mouseClick(findChild(list.itemAtIndex(8), "openCard-" + mailId(8)))
+        tryCompare(inbox, "readerOpen", true)
+        const reader = inbox.mailDetailPage
+        const actions = findChild(reader, "mailActions")
+        let body = null
+        tryVerify(function() { body = findChild(reader, "body"); return body !== null && body.visible })
+        const document = reader.html
+        verify(document.length > 0)
+        compare(store.operations, [])
+        // The ambient Controls overlay exists even with no popup. The actual
+        // document must be readable before opening any of these real controls.
+        verify(body.parent.visible)
+        let popup = null
+        if (data.popup === "drawer") {
+            popup = findChild(inbox, "navigationDrawer")
+            popup.open()
+        } else if (data.popup === "header") {
+            mouseClick(findChild(inbox, "inboxCommands"))
+            popup = findChild(inbox, "headerMenu")
+        } else if (data.popup === "note") {
+            actions.noteRequested()
+        } else if (data.popup === "create") {
+            mouseClick(findChild(inbox, "addCardButton"))
+            popup = findChild(inbox, "createDialog")
+        } else if (data.popup === "actions") {
+            mouseClick(actions)
+            popup = actions.actionSheetItem()
+        } else {
+            actions.chooseSnoozeDateTime()
+            popup = actions.snoozeDialogItem()
+        }
+        if (data.popup === "note")
+            tryCompare(inbox, "actualPopupsVisible", true)
+        else
+            tryCompare(popup, "visible", true)
+        // A native Android WebView must yield to the Qt popup, not unload.
+        // Desktop WebEngine stays in the scene underneath the modal surface.
+        tryCompare(body.parent, "visible", Qt.platform.os !== "android")
+        keyClick(Qt.Key_E)
+        compare(store.operations, [], "E must not archive while a real popup is open")
+        compare(inbox.readerOpen, true)
+        compare(inbox.mailDetailPage, reader)
+        compare(findChild(reader, "body"), body, "Popup must not replace the document")
+        compare(reader.html, document)
+        if (data.popup === "note")
+            mouseClick(findChild(inbox, "noteCancelButton"))
+        else
+            popup.close()
+        tryCompare(inbox, "actualPopupsVisible", false)
+        tryCompare(reader, "actualPopupsVisible", false)
+        tryVerify(function() { return body.parent.visible && body.visible })
+        compare(inbox.mailDetailPage, reader)
+        compare(findChild(reader, "body"), body)
+        compare(reader.html, document)
+        findChild(reader, "archiveMail").forceActiveFocus()
+        keyClick(Qt.Key_E)
+        tryCompare(inbox, "readerOpen", false)
+        compare(store.operations.length, 1, "E must resume after the popup closes")
+        compare(store.operations[0].type, "archive")
+        compare(store.operations[0].cardId, mailId(8))
         inbox.close()
     }
 }

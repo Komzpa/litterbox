@@ -403,8 +403,28 @@ TestCase {
         }
         compare(x(mailRow, "mailSender-jasmine"), x(bundleRow, "bundleAccountLabel-odm"))
         compare(x(mailRow, "mailTitle-jasmine"), x(bundleRow, "bundleTitleLabel-odm"))
-        compare(findChild(mailRow, "doneButton-jasmine").mapToItem(list, 0, 0).x,
-                findChild(bundleRow, "archiveBundle-odm").mapToItem(list, 0, 0).x)
+        function actionGroup(row, primaryName, overflowName) {
+            const primary = findChild(row, primaryName)
+            const overflow = findChild(row, overflowName)
+            const frame = findChild(row, "inboxCard")
+            verify(primary && overflow && primary.visible && overflow.visible)
+            verify(primary.width >= 48 && primary.height >= 48)
+            verify(overflow.width >= 48 && overflow.height >= 48)
+            const a = primary.mapToItem(list, 0, 0)
+            const b = overflow.mapToItem(list, 0, 0)
+            verify(a.x + primary.width <= b.x || b.x + overflow.width <= a.x,
+                   "Primary and overflow hit targets must not overlap")
+            const left = Math.min(a.x, b.x)
+            const right = Math.max(a.x + primary.width, b.x + overflow.width)
+            const frameBox = frame.mapToItem(list, 0, 0)
+            verify(left >= frameBox.x && right <= frameBox.x + frame.width,
+                   "Both actions must remain inside the card bbox")
+            return {left: left, right: right}
+        }
+        const mailActions = actionGroup(mailRow, "doneButton-jasmine", "inboxActions")
+        const bundleActions = actionGroup(bundleRow, "archiveBundle-odm", "bundleOptions-odm")
+        compare(mailActions.left, bundleActions.left)
+        compare(mailActions.right, bundleActions.right)
         compare(x(mailRow, "mailDate-jasmine"), x(bundleRow, "bundleDate-odm"))
         compare(findChild(mailRow, "inboxCard").height, findChild(bundleRow, "inboxCard").height)
         inbox.close()

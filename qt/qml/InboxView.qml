@@ -442,10 +442,11 @@ ApplicationWindow {
     onClosing: function(close) {
         close.accepted = !(Qt.platform.os === "android" && handleBack())
     }
-    function actualPopupVisible() {
-        return !!((navigationDrawer && navigationDrawer.visible) || (headerMenu && headerMenu.visible)
-            || (noteDialog && noteDialog.visible) || (createDialog && createDialog.visible))
-    }
+    // Real popup state: only these named dialogs/menu count. The Overlay item
+    // itself exists and stays visible with no popup open, so its visible flag
+    // must never proxy for "a popup is open" (it hid the Android native body).
+    readonly property bool actualPopupsVisible: !!((navigationDrawer && navigationDrawer.visible) || (headerMenu && headerMenu.visible)
+        || (noteDialog && noteDialog.visible) || (createDialog && createDialog.visible))
     function handleBack() {
         if (navigationDrawer.visible) { navigationDrawer.close(); return true }
         if (headerMenu.visible) { headerMenu.close(); return true }
@@ -548,7 +549,10 @@ ApplicationWindow {
         if (name === "MailDetailPage") {
             const values = Object.assign({store: window.cardStore, cardTitle: "", accountName: "", openLinks: true}, properties || {}, {
                 embeddedMode: desktopReader,
-                requestClose: function() { window.closeReader() }
+                requestClose: function() { window.closeReader() },
+                // The retained reader follows the window's real popup state so
+                // its Android WebView hides only while a real dialog/menu is open.
+                ownerPopupVisible: Qt.binding(function() { return window.actualPopupsVisible })
             })
             selectedCardId = values.cardId || ""
             if (!mailDetailPage) {
@@ -947,7 +951,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Alt+Left"
-        enabled: !window.actualPopupVisible()
+        enabled: !window.actualPopupsVisible
         onActivated: window.handleBack()
     }
     SplitView {
@@ -1122,7 +1126,7 @@ ApplicationWindow {
                             const entry = refresh ? {card: source.card, cardId: source.cardId, title: source.title} : entries[i]
                             if (refresh) entries.push(entry)
                             const card = entry.card
-                            if (refresh && card.bundle_id && card.bundle_leader !== undefined) {
+                            if (refresh && card.bundle_id && card.pinned_rank == null && card.section !== "pinned") {
                                 const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], senders: [], important: 0, unpinned: 0, lastId: ""})
                                 if (card.account_name && summary.accounts.indexOf(card.account_name) < 0) summary.accounts.push(card.account_name)
                                 if (card.pinned_rank == null && card.section !== "pinned") {

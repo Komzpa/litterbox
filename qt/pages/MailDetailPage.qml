@@ -48,6 +48,22 @@ Kirigami.Page {
     property var requestArchiveUndo: null
     property bool embeddedMode: false
     property var requestClose: null
+    // Real popup state owns the Android native WebView visibility. The window
+    // owner (InboxView) binds ownerPopupVisible to its named dialogs/menu —
+    // the source of truth; standalone pages leave it false and count only
+    // this page's own snooze/action-sheet popups. Never a generic
+    // Overlay.visible: the overlay item exists and stays visible with no
+    // popup open (it hid the native body on Android).
+    property bool ownerPopupVisible: false
+    readonly property bool localPopupsVisible: {
+        // One retained reader instance only, so loading its two dialogs here
+        // is cheap — unlike the per-card rows where lazy creation keeps
+        // scrolling fast (R63).
+        const sheet = mailActions.actionSheetItem()
+        const snooze = mailActions.snoozeDialogItem()
+        return !!((sheet && sheet.visible) || (snooze && snooze.visible))
+    }
+    readonly property bool actualPopupsVisible: ownerPopupVisible || localPopupsVisible
     readonly property bool compactActions: width < Math.max(720, Kirigami.Units.gridUnit * 42)
     property bool closing: false
     property bool ready: false
@@ -301,7 +317,7 @@ Kirigami.Page {
                     onClicked: mailActions.primaryAction()
                     Shortcut {
                         sequence: "E"
-                        enabled: root.visible && (root.embeddedMode || root.QQC2.StackView.status === QQC2.StackView.Active) && (!root.QQC2.Overlay.overlay || !root.QQC2.Overlay.overlay.visible)
+                        enabled: root.visible && (root.embeddedMode || root.QQC2.StackView.status === QQC2.StackView.Active) && !root.actualPopupsVisible
                         onActivated: mailActions.primaryAction()
                     }
                 }
@@ -370,8 +386,8 @@ Kirigami.Page {
                 anchors.fill: parent
                 source: root.bodySource
                 // Android's native WebView is above the Qt scene. Hide it while
-                // a Qt popup is open, without unloading/resetting its document.
-                visible: Qt.platform.os !== "android" || !root.QQC2.Overlay.overlay || !root.QQC2.Overlay.overlay.visible
+                // a real Qt popup is open, without unloading/resetting its document.
+                visible: Qt.platform.os !== "android" || !root.actualPopupsVisible
                 onLoaded: item.html = Qt.binding(function() { return root.documentHtml })
                 Connections {
                     target: bodyLoader.item

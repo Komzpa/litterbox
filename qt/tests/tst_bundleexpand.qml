@@ -103,7 +103,7 @@ TestCase {
         compare(title.text, expectedTitle, "Sender groups use the latest original subject; custom topics stay custom")
         verify(title.visible && title.width > 0 && title.height > 0 && !title.truncated)
         capture(inbox, "sender-summary-" + data.tag + "-collapsed")
-        mouseClick(toggle, toggle.width / 2, toggle.height / 2)
+        mouseClick(toggle, 12, toggle.height / 2)
         tryCompare(inbox.expandedBundles, bundle, true)
         const expandedLatest = findChild(list.itemAtIndex(0), "bundleLatestLabel-sender-0")
         verify(!expandedLatest.visible, "Expanded cards show their subjects instead of the collapsed preview")
@@ -147,7 +147,10 @@ TestCase {
         const metadata = findChild(summary, "bundleAccountLabel-" + ids[0])
         verify(metadata.text.indexOf("Different pinned writer") < 0 && metadata.text.indexOf("other@synthetic.test") < 0)
         verify(!list.itemAtIndex(2).visible && !list.itemAtIndex(3).visible)
-        mouseClick(findChild(summary, "bundleToggle-" + ids[0]))
+        const toggle = findChild(summary, "bundleToggle-" + ids[0])
+        list.positionViewAtIndex(1, ListView.Beginning)
+        wait(100)
+        mouseClick(toggle, 12, toggle.height / 2)
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(2).visible && list.itemAtIndex(3).visible })
         for (let i = 0; i < 3; ++i) compare(list.itemAtIndex(i + 1).card.title, subjects[i])
         const landmark = findChild(summary, "dateLandmark-" + ids[0])
@@ -302,11 +305,11 @@ TestCase {
     }
     function test_singleImportantMemberDisclosureAndCount() {
         const bundle = "topic:security"
-        const leader = card("single-leader", bundle, "now", {
+        const leader = card("45111111-1111-4111-8111-111111111111", bundle, "now", {
             bundle_id: bundle, bundle_title: "Security alerts", bundle_leader: true,
             bundle_member_count: 1, important: false
         })
-        const important = card("single-important", bundle, "now", {
+        const important = card("45111111-1111-4111-8111-111111111112", bundle, "now", {
             bundle_id: bundle, bundle_title: "Security alerts", bundle_leader: false,
             bundle_member_count: 1, important: true
         })
@@ -318,11 +321,26 @@ TestCase {
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
         const row = list.itemAtIndex(0)
-        const count = findChild(row, "bundleMemberCount-single-leader")
-        const disclosure = findChild(row, "importantDisclosure-single-leader")
+        const count = findChild(row, "bundleMemberCount-" + leader.id)
+        const disclosure = findChild(row, "importantDisclosure-" + leader.id)
         verify(count && count.visible && /\b1\b/.test(count.text))
-        verify(disclosure && disclosure.visible && /\b1\b/.test(disclosure.text) && /\b2\b/.test(disclosure.text),
-               "disclosure must distinguish the separate important member from both unpinned archive targets")
+        verify(disclosure && disclosure.visible && disclosure.width > 0 && disclosure.height > 0,
+               "The standalone important member must have a visible disclosure")
+        const importantRow = list.itemAtIndex(1)
+        verify(importantRow && importantRow.visible && !importantRow.bundled,
+               "Important mail must remain separate from the collapsed bundle")
+        const archive = findChild(row, "archiveBundle-" + leader.id)
+        verify(archive && /\b2\b/.test(archive.Accessible.description),
+               "Archive must include both unpinned members, including the standalone important mail")
+        const before = store.cardIds()
+        mouseClick(archive, archive.width / 2, archive.height / 2)
+        tryCompare(list, "count", 0)
+        compare(store.cardIds(), [], "Archive includes the standalone important member")
+        const undo = findChild(inbox, "bundleArchiveUndoButton")
+        verify(undo && undo.visible && undo.width >= 48 && undo.height >= 48)
+        mouseClick(undo, undo.width / 2, undo.height / 2)
+        tryCompare(list, "count", 2)
+        compare(store.cardIds(), before, "Real Undo restores both original members in order")
         inbox.close()
     }
     function test_noImportantDisclosureWhenCountIsZero() {
@@ -548,6 +566,10 @@ TestCase {
         inbox.close()
     }
     function test_nonMailArchiveHasNoFalseUndoAndNeighborRemains() {
+        // A previous mail action may still have a legitimate Undo window in
+        // this shared CardStore. Let it expire before testing a non-mail action.
+        tryCompare(store, "bundleArchiveUndoActive", false,
+                   Math.max(1000, store.bundleArchiveUndoRemainingMs + 1000))
         const id = "41111111-1111-4111-8111-111111111111"
         const neighbor = "41111111-1111-4111-8111-111111111112"
         verify(store.applyRemoteCards({now: [
@@ -692,9 +714,14 @@ TestCase {
         // ListView only instantiates delegates near its viewport.
         list.positionViewAtIndex(12, ListView.End)
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(12) !== null })
-        list.positionViewAtIndex(12, ListView.End)
-        list.contentY += 40
         wait(200)
+        list.forceLayout()
+        list.positionViewAtIndex(12, ListView.Beginning)
+        wait(100)
+        // Set a measured, fully visible starting position rather than adding
+        // pixels to ListView's still-estimated End alignment.
+        list.contentY += list.itemAtIndex(12).mapToItem(list, 0, 0).y - 40
+        wait(100)
         const row = list.itemAtIndex(12)
         compare(row.cardId, "scroll-leader")
         const toggle = findChild(row, "bundleToggle-scroll-leader")
