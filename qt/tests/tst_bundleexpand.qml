@@ -93,6 +93,12 @@ TestCase {
         // A delegate exists before the desktop rail/split has polished its bounds.
         // Deliver the real click only after its final window coordinates render.
         verify(waitForPolish(inbox), "The adaptive inbox must finish layout before the bundle click")
+        // createTemporaryObject() never show()s the window. waitForRendering() only awaits a
+        // rendered frame, and at compact widths (412/520) nothing schedules one, so it times
+        // out below (at 1356 the desktop rail/split polish repaints and masks this). Map the
+        // window first -- the visibility prerequisite every other render-gated suite performs
+        // -- so its expose paints the frame at the polished bounds that the click then uses.
+        inbox.show()
         verify(waitForRendering(list), "The bundle viewport must render before pointer delivery")
         const row = list.itemAtIndex(0)
         const toggle = findChild(row, "bundleToggle-sender-0")
