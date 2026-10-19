@@ -13,6 +13,7 @@ TestCase {
         id: store
         property bool online: false
         property var cached: ({})
+        property var batchRemovalIds: []
         property var operations: []
         signal mailBodyChanged(string cardId)
         signal mailBodyFailed(string cardId)
@@ -25,8 +26,11 @@ TestCase {
         function enqueueOp(cardId, operation, args) {
             operations = operations.concat([{cardId: cardId, type: operation, args: args}])
             if (operation === "archive" || operation === "done" || operation === "snooze") {
-                const row = cardIds().indexOf(cardId)
-                if (row >= 0) remove(row)
+                const removedIds = [cardId].concat(operation === "archive" ? batchRemovalIds : [])
+                for (let i = 0; i < removedIds.length; ++i) {
+                    const row = cardIds().indexOf(removedIds[i])
+                    if (row >= 0) remove(row)
+                }
             }
             return "fixture-operation"
         }
@@ -73,7 +77,7 @@ TestCase {
             }})
         }
     }
-    function init() { populateStore("mail") }
+    function init() { store.batchRemovalIds = []; populateStore("mail") }
 
     function test_previewOpensMailAndBackPreservesScroll() {
         const inbox = createTemporaryObject(inboxComponent, this, {
@@ -242,17 +246,32 @@ TestCase {
             const actions = findChild(inbox.mailDetailPage, "mailActions")
             verify(actions)
             actions.chooseSnoozeDateTime()
-            const dateTime = findChild(actions, "snoozeDateTime")
-            tryVerify(function() { return dateTime.activeFocus })
+            const menu = actions.snoozeMenu()
+            tryVerify(function() { return menu.visible })
+            verify(findChild(actions, "snoozePreset-hour").visible)
+            verify(findChild(actions, "snoozeCustom").visible)
+            menu.close()
+            actions.openCustomSnooze()
+            const picker = actions.snoozePicker()
+            tryVerify(function() { return picker.visible })
+            const daySpin = findChild(actions, "snoozeDay")
+            verify(daySpin)
+            daySpin.forceActiveFocus()
+            tryVerify(function() { return daySpin.activeFocus })
             keyClick(Qt.Key_E)
             compare(store.operations, [], "Typing in a dialog must not archive")
+            picker.reject()
+            compare(store.operations, [], "Cancelling custom snooze must not enqueue")
             compare(stack.depth, 2)
             const tomorrow = new Date(Date.now() + 86400000)
             verify(actions.captureSnooze(actions.localDateTime(tomorrow)))
         } else {
             mouseClick(archive)
         }
-        tryCompare(stack, "depth", 1)
+        // Local Archive continues to the next presented mail instead of closing;
+        // only the non-continuing actions still end with the inbox showing.
+        if (row.action === "snooze" || row.action === "done")
+            tryCompare(stack, "depth", 1)
         tryCompare(stack, "busy", false)
         compare(list.contentY - list.originY, before)
         compare(Math.round(list.itemAtIndex(6).mapToItem(list, 0, 0).y), Math.round(anchorY))
@@ -260,6 +279,87 @@ TestCase {
         compare(store.operations.length, 1)
         compare(store.operations[0].type, row.action === "snooze" || row.action === "done" ? row.action : "archive")
         compare(store.operations[0].cardId, mailId(8))
+        inbox.close()
+    }
+
+    // The reader's own Archive continues with the next presented, openable
+    // card. The presented (filtered, bundle-visible) order decides, never the
+    // backing CardStore order, and continuation never goes backwards or wraps.
+    function test_localArchiveContinuesToNextPresentedReader_data() {
+        return [{tag: "middle", opened: 8, openedPresented: 8, expected: 9},
+                {tag: "filtered-not-backing-order", opened: 10, openedPresented: 1, expected: 11, search: "Message 1", rejected: 2},
+                {tag: "batch-removal-skips-removed-candidates", opened: 8, openedPresented: 8, expected: 11, batchRemovalIds: [9, 10]},
+                {tag: "end", opened: 39, openedPresented: 39, expected: -1}]
+    }
+
+    function test_localArchiveContinuesToNextPresentedReader(row) {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 700, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        inbox.requestActivate()
+        tryCompare(inbox, "active", true)
+        const list = findChild(inbox, "inboxList")
+        const stack = findChild(inbox, "pageStack")
+        if (row.search) {
+            mouseClick(findChild(inbox, "toggleSearch"))
+            const search = findChild(inbox, "inboxSearch")
+            verify(search && findChild(inbox, "inboxSearchRow").visible)
+            search.text = row.search
+            search.textEdited()
+            tryVerify(function() { list.forceLayout(); return list.count > 0 && list.count < 40 })
+            compare(list.count, 5, "Message 1 must present exactly five matching rows")
+            compare([0, 1, 2, 3, 4].map(function(index) { return list.itemAtIndex(index).cardId }),
+                    [1, 10, 11, 12, 13].map(mailId),
+                    "filtered rows must retain the exact presentation order")
+            verify(list.itemAtIndex(1).cardId !== mailId(row.rejected),
+                   "the excluded backing-order neighbour must not be presented")
+        }
+        positionRow(list, row.openedPresented)
+        const opener = findChild(list.itemAtIndex(row.openedPresented), "openCard-" + mailId(row.opened))
+        verify(opener)
+        if (row.batchRemovalIds)
+            store.batchRemovalIds = row.batchRemovalIds.map(function(index) { return mailId(index) })
+        mouseClick(opener)
+        tryCompare(inbox, "readerOpen", true)
+        tryCompare(inbox, "selectedCardId", mailId(row.opened))
+        tryCompare(stack, "busy", false)
+        verify(waitForPolish(inbox), "Reader layout must settle before archiving")
+        const reader = inbox.mailDetailPage
+        verify(reader)
+        verify(waitForRendering(reader), "The real reader must render before pointer delivery")
+        const archive = findChild(reader, "archiveMail")
+        verify(archive && archive.visible, "Archive must be available while reading")
+        mouseClick(archive)
+        compare(store.operations.length, 1)
+        compare(store.operations[0].type, "archive")
+        compare(store.operations[0].cardId, mailId(row.opened))
+        verify(store.cardIds().indexOf(mailId(row.opened)) < 0)
+        if (row.expected < 0) {
+            // End of the presented list: close normally, never wrap to the top.
+            tryCompare(inbox, "readerOpen", false)
+            tryCompare(stack, "depth", 1)
+            inbox.close()
+            return
+        }
+        tryCompare(inbox, "readerOpen", true)
+        tryCompare(inbox, "selectedCardId", mailId(row.expected))
+        tryCompare(reader, "cardId", mailId(row.expected))
+        if (row.rejected !== undefined)
+            verify(inbox.selectedCardId !== mailId(row.rejected),
+                   "continuation must follow the presented rows, not the backing CardStore order")
+        // The continued card takes the selection highlight in the list.
+        tryVerify(function() {
+            for (let i = 0; i < list.count; ++i) {
+                const item = list.itemAtIndex(i)
+                if (!item || item.cardId !== mailId(row.expected)) continue
+                const frame = findChild(item, "inboxCard")
+                return frame !== null && frame.background.border.width >= 2
+            }
+            return false
+        })
         inbox.close()
     }
 
@@ -541,7 +641,6 @@ TestCase {
         compare(reader.html, document)
         findChild(reader, "archiveMail").forceActiveFocus()
         keyClick(Qt.Key_E)
-        tryCompare(inbox, "readerOpen", false)
         compare(store.operations.length, 1, "E must resume after the popup closes")
         compare(store.operations[0].type, "archive")
         compare(store.operations[0].cardId, mailId(8))

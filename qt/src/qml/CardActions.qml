@@ -14,6 +14,7 @@ Controls.ToolButton {
     property string bundleId: ""
     property var pinnedRank: undefined
     property string snoozeError: ""
+    property var snoozePresets: []
     property string cardTitle: ""
     property string accountName: ""
     property bool canOpenSource: false
@@ -42,17 +43,82 @@ Controls.ToolButton {
         return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) +
             " " + pad(date.getHours()) + ":" + pad(date.getMinutes())
     }
+    // Presets are built from local Date parts, so the named wall-clock times
+    // survive DST changes; only strictly future times are ever offered.
+    function buildSnoozePresets() {
+        const now = new Date()
+        const at = (dayOffset, hour, minute) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hour, minute, 0, 0)
+        const presets = [{ key: "hour", name: qsTr("In one hour"), until: new Date(now.getTime() + 3600000) }]
+        const evening = at(0, 18, 0)
+        if (evening.getTime() > now.getTime())
+            presets.push({ key: "evening", name: qsTr("This evening"), until: evening })
+        presets.push({ key: "tomorrow", name: qsTr("Tomorrow morning"), until: at(1, 9, 0) })
+        presets.push({ key: "monday", name: qsTr("Next Monday morning"), until: at(((8 - now.getDay()) % 7) || 7, 9, 0) })
+        return presets
+    }
+    function snoozePreset(key) {
+        for (const preset of snoozePresets) if (preset.key === key) return preset
+        return null
+    }
+    function snoozeWhenText(date) {
+        if (!date) return ""
+        return Qt.formatDateTime(date, date.getFullYear() === new Date().getFullYear() ? "d MMM HH:mm" : "d MMM yyyy HH:mm")
+    }
+    // Menu rows carry the computed instant, so the owner always sees the
+    // real local date and time; an unknown preset hides its row.
+    function snoozePresetLabel(key) {
+        const preset = snoozePreset(key)
+        return preset ? preset.name + " · " + snoozeWhenText(preset.until) : ""
+    }
+    // One rejection rule for menu, picker and capture: round-trip exact local
+    // parts (no Feb 30) and never snooze into the past.
+    function snoozeAcceptable(until, parts) {
+        return !!until && (!parts || (until.getFullYear() === parts[0] && until.getMonth() === parts[1] &&
+            until.getDate() === parts[2] && until.getHours() === parts[3] && until.getMinutes() === parts[4])) &&
+            until.getTime() > Date.now()
+    }
+    function commitSnooze(until) {
+        snoozeError = ""
+        if (store.enqueueOp(cardKey, "snooze", { until: until.toISOString() }))
+            cardHandled("", "snooze")
+    }
     function chooseSnoozeDateTime() {
         snoozeError = ""
-        const dialog = snoozeDialogItem()
-        dialog.dateField.text = localDateTime(new Date(Date.now() + 3600000))
+        snoozePresets = buildSnoozePresets()
+        const menu = snoozeMenu()
+        const point = root.mapToItem(Controls.Overlay.overlay, 0, root.height)
+        menu.popup(point.x, point.y)
+    }
+    function pickSnooze(key) {
+        const preset = snoozePreset(key)
+        if (preset && snoozeAcceptable(preset.until, null)) commitSnooze(preset.until)
+    }
+    function openCustomSnooze() {
+        snoozeError = ""
+        const soon = new Date(Date.now() + 3600000)
+        const dialog = snoozePicker()
+        dialog.loadTarget(soon.getFullYear(), soon.getMonth() + 1, soon.getDate(), soon.getHours(), soon.getMinutes())
         dialog.open()
     }
-
+    // Capture drives the real picker accept path with structured fields, never
+    // a raw string. The raw parts are validated before touching the dialog so
+    // spin-range clamping can never rewrite the requested local date and time.
     function captureSnooze(localDateTimeValue) {
-        chooseSnoozeDateTime()
-        const dialog = snoozeDialogItem()
-        dialog.dateField.text = localDateTimeValue
+        const parts = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(String(localDateTimeValue))
+        snoozeError = ""
+        if (!parts) {
+            snoozeError = qsTr("Enter a valid future local date and time.")
+            return false
+        }
+        const expected = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), Number(parts[4]), Number(parts[5])]
+        const until = new Date(expected[0], expected[1], expected[2], expected[3], expected[4])
+        if (!snoozeAcceptable(until, expected)) {
+            snoozeError = qsTr("Enter a valid future local date and time.")
+            return false
+        }
+        const dialog = snoozePicker()
+        dialog.loadTarget(expected[0], expected[1] + 1, expected[2], expected[3], expected[4])
+        dialog.open()
         dialog.accept()
         return snoozeError.length === 0
     }
@@ -67,7 +133,15 @@ Controls.ToolButton {
         store.enqueueOp(current[0], "reorder_pins", { cards: current })
     }
     function actionSheetItem() { actionSheetLoader.active = true; return actionSheetLoader.item }
-    function snoozeDialogItem() { snoozeLoader.active = true; return snoozeLoader.item }
+    function snoozeMenu() { snoozeMenuLoader.active = true; return snoozeMenuLoader.item }
+    function snoozePicker() { snoozeLoader.active = true; return snoozeLoader.item }
+    // MailDetailPage gates its archive shortcut on this item's `visible`; it
+    // must report either snooze surface while that surface is open.
+    function snoozeDialogItem() {
+        snoozeLoader.active = true
+        snoozeMenuLoader.active = true
+        return snoozeLoader.item.visible ? snoozeLoader.item : snoozeMenuLoader.item
+    }
     function moveCard(delta) { store.moveCard(cardKey, delta) }
 
     text: qsTr("More actions")
@@ -267,7 +341,7 @@ Controls.ToolButton {
                         }
                         ActionRow {
                             objectName: "actionRow-snooze-" + root.cardKey
-                            text: qsTr("Snooze · choose date and time")
+                            text: qsTr("Snooze · choose when")
                             icon.name: "appointment-new"
                             onClicked: { actionSheet.close(); root.chooseSnoozeDateTime() }
                         }
@@ -291,8 +365,106 @@ Controls.ToolButton {
         }
     }
 
-    // Created on first use: three dialogs per card made every new inbox row
-    // cost ~8 ms to instantiate (R63 density regression, scroll collapse).
+    // Created on first use: popups per card made every new inbox row cost
+    // ~8 ms to instantiate (R63 density regression, scroll collapse).
+    // Shared desktop/native Android menu: QQC2 Menu renders as the platform
+    // menu on both hosts. Presets come from a refreshed model so every row
+    // shows its actual local date and time; cancelling closes without action.
+    Loader {
+        id: snoozeMenuLoader
+        active: false
+        sourceComponent: Component {
+            Controls.Menu {
+                id: snoozeMenuPopup
+                objectName: "snoozeMenu"
+                parent: Controls.Overlay.overlay
+                modal: true
+                Material.theme: Material.Light
+                Material.background: root.actionSurface
+                Material.foreground: root.actionInk
+                Material.accent: root.actionAccent
+                Material.primary: root.actionAccent
+                Kirigami.Theme.inherit: false
+                Kirigami.Theme.textColor: root.actionInk
+                Kirigami.Theme.backgroundColor: root.actionSurface
+                Kirigami.Theme.alternateBackgroundColor: root.actionCanvas
+                Kirigami.Theme.highlightColor: root.actionAccent
+                Kirigami.Theme.focusColor: root.actionAccent
+                palette.window: root.actionSurface
+                palette.windowText: root.actionInk
+                palette.base: root.actionSurface
+                palette.text: root.actionInk
+                palette.button: root.actionSurface
+                palette.buttonText: root.actionInk
+                palette.highlight: root.actionAccent
+                palette.highlightedText: root.actionSurface
+                background: Rectangle { color: root.actionSurface; radius: Kirigami.Units.cornerRadius; border.color: "#dce5e3" }
+                // Fixed rows bound to the refreshed preset list: only the
+                // conditional evening row toggles visibility, so no dynamic
+                // menu-item machinery is needed.
+                Controls.MenuItem {
+                    objectName: "snoozePreset-hour"
+                    text: root.snoozePresetLabel("hour")
+                    visible: text.length > 0
+                    icon.name: "appointment-new"
+                    icon.width: 20
+                    icon.height: 20
+                    icon.color: root.actionInk
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    Accessible.name: text
+                    onClicked: root.pickSnooze("hour")
+                }
+                Controls.MenuItem {
+                    objectName: "snoozePreset-evening"
+                    text: root.snoozePresetLabel("evening")
+                    visible: text.length > 0
+                    icon.name: "appointment-new"
+                    icon.width: 20
+                    icon.height: 20
+                    icon.color: root.actionInk
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    Accessible.name: text
+                    onClicked: root.pickSnooze("evening")
+                }
+                Controls.MenuItem {
+                    objectName: "snoozePreset-tomorrow"
+                    text: root.snoozePresetLabel("tomorrow")
+                    visible: text.length > 0
+                    icon.name: "appointment-new"
+                    icon.width: 20
+                    icon.height: 20
+                    icon.color: root.actionInk
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    Accessible.name: text
+                    onClicked: root.pickSnooze("tomorrow")
+                }
+                Controls.MenuItem {
+                    objectName: "snoozePreset-monday"
+                    text: root.snoozePresetLabel("monday")
+                    visible: text.length > 0
+                    icon.name: "appointment-new"
+                    icon.width: 20
+                    icon.height: 20
+                    icon.color: root.actionInk
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    Accessible.name: text
+                    onClicked: root.pickSnooze("monday")
+                }
+                Controls.MenuSeparator { }
+                Controls.MenuItem {
+                    objectName: "snoozeCustom"
+                    text: qsTr("Custom date and time…")
+                    icon.name: "document-edit"
+                    icon.width: 20
+                    icon.height: 20
+                    icon.color: root.actionInk
+                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                    Accessible.name: text
+                    onClicked: root.openCustomSnooze()
+                }
+            }
+        }
+    }
     Loader {
         id: snoozeLoader
         active: false
@@ -300,9 +472,15 @@ Controls.ToolButton {
             Controls.Dialog {
                 parent: Controls.Overlay.overlay
                 anchors.centerIn: parent
-                property alias dateField: snoozeDateTime
                 id: snoozeDialog
                 objectName: "snoozeDialog"
+                function loadTarget(year, month, day, hour, minute) {
+                    snoozeYear.value = year
+                    snoozeMonth.value = month
+                    snoozeDay.value = day
+                    snoozeHour.value = hour
+                    snoozeMinute.value = minute
+                }
                 title: qsTr("Snooze until")
                 header: Controls.Label {
                     text: snoozeDialog.title
@@ -320,7 +498,20 @@ Controls.ToolButton {
                         id: snoozeOkButton
                         objectName: "snoozeOkButton"
                         text: qsTr("OK")
+                        // Explicit width and content item: the custom background
+                        // below replaces the style plate that paints the label,
+                        // so without these the footer buttons lay out at zero
+                        // width (unpainted, unclickable). Size and pin ink like
+                        // the action sheet Close button.
+                        implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
                         implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                        contentItem: Controls.Label {
+                            text: snoozeOkButton.text
+                            color: root.actionInk
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
                         palette.button: root.actionSurface
                         palette.buttonText: root.actionInk
                         background: Rectangle {
@@ -335,7 +526,16 @@ Controls.ToolButton {
                         id: snoozeCancelButton
                         objectName: "snoozeCancelButton"
                         text: qsTr("Cancel")
+                        // Explicit width and content item (see snoozeOkButton).
+                        implicitWidth: Math.max(96, Kirigami.Units.gridUnit * 6)
                         implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                        contentItem: Controls.Label {
+                            text: snoozeCancelButton.text
+                            color: root.actionInk
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
                         palette.button: root.actionSurface
                         palette.buttonText: root.actionInk
                         background: Rectangle {
@@ -370,7 +570,7 @@ Controls.ToolButton {
                 implicitWidth: width
                 height: Math.min(implicitHeight, root.Window.window ? root.Window.window.height - 32 : 640)
                 background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
-                onOpened: snoozeDateTime.forceActiveFocus()
+                onOpened: snoozeDay.forceActiveFocus()
                 contentItem: Controls.ScrollView {
                     id: snoozeScroll
                     clip: true
@@ -380,15 +580,76 @@ Controls.ToolButton {
                     ColumnLayout {
                         id: snoozeFields
                         width: snoozeScroll.availableWidth
-                        Controls.Label { text: qsTr("Local date and time (YYYY-MM-DD HH:MM)"); color: root.actionInk; font: Kirigami.Theme.defaultFont; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                        Controls.TextField {
-                            id: snoozeDateTime
-                            objectName: "snoozeDateTime"
+                        // Structured local date/time picker: typed digits and
+                        // arrow keys step values, so no raw string is parsed.
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.minimumWidth: 0
-                            placeholderText: "YYYY-MM-DD HH:MM"
-                            inputMethodHints: Qt.ImhDate | Qt.ImhTime
-                            Accessible.name: qsTr("Local date and time")
+                            spacing: 8
+                            Controls.Label { text: qsTr("Date"); color: root.actionInk; font: Kirigami.Theme.defaultFont }
+                            Item { Layout.fillWidth: true }
+                            Controls.SpinBox {
+                                id: snoozeYear
+                                objectName: "snoozeYear"
+                                from: 2000
+                                to: 2100
+                                editable: true
+                                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Year")
+                            }
+                            Controls.SpinBox {
+                                id: snoozeMonth
+                                objectName: "snoozeMonth"
+                                from: 1
+                                to: 12
+                                editable: true
+                                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Month")
+                            }
+                            Controls.SpinBox {
+                                id: snoozeDay
+                                objectName: "snoozeDay"
+                                from: 1
+                                to: 31
+                                editable: true
+                                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Day of month")
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Controls.Label { text: qsTr("Time"); color: root.actionInk; font: Kirigami.Theme.defaultFont }
+                            Item { Layout.fillWidth: true }
+                            Controls.SpinBox {
+                                id: snoozeHour
+                                objectName: "snoozeHour"
+                                from: 0
+                                to: 23
+                                editable: true
+                                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Hour")
+                            }
+                            Controls.SpinBox {
+                                id: snoozeMinute
+                                objectName: "snoozeMinute"
+                                from: 0
+                                to: 59
+                                editable: true
+                                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Minute")
+                            }
+                        }
+                        Controls.Label {
+                            text: qsTr("Brings the card back %1").arg(root.snoozeWhenText(new Date(snoozeYear.value, snoozeMonth.value - 1, snoozeDay.value, snoozeHour.value, snoozeMinute.value)))
+                            color: root.actionInk
+                            font: Kirigami.Theme.defaultFont
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
                         }
                         Controls.Label {
                             text: root.snoozeError
@@ -400,20 +661,14 @@ Controls.ToolButton {
                     }
                 }
                 onAccepted: {
-                    const parts = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(snoozeDateTime.text)
-                    const until = parts ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), Number(parts[4]), Number(parts[5])) : null
-                    const valid = until && until.getFullYear() === Number(parts[1]) &&
-                        until.getMonth() === Number(parts[2]) - 1 && until.getDate() === Number(parts[3]) &&
-                        until.getHours() === Number(parts[4]) && until.getMinutes() === Number(parts[5]) &&
-                        until.getTime() > Date.now()
-                    if (!valid) {
+                    const parts = [snoozeYear.value, snoozeMonth.value - 1, snoozeDay.value, snoozeHour.value, snoozeMinute.value]
+                    const until = new Date(parts[0], parts[1], parts[2], parts[3], parts[4])
+                    if (!root.snoozeAcceptable(until, parts)) {
                         root.snoozeError = qsTr("Enter a valid future local date and time.")
                         Qt.callLater(function() { snoozeDialog.open() })
                         return
                     }
-                    root.snoozeError = ""
-                    if (root.store.enqueueOp(root.cardKey, "snooze", { until: until.toISOString() }))
-                        root.cardHandled("", "snooze")
+                    root.commitSnooze(until)
                 }
             }
         }

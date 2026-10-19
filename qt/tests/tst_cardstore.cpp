@@ -630,19 +630,13 @@ private slots:
             snoozeItem->setParentItem(window.contentItem());
             window.show();
             QCoreApplication::processEvents();
-            QVERIFY(QMetaObject::invokeMethod(snoozeActions, "chooseSnoozeDateTime"));
-            QObject *dialog = snoozeActions->findChild<QObject *>(QStringLiteral("snoozeDialog"));
-            QObject *field = snoozeActions->findChild<QObject *>(QStringLiteral("snoozeDateTime"));
-            QVERIFY(dialog);
-            QVERIFY(field);
-            field->setProperty("text", QStringLiteral("2030-03-04 05:06"));
-            QVERIFY(QMetaObject::invokeMethod(dialog, "accept"));
+            QVERIFY(QMetaObject::invokeMethod(snoozeActions, "captureSnooze",
+                                              Q_ARG(QVariant, QVariant(QStringLiteral("2030-03-04 05:06")))));
             QCOMPARE(offline.pendingOps(), 1);
             QCOMPARE(offline.rowCount(), 2);
 
-            QVERIFY(QMetaObject::invokeMethod(snoozeActions, "chooseSnoozeDateTime"));
-            field->setProperty("text", QStringLiteral("2030-02-30 12:00"));
-            QVERIFY(QMetaObject::invokeMethod(dialog, "accept"));
+            QVERIFY(QMetaObject::invokeMethod(snoozeActions, "captureSnooze",
+                                              Q_ARG(QVariant, QVariant(QStringLiteral("2030-02-30 12:00")))));
             QCOMPARE(offline.pendingOps(), 1);
             QVERIFY(snoozeActions->property("snoozeError").toString().size() > 0);
 

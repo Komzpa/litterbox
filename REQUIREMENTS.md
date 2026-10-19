@@ -28,8 +28,7 @@ Each requirement is **decided** or **open** and names its source.
   grew slow on the phone, 2026-09-27). Opening the app shows the inbox from
   the local copy without waiting for the network; the amount of archived
   history does not slow it down.
-- **R6 Qt desktop and Android client** (decided, owner 2026-09-27; adaptive layout approved 2026-10-18 to implement the desktop plan without losing mobile). The main client is a Qt/Kirigami app shipped for Android and Linux desktop from the same Qt code, not a prototype. Reminders set on the phone show up on every client. On the desktop the owner uses an installed Linux app. Wide windows show an adjustable inbox-list/real-reader split; narrow windows and phones show one pane using the existing StackView. Selection remains visibly highlighted, list order is unchanged, and opening, closing or resizing never archives. The same reader document moves across the breakpoint without reloading the body. Back/close restores the inbox selection, visual anchor and keyboard focus; external archive closes a removed selected card without making a second Gmail change. Acceptance: at 1440×1000 and 1280×800 open a middle-list mail, scroll the list independently, drag the divider, resize through the breakpoint and back, close and reopen; observe stable selected id/order and visible-anchor offset within 3 px after layout settles, with no queued operation. Repeat open/Back at 412×915 and 480×915, including Android system Back and 150% platform text scale. The adaptive breakpoint must yield one pane before text/actions lose their minimum usable widths.
-
+- **R6 Qt desktop and Android client** (decided, owner 2026-09-27; adaptive layout approved 2026-10-18 to implement the desktop plan without losing mobile). The main client is a Qt/Kirigami app shipped for Android and Linux desktop from the same Qt code, not a prototype. Reminders set on the phone show up on every client. On the desktop the owner uses an installed Linux app. Wide windows show an adjustable inbox-list/real-reader split; narrow windows and phones show one pane using the existing StackView. Selection remains visibly highlighted, list order is unchanged, and opening, closing or resizing never archives. The same reader document moves across the breakpoint without reloading the body. Back/close restores the inbox selection, visual anchor and keyboard focus; external archive closes a removed selected card without making a second Gmail change. Local archive follows R68's external-archive close semantics unchanged: when a local archive removes the selected card the reader presents the next surviving openable card after the selected one, preserving filter, expansion and anchor, skipping hidden headers, or closes to the list with no wrap when none survives; Undo restores order and keeps the reader on that successor. Acceptance: at 1440×1000 and 1280×800 open a middle-list mail, scroll the list independently, drag the divider, resize through the breakpoint and back, close and reopen; observe stable selected id/order and visible-anchor offset within 3 px after layout settles, with no queued operation. Repeat open/Back at 412×915 and 480×915, including Android system Back and 150% platform text scale. The adaptive breakpoint must yield one pane before text/actions lose their minimum usable widths.
 ## Mail
 
 - **R7 Archive and spam go to Gmail** (decided, owner 2026-09-27;
@@ -84,36 +83,25 @@ Each requirement is **decided** or **open** and names its source.
 
 ## Card lifecycle
 
-- **R20 Snooze** (decided, owner 2026-09-27). The owner can snooze a card
-  until a chosen date and time. A snoozed mail card leaves the open list at
-  once, and its thread leaves the Gmail Inbox. At the chosen time the server
-  brings the card back to the open list on every client and moves the thread
-  back to the Gmail Inbox, within 1 minute (owner accepted 2026-09-28), with no
-  client running. Gmail shows this as archived and later moved to Inbox, not
-  as Gmail's own Snoozed. A new incoming message in a snoozed thread brings
-  the card back early (owner accepted 2026-09-28).
-- **R21 Pin** (decided, owner 2026-09-27). The owner can pin a card. Pinned
-  cards stay at the top of the open list (owner accepted 2026-09-28) in the order
-  the owner sets, on every client; that order is kept only in Litterbox.
-  Pinning a mail card stars its thread in Gmail; unpinning removes the star.
-- **R22 Bundle archive skips pinned cards** (decided, owner 2026-09-27).
-  Archiving a bundle archives every card in it except pinned ones. Pinned
-  cards stay open, and their mail stays in the Gmail Inbox.
-- **R23 Bundles formed by Litterbox** (decided, owner 2026-09-28; topic isolation clarified 2026-10-12). Litterbox
-  forms bundles from the start; using tags or labels like Simplify Gmail's
-  bundles is not enough. Litterbox forms bundles from structured thread identity when the source provides one (GitHub: owner/repo from the subject; mailing lists: List-Id), stripping provider boilerplate such as unsubscribe footers; remaining mail is clustered across all accounts by embeddings with a local model on the home server, and the model can create new topics. LinkedIn network-update digests use their subject as the embedding input, not account statistics, recipient details or provider footers; topic matching retains the existing cosine threshold >0.82. Platform, sender and recipient alone never establish a shared topic. The mesh/OpenMVS, Sunbim training and NodeODM/ODM release subjects remain three separate cards with the deployed all-minilm model. Messages in one Gmail thread, including real replies, remain one card; GitHub per-repository routing remains unchanged. If the local model is unavailable, Litterbox retains structured routes, leaves remaining mail standalone and reports the missing model; unrelated threads are never merged into one bundle just because they share a sender. Gmail categories are not bundles. Every
-  card has an action "take out of this bundle" for a wrong assignment, and
-  the correction is kept: the card stays out, and similar later mail learns
-  from it. Importance is detected separately from topic: an important message is not hidden inside a bundle, and a message that needs the human to answer or decide is shown as its own card. Bot and CI traffic on the human's own changes may form an agents-handle-this bundle; subscription-only traffic may form a quiet bundle. Bundles appear in the list
-  immediately; there is no daily or weekly schedule for forming them.
-- **R24 Mail cards close on archive elsewhere** (decided, owner 2026-09-27).
-  A mail card closes by itself on every client when, in another Gmail client,
-  its thread was archived (no message of it is in the Inbox any more), within
-  5 minutes (owner accepted 2026-09-28) while the server is online. Closing by
-  itself changes nothing in Gmail. Changes that Litterbox made itself do not
-  count. A new message arriving later in the Gmail Inbox opens the card again
-  (owner accepted 2026-09-28).
-
+- **R20 Snooze** (decided, owner 2026-09-27; snooze menu corrected
+  2026-10-18). The owner can snooze a card until a chosen date and time.
+  A snoozed mail card leaves the open list at once, and its thread leaves the
+  Gmail Inbox. At the chosen time the server brings the card back to the open
+  list on every client and moves the thread back to the Gmail Inbox, within
+  1 minute (owner accepted 2026-09-28), with no client running. Gmail shows
+  this as archived and later moved to Inbox, not as Gmail's own Snoozed. A
+  new incoming message in a snoozed thread brings the card back early (owner
+  accepted 2026-09-28). The snooze target is chosen through a preset menu of
+  resolved local samples — one hour ahead, this evening when it is still ahead,
+  tomorrow morning, and next Monday morning — plus a custom structured picker
+  for an exact date and time. The menu is local, every preset resolves to a
+  real date in the device timezone, and cancelling leaves the payload unchanged
+  (a cancel is a no-op). DST transitions and future dates use the resolved
+  local time rather than a guessed offset. On desktop and native Android the
+  picker row is at least 48dp tall with actual contrast and is keyboard
+  reachable. Oracle: actual preset menu and custom picker captures at
+  1440×1000 and 412×915, plus cancel/no-op, DST-forward and weekend-rollover
+  cases.
 ## Offline
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
@@ -445,19 +433,37 @@ the final acceptance; until he sees it each item is partial.
   nesting under a source mail stays open because agent producers do not yet
   report a source mail or issue key.
 - **R67 Sender avatars** (decided, Darafei 2026-10-15 msg 15887 «Аватарок не
-  хватает»). Every sender line (single cards, bundle heads, nested members,
-  agent cards) shows a compact avatar (about 28dp) beside its metadata line
-  without adding height. The fallback is a circle with initials in a stable
-  per-sender colour; forge, domain and Gravatar images, when added, come only
-  through the server and are cached on the device. Remote images inside mail
-  bodies stay blocked.
+  хватает»; avatar coverage corrected 2026-10-19). Every displayed sender
+  identity line — single cards, bundle heads, nested members and agent cards
+  — shows a compact avatar beside its metadata line on desktop and Android
+  without adding row height. The fallback is a circle with initials in a
+  stable per-sender colour; forge, domain and Gravatar images, when added,
+  come only through the server and are cached on the device. Remote images
+  inside mail bodies stay blocked. The avatar is omitted only on the
+  identity line that R36 already omits — a nested member whose identity
+  repeats the summary's — never on the bundle head itself, which always
+  shows its avatar; future sender images come only through the server.
+  Oracle: `tst_inboxlayout` sender-avatar rows at 1440×1000, 412×915 and
+  480×915 with a stable fallback colour across rebuilds.
 - **R68 Scroll stays put after Archive** (decided, Darafei 2026-10-15 msg
-  15893 «После архивации сообщений скролл еуда-то улетает постоянно»).
-  Archive, Spam, swipe and Undo keep the visual position: the next card takes
-  the removed card's place, also when a server snapshot arrives afterwards.
+  15893 «После архивации сообщений скролл еуда-то улетает постоянно»;
+  local-archive reader follow-up 2026-10-19). Archive, Spam, swipe and Undo
+  keep the visual position: the next card takes the removed card's place, also
+  when a server snapshot arrives afterwards. When a local archive removes the
+  currently selected card, the reader presents the next surviving openable
+  card after the selected one, excluding the removed scope, while preserving
+  the active filter, bundle expansion and list anchor; hidden bundle headers
+  and their skipped members are never presented. If no surviving card follows,
+  the reader closes to the list with no wrap-around to a previous card. A
+  bundle whose open member was removed advances once; otherwise the bundle is
+  unchanged. Archive with no reader open keeps the reader closed. Undo
+  restores list order and keeps the reader on the card it advanced to.
+  External archive, Spam, Done and Snooze never auto-advance the reader.
   Oracle: archive card N in a 200-card list scrolled to the middle, deliver a
   stale and a new snapshot; the first visible card id is unchanged except for
-  the removed one.
+  the removed one. Repeat with the removed card selected: when a surviving
+  openable card follows, the reader advances to that exact successor; when
+  none survives, the reader closes to the list without wrapping.
 - **R69 No freeze, no black screen on return** (decided, Darafei 2026-10-15
   msg 15894 «14:49 юай простотзалип и завис», msg 15895 «Переключился
   туда-назад - черный экран»). Archive and snapshot handling never block the
@@ -468,8 +474,12 @@ the final acceptance; until he sees it each item is partial.
 ## Approved desktop and mobile acceptance (2026-10-18)
 
 - **R70 Five-slice actual-client acceptance** (decided, owner: “Implement the plan” and “make sure that mobile is also taken into account”). These are delivery criteria for the real Qt desktop AND Android app, not prototype substitutes or optional follow-ups. Preserve R7/R22/R24/R30/R68 semantics and existing capture/anchor APIs. Use isolated profiles/fixtures only; retain fresh actual-application screenshots and behavioral receipts at 1440×1000, 1280×800, 412×915 and neighboring 480×915, plus large-text phone proof. A successful build or self-report alone is not acceptance.
-  1. **Adaptive shell:** adjustable desktop list/reader with the real MailDetailPage, stable highlighted selection and visual list anchor; one-pane narrow/phone StackView. Open, switch, resize, close, external archive and Android Back satisfy R6/R53 without queuing unintended actions. Repeat with an expanded bundle and a middle-list position.
-  2. **Meaningful rows:** explicit topics survive unchanged; sender bundles show newest original subject, never raw sender keys. Subject-first mixed rows, Comfortable/Compact density and date/source landmarks satisfy R36/R50/R63 with no action overlap; new latest mail updates the subject without regrouping/reordering. Retain continuous bundle frames, shared identity once, pinned/important separation and compact avatars.
+  1. **Adaptive shell:** adjustable desktop list/reader with the real
+   MailDetailPage, stable highlighted selection and visual list anchor;
+   one-pane narrow/phone StackView. Open, switch, resize, close, external
+   archive and Android Back satisfy R6/R53 without queuing unintended actions.
+   Repeat with an expanded bundle and a middle-list position.
+  2. **Meaningful rows:** explicit topics survive unchanged; sender bundles show newest original subject, never raw sender keys. Subject-first mixed rows, Comfortable/Compact density and date/source landmarks satisfy R36/R50/R63 with no action overlap; new latest mail updates the subject without regrouping/reordering. Retain continuous bundle frames, shared identity once, pinned/important separation and compact avatars on every displayed sender identity line at 1440×1000 and 412×915, with the avatar omitted only where R36 already omits the identity line and never on the bundle head itself.
   3. **Useful navigation/search/sync:** desktop exposes existing Inbox, Accounts, Agents and Settings destinations plus functional search; phone offers the same destinations/search through a drawer or compact alternative, not a squeezed sidebar. No Gmail-folder clutter or separate journal destination is added. Search filters actual cards and clearing it restores the same underlying order/position. Healthy Online is quiet (no status-only row); offline pending changes, Retry, reconnect/auth and save failures remain actionable under R55/R51/R52. Inspect a result, empty result, cleared search and phone drawer; verify destination exit and no accidental archive.
-  4. **Distinct reversible triage:** open/expand never Archive; mail Archive/Spam, task Done and journal dismissal retain their separate existing semantics. Existing real Undo uses the original operation/callback and truthfully cancels queued mail changes or applies the supported acknowledged Archive inverse, including stale snapshots. Do not advertise an unsupported non-mail or acknowledged Spam inverse. Inspect the actual Undo overlay and click it before/after mail Archive acknowledgement; confirm restored order and no false success on rejection. Notes and Open in Gmail remain reachable on desktop and phone.
+  4. **Distinct reversible triage:** open/expand never Archive; mail Archive/Spam, task Done and journal dismissal retain their separate existing semantics. Existing real Undo uses the original operation/callback and truthfully cancels queued mail changes or applies the supported acknowledged Archive inverse, including stale snapshots. Do not advertise an unsupported non-mail or acknowledged Spam inverse. Inspect the actual Undo overlay and click it before/after mail Archive acknowledgement; confirm restored order and no false success on rejection. When a local archive removes the selected card, confirm the reader advances to the exact next surviving openable card — preserving filter, expansion and anchor, skipping hidden headers — or closes to the list with no wrap when none survives, and that Undo restores order and keeps the reader on that successor. Notes and Open in Gmail remain reachable on desktop and phone.
   5. **Readable originals/accessibility:** actual formatted original HTML, links, selectable code and cached offline reopen remain intact; real oldest-to-newest message data powers older-message disclosure (R61), never fake summaries/history. At default/150% phone text scale, inspect older-message expand/collapse, long subject, reader overflow, note dialog and Back; keep a single document scroll, visible focus/tooltips, >=48dp touch targets and no clipping, accidental activation during flick, lost selection or broken return position.

@@ -398,6 +398,57 @@ ApplicationWindow {
     function cardIdAt(row) {
         return row >= 0 && row < bundleModel.rows.length ? bundleModel.rows[row].cardId : ""
     }
+    // One reader-open path for the inbox row and for local-Archive continuation:
+    // openPage owns the reader identity, selection highlight and close callback.
+    function openReaderEntry(entry) {
+        const card = entry.card
+        openPage("MailDetailPage", {
+            store: window.cardStore, cardId: entry.cardId, cardTitle: entry.title,
+            accountName: card.account_name || "", card: card,
+            requestNote: function(detailCardId, note) {
+                noteDialog.cardId = detailCardId
+                noteField.text = note
+                noteDialog.open()
+            },
+            requestArchiveUndo: function(opId, action) { window.showArchiveUndo(opId, action) }
+        })
+    }
+    // Local Archive continuation: choose the next presented, reader-openable
+    // card from the pre-removal presentation snapshot and return an opener for
+    // it, or null when none exists. Scanning starts strictly after the archived
+    // card, so the action's own removed scope is excluded; hidden collapsed
+    // bundle members and rows with no reader document are not destinations.
+    // The presented order decides what comes next, never CardStore.cardIds, and
+    // continuation never goes backwards or wraps to the top of the list.
+    function captureArchiveContinuation(cardId) {
+        if (!readerOpen || !cardId || selectedCardId !== cardId || !bundleModel) return null
+        const rows = bundleModel.rows
+        let at = -1
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i] && rows[i].cardId === cardId) { at = i; break }
+        if (at < 0) return null
+        const candidates = []
+        for (let i = at + 1; i < rows.length; ++i) {
+            const entry = rows[i]
+            const card = entry ? entry.card : null
+            if (!entry || !entry.cardId || !card) continue
+            if (card.bundle_leader === false && (window.searching
+                    ? window.searchCollapsedBundles[card.bundle_id] : !window.expandedBundles[card.bundle_id])) continue
+            if (card.source !== "mail" && !card.has_body) continue
+            candidates.push(entry)
+        }
+        if (!candidates.length) return null
+        return function() {
+            const survivingIds = store.cardIds()
+            for (let i = 0; i < candidates.length; ++i) {
+                const entry = candidates[i]
+                if (survivingIds.indexOf(entry.cardId) >= 0) {
+                    openReaderEntry(entry)
+                    return
+                }
+            }
+        }
+    }
 
     // The card-controls capture opens the real dialog, records a frame while it is
     // rendered open, and only then accepts it, so the visible dialog itself is
@@ -550,6 +601,7 @@ ApplicationWindow {
             const values = Object.assign({store: window.cardStore, cardTitle: "", accountName: "", openLinks: true}, properties || {}, {
                 embeddedMode: desktopReader,
                 requestClose: function() { window.closeReader() },
+                requestArchiveContinuation: function(cardId) { return window.captureArchiveContinuation(cardId) },
                 // The retained reader follows the window's real popup state so
                 // its Android WebView hides only while a real dialog/menu is open.
                 ownerPopupVisible: Qt.binding(function() { return window.actualPopupsVisible })
@@ -1411,7 +1463,7 @@ ApplicationWindow {
                                                 visible: !window.compactInbox
                                                 implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
-                                                Kirigami.Icon { anchors.centerIn: parent; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
+                                                Kirigami.Icon { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
                                             Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: Infinity }
                                             Rectangle {
@@ -1464,10 +1516,15 @@ ApplicationWindow {
                                             wrapMode: Text.Wrap
                                         }
                                     }
+                                    // R67: the bundle's shared identity avatar leads the head on phones
+                                    // and desktop alike (shown once per bundle, R36). Desktop shares the
+                                    // leading column with the R36 chevron, so it uses R67's compact 28dp
+                                    // circle while the chevron icon keeps the column's right side.
                                     SenderAvatar {
-                                        visible: window.compactInbox
                                         x: 0
                                         y: 2
+                                        width: window.compactInbox ? 32 : 28
+                                        height: width
                                         name: (cardRow.bundleSummary.senders || [])[0] || bundleToggle.text
                                     }
                                     onClicked: window.toggleBundle(card.bundle_id)
@@ -1606,10 +1663,17 @@ ApplicationWindow {
                                     implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     // Loaded only where shown: collapsed bundle members stay cheap (scrollresilience).
+                                    // R67: the sender avatar leads the row on phones and desktop alike;
+                                    // bundled members stay gated so the shared identity is shown once on
+                                    // the bundle head (R36). Desktop shares the handle with R38's named
+                                    // move icon at the right (drag action discoverability preserved).
                                     Loader {
-                                        anchors.centerIn: parent
-                                        active: window.compactInbox && cardRow.visible && !cardRow.bundled
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: window.compactInbox ? (parent.width - width) / 2 : 0
+                                        active: cardRow.visible && !cardRow.bundled
                                         sourceComponent: SenderAvatar {
+                                            width: window.compactInbox ? 32 : 28
+                                            height: width
                                             name: card.source === "mail" ? window.mailSender(card) : window.cardKindLabel(card)
                                         }
                                     }
@@ -1621,6 +1685,10 @@ ApplicationWindow {
 
                                     // The list-level surface keeps the pointer throughout
                                     // the drag, beyond this handle's hit target.
+                                    // Desktop shares the handle between R67's avatar (left) and R38's
+                                    // named move icon (right); phones keep the avatar-only handle (R63).
+                                    leftPadding: window.compactInbox ? Kirigami.Units.smallSpacing : 30
+                                    rightPadding: window.compactInbox ? Kirigami.Units.smallSpacing : 2
                                     display: AbstractButton.IconOnly
                                     icon.name: window.compactInbox ? "" : "transform-move"
                                     icon.width: Kirigami.Units.iconSizes.smallMedium
@@ -1695,6 +1763,25 @@ ApplicationWindow {
                                             elide: Text.ElideRight
                                             Layout.minimumWidth: 0
                                             Layout.fillWidth: window.compactInbox
+                                            // R67: every displayed sender identity line carries its avatar.
+                                            // A bundled member that shows its own sender name (R36 keeps
+                                            // shared identity on the head) gets that sender's circle beside
+                                            // the text; standalone rows keep their existing handle avatar.
+                                            // Purely visual: the circle hangs in the row's existing leading
+                                            // gutter, so member indent, row height and drag semantics (R38
+                                            // keeps the member reorder handle hidden) are untouched.
+                                            Loader {
+                                                objectName: "memberSenderAvatar-" + cardId
+                                                anchors.right: parent.left
+                                                anchors.rightMargin: Kirigami.Units.smallSpacing
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                active: cardRow.visible && cardRow.bundled && mailSenderLabel.visible
+                                                sourceComponent: SenderAvatar {
+                                                    width: window.compactInbox ? 32 : 28
+                                                    height: width
+                                                    name: window.mailSender(card)
+                                                }
+                                            }
                                         }
                                         Label {
                                             id: mailAccountLabel
@@ -1806,16 +1893,7 @@ ApplicationWindow {
                                     onOpenRequested: {
                                         if (card.source_url) Qt.openUrlExternally(card.source_url)
                                     }
-                                    onReadCachedRequested: window.openPage("MailDetailPage", {
-                                        store: window.cardStore, cardId: cardId, cardTitle: title,
-                                        accountName: card.account_name || "", card: card,
-                                        requestNote: function(detailCardId, note) {
-                                            noteDialog.cardId = detailCardId
-                                            noteField.text = note
-                                            noteDialog.open()
-                                        },
-                                        requestArchiveUndo: function(opId, action) { window.showArchiveUndo(opId, action) }
-                                    })
+                                    onReadCachedRequested: window.openReaderEntry(entry)
                                 }
                                     }
                                 }

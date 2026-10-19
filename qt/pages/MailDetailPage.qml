@@ -46,6 +46,9 @@ Kirigami.Page {
     property var card: ({ source: "mail" })
     property var requestNote: null
     property var requestArchiveUndo: null
+    // Inbox callback: (cardId) => opener | null. Called before a local Archive
+    // mutates the list, so the next presented card is captured pre-removal.
+    property var requestArchiveContinuation: null
     property bool embeddedMode: false
     property var requestClose: null
     // Real popup state owns the Android native WebView visibility. The window
@@ -350,8 +353,15 @@ Kirigami.Page {
                     onCardHandled: function(operation, action) {
                         // Capture callbacks before closing: standalone pop may destroy this page.
                         const undo = root.requestArchiveUndo
+                        // Only a local Archive continues the reader. The next presented
+                        // card is captured before the action's deferred rebuild drops this
+                        // one, then opened after close and Undo; Undo never rewinds the
+                        // surviving reader back to the archived card.
+                        const next = action === "archive" && root.requestArchiveContinuation
+                            ? root.requestArchiveContinuation(root.cardId) : null
                         root.closeReader()
                         if (operation && undo) undo(operation, action)
+                        if (next) next()
                     }
                 }
             }
