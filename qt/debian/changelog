@@ -1,3 +1,12 @@
+litterbox-qt (0.1-38) unstable; urgency=medium
+
+  * Size the Snooze preset menu from its actual rows so Android Material
+    paints a usable menu instead of an invisible zero-width modal popup.
+  * Bound the shared popup to the viewport and require painted native
+    menu/picker evidence at large text and actual device density.
+
+ -- Litterbox <litterbox@example.com>  Mon, 19 Oct 2026 22:10:00 +0400
+
 litterbox-qt (0.1-36) unstable; urgency=medium
 
   * Ship the actual adaptive desktop list and reader with the phone Back,

@@ -379,6 +379,16 @@ Controls.ToolButton {
                 objectName: "snoozeMenu"
                 parent: Controls.Overlay.overlay
                 modal: true
+                // Material derives Menu width from its background/contentWidth,
+                // not the item labels. Our custom background has no intrinsic
+                // width, so derive it from the rows before bounding the popup.
+                implicitWidth: Math.max(200, hourPresetItem.implicitWidth,
+                    eveningPresetItem.visible ? eveningPresetItem.implicitWidth : 0,
+                    tomorrowPresetItem.implicitWidth, mondayPresetItem.implicitWidth,
+                    customSnoozeItem.implicitWidth) + leftPadding + rightPadding
+                margins: 12
+                width: Math.min(implicitWidth, Math.max(0, parent.width - 2 * margins))
+                height: Math.min(implicitHeight, Math.max(0, parent.height - 2 * margins))
                 Material.theme: Material.Light
                 Material.background: root.actionSurface
                 Material.foreground: root.actionInk
@@ -403,6 +413,7 @@ Controls.ToolButton {
                 // conditional evening row toggles visibility, so no dynamic
                 // menu-item machinery is needed.
                 Controls.MenuItem {
+                    id: hourPresetItem
                     objectName: "snoozePreset-hour"
                     text: root.snoozePresetLabel("hour")
                     visible: text.length > 0
@@ -415,6 +426,7 @@ Controls.ToolButton {
                     onClicked: root.pickSnooze("hour")
                 }
                 Controls.MenuItem {
+                    id: eveningPresetItem
                     objectName: "snoozePreset-evening"
                     text: root.snoozePresetLabel("evening")
                     visible: text.length > 0
@@ -427,6 +439,7 @@ Controls.ToolButton {
                     onClicked: root.pickSnooze("evening")
                 }
                 Controls.MenuItem {
+                    id: tomorrowPresetItem
                     objectName: "snoozePreset-tomorrow"
                     text: root.snoozePresetLabel("tomorrow")
                     visible: text.length > 0
@@ -439,6 +452,7 @@ Controls.ToolButton {
                     onClicked: root.pickSnooze("tomorrow")
                 }
                 Controls.MenuItem {
+                    id: mondayPresetItem
                     objectName: "snoozePreset-monday"
                     text: root.snoozePresetLabel("monday")
                     visible: text.length > 0
@@ -452,6 +466,7 @@ Controls.ToolButton {
                 }
                 Controls.MenuSeparator { }
                 Controls.MenuItem {
+                    id: customSnoozeItem
                     objectName: "snoozeCustom"
                     text: qsTr("Custom date and time…")
                     icon.name: "document-edit"

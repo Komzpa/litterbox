@@ -100,8 +100,11 @@ Each requirement is **decided** or **open** and names its source.
   local time rather than a guessed offset. On desktop and native Android the
   picker row is at least 48dp tall with actual contrast and is keyboard
   reachable. Oracle: actual preset menu and custom picker captures at
-  1440×1000 and 412×915, plus cancel/no-op, DST-forward and weekend-rollover
-  cases.
+  1440×1000, 412×915 and neighboring 480×915 (including native Android at
+  150% font scale and its actual density), plus cancel/no-op, DST-forward
+  and weekend-rollover cases. A visible/open accessibility node is not render
+  proof: the menu must paint with nonzero width inside the viewport, and a
+  physical preset/OK tap must persist the displayed instant in the payload.
 ## Offline
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
