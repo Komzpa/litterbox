@@ -41,7 +41,12 @@ Publish one frozen-source cohort: the server Debian package, ordinary desktop
 Debian package and signed Android APK. Build and accept all three before changing
 any installed or served state. `deploy/release.py` is the sole cutover entrypoint;
 do not reconstruct a release from ad-hoc copy, environment-edit or restart commands.
-Apply migration 020 for explicit title origin.
+Apply the operator-owned SQL migrations before release: `server/db/020_bundle_title_origin.sql`
+for explicit title origin and `server/db/021_message_sender.sql`. Migration 021 is
+additive only — `messages.sender_name` and `messages.sender_address` are
+`NOT NULL DEFAULT ''`, so legacy rows keep empty sender fields; migration 020's
+historical rows stay untouched. The release CLI runs no SQL: migrations and grant
+changes are completed by the operator before the CLI plan/apply/rollback flow.
 Read-time preview/title projections leave archived cards and stored bodies intact.
 An unknown legacy title may be marked as a generated seed only from independently
 recorded provenance, using an exact expected-value guard and preserved rollback;
@@ -50,9 +55,28 @@ never infer provenance from title/subject equality or run a broad backfill.
 Source publication, package preparation, server publication and installed-client
 adoption are different facts. Record the full artifact source SHA separately
 from the commit and SHA-256 of the release CLI: documentation/CLI-only commits
-do not require rebuilding unchanged accepted application artifacts.
+do not require rebuilding unchanged accepted application artifacts. All three
+artifacts of one release must be frozen from the same production source SHA;
+later test-only or documentation-only commits are bound separately in the
+handoff receipt and never relabel the already-frozen artifacts.
 
 Build packages out of tree; preserve installed binaries, unit and packages.
+The true current build kits differ per platform and must not be substituted for
+each other. Desktop: Qt 6.11 with the system Kirigami (`libkirigami-dev`,
+`qml6-module-org-kde-kirigami` from `qt/debian/control`). Android: Qt 6.7.3
+`android_arm64_v8a` with the Kirigami Android prefix (`KIRIGAMI_ROOT`), the
+bundled ABI-matched OpenSSL 3 runtimes, and Gradle bounded with
+`-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2
+-XX:ActiveProcessorCount=2`. The Android recipe must pin
+`JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`: the host default JDK 21
+breaks R8/D8 dexing deterministically (see `receipts/mobile-ui-proof.md`).
+`qt/android-build.sh` still defaults `JAVA_HOME` to JDK 21, so the release
+recipe must override it explicitly. Sign the APK only through the canonical
+redacted loader `RUNTIME/sign-apk-redacted.py`; the keystore password is loaded
+at runtime from the private release record and is never printed, and no
+signing secret may enter this document, the cohort manifest, receipts or the
+repository.
+
 Prove the frozen server through real CardStore/QML in an isolated profile before
 publication or installation. Installed desktop clients use the existing
 UpdateWatcher: after the package replaces the executable and the replacement is
@@ -109,7 +133,11 @@ Prepare a private absolute-path `cohort.json` with this contract (no credentials
   Preserve the operator's `HOME` and `XDG_STATE_HOME` as below so root uses the
   same canonical phone lock and already-paired ADB key, not a second root identity.
 
-Run the same manifest through the real CLI (backup parent must already exist):
+Run the same manifest through the real CLI (backup parent must already exist).
+The CLI's complete accepted surface is exactly the three actions `plan`, `apply`
+and `rollback` with the optional `--receipt` (required for `apply`),
+`--install-mobile DEVICE_KEY` and `--adoption-timeout` options defined by the
+parser in `deploy/release.py`; do not invent or pass any other flag.
 
 ```sh
 sudo --preserve-env=HOME,XDG_STATE_HOME python3 deploy/release.py plan /private/cohort.json --install-mobile mainphone
@@ -162,7 +190,10 @@ LITTERBOX_ANDROID_PACKAGE=org.qtproject.example.litterbox_qt
 
 Every shared Qt release uses the unified cohort above; a desktop package, source push or local APK alone is incomplete. Freeze a signed candidate whose decimal versionCode is strictly above both served and recorded installed releases; record its full source and APK SHA-256, badging and certificate, retaining package/signing lineage, OpenSSL runtimes and QML imports. Inspect `qt/android-build.sh` before use: its default selects the real phone and installs/launches. Release builds must use an explicit out-of-tree build-only recipe with the canonical redacted signing loader, not that default workflow.
 
-Prove R42 on that exact signed file first: a fresh owned native emulator enrolls through the normal UI with no `LB_SERVER` and no pre-enrolled profile and reaches Online against the intended deployed origin. Record any dedicated test-device production enrollment API requests and their tenant scope/rollback. Then retain exact-candidate phone-size inbox/mail/topic captures: at least four complete collapsed/standalone cards, three expanded Techship member previews with the shared identity rendered once, the real mail card's retained body, and neighboring Settings. A desktop Qt wrapper, launch-only or disposable-server-only receipt does not pass the native gate. Use the existing owned-runtime/proof recipes after contract and readiness checks, preserve each run's logs, and stop after at most two full acceptance attempts rather than rerunning a matrix blindly.
+Prove R42 on that exact signed file first: a fresh owned native emulator enrolls through the normal UI with no `LB_SERVER` and no pre-enrolled profile and reaches Online against the intended deployed origin. Record any dedicated test-device production enrollment API requests and their tenant scope/rollback. Then retain exact-candidate phone-size inbox/mail/topic captures: at least four complete collapsed/standalone cards, three expanded Techship member previews with the shared identity rendered once, the real mail card's retained body, and neighboring Settings. A desktop Qt wrapper, launch-only or disposable-server-only receipt does not pass
+the native gate, and neither does a rebuild: only the enrolled owned-emulator
+native proof run on the exact signed candidate counts, never a rebuild or new
+build receipt by itself. Use the existing owned-runtime/proof recipes after contract and readiness checks, preserve each run's logs, and stop after at most two full acceptance attempts rather than rerunning a matrix blindly.
 
 After native and lead acceptance, publish and install the entire cohort through `deploy/release.py` above. The server source/binary must become the accepted cohort identity, not remain the previous release; its startup-bound APK snapshot must match the same accepted cohort. Read back the authenticated same-origin manifest and downloaded bytes, with anonymous protection retained. Normal Android delivery requires authenticated APK publication and an older normally enrolled isolated consumer's actual **Check updates** offer of **Update available** for the published version, retained without approving installer/unknown-source safety prompts; physical-phone ADB is never a release prerequisite. Optional standalone maintenance with explicit `--install-mobile` remains separate from normal delivery and requires the authorization and identity checks above. This offer proof is separate from native acceptance and explicit device installation; a blocked provider-consent installation is not an upgrade pass.
 
