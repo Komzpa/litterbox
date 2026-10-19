@@ -526,7 +526,9 @@ ApplicationWindow {
         if (!readerOpen && (!mailDetailPage || !mailDetailPage.visible)) return
         saveInboxScroll(selectedCardId)
         readerOpen = false
-        if (stack.currentItem === mailDetailPage && stack.depth > 1) stack.pop()
+        // Archive immediately reuses this retained item for its successor;
+        // an unfinished pop animation would move the re-pushed page halfway out.
+        if (stack.currentItem === mailDetailPage && stack.depth > 1) stack.pop(StackView.Immediate)
         else if (mailDetailPage) mailDetailPage.visible = false
         inboxList.forceActiveFocus()
     }
@@ -604,7 +606,13 @@ ApplicationWindow {
                 requestArchiveContinuation: function(cardId) { return window.captureArchiveContinuation(cardId) },
                 // The retained reader follows the window's real popup state so
                 // its Android WebView hides only while a real dialog/menu is open.
-                ownerPopupVisible: Qt.binding(function() { return window.actualPopupsVisible })
+                ownerPopupVisible: Qt.binding(function() { return window.actualPopupsVisible }),
+                // The Android WebView is above Qt, so leave the actual Undo
+                // target uncovered without reflowing the inbox underneath it.
+                bottomPadding: Qt.binding(function() {
+                    return Qt.platform.os === "android" && bundleArchiveUndoBar.visible
+                        ? bundleArchiveUndoBar.height + bundleArchiveUndoBar.anchors.bottomMargin : 0
+                })
             })
             selectedCardId = values.cardId || ""
             if (!mailDetailPage) {
@@ -898,7 +906,8 @@ ApplicationWindow {
         objectName: "bundleArchiveUndoBar"
         parent: window.contentItem
         z: 50
-        visible: (window.archiveUndoAvailable || window.bundleArchiveStatus.length > 0) && stack.depth === 1
+        visible: (window.archiveUndoAvailable || window.bundleArchiveStatus.length > 0)
+            && (stack.depth === 1 || (window.readerOpen && stack.currentItem === window.mailDetailPage))
         opacity: visible ? 1 : 0
         Behavior on opacity { enabled: !window.reduceMotion; NumberAnimation { duration: 180 } }
         width: Math.min(parent.width - 2 * 12, 560)

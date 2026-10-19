@@ -99,7 +99,9 @@ Each requirement is **decided** or **open** and names its source.
   (a cancel is a no-op). DST transitions and future dates use the resolved
   local time rather than a guessed offset. On desktop and native Android the
   picker row is at least 48dp tall with actual contrast and is keyboard
-  reachable. Oracle: actual preset menu and custom picker captures at
+  reachable. The custom Year, Month and Day values remain visible beside their
+  step controls at phone widths and large text, rather than being squeezed to
+  zero content width. Oracle: actual preset menu and custom picker captures at
   1440×1000, 412×915 and neighboring 480×915 (including native Android at
   150% font scale and its actual density), plus cancel/no-op, DST-forward
   and weekend-rollover cases. A visible/open accessibility node is not render
@@ -461,6 +463,8 @@ the final acceptance; until he sees it each item is partial.
   bundle whose open member was removed advances once; otherwise the bundle is
   unchanged. Archive with no reader open keeps the reader closed. Undo
   restores list order and keeps the reader on the card it advanced to.
+  On the one-pane phone reader, Undo stays reachable without closing that
+  successor, and the native body leaves the actual Undo target uncovered.
   External archive, Spam, Done and Snooze never auto-advance the reader.
   Oracle: archive card N in a 200-card list scrolled to the middle, deliver a
   stale and a new snapshot; the first visible card id is unchanged except for

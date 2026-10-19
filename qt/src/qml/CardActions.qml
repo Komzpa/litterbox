@@ -597,11 +597,14 @@ Controls.ToolButton {
                         width: snoozeScroll.availableWidth
                         // Structured local date/time picker: typed digits and
                         // arrow keys step values, so no raw string is parsed.
-                        RowLayout {
+                        GridLayout {
                             Layout.fillWidth: true
-                            spacing: 8
-                            Controls.Label { text: qsTr("Date"); color: root.actionInk; font: Kirigami.Theme.defaultFont }
-                            Item { Layout.fillWidth: true }
+                            columns: 2
+                            columnSpacing: 8
+                            rowSpacing: 8
+                            // Material's two indicators need 108 dp before the
+                            // value. Give each date field the remaining row width.
+                            Controls.Label { text: qsTr("Year"); color: root.actionInk; font: Kirigami.Theme.defaultFont }
                             Controls.SpinBox {
                                 id: snoozeYear
                                 objectName: "snoozeYear"
@@ -612,6 +615,7 @@ Controls.ToolButton {
                                 Layout.fillWidth: true
                                 Accessible.name: qsTr("Year")
                             }
+                            Controls.Label { text: qsTr("Month"); color: root.actionInk; font: Kirigami.Theme.defaultFont }
                             Controls.SpinBox {
                                 id: snoozeMonth
                                 objectName: "snoozeMonth"
@@ -622,6 +626,7 @@ Controls.ToolButton {
                                 Layout.fillWidth: true
                                 Accessible.name: qsTr("Month")
                             }
+                            Controls.Label { text: qsTr("Day"); color: root.actionInk; font: Kirigami.Theme.defaultFont }
                             Controls.SpinBox {
                                 id: snoozeDay
                                 objectName: "snoozeDay"

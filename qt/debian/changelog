@@ -1,3 +1,20 @@
+litterbox-qt (0.1-40) unstable; urgency=medium
+
+  * Complete the narrow reader pop before reusing its retained page for the
+    next archived-mail successor, rather than leaving it halfway offscreen.
+  * Keep Undo reachable in the phone reader and leave its actual target
+    uncovered by the native mail body, without reflowing the inbox.
+
+ -- Litterbox <litterbox@example.com>  Mon, 19 Oct 2026 22:44:00 +0400
+
+litterbox-qt (0.1-39) unstable; urgency=medium
+
+  * Give each custom Snooze date field a labelled row so Material step
+    controls do not squeeze its value out at phone widths and large text.
+  * Preserve the existing time row, 54dp controls and bounded picker scroll.
+
+ -- Litterbox <litterbox@example.com>  Mon, 19 Oct 2026 22:28:00 +0400
+
 litterbox-qt (0.1-38) unstable; urgency=medium
 
   * Size the Snooze preset menu from its actual rows so Android Material
