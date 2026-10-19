@@ -82,3 +82,72 @@ Where `<publishedOID>` is the OID observed on the remote after push, and `<prior
 ## Post-push readback
 
  appended after push —
+
+## Post-push readback (appended after push)
+
+- Push command: `git push --force-with-lease=refs/heads/ui-desktop-mobile-redesign-20261018: git@github.com:Komzpa/litterbox.git ui-desktop-mobile-redesign-20261018:refs/heads/ui-desktop-mobile-redesign-20261018`
+- Result: `[new branch] ui-desktop-mobile-redesign-20261018 -> ui-desktop-mobile-redesign-20261018`, EXIT=0
+- Fresh forge readback: `git ls-remote origin refs/heads/ui-desktop-mobile-redesign-20261018` → `1e9a98e9ce15dda5f54f80b1211e9ca9f1bea4ff`
+- Local HEAD: `1e9a98e9ce15dda5f54f80b1211e9ca9f1bea4ff`
+- Match: **exact** — remote OID equals local commit OID.
+
+### Publication tuple (final)
+
+| Field | Value |
+|---|---|
+| Remote URL | `git@github.com:Komzpa/litterbox.git` |
+| Full destination ref | `refs/heads/ui-desktop-mobile-redesign-20261018` |
+| Published OID | `1e9a98e9ce15dda5f54f80b1211e9ca9f1bea4ff` |
+| Prior remote OID | ABSENT (branch created) |
+| Lease used | `--force-with-lease=refs/heads/ui-desktop-mobile-redesign-20261018:` (absence lease) |
+
+### Commit contents (21 files)
+
+| Path | Status |
+|---|---|
+| `docs/DEPLOYMENT.md` | M (35 insertions, 4 deletions) |
+| `receipts/release-install-preflight.md` | A |
+| `receipts/release-handoff-prep.md` | A |
+| `receipts/frozen-release-cohort.md` | A |
+| `receipts/release-plan-readiness.md` | A |
+| `receipts/release-git-preparation.md` | A |
+| `receipts/mobile-final-consumer-proof.md` | A |
+| `receipts/named-b2b-native-proof.md` | A |
+| `receipts/repaired-consumer-proof.md` | A |
+| `receipts/original-message-desktop-proof.md` | A |
+| `receipts/offline-live-history-proof.md` | A |
+| `receipts/bundle-frame-consumer-proof.md` | A |
+| `receipts/remaining-consumer-proof.md` | A |
+| `receipts/queued-retry-consumer-proof.md` | A |
+| `receipts/unified-release-execution.md` | A |
+| `receipts/ui-release-proof.md` | A |
+| `receipts/release-git-publication.md` | A (this receipt) |
+| `receipts/update-offer-proof/00-emulator-https-origin-reachable.png` | A |
+| `receipts/update-offer-proof/01-enrolled-online-v21.png` | A |
+| `receipts/update-offer-proof/02-update23-offer.png` | A |
+| `receipts/update-offer-proof/03-update23-banner-later.png` | A |
+
+### Deliberately left unstaged (verified)
+
+- `qt/mobileux-inbox-bundle-expanded.png`
+- `qt/mobileux-inbox-offline.png`
+- `qt/mobileux-inbox-online.png`
+- `qt/mobileux-inbox-reader-long-mail.png`
+- `receipts/bundle-visibility-proof.md`
+- `receipts/full-check-proof.md`
+- `receipts/mobile-ui-proof.md`
+- `receipts/repair-check-proof.md`
+- `receipts/restart-survival-proof.md`
+
+### Unrelated state preserved
+
+- Local branch `ui-desktop-mobile-redesign-20261018` still ahead of `origin/fix/mobile-ux-20261015` by 7 commits (6 prior + this one); no resets, no force-push to other refs.
+- Commit `3028899` (WeeChatTemporal, unrelated) untouched.
+- No other branch, ref, or HEAD substituted.
+
+### Rollback
+
+```
+git push --force-with-lease=refs/heads/ui-desktop-mobile-redesign-20261018:1e9a98e9ce15dda5f54f80b1211e9ca9f1bea4ff git@github.com:Komzpa/litterbox.git <priorOID>:refs/heads/ui-desktop-mobile-redesign-20261018
+```
+Since the remote ref was absent before push, there is no prior OID to restore; on abort the published ref is preserved (never deleted/recreated).
