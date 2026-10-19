@@ -12,6 +12,7 @@ TestCase {
     ListModel {
         id: store
         property bool online: false
+        property string offlineReason: ""
         property var cached: ({})
         property var batchRemovalIds: []
         property var operations: []
@@ -490,8 +491,10 @@ TestCase {
         compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
         compare(store.operations, [])
         inbox.width = 1480
+        wait(150)
         tryVerify(function() { return reader.visible && !inbox.mailDetailPage.visible })
         compare(inbox.readerOpen, false, "Back must stay closed when the desktop pane returns")
+        compare(Math.round(list.itemAtIndex(8).mapToItem(list, 0, 0).y), Math.round(anchorY))
         mouseClick(findChild(list.itemAtIndex(8), "openCard-" + mailId(8)))
         tryCompare(inbox, "readerOpen", true)
         compare(inbox.mailDetailPage, retainedReader)
