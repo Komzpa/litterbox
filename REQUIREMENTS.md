@@ -453,7 +453,13 @@ the final acceptance; until he sees it each item is partial.
   both photo scopes) and performs no grant; `GET
   /v1/gmail/sender-photos/status` reports per-account `photo_ready` and
   explicit `authorization_required` with `required_scopes` without touching
-  Google. Server-mediated and device-cached: photos are fetched and decoded
+  Google. The status report is tenant-scoped through the same request tenant
+  transaction the photo route uses (`set_config('litterbox.tenant_id')` inside
+  the request transaction): an authenticated device sees exactly its own
+  tenant's accounts in every grant state (both `photo_ready` and
+  `authorization_required` entries), a neighbor tenant's accounts never
+  appear, and an unauthenticated request is denied 401 by the device-token
+  auth instead of returning any list. Server-mediated and device-cached: photos are fetched and decoded
   server-side (bounded 512 KiB, `image.DecodeConfig`-verified) into
   tenant/account-scoped `sender_photos`, delivered through authenticated `GET
   /v1/cards/{id}/sender-photo` (card id lookup; no provider URLs, tokens, or
@@ -481,7 +487,11 @@ the final acceptance; until he sees it each item is partial.
   rebuilds, plus a photo case where decoded provider bytes render in the
   real `SenderAvatar` (image ready, offline reopen keeps them); negative
   control: a Gmail-only grant reports `authorization_required` with no photo
-  bytes on any surface.
+  bytes on any surface; plus the app-role production HTTP oracle
+  `TestStatusRouteTenantVisibility` (real device-token auth, real
+  pg_virtualenv schema as the granted runtime role): own tenant's two
+  accounts visible with both grant states, neighbor tenant invisible,
+  unset/bogus credential 401.
   The presentation source model must keep a non-null delegate independently
   of its live photo Connections: a cold empty inbox realizes arriving cards,
   and later snapshots, removals and photo completions update those rows.

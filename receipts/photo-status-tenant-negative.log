@@ -1,0 +1,15 @@
+Creating new PostgreSQL cluster 18/regress ...
+initdb: could not find suitable text search configuration for locale "be_BY.UTF-8"
+=== RUN   TestStatusRouteTenantVisibility
+    status_test.go:181: own tenant accounts=[], want exactly 2
+--- FAIL: TestStatusRouteTenantVisibility (0.05s)
+FAIL
+FAIL	github.com/Komzpa/litterbox/server/internal/senderphoto	0.055s
+FAIL
+*** /tmp/pg_virtualenv.HXbjd7/log/postgresql-18-regress.log (last 100 lines) ***
+2026-10-20 16:30:39.044 +04 [1563514] LOG:  starting PostgreSQL 18.6 (Debian 18.6-3) on x86_64-pc-linux-gnu, compiled by x86_64-linux-gnu-gcc (Debian 16.2.0-1) 16.2.0, 64-bit
+2026-10-20 16:30:39.045 +04 [1563514] LOG:  listening on IPv4 address "127.0.0.1", port 5434
+2026-10-20 16:30:39.045 +04 [1563514] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5434"
+2026-10-20 16:30:39.046 +04 [1563524] LOG:  database system was shut down at 2026-10-20 16:30:39 +04
+2026-10-20 16:30:39.047 +04 [1563514] LOG:  database system is ready to accept connections
+Dropping cluster 18/regress ...

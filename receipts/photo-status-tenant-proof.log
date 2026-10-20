@@ -1,0 +1,7 @@
+Creating new PostgreSQL cluster 18/regress ...
+initdb: could not find suitable text search configuration for locale "be_BY.UTF-8"
+=== RUN   TestStatusRouteTenantVisibility
+--- PASS: TestStatusRouteTenantVisibility (0.05s)
+PASS
+ok  	github.com/Komzpa/litterbox/server/internal/senderphoto	0.053s
+Dropping cluster 18/regress ...

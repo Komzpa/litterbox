@@ -147,7 +147,20 @@ func (h StatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	rows, err := h.DB.QueryContext(r.Context(), `SELECT a.id::text,a.address,COALESCE(a.granted_photo_scopes,''),
+	// Same request tenant transaction as the photo route above: RLS only
+	// sees this tenant's rows once litterbox.tenant_id is set in the
+	// transaction, so the account list can never leak a neighbor tenant.
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant); err != nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	rows, err := tx.QueryContext(r.Context(), `SELECT a.id::text,a.address,COALESCE(a.granted_photo_scopes,''),
 EXISTS(SELECT 1 FROM sender_photos sp WHERE sp.tenant_id=a.tenant_id AND sp.account_id=a.id)
 FROM accounts a WHERE a.tenant_id=$1 AND a.status IN ('active','reauth_required') ORDER BY a.address`, tenant)
 	if err != nil {
@@ -182,6 +195,10 @@ FROM accounts a WHERE a.tenant_id=$1 AND a.status IN ('active','reauth_required'
 		out = append(out, e)
 	}
 	if err = rows.Err(); err != nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err = tx.Commit(); err != nil {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
