@@ -29,6 +29,19 @@ public slots:
         engine->rootContext()->setContextProperty(QStringLiteral("bundleCachePath"), database);
         engine->rootContext()->setContextProperty(QStringLiteral("bundleProofDirectory"), qEnvironmentVariable("LB_BUNDLE_PROOF"));
         engine->rootContext()->setContextProperty(QStringLiteral("bundleProofWidth"), qEnvironmentVariableIntValue("LB_BUNDLE_WIDTH"));
+#ifdef LB_PHOTO_FIXTURE
+        // R67 sender-photo consumer regression fixture: the valid 64x64
+        // red-left/green-right PNG served by the staged smoke. Fed to
+        // CardStore::applyRemoteSenderPhoto exactly as main.cpp's
+        // requestFinishedBytes leg feeds Api reply bytes.
+        {
+            QFile fixture(QStringLiteral(LB_PHOTO_FIXTURE));
+            if (!fixture.open(QIODevice::ReadOnly)) qFatal("Cannot open sender-photo fixture");
+            engine->rootContext()->setContextProperty(QStringLiteral("senderPhotoFixtureBytes"), fixture.readAll());
+        }
+        engine->rootContext()->setContextProperty(QStringLiteral("senderPhotoGarbageBytes"),
+            QByteArrayLiteral("not-a-real-image-payload"));
+#endif
     }
 private:
     QTemporaryDir m_directory;

@@ -1,0 +1,60 @@
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=603219 comm="/tmp/lb-avatar-qt-build/litterbox-qt --capture-scr" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=603760 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=603760 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.244: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=603760 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=603791 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.5' (uid=1000 pid=603816 comm="/usr/libexec/at-spi-bus-launcher" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=603840 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=603840 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+
+(xdg-desktop-portal-gtk:603791): xdg-desktop-portal-gtk-WARNING **: 14:38:18.384: error: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+** (xdg-desktop-portal-gtk:603791): WARNING **: 14:38:18.401: AT-SPI: Could not obtain desktop path or name
+
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=603840 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.404: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+Capture script eval step 2: true
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+** (xdg-desktop-portal-gtk:603791): WARNING **: 14:38:18.407: atk-bridge: GetRegisteredEvents returned message with unknown signature
+
+** (xdg-desktop-portal-gtk:603791): WARNING **: 14:38:18.407: atk-bridge: get_device_events_reply: unknown signature
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.414: Failed to create RealtimeKit proxy: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.415: Choosing gtk.portal for org.freedesktop.impl.portal.Settings as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.415: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.416: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.416: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.417: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.417: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.423: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.423: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.425: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:603760): xdg-desktop-portal-WARNING **: 14:38:18.426: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[603212]: [session uid=1000 pid=603212 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1786:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1786:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1786:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+Capture script step 4 failed: <Unknown File>:0: Error: FIRST_ONLINE_NO_REFRESH [{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","cache":"file:///tmp/lb-photo-notify-odh5hsnz/app/cache/Litterbox/Litterbox/sender-photos/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/photo.png","source":"","ready":false,"visible":false,"initials":true},{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","cache":"","source":"","ready":false,"visible":false,"initials":true},{"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","cache":"","source":"","ready":false,"visible":false,"initials":true}] requests=1
+A connection to the bus can't be made

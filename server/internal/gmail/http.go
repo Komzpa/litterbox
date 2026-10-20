@@ -21,6 +21,10 @@ const (
 	AccountsPath      = "/v1/gmail/accounts"
 	ConnectPath       = "/v1/gmail/connect"
 	OAuthCallbackPath = "/v1/gmail/oauth/callback"
+	// PhotoConsentPath starts the incremental photo grant. It returns an
+	// authorization_url for Gmail.modify plus both People photo scopes and
+	// performs no grant itself; the account approves in the browser.
+	PhotoConsentPath = "/v1/gmail/photo-consent"
 )
 
 type WebConfig struct {
@@ -46,6 +50,7 @@ func tenantFrom(ctx context.Context) (uuid.UUID, error) {
 func (h *WebHandler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+AccountsPath, h.listAccounts)
 	mux.HandleFunc("POST "+ConnectPath, h.beginConnect)
+	mux.HandleFunc("POST "+PhotoConsentPath, h.beginPhotoConsent)
 	mux.HandleFunc("GET "+OAuthCallbackPath, h.callback)
 	mux.HandleFunc("DELETE "+AccountsPath+"/{id}", h.deleteAccount)
 }
@@ -128,6 +133,54 @@ func (h *WebHandler) beginConnect(w http.ResponseWriter, r *http.Request) {
 		auth = DefaultAuthURL
 	}
 	authURL := buildAuthURL(auth, h.Config.Credentials.ClientID, h.Config.CallbackURL, ScopeGmailModify, state, pkceChallenge(verifier))
+	tx, e := h.dbTx(r.Context(), tenant)
+	if e != nil {
+		http.Error(w, "database unavailable", 500)
+		return
+	}
+	defer tx.Rollback()
+	_, e = tx.ExecContext(r.Context(), `INSERT INTO gmail_oauth_states(tenant_id,state_hash,code_verifier,redirect_uri,expires_at) VALUES($1,$2,$3,$4,now()+interval '10 minutes')`, tenant, stateHash(state), verifier, h.Config.CallbackURL)
+	if e != nil {
+		http.Error(w, "could not save OAuth state", 500)
+		return
+	}
+	if e = tx.Commit(); e != nil {
+		http.Error(w, "could not save OAuth state", 500)
+		return
+	}
+	writeJSON(w, 200, map[string]string{"authorization_url": authURL})
+}
+// beginPhotoConsent returns an incremental authorization_url for Gmail.modify
+// plus both People photo scopes. It stores PKCE state like beginConnect and
+// performs no grant: the account approves in the browser, and the shared
+// OAuth callback persists the actually granted scopes. Without this step the
+// photo pipeline stays in authorization_required (Gmail.modify alone carries
+// no sender-photo field).
+func (h *WebHandler) beginPhotoConsent(w http.ResponseWriter, r *http.Request) {
+	tenant, e := tenantFrom(r.Context())
+	if e != nil {
+		http.Error(w, "tenant required", 401)
+		return
+	}
+	if h.Config.Credentials == nil || h.Config.Credentials.ClientID == "" || h.Config.CallbackURL == "" || len(h.Config.StateSecret) < 32 {
+		http.Error(w, "Gmail OAuth is not configured", 503)
+		return
+	}
+	verifier, e := pkceVerifier()
+	if e != nil {
+		http.Error(w, "could not start OAuth", 500)
+		return
+	}
+	state, e := h.newState(tenant)
+	if e != nil {
+		http.Error(w, "could not start OAuth", 500)
+		return
+	}
+	auth := h.Config.AuthURL
+	if auth == "" {
+		auth = DefaultAuthURL
+	}
+	authURL := buildAuthURL(auth, h.Config.Credentials.ClientID, h.Config.CallbackURL, FullPhotoScope(), state, pkceChallenge(verifier))
 	tx, e := h.dbTx(r.Context(), tenant)
 	if e != nil {
 		http.Error(w, "database unavailable", 500)
@@ -242,7 +295,14 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer store.Rollback()
-	_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active'`, tenant, accountID, email, []byte(tok.RefreshToken))
+	// R67: persist the actually granted scopes (not the requested ones) so
+	// the photo pipeline can gate on HasPhotoScopes without a Google call.
+	// Old deployments without granted_photo_scopes degrade to Gmail-only:
+	// try the new column, fall back to the legacy insert.
+	_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status,granted_photo_scopes) VALUES($1,$2,$3,$4,'active',$5) ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active',granted_photo_scopes=EXCLUDED.granted_photo_scopes`, tenant, accountID, email, []byte(tok.RefreshToken), tok.Scope)
+	if e != nil {
+		_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active'`, tenant, accountID, email, []byte(tok.RefreshToken))
+	}
 	if e != nil {
 		httpapi.MessagePage(w, 500, "Could not save Gmail account. Try connecting Gmail again from Litterbox.")
 		return

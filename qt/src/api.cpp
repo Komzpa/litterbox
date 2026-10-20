@@ -133,6 +133,30 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
         });
     });
 }
+void Api::trackBytesReply(int id, QNetworkReply *reply)
+{
+    // R67: binary sender-photo download. Bounded on the device (1 MiB cap);
+    // the server already enforces 512 KiB + DecodeConfig. No body bytes in
+    // logs; errors carry status only, never the card id or address (the
+    // caller maps ids without logging them here).
+    m_bytesReplies.insert(id, reply);
+    connect(reply, &QNetworkReply::finished, this, [this, id, reply]() {
+        m_bytesReplies.remove(id);
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QString contentType = reply->header(QNetworkRequest::ContentTypeHeader).toString();
+        const QByteArray body = reply->readAll();
+        const QString transportError = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
+        reply->deleteLater();
+        QMetaObject::invokeMethod(this, [this, id, status, body, contentType, transportError] {
+            if (status < 200 || status >= 300 || body.isEmpty() || body.size() > (1 << 20)) {
+                const QString error = status != 0 ? QStringLiteral("HTTP %1").arg(status) : transportError;
+                emit requestFailed(id, status, error);
+                return;
+            }
+            emit requestFinishedBytes(id, body, contentType, status);
+        }, Qt::QueuedConnection);
+    });
+}
 
 void Api::trackStreamReply(int id, QNetworkReply *reply)
 {
@@ -184,6 +208,15 @@ int Api::del(const QString &path, const QJSValue &callback)
     const int id = m_nextId++;
     if (callback.isCallable()) m_callbacks.insert(id, callback);
     trackJsonReply(id, m_nam->deleteResource(buildRequest(path)));
+    return id;
+}
+int Api::getBytes(const QString &path)
+{
+    const int id = m_nextId++;
+    QNetworkRequest request = buildRequest(path);
+    request.setPriority(QNetworkRequest::LowPriority);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    trackBytesReply(id, m_nam->get(request));
     return id;
 }
 

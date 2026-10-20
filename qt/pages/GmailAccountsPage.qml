@@ -49,6 +49,17 @@ Kirigami.ScrollablePage {
     property bool loading: false
     property string errorText: ""
     property string lastConnectUrl: ""
+    // R67 sender-photo consent/status, server-reported only. The status
+    // contract (GET /v1/gmail/sender-photos/status) carries per-account
+    // photo_ready / authorization_required / required_scopes; the consent
+    // contract (POST /v1/gmail/photo-consent) only returns an
+    // authorization_url and performs no grant. No scope or Google config
+    // checks are invented here: every state shown is what the server said.
+    property var photoStatus: [] // [{ account_id, address, photo_ready, authorization_required, required_scopes }]
+    property string photoStatusError: ""
+    property string photoConsentUrl: ""
+    property string photoConsentError: ""
+    property bool requestingPhotoConsent: false
 
     title: qsTr("Gmail Accounts")
 
@@ -64,6 +75,38 @@ Kirigami.ScrollablePage {
             accounts = response.body
             accountsLoaded(accounts)
             if (accounts.every(account => account.status === "active")) connecting = false
+        })
+        reloadPhotoStatus()
+    }
+
+    // Server-reported photo readiness per account; never guessed from the
+    // account list and never inferred from Google configuration.
+    function reloadPhotoStatus() {
+        photoStatusError = ""
+        api.get("/v1/gmail/sender-photos/status", function (error, response) {
+            if (error || !response || !response.body || !Array.isArray(response.body.accounts)) {
+                photoStatus = []
+                photoStatusError = qsTr("Could not load sender photo status.")
+                return
+            }
+            photoStatus = response.body.accounts
+        })
+    }
+
+    // Starts the incremental photo grant (Gmail.modify + both People photo
+    // scopes). The server returns the authorization_url and performs no
+    // grant: the user approves in their own browser through the explicit
+    // open action below. This function never opens a browser itself.
+    function requestPhotoConsent() {
+        photoConsentError = ""
+        requestingPhotoConsent = true
+        api.post("/v1/gmail/photo-consent", {}, function (error, response) {
+            requestingPhotoConsent = false
+            if (error || !response || !response.body || !response.body.authorization_url) {
+                photoConsentError = qsTr("Could not start photo authorization.")
+                return
+            }
+            photoConsentUrl = response.body.authorization_url
         })
     }
 
@@ -216,6 +259,110 @@ Kirigami.ScrollablePage {
                 objectName: "emptyStateLabel"
                 visible: list.count === 0 && !root.loading && root.errorText === ""
                 text: qsTr("No accounts connected.")
+            }
+        }
+
+        // R67 sender-photo consent/status section. Each row's state is the
+        // server's (photo_ready / authorization_required), the required
+        // scopes are the server's list, and the only action here is asking
+        // the server for the incremental grant URL and showing it; the user
+        // opens it themselves.
+        Kirigami.Heading {
+            text: qsTr("Sender photos")
+            level: 3
+            color: root.ink
+            visible: root.photoStatus.length > 0 || root.photoStatusError !== ""
+            Layout.fillWidth: true
+        }
+
+        QQC2.Label {
+            objectName: "photoStatusError"
+            visible: root.photoStatusError !== ""
+            text: root.photoStatusError
+            color: Kirigami.Theme.negativeTextColor
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Repeater {
+            model: root.photoStatus
+            delegate: ColumnLayout {
+                id: photoRow
+                objectName: "photoStatusRow"
+                Layout.fillWidth: true
+                spacing: 6
+                readonly property bool needsAuth: !!modelData.authorization_required
+                readonly property bool photoReady: !!modelData.photo_ready
+
+                QQC2.Label {
+                    objectName: "photoStatusAddress"
+                    text: modelData.address
+                    color: root.ink
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+                QQC2.Label {
+                    objectName: "photoStateLabel"
+                    text: photoRow.photoReady ? qsTr("Sender photos ready")
+                        : photoRow.needsAuth ? qsTr("Sender photos need authorization")
+                        : qsTr("Authorized — photos appear after they sync")
+                    color: photoRow.needsAuth ? Kirigami.Theme.negativeTextColor : root.mutedInk
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+                QQC2.Label {
+                    objectName: "photoRequiredScopes"
+                    visible: photoRow.needsAuth && (modelData.required_scopes || []).length > 0
+                    text: (modelData.required_scopes || []).join("\n")
+                    color: root.mutedInk
+                    font: Kirigami.Theme.smallFont
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+                MailActionButton {
+                    objectName: "photoConsentButton"
+                    text: root.requestingPhotoConsent ? qsTr("Starting authorization…") : qsTr("Authorize sender photos…")
+                    visible: photoRow.needsAuth
+                    enabled: !root.requestingPhotoConsent
+                    onClicked: root.requestPhotoConsent()
+                }
+            }
+        }
+
+        QQC2.Label {
+            objectName: "photoConsentError"
+            visible: root.photoConsentError !== ""
+            text: root.photoConsentError
+            color: Kirigami.Theme.negativeTextColor
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        QQC2.Label {
+            objectName: "photoConsentPrompt"
+            visible: root.photoConsentUrl !== ""
+            text: qsTr("Open this authorization link to grant sender photo access. Litterbox never grants it for you.")
+            color: root.ink
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+        QQC2.TextField {
+            objectName: "photoConsentUrlText"
+            visible: root.photoConsentUrl !== ""
+            readOnly: true
+            text: root.photoConsentUrl
+            color: root.ink
+            selectByMouse: true
+            Layout.fillWidth: true
+        }
+        MailActionButton {
+            objectName: "photoConsentOpenButton"
+            text: qsTr("Open authorization page")
+            visible: root.photoConsentUrl !== ""
+            icon.name: "document-open"
+            onClicked: {
+                if (root.openLinks)
+                    Qt.openUrlExternally(root.photoConsentUrl)
             }
         }
     }

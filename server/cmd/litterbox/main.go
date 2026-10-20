@@ -25,6 +25,7 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/offline"
 	"github.com/Komzpa/litterbox/server/internal/ops"
 	"github.com/Komzpa/litterbox/server/internal/reminders"
+	"github.com/Komzpa/litterbox/server/internal/senderphoto"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -184,7 +185,11 @@ func main() {
 		cardHandler.Routes(cardMux)
 		mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
 		mux.Handle("GET /v1/cards/{id}/body", devOnly(mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}))
+		// R67: authenticated card-scoped Google sender photo (server-mediated
+		// bytes; no provider URLs, tokens, or addresses in URLs/logs).
+		mux.Handle("GET /v1/cards/{id}/sender-photo", devOnly(senderphoto.Handler{DB: db}))
 		mux.Handle("/v1/cards/", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
+		mux.Handle("GET /v1/gmail/sender-photos/status", devOnly(senderphoto.StatusHandler{DB: db}))
 		snapshotAPI := offline.API{DB: db, Identity: func(r *http.Request) (string, bool) { return cards.TenantFrom(r.Context()) }}
 		mux.Handle("GET /v1/snapshot", devOnly(http.HandlerFunc(snapshotAPI.Snapshot)))
 		mux.Handle("GET /v1/changes", devOnly(http.HandlerFunc(snapshotAPI.Changes)))
@@ -233,7 +238,7 @@ func main() {
 					}
 				}
 			}()
-			for _, route := range []string{gmail.AccountsPath, gmail.AccountsPath + "/", gmail.ConnectPath} {
+			for _, route := range []string{gmail.AccountsPath, gmail.AccountsPath + "/", gmail.ConnectPath, gmail.PhotoConsentPath} {
 				mux.Handle(route, devOnly(gmux))
 			}
 			mux.Handle(gmail.OAuthCallbackPath, gmux)

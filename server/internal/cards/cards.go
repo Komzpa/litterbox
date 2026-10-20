@@ -39,6 +39,13 @@ type Card struct {
 	// card (a Gmail mail body or a server-built file document); the client
 	// prefetches it through GET /v1/cards/{id}/body for offline reads.
 	HasBody bool `json:"has_body"`
+	// SenderHasPhoto reports that sender_photos holds a decoded Google
+	// contact photo for this card's sender (People API, exact mailbox
+	// match, non-default only). The client fetches the bytes through
+	// GET /v1/cards/{id}/sender-photo and falls back to initials on
+	// unavailable or authorization_required. Absent from both contact
+	// datasets, the sender stays explicitly uncovered.
+	SenderHasPhoto bool `json:"sender_has_photo,omitempty"`
 	// internal ordering metadata, excluded from the API
 	createdAt time.Time
 	order     int

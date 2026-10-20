@@ -374,9 +374,17 @@ int main(int argc, char *argv[])
     QHash<int, quint64> cardsRequests;
     QHash<int, QString> operationRequests;
     QHash<int, QString> mailBodyRequests;
+    QHash<int, QString> senderPhotoRequests;
     QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
         [&](const QString &cardId, const QString &path) {
             mailBodyRequests.insert(api.get(path), cardId);
+        });
+    // R67: authenticated card-scoped sender photos (binary bytes, no
+    // addresses or tokens in logs). 404 means genuinely unavailable
+    // (initials); 403 means authorization_required until consent.
+    QObject::connect(&store, &CardStore::requestSenderPhotoGet, &app,
+        [&](const QString &cardId, const QString &path) {
+            senderPhotoRequests.insert(api.getBytes(path), cardId);
         });
     QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path, quint64 requestId) {
         cardsRequests.insert(api.get(path), requestId);
@@ -419,10 +427,18 @@ int main(int argc, char *argv[])
                 store.reportPostResult(operationRequests.take(id), status, response);
             }
         });
+    QObject::connect(&api, &Api::requestFinishedBytes, &app,
+        [&](int id, const QByteArray &data, const QString &contentType, int status) {
+            Q_UNUSED(status);
+            if (senderPhotoRequests.contains(id)) {
+                store.applyRemoteSenderPhoto(senderPhotoRequests.take(id), data, contentType);
+            }
+        });
     QObject::connect(&api, &Api::requestFailed, &app,
         [&](int id, int status, const QString &error, const QJsonValue &data) {
             cardsRequests.remove(id);
             if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id));
+            if (senderPhotoRequests.contains(id)) store.reportSenderPhotoFailed(senderPhotoRequests.take(id), status);
             if (operationRequests.contains(id)) {
                 qWarning().noquote() << "Operation request failed:" << status << error;
                 store.reportPostResult(operationRequests.take(id), status, data.toObject().toVariantMap());

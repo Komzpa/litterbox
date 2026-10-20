@@ -1,0 +1,104 @@
+********* Start testing of bundleexpand *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.0), debian unknown
+PASS   : bundleexpand::SenderPhotoPaint::initTestCase()
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=528357 comm="/tmp/lb-avatar-qt-build/tests/tst_bundleexpand -in" label="unconfined")
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=528610 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=528610 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.374: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=528610 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=528640 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.5' (uid=1000 pid=528684 comm="/usr/libexec/at-spi-bus-launcher" label="unconfined")
+FAIL!  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() left photo pixels are painted, not initials
+   Actual   (): 255
+   Expected (): 220
+   Loc: [/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml(113)]
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+PASS   : bundleexpand::SenderPhotoPaint::cleanupTestCase()
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Successfully activated service 'org.a11y.Bus'
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 520ms
+********* Finished testing of bundleexpand *********
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=528706 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+(xdg-desktop-portal-gtk:528640): xdg-desktop-portal-gtk-WARNING **: 14:32:44.680: error: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=528706 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+** (xdg-desktop-portal-gtk:528640): WARNING **: 14:32:44.692: AT-SPI: Could not obtain desktop path or name
+
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=528706 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.694: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[528352]: [session uid=1000 pid=528352 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+** (xdg-desktop-portal-gtk:528640): WARNING **: 14:32:44.701: atk-bridge: GetRegisteredEvents returned message with unknown signature
+
+** (xdg-desktop-portal-gtk:528640): WARNING **: 14:32:44.702: atk-bridge: get_device_events_reply: unknown signature
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.710: Failed to create RealtimeKit proxy: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.710: Choosing gtk.portal for org.freedesktop.impl.portal.Settings as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.711: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.712: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.712: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Failed to create print proxy: Памылка запуску StartServiceByName для org.freedesktop.impl.portal.desktop.gtk: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.712: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.712: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Failed to create notification proxy: Памылка запуску StartServiceByName для org.freedesktop.impl.portal.desktop.gtk: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.712: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.712: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.712: Failed to create inhibit proxy: Памылка запуску StartServiceByName для org.freedesktop.impl.portal.desktop.gtk: Злучэнне закрыта
+A connection to the bus can't be made
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.719: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.719: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.719: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.719: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.720: Failed to create account proxy: Памылка запуску StartServiceByName для org.freedesktop.impl.portal.desktop.gtk: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.720: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.720: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.720: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.720: Failed to create email proxy: Памылка запуску StartServiceByName для org.freedesktop.impl.portal.desktop.gtk: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.720: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.720: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): GLib-GIO-CRITICAL **: 14:32:44.720: Error while sending AddMatch() message: Злучэнне закрыта
+
+(/usr/libexec/xdg-desktop-portal:528610): xdg-desktop-portal-WARNING **: 14:32:44.720: Failed to create dynamic_launcher proxy: Памылка запуску StartServiceByName для org.freedesktop.impl.portal.desktop.gtk: Злучэнне закрыта

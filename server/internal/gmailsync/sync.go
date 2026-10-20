@@ -72,10 +72,16 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) (err error) {
  	if err := s.backfillSenderNames(ctx, a, c); err != nil {
  		return err
  	}
- 	if cursor == "" {
- 		return s.initial(ctx, a, c, initialStarted, pageToken, initialHistory)
- 	}
- 	return s.poll(ctx, a, c, cursor)
+	if cursor == "" {
+		err := s.initial(ctx, a, c, initialStarted, pageToken, initialHistory)
+		// R67: best-effort photo pass after Gmail sync. Missing grants stay
+		// in authorization_required; photo errors never fail the account.
+		s.syncSenderPhotos(ctx, a, c)
+		return err
+	}
+	err = s.poll(ctx, a, c, cursor)
+	s.syncSenderPhotos(ctx, a, c)
+	return err
 }
 
 func senderDisplayName(header string) string {
@@ -406,10 +412,11 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
  		}
  	}
  }
- senderName := senderDisplayName(sender)
- if newest.IsZero() {
- 	newest = time.Now().UTC()
- }
+	senderName := senderDisplayName(sender)
+	_, senderAddr := senderFields(sender)
+	if newest.IsZero() {
+		newest = time.Now().UTC()
+	}
 	state := "open"
 	if !inbox {
 		state = "archived"
@@ -419,7 +426,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		return e
 	}
 	defer tx.Rollback(ctx)
- _, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, newest)
+	_, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sender_address,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, senderAddr, newest)
 	if e != nil {
 		return e
 	}

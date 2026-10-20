@@ -45,6 +45,9 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_bodyPrefetchTimer.setSingleShot(true);
     m_bodyPrefetchTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_bodyPrefetchTimer, &QTimer::timeout, this, &CardStore::queueMailBodyPrefetch);
+    m_photoPrefetchTimer.setSingleShot(true);
+    m_photoPrefetchTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_photoPrefetchTimer, &QTimer::timeout, this, &CardStore::queueSenderPhotoPrefetch);
     m_storage->moveToThread(&m_storageThread);
     connect(&m_storageThread, &QThread::finished, m_storage, &QObject::deleteLater);
     m_storageThread.start();
@@ -53,6 +56,9 @@ CardStore::~CardStore() {
     m_bodyPrefetchTimer.stop();
     m_bodyPrefetchQueue.clear();
     m_bodyRequests.clear();
+    m_photoPrefetchTimer.stop();
+    m_photoPrefetchQueue.clear();
+    m_photoRequests.clear();
     // Drain queued commits before closing: an offline action survives exit.
     QMetaObject::invokeMethod(m_storage, [this] {
         m_db.close();
@@ -76,8 +82,13 @@ bool CardStore::open(const QString &path) {
     m_bodyPrefetchTimer.stop();
     m_bodyPrefetchQueue.clear();
     m_bodyRequests.clear();
+    m_photoPrefetchTimer.stop();
+    m_photoPrefetchQueue.clear();
+    m_photoRequests.clear();
+    m_photoUnavailable.clear();
     QList<QVariantMap> cards, outbox;
     QHash<QString, QVariantMap> bodies;
+    QHash<QString, QString> photos;
     bool opened = false;
     // Startup only, before the window exists. Every subsequent write is queued.
     QMetaObject::invokeMethod(m_storage, [&, this] {
@@ -87,7 +98,8 @@ bool CardStore::open(const QString &path) {
         if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
-            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]')"))) return;
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]')")) ||
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS sender_photo_files (card_id TEXT PRIMARY KEY, file_url TEXT NOT NULL)"))) return;
         QSqlQuery bodyColumns(m_db);
         if (!bodyColumns.exec(QStringLiteral("PRAGMA table_info(mail_bodies)"))) return;
         bool hasMessages = false;
@@ -121,6 +133,14 @@ bool CardStore::open(const QString &path) {
                 {QStringLiteral("source_url"), q.value(2)},
                 {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}});
         }
+        // R67: device photo cache survives restart; file URLs are local only.
+        if (!q.exec(QStringLiteral("SELECT card_id,file_url FROM sender_photo_files"))) return;
+        while (q.next()) {
+            const QString id = q.value(0).toString();
+            const QString fileUrl = q.value(1).toString();
+            if (!id.isEmpty() && fileUrl.startsWith(QStringLiteral("file://")))
+                photos.insert(id, fileUrl);
+        }
         opened = true;
     }, Qt::BlockingQueuedConnection);
     if (!opened) return false;
@@ -128,10 +148,13 @@ bool CardStore::open(const QString &path) {
     m_outbox = std::move(outbox);
     for (const auto &op : m_outbox) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
     m_mailBodies = std::move(bodies);
+    m_senderPhotos = std::move(photos);
+    injectSenderPhotos(cards);
     replaceCards(std::move(cards));
     emit pendingOpsChanged();
     flush();
     queueMailBodyPrefetch();
+    queueSenderPhotoPrefetch();
     return true;
 }
 
@@ -217,6 +240,9 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
     const auto stored = [](QVariantMap card) {
         card.remove(QStringLiteral("bundle_leader"));
         card.remove(QStringLiteral("bundle_member_count"));
+        // R67: sender_photo is a device-local file:// URL, never durable in
+        // the card payload; the mapping lives in sender_photo_files.
+        card.remove(QStringLiteral("sender_photo"));
         if (!card.contains(QStringLiteral("sender_name")))
             card.insert(QStringLiteral("sender_name"), QStringLiteral(""));
         return card;
@@ -371,11 +397,14 @@ void CardStore::setOnline(bool online) {
     }
     if (m_online == online) return;
     m_online = online; emit onlineChanged();
-    if (online) { flush(); refresh(); queueMailBodyPrefetch(); }
+    if (online) { flush(); refresh(); queueMailBodyPrefetch(); queueSenderPhotoPrefetch(); }
     else {
         m_bodyPrefetchTimer.stop();
         m_bodyPrefetchQueue.clear();
         m_bodyRequests.clear();
+        m_photoPrefetchTimer.stop();
+        m_photoPrefetchQueue.clear();
+        m_photoRequests.clear();
     }
 }
 void CardStore::reportOffline(const QString &reason) {
@@ -493,11 +522,15 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections, quint64 requestId)
         }
     }
     const auto before = m_cards;
+    injectSenderPhotos(cards);
     replaceCards(cards);
     persistCards(before, cards);
     // Keep every fetchable body available offline without exhausting the shared
     // API limit. The queue survives snapshots; foreground reads bypass its pace.
     queueMailBodyPrefetch();
+    // R67: same pacing for sender photos; only sender_has_photo cards without
+    // a cached file fetch, and 404/403 parks until eligibility re-marks.
+    queueSenderPhotoPrefetch();
     return true;
 }
 QStringList CardStore::pinnedCardIds() const {
@@ -1171,6 +1204,159 @@ QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl)
     file.close();
     return QUrl::fromLocalFile(filePath).toString();
 }
+void CardStore::injectSenderPhotos(QList<QVariantMap> &cards) {
+    // Device-local file URLs render without extra lookups. Only cards the
+    // server flags sender_has_photo keep a file URL; everything else shows
+    // initials, so a stale cache never renders after the flag flips false.
+    for (QVariantMap &card : cards) {
+        const QString id = card.value(QStringLiteral("id")).toString();
+        const QString fileUrl = m_senderPhotos.value(id);
+        if (!fileUrl.isEmpty() && card.value(QStringLiteral("sender_has_photo")).toBool())
+            card.insert(QStringLiteral("sender_photo"), fileUrl);
+        else
+            card.remove(QStringLiteral("sender_photo"));
+    }
+}
+void CardStore::queueSenderPhotoPrefetch() {
+    if (!m_online || !m_open) return;
+    for (auto it = m_photoRequests.begin(); it != m_photoRequests.end();) {
+        if (it.value().hasExpired()) it = m_photoRequests.erase(it);
+        else ++it;
+    }
+    QSet<QString> eligible;
+    for (const QVariantMap &card : m_cards) {
+        if (!card.value(QStringLiteral("sender_has_photo")).toBool()) continue;
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (id.isEmpty() || !m_senderPhotos.value(id).isEmpty() || m_photoRequests.contains(id)) continue;
+        if (m_photoUnavailable.contains(id)) continue;
+        eligible.insert(id);
+    }
+    m_photoPrefetchQueue.erase(std::remove_if(m_photoPrefetchQueue.begin(), m_photoPrefetchQueue.end(),
+        [&](const QString &id) { return !eligible.contains(id); }), m_photoPrefetchQueue.end());
+    QSet<QString> queued(m_photoPrefetchQueue.begin(), m_photoPrefetchQueue.end());
+    for (const QVariantMap &card : m_cards) {
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (eligible.contains(id) && !queued.contains(id)) {
+            m_photoPrefetchQueue.append(id);
+            queued.insert(id);
+        }
+    }
+    // Drop negative marks for cards that left the eligible set so a later
+    // grant or re-appearing photo retries instead of sticking forever.
+    for (auto it = m_photoUnavailable.begin(); it != m_photoUnavailable.end();) {
+        if (!eligible.contains(*it) && !m_senderPhotos.contains(*it)) it = m_photoUnavailable.erase(it);
+        else ++it;
+    }
+    if (m_photoPrefetchTimer.isActive()) return;
+    if (m_photoPrefetchQueue.isEmpty() && m_photoRequests.isEmpty()) return;
+    if (!m_nextPhotoPrefetch.hasExpired()) {
+        m_photoPrefetchTimer.start(int(m_nextPhotoPrefetch.remainingTime()));
+        return;
+    }
+    prefetchNextSenderPhoto();
+}
+void CardStore::prefetchNextSenderPhoto() {
+    if (!m_online || !m_open) return;
+    m_nextPhotoPrefetch = QDeadlineTimer(3000, Qt::PreciseTimer);
+    m_photoPrefetchTimer.start(3000);
+    if (m_photoPrefetchQueue.isEmpty()) return;
+    const QString id = m_photoPrefetchQueue.takeFirst();
+    m_photoRequests.insert(id, QDeadlineTimer(60000, Qt::PreciseTimer));
+    emit requestSenderPhotoGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/sender-photo"));
+}
+QString CardStore::cachedSenderPhoto(const QString &cardId) const {
+    if (!m_open || cardId.isEmpty()) return {};
+    return m_senderPhotos.value(cardId, QString());
+}
+void CardStore::requestSenderPhoto(const QString &cardId) {
+    if (!m_open || cardId.isEmpty()) return;
+    if (!m_senderPhotos.value(cardId).isEmpty()) {
+        emit senderPhotoChanged(cardId);
+        return;
+    }
+    if (!m_online || m_photoUnavailable.contains(cardId)) return;
+    const QVariantMap *card = nullptr;
+    for (const QVariantMap &c : m_cards) {
+        if (c.value(QStringLiteral("id")).toString() == cardId) { card = &c; break; }
+    }
+    if (!card || !card->value(QStringLiteral("sender_has_photo")).toBool()) return;
+    m_photoPrefetchQueue.removeAll(cardId);
+    const auto inFlight = m_photoRequests.constFind(cardId);
+    if (inFlight != m_photoRequests.cend() && !inFlight.value().hasExpired()) return;
+    m_photoRequests.insert(cardId, QDeadlineTimer(60000, Qt::PreciseTimer));
+    if (!m_photoPrefetchTimer.isActive()) m_photoPrefetchTimer.start(3000);
+    emit requestSenderPhotoGet(cardId, QStringLiteral("/v1/cards/") + cardId + QStringLiteral("/sender-photo"));
+}
+void CardStore::applyRemoteSenderPhoto(const QString &cardId, const QByteArray &bytes, const QString &contentType) {
+    if (!m_open || cardId.isEmpty()) return;
+    m_photoRequests.remove(cardId);
+    m_photoPrefetchQueue.removeAll(cardId);
+    // Bounded server-mediated bytes only: 1..512 KiB, image magic, no
+    // provider URLs or tokens touch the device cache. The server already
+    // DecodeConfig-verified; the magic check is defense in depth so a
+    // corrupt transport never persists.
+    if (bytes.size() < 1 || bytes.size() > (512 << 10)) { emit senderPhotoFailed(cardId); return; }
+    const auto hasMagic = [&] {
+        const auto u = reinterpret_cast<const unsigned char *>(bytes.constData());
+        const int n = bytes.size();
+        if (n >= 3 && u[0] == 0xFF && u[1] == 0xD8 && u[2] == 0xFF) return true;
+        if (n >= 8 && u[0] == 0x89 && u[1] == 0x50 && u[2] == 0x4E && u[3] == 0x47) return true;
+        if (n >= 6 && u[0] == 0x47 && u[1] == 0x49 && u[2] == 0x46 && u[3] == 0x38) return true;
+        if (n >= 12 && u[0] == 0x52 && u[1] == 0x49 && u[2] == 0x46 && u[3] == 0x46
+            && u[8] == 0x57 && u[9] == 0x45 && u[10] == 0x42 && u[11] == 0x50) return true;
+        return false;
+    };
+    if (!hasMagic()) { emit senderPhotoFailed(cardId); return; }
+    if (cardId.contains(QLatin1Char('/')) || cardId.contains(QLatin1Char('\\')) ||
+        cardId.contains(QStringLiteral("..")) || cardId.contains(QChar(u'\0')) ||
+        cardId.startsWith(QLatin1Char('.'))) { emit senderPhotoFailed(cardId); return; }
+    QString ext = QStringLiteral(".jpg");
+    const QString ct = contentType.toLower().split(QLatin1Char(';')).first().trimmed();
+    if (ct == QStringLiteral("image/png")) ext = QStringLiteral(".png");
+    else if (ct == QStringLiteral("image/gif")) ext = QStringLiteral(".gif");
+    else if (ct == QStringLiteral("image/webp")) ext = QStringLiteral(".webp");
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (base.isEmpty()) { emit senderPhotoFailed(cardId); return; }
+    QDir dir(base + QStringLiteral("/sender-photos/") + cardId);
+    if (!dir.mkpath(QStringLiteral("."))) { emit senderPhotoFailed(cardId); return; }
+    const QString filePath = dir.filePath(QStringLiteral("photo") + ext);
+    if (QDir::cleanPath(filePath) != QDir::cleanPath(dir.absolutePath() + QStringLiteral("/photo") + ext)) { emit senderPhotoFailed(cardId); return; }
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(bytes) != bytes.size()) { emit senderPhotoFailed(cardId); return; }
+    file.close();
+    const QString fileUrl = QUrl::fromLocalFile(filePath).toString();
+    m_senderPhotos.insert(cardId, fileUrl);
+    m_photoUnavailable.remove(cardId);
+    QMetaObject::invokeMethod(m_storage, [this, cardId, fileUrl] {
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("INSERT INTO sender_photo_files(card_id,file_url) VALUES(?,?) "
+                                 "ON CONFLICT(card_id) DO UPDATE SET file_url=excluded.file_url"));
+        q.addBindValue(cardId); q.addBindValue(fileUrl);
+        const bool ok = q.exec();
+        const QString error = q.lastError().text();
+        QMetaObject::invokeMethod(this, [this, cardId, ok, error] {
+            if (!ok) emit storageError(error);
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+    for (int row = 0; row < m_cards.size(); ++row) {
+        if (m_cards[row].value(QStringLiteral("id")).toString() != cardId) continue;
+        m_cards[row].insert(QStringLiteral("sender_photo"), fileUrl);
+        emit dataChanged(index(row), index(row), {CardRole, SenderPhotoRole});
+        break;
+    }
+    emit senderPhotoChanged(cardId);
+}
+void CardStore::reportSenderPhotoFailed(const QString &cardId, int status) {
+    m_photoRequests.remove(cardId);
+    // 404 genuinely unavailable and 403 authorization_required must not spin:
+    // park until the next snapshot re-marks eligibility. Transport/offline
+    // failures stay retryable through the prefetch queue.
+    if (status == 404 || status == 403 || status == 401)
+        m_photoUnavailable.insert(cardId);
+    else
+        m_photoPrefetchQueue.removeAll(cardId);
+    emit senderPhotoFailed(cardId);
+}
 int CardStore::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : m_cards.size(); }
 QVariant CardStore::data(const QModelIndex &index, int role) const {
     if (!index.isValid() || index.row() < 0 || index.row() >= m_cards.size()) return {};
@@ -1181,9 +1367,10 @@ QVariant CardStore::data(const QModelIndex &index, int role) const {
     case TitleRole: return card.value(QStringLiteral("title"));
     case SectionRole: return card.value(QStringLiteral("section"));
     case SenderNameRole: return card.value(QStringLiteral("sender_name"));
+    case SenderPhotoRole: return card.value(QStringLiteral("sender_photo"), QString());
     default: return {};
     }
 }
 QHash<int,QByteArray> CardStore::roleNames() const {
-    return {{CardRole,"card"},{CardIdRole,"cardId"},{TitleRole,"title"},{SectionRole,"section"},{SenderNameRole,"sender_name"}};
+    return {{CardRole,"card"},{CardIdRole,"cardId"},{TitleRole,"title"},{SectionRole,"section"},{SenderNameRole,"sender_name"},{SenderPhotoRole,"sender_photo"}};
 }

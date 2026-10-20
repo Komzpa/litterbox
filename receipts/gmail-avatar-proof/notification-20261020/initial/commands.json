@@ -1,0 +1,25 @@
+[
+  {
+    "name": "senderphotopaint",
+    "argv": [
+      "dbus-run-session",
+      "--",
+      "/tmp/lb-avatar-qt-build/tests/tst_bundleexpand",
+      "-input",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml",
+      "-import",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/qml-imports"
+    ],
+    "command": "dbus-run-session -- /tmp/lb-avatar-qt-build/tests/tst_bundleexpand -input /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml -import /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/qml-imports",
+    "exit": 1,
+    "expected_exit": 0,
+    "start_unix": 1792492292.5887127,
+    "end_unix": 1792492297.5840538,
+    "isolation": {
+      "HOME": "/tmp/lb-photo-notify-loftdyg6/qml/home",
+      "DISPLAY": ":196",
+      "XDG_CACHE_HOME": "/tmp/lb-photo-notify-loftdyg6/qml/cache",
+      "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent"
+    }
+  }
+]

@@ -45,6 +45,10 @@ public:
     Q_INVOKABLE int post(const QString &path, const QJsonObject &body = QJsonObject(),
                          const QJSValue &callback = QJSValue());
     Q_INVOKABLE int del(const QString &path, const QJSValue &callback = QJSValue());
+    // R67: authenticated binary GET for card-scoped sender photos. Answers
+    // with requestFinishedBytes (bytes + contentType) or requestFailed; the
+    // JSON signals never fire for this id. Bearer auth reuses buildRequest.
+    Q_INVOKABLE int getBytes(const QString &path);
     void setEngine(QJSEngine *engine) { m_engine = engine; }
     // Streaming GET for the tenant-scoped SSE endpoint; consumers parse
     // streamLine and reconnect on streamFinished.
@@ -55,12 +59,16 @@ signals:
     void tokenChanged();
     void requestFinished(int requestId, const QJsonValue &data, int statusCode);
     void requestFailed(int requestId, int statusCode, const QString &error, const QJsonValue &data = QJsonValue());
+    // R67: binary answer for getBytes ids (sender-photo bytes + content
+    // type). requestFinished never fires for these ids.
+    void requestFinishedBytes(int requestId, const QByteArray &data, const QString &contentType, int statusCode);
     void streamLine(int requestId, const QString &line);
     void streamFinished(int requestId, const QString &error);
 
 private:
     QNetworkRequest buildRequest(const QString &path) const;
     void trackJsonReply(int id, QNetworkReply *reply);
+    void trackBytesReply(int id, QNetworkReply *reply);
     void trackStreamReply(int id, QNetworkReply *reply);
 
     QNetworkAccessManager *m_nam;
@@ -70,6 +78,7 @@ private:
     QJSEngine *m_engine = nullptr;
     QHash<int, QJSValue> m_callbacks;
     QHash<int, QPointer<QNetworkReply>> m_jsonReplies;
+    QHash<int, QPointer<QNetworkReply>> m_bytesReplies;
     QHash<int, QPointer<QNetworkReply>> m_streamReplies;
     QThreadPool m_jsonPool;
 };

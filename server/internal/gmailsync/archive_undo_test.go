@@ -101,9 +101,26 @@ func startNativeConsumer(t *testing.T, f *spamFixture) *httptest.Server {
 		tenant, ok := cards.TenantFrom(r.Context())
 		if !ok { http.Error(w, "unauthorized", http.StatusUnauthorized); return }
 		mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}.ServeHTTP(w, r.WithContext(agents.WithTenant(r.Context(), tenant)))
-	}))
-	a := auth.NewHandler(auth.NewPostgresStore(f.db), "")
-	return httptest.NewServer(a.Middleware(mux))
+    }))
+    mux.HandleFunc("POST /v1/__test/external-archive/{id}", func(w http.ResponseWriter, r *http.Request) {
+        tenant, ok := cards.TenantFrom(r.Context())
+        if !ok { http.Error(w, "unauthorized", http.StatusUnauthorized); return }
+        tx, err := db.BeginTx(r.Context(), nil)
+        if err != nil { http.Error(w, "internal server error", http.StatusInternalServerError); return }
+        defer tx.Rollback()
+        if _, err = tx.ExecContext(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant); err != nil {
+            http.Error(w, "internal server error", http.StatusInternalServerError); return
+        }
+        result, err := tx.ExecContext(r.Context(), `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2 AND state='open'`, tenant, r.PathValue("id"))
+        if err != nil { http.Error(w, "internal server error", http.StatusInternalServerError); return }
+        count, err := result.RowsAffected()
+        if err != nil { http.Error(w, "internal server error", http.StatusInternalServerError); return }
+        if count != 1 { http.NotFound(w, r); return }
+        if err := tx.Commit(); err != nil { http.Error(w, "internal server error", http.StatusInternalServerError); return }
+        w.WriteHeader(http.StatusNoContent)
+    })
+    a := auth.NewHandler(auth.NewPostgresStore(f.db), "")
+    return httptest.NewServer(a.Middleware(mux))
 }
 
 // Opt-in native proof: actual authentication/card/operation handlers and the
@@ -124,7 +141,8 @@ func TestArchiveUndoNativeConsumer(t *testing.T) {
 	if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>B</p>')`, f.tenant, neighbor); err != nil { t.Fatal(err) }
 	if _, err := f.db.Exec(ctx, `UPDATE cards SET created_at=now(), sort_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
 	if _, err := f.db.Exec(ctx, `UPDATE cards SET subject='Disposable Archive Undo proof' WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
-	command := exec.Command("python3", filepath.Join("..", "..", "..", "qt", "tests", "archive_undo_consumer.py"), "--binary", binary, "--output", output)
+    if err := os.MkdirAll(output, 0o700); err != nil { t.Fatal(err) }
+    command := exec.Command("python3", filepath.Join("..", "..", "..", "qt", "tests", "archive_undo_consumer.py"), "--binary", binary, "--output", output)
 	command.Env = append(os.Environ(), "LB_UNDO_URL="+server.URL, "LB_UNDO_TOKEN="+token, "LB_UNDO_CARD="+f.card.String(), "LB_UNDO_NEIGHBOR="+neighbor.String())
 	log, runErr := command.CombinedOutput()
 	if err := os.WriteFile(filepath.Join(output, "consumer-driver.log"), log, 0600); err != nil { t.Fatal(err) }
@@ -145,6 +163,143 @@ func TestArchiveUndoNativeConsumer(t *testing.T) {
 	f.state(t, f.card, "open")
 	f.state(t, neighbor, "open")
 	if len(durable) != 2 || len(f.calls) != 2 { t.Fatalf("durable=%s Gmail=%+v, want archive then inverse once", durable, f.calls) }
+}
+func runArchiveEntry(t *testing.T, entry, output string, mutate func(ctx context.Context, f *spamFixture, neighbor uuid.UUID) (card, finalNeighbor, extra string)) {
+    t.Helper()
+    binary := os.Getenv("LB_QT_UNDO_BINARY")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    f := newSpamFixture(t)
+    server := startNativeConsumer(t, f)
+    defer server.Close()
+    ctx := context.Background()
+    neighbor, device := uuid.New(), uuid.New()
+    token := uuid.NewString() + uuid.NewString()
+    hash := sha256.Sum256([]byte(token))
+    if _, err := f.db.Exec(ctx, `INSERT INTO devices(tenant_id,id,token_hash) VALUES($1,$2,$3)`, f.tenant, device, hash[:]); err != nil { t.Fatal(err) }
+    defer f.db.Exec(ctx, `UPDATE devices SET revoked_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, device)
+    if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,sender_name,subject,created_at,sort_at) VALUES($1,$2,$3,'thread-2','mail','Neighbor','Successor B',now()-interval '1 hour',now()-interval '1 hour')`, f.tenant, neighbor, f.account); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>B</p>')`, f.tenant, neighbor); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `UPDATE cards SET created_at=now(), sort_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `UPDATE cards SET subject='Disposable Archive Undo proof' WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+    card, finalNeighbor, extra := f.card.String(), neighbor.String(), ""
+    if mutate != nil {
+        card, finalNeighbor, extra = mutate(ctx, f, neighbor)
+    }
+    entryOutput := output + "-" + entry
+    if err := os.MkdirAll(entryOutput, 0o700); err != nil { t.Fatal(err) }
+    command := exec.Command("python3", filepath.Join("..", "..", "..", "qt", "tests", "archive_undo_consumer.py"), "--binary", binary, "--output", entryOutput, "--entry", entry)
+    env := append(os.Environ(), "LB_UNDO_URL="+server.URL, "LB_UNDO_TOKEN="+token, "LB_UNDO_CARD="+card, "LB_UNDO_NEIGHBOR="+finalNeighbor)
+    if extra != "" { env = append(env, "LB_UNDO_EXTRA="+extra) }
+    command.Env = env
+    log, runErr := command.CombinedOutput()
+    if err := os.WriteFile(filepath.Join(entryOutput, "consumer-driver.log"), log, 0600); err != nil { t.Fatal(err) }
+    var durable []json.RawMessage
+    rows, err := f.db.Query(ctx, `SELECT payload FROM ops WHERE tenant_id=$1 ORDER BY created_at, op_id`, f.tenant)
+    if err != nil { t.Fatal(err) }
+    for rows.Next() { var payload []byte; if err := rows.Scan(&payload); err != nil { t.Fatal(err) }; durable = append(durable, json.RawMessage(payload)) }; rows.Close()
+    f.mu.Lock()
+    receipt := map[string]any{"entry": entry, "durable_ops": durable, "gmail_calls": f.calls, "actual_handlers": []string{"auth.Middleware", "cards.Handler", "ops.API", "gmailsync.RegisterOps"}, "provider": "loopback fake Gmail only"}
+    f.mu.Unlock()
+    data, _ := json.MarshalIndent(receipt, "", "  ")
+    if err := os.WriteFile(filepath.Join(entryOutput, "server-receipt.json"), data, 0600); err != nil { t.Fatal(err) }
+    if runErr != nil { t.Fatalf("%s oracle: %v\n%s", entry, runErr, log) }
+}
+
+func TestArchiveRowNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "row", output, func(ctx context.Context, f *spamFixture, neighbor uuid.UUID) (string, string, string) {
+        return f.card.String(), neighbor.String(), ""
+    })
+}
+
+func TestArchiveBundleNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "bundle", output, func(ctx context.Context, f *spamFixture, neighbor uuid.UUID) (string, string, string) {
+        bundle := uuid.New()
+        if _, err := f.db.Exec(ctx, `INSERT INTO bundles(tenant_id,id,title,centroid) VALUES($1,$2,'Archive bundle','{0}')`, f.tenant, bundle); err != nil { t.Fatal(err) }
+        if _, err := f.db.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card, bundle); err != nil { t.Fatal(err) }
+        return f.card.String(), neighbor.String(), ""
+    })
+}
+
+func TestArchiveBundlePinnedNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    f := newSpamFixture(t)
+    server := startNativeConsumer(t, f)
+    defer server.Close()
+    ctx := context.Background()
+    neighbor, device := uuid.New(), uuid.New()
+    token := uuid.NewString() + uuid.NewString()
+    hash := sha256.Sum256([]byte(token))
+    if _, err := f.db.Exec(ctx, `INSERT INTO devices(tenant_id,id,token_hash) VALUES($1,$2,$3)`, f.tenant, device, hash[:]); err != nil { t.Fatal(err) }
+    defer f.db.Exec(ctx, `UPDATE devices SET revoked_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, device)
+    if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,sender_name,subject,created_at,sort_at) VALUES($1,$2,$3,'thread-2','mail','Neighbor','Successor B',now()-interval '1 hour',now()-interval '1 hour')`, f.tenant, neighbor, f.account); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>B</p>')`, f.tenant, neighbor); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `UPDATE cards SET created_at=now(), sort_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `UPDATE cards SET subject='Disposable Archive Undo proof' WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+    bundle := uuid.New()
+    if _, err := f.db.Exec(ctx, `INSERT INTO bundles(tenant_id,id,title,centroid) VALUES($1,$2,'Archive bundle','{0}')`, f.tenant, bundle); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `UPDATE cards SET bundle_id=$3 WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card, bundle); err != nil { t.Fatal(err) }
+    second := uuid.New()
+    if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,sender_name,subject,bundle_id,created_at,sort_at) VALUES($1,$2,$3,'thread-a2','mail','Sender A2','Bundle member A2',$4,now()-interval '30 minutes',now()-interval '30 minutes')`, f.tenant, second, f.account, bundle); err != nil { t.Fatal(err) }
+    pinned := uuid.New()
+    if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,sender_name,subject,bundle_id,pinned_rank,created_at,sort_at) VALUES($1,$2,$3,'thread-p','mail','Pinned','Pinned P',$4,1,now(),now())`, f.tenant, pinned, f.account, bundle); err != nil { t.Fatal(err) }
+    if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>P</p>')`, f.tenant, pinned); err != nil { t.Fatal(err) }
+    entry := "bundle_pinned"
+    entryOutput := output + "-" + entry
+    if err := os.MkdirAll(entryOutput, 0o700); err != nil { t.Fatal(err) }
+    command := exec.Command("python3", filepath.Join("..", "..", "..", "qt", "tests", "archive_undo_consumer.py"), "--binary", binary, "--output", entryOutput, "--entry", entry)
+    command.Env = append(os.Environ(), "LB_UNDO_URL="+server.URL, "LB_UNDO_TOKEN="+token, "LB_UNDO_CARD="+f.card.String(), "LB_UNDO_NEIGHBOR="+neighbor.String(), "LB_UNDO_EXTRA="+second.String(), "LB_UNDO_PINNED="+pinned.String())
+    log, runErr := command.CombinedOutput()
+    if err := os.WriteFile(filepath.Join(entryOutput, "consumer-driver.log"), log, 0600); err != nil { t.Fatal(err) }
+    var durable []json.RawMessage
+    rows, err := f.db.Query(ctx, `SELECT payload FROM ops WHERE tenant_id=$1 ORDER BY created_at, op_id`, f.tenant)
+    if err != nil { t.Fatal(err) }
+    for rows.Next() { var payload []byte; if err := rows.Scan(&payload); err != nil { t.Fatal(err) }; durable = append(durable, json.RawMessage(payload)) }; rows.Close()
+    f.mu.Lock()
+    receipt := map[string]any{"entry": entry, "durable_ops": durable, "gmail_calls": f.calls, "actual_handlers": []string{"auth.Middleware", "cards.Handler", "ops.API", "gmailsync.RegisterOps"}, "provider": "loopback fake Gmail only"}
+    f.mu.Unlock()
+    data, _ := json.MarshalIndent(receipt, "", "  ")
+    if err := os.WriteFile(filepath.Join(entryOutput, "server-receipt.json"), data, 0600); err != nil { t.Fatal(err) }
+    if runErr != nil { t.Fatalf("%s oracle: %v\n%s", entry, runErr, log) }
+}
+func TestArchiveEndNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "end", output, nil)
+}
+
+func TestArchiveExternalNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "external", output, nil)
+}
+
+func TestArchiveSpamNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "spam", output, nil)
+}
+
+func TestArchiveDoneNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "done", output, func(ctx context.Context, f *spamFixture, neighbor uuid.UUID) (string, string, string) {
+        manual := uuid.New()
+        if _, err := f.db.Exec(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+        if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,source,external_id,subject,created_at,sort_at) VALUES($1,$2,'manual','done-proof','Disposable Done proof',now(),now())`, f.tenant, manual); err != nil { t.Fatal(err) }
+        if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>M</p>')`, f.tenant, manual); err != nil { t.Fatal(err) }
+        return manual.String(), neighbor.String(), ""
+    })
+}
+
+func TestArchiveSnoozeNativeConsumer(t *testing.T) {
+    binary, output := os.Getenv("LB_QT_UNDO_BINARY"), os.Getenv("LB_QT_UNDO_OUTPUT")
+    if binary == "" || output == "" { t.Skip("LB_QT_UNDO_BINARY and LB_QT_UNDO_OUTPUT required") }
+    runArchiveEntry(t, "snooze", output, nil)
 }
 
 // Consumer-level fail=true Undo-rejection leg: the provider rejects the archive

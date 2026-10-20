@@ -1,0 +1,17 @@
+[
+  {
+    "file": "app-captures/online-first-paint-no-refresh.png",
+    "red_with_green_right_pixels": 512,
+    "sha256": "bcbe6dc806ea5ebbdc3fb698eced2935d6a5dd84b4979309049bc4e335631c2f"
+  },
+  {
+    "file": "qml-captures/online-01-first-paint-no-refresh.png",
+    "red_with_green_right_pixels": 512,
+    "sha256": "c7bb83875c6687e6ea91628ae056efb4f8c80b22be15240e43831d1b75f51878"
+  },
+  {
+    "file": "qml-captures/offline-01-cached-paint-fallbacks.png",
+    "red_with_green_right_pixels": 512,
+    "sha256": "2835c92468f0c12c2089914462b5f23c818959b0f2aaca2509a0d73c82de53f4"
+  }
+]

@@ -1,0 +1,109 @@
+[
+  {
+    "name": "senderphotopaint",
+    "argv": [
+      "dbus-run-session",
+      "--",
+      "/tmp/lb-avatar-qt-build/tests/tst_bundleexpand",
+      "-input",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml",
+      "-import",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/qml-imports"
+    ],
+    "command": "dbus-run-session -- /tmp/lb-avatar-qt-build/tests/tst_bundleexpand -input /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml -import /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/qml-imports",
+    "exit": 0,
+    "expected_exit": 0,
+    "start_unix": 1792492665.9535398,
+    "end_unix": 1792492674.1255035,
+    "isolation": {
+      "HOME": "/tmp/lb-photo-notify-odh5hsnz/qml/home",
+      "DISPLAY": ":196",
+      "XDG_CACHE_HOME": "/tmp/lb-photo-notify-odh5hsnz/qml/cache",
+      "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent"
+    }
+  },
+  {
+    "name": "notification-negative",
+    "argv": [
+      "dbus-run-session",
+      "--",
+      "/tmp/lb-avatar-qt-build/tests/tst_bundleexpand",
+      "-input",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml",
+      "-import",
+      "/tmp/lb-photo-notify-odh5hsnz/negative/qt/tests/qml-imports"
+    ],
+    "command": "dbus-run-session -- /tmp/lb-avatar-qt-build/tests/tst_bundleexpand -input /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml -import /tmp/lb-photo-notify-odh5hsnz/negative/qt/tests/qml-imports",
+    "exit": 1,
+    "expected_exit": 1,
+    "start_unix": 1792492674.1315818,
+    "end_unix": 1792492696.1350617,
+    "isolation": {
+      "HOME": "/tmp/lb-photo-notify-odh5hsnz/negative/home",
+      "DISPLAY": ":196",
+      "XDG_CACHE_HOME": "/tmp/lb-photo-notify-odh5hsnz/negative/cache",
+      "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent"
+    }
+  },
+  {
+    "name": "photo-status",
+    "argv": [
+      "curl",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "-H",
+      "Authorization: Bearer disposable-gphoto-token-20261020",
+      "http://127.0.0.1:18085/v1/gmail/sender-photos/status"
+    ],
+    "command": "curl --fail --silent --show-error -H 'Authorization: Bearer disposable-gphoto-token-20261020' http://127.0.0.1:18085/v1/gmail/sender-photos/status",
+    "exit": 0,
+    "expected_exit": 0,
+    "start_unix": 1792492696.137368,
+    "end_unix": 1792492696.1758182,
+    "isolation": {}
+  },
+  {
+    "name": "provider-bytes",
+    "argv": [
+      "curl",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "-H",
+      "Authorization: Bearer disposable-gphoto-token-20261020",
+      "http://127.0.0.1:18085/v1/cards/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sender-photo",
+      "-o",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/receipts/gmail-avatar-proof/notification-20261020/provider-photo.png"
+    ],
+    "command": "curl --fail --silent --show-error -H 'Authorization: Bearer disposable-gphoto-token-20261020' http://127.0.0.1:18085/v1/cards/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sender-photo -o /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/receipts/gmail-avatar-proof/notification-20261020/provider-photo.png",
+    "exit": 0,
+    "expected_exit": 0,
+    "start_unix": 1792492696.1764848,
+    "end_unix": 1792492696.2027617,
+    "isolation": {}
+  },
+  {
+    "name": "online-app",
+    "argv": [
+      "dbus-run-session",
+      "--",
+      "/tmp/lb-avatar-qt-build/litterbox-qt",
+      "--capture-script",
+      "/tmp/lb-photo-notify-odh5hsnz/app/profile",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/receipts/gmail-avatar-proof/notification-20261020/online.json",
+      "/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/receipts/gmail-avatar-proof/notification-20261020/app-captures"
+    ],
+    "command": "dbus-run-session -- /tmp/lb-avatar-qt-build/litterbox-qt --capture-script /tmp/lb-photo-notify-odh5hsnz/app/profile /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/receipts/gmail-avatar-proof/notification-20261020/online.json /home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/receipts/gmail-avatar-proof/notification-20261020/app-captures",
+    "exit": 4,
+    "expected_exit": 0,
+    "start_unix": 1792492696.2031643,
+    "end_unix": 1792492711.103759,
+    "isolation": {
+      "HOME": "/tmp/lb-photo-notify-odh5hsnz/app/home",
+      "DISPLAY": ":196",
+      "XDG_CACHE_HOME": "/tmp/lb-photo-notify-odh5hsnz/app/cache",
+      "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent"
+    }
+  }
+]

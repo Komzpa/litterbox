@@ -1,0 +1,19 @@
+{
+  "LANG": "be_BY.UTF-8",
+  "LOGNAME": "kom",
+  "PATH": "/home/kom/.omp/run/tool-bin:/home/kom/.local/bin:/home/kom/.bun/bin:/home/kom/.bun/bin:/home/kom/tmp/compact-cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+  "USER": "kom",
+  "HOME": "/tmp/lb-photo-notify-iu0q5un0/app/home",
+  "XDG_RUNTIME_DIR": "/tmp/lb-photo-notify-iu0q5un0/app/runtime",
+  "XDG_CONFIG_HOME": "/tmp/lb-photo-notify-iu0q5un0/app/config",
+  "XDG_DATA_HOME": "/tmp/lb-photo-notify-iu0q5un0/app/data",
+  "XDG_CACHE_HOME": "/tmp/lb-photo-notify-iu0q5un0/app/cache",
+  "DISPLAY": ":196",
+  "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent",
+  "QT_QPA_PLATFORM": "xcb",
+  "QT_QUICK_BACKEND": "software",
+  "QT_QUICK_CONTROLS_STYLE": "org.kde.desktop",
+  "HTTP_PROXY": "http://127.0.0.1:1",
+  "HTTPS_PROXY": "http://127.0.0.1:1",
+  "NO_PROXY": "127.0.0.1,localhost"
+}

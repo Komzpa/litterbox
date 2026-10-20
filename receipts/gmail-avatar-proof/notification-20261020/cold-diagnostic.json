@@ -1,0 +1,7 @@
+[
+ {"resize":[1440,1000]},
+ {"eval":"window.cardHandles._photoEvents=[];store.senderPhotoChanged.connect(function(id){window.cardHandles._photoEvents.push({id:id,cache:store.cachedSenderPhoto(id),at:Date.now()})});store.online=true"},
+ {"wait":8000},
+ {"eval":"JSON.stringify({events:window.cardHandles._photoEvents,entries:bundleModel.sourceEntries.map(e=>({id:e.cardId,flag:e.card.sender_has_photo,cardPhoto:e.card.sender_photo,photo:e.senderPhoto})),rows:bundleModel.rows.map(e=>({id:e.cardId,flag:e.card.sender_has_photo,photo:e.senderPhoto})),role:bundleModel.items.get(0).model.sender_photo})"},
+ {"shot":"cold-boundary-diagnostic"}
+]

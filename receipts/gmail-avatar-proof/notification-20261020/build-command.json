@@ -1,0 +1,1 @@
+{"argv":["cmake","--build","/tmp/lb-avatar-qt-build","--target","litterbox-qt","tst_bundleexpand","--parallel","2"],"cwd":"/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018","exit":0,"output_artifact":"artifact://3549","wall_seconds":57.22,"scope":"Only the production Qt binary and the retained single-consumer regression runner; no project-wide tests or installer."}

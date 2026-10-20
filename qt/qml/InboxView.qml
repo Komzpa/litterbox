@@ -157,18 +157,42 @@ ApplicationWindow {
             // R66: agent report boilerplate labels are not the preview.
             .replace(/^(?:\**\s*(?:What happened|Summary|Result|Итог|Что сделано)\s*:\s*\**\s*)/i, "")
     }
-    component SenderAvatar: Rectangle {
+    // R67: real Google contact photos with initials fallback. The fallback
+    // keeps the existing circle geometry, palette, and initials; the photo
+    // layer fills the same slot only when the device cached server-mediated
+    // bytes (card.sender_photo file:// + sender_has_photo flag). Remote mail
+    // body images stay blocked; no provider URLs reach the UI.
+    component SenderAvatar: Item {
+        objectName: "senderAvatar"
         property string name: ""
+        property string photoSource: ""
         width: 32
         height: 32
-        radius: width / 2
-        color: window.avatarColor(name)
-        Label {
-            anchors.centerIn: parent
-            text: window.avatarInitials(parent.name)
-            color: "#ffffff"
-            font.pointSize: Math.max(7, window.themeFont.pointSize - 2)
-            font.weight: Font.DemiBold
+        Rectangle {
+            objectName: "senderAvatarInitials"
+            anchors.fill: parent
+            radius: width / 2
+            color: window.avatarColor(parent.name)
+            visible: parent.photoSource === ""
+            Label {
+                anchors.centerIn: parent
+                text: window.avatarInitials(parent.name)
+                color: "#ffffff"
+                font.pointSize: Math.max(7, window.themeFont.pointSize - 2)
+                font.weight: Font.DemiBold
+            }
+        }
+        // Installed Kirigami (5.116) provides no Avatar type; a plain Image
+        // fills the same 32x32 slot so the photo paints without new imports
+        // or row-height change. Initials above keep the circle geometry.
+        Image {
+            objectName: "senderAvatarImage"
+            anchors.fill: parent
+            visible: parent.photoSource !== ""
+            source: parent.photoSource
+            fillMode: Image.PreserveAspectCrop
+            cache: true
+            asynchronous: false
         }
     }
     component InboxMenuItem: MenuItem {
@@ -315,12 +339,28 @@ ApplicationWindow {
         return qsTr("%1 %2").arg(value).arg(value === 1 ? qsTr("email") : qsTr("emails"))
     }
     function archiveBundle(bundleId) {
+        const selectedBefore = selectedCardId
+        let next = null
+        if (readerOpen && selectedBefore && bundleModel) {
+            const rows = bundleModel.rows
+            for (let i = 0; i < rows.length; ++i) {
+                const entry = rows[i]
+                if (entry && entry.cardId === selectedBefore && entry.card
+                        && entry.card.bundle_id === bundleId) {
+                    next = captureArchiveContinuation(selectedBefore)
+                    break
+                }
+            }
+        }
         const result = store.archiveBundleNow(bundleId)
         if (!result || !result.token || Number(result.count) < 1) return false
         bundleArchiveToken = result.token
         mailArchiveUndoOp = ""
         archiveUndoAvailable = true
         bundleArchiveStatus = Number(result.count) === 1 ? qsTr("Archived") : qsTr("Archived %1").arg(emailCountText(result.count))
+        // ponytail: pinned members survive archiveBundleNow; advance only when
+        // the open card was actually removed, no pinned predicate duplicated.
+        if (next && store.cardIds().indexOf(selectedBefore) < 0) next()
         return true
     }
     function showArchiveUndo(opId, action) {
@@ -1184,7 +1224,8 @@ ApplicationWindow {
                         const groups = []
                         for (let i = 0; i < (refresh ? items.count : entries.length); ++i) {
                             const source = refresh ? items.get(i).model : null
-                            const entry = refresh ? {card: source.card, cardId: source.cardId, title: source.title} : entries[i]
+                            const entry = refresh ? {card: source.card, cardId: source.cardId, title: source.title,
+                                senderPhoto: source.card.sender_has_photo ? store.cachedSenderPhoto(source.cardId) : ""} : entries[i]
                             if (refresh) entries.push(entry)
                             const card = entry.card
                             if (refresh && card.bundle_id && card.pinned_rank == null && card.section !== "pinned") {
@@ -1310,13 +1351,16 @@ ApplicationWindow {
                     }
                     Component.onCompleted: rebuildPresentation()
                     onCountChanged: Qt.callLater(rebuildPresentation)
-                    Connections {
-                        target: store
-                        ignoreUnknownSignals: true
-                        function onDataChanged() { Qt.callLater(bundleModel.rebuildPresentation) }
-                        function onRowsMoved() { Qt.callLater(bundleModel.rebuildPresentation) }
-                        function onModelReset() { Qt.callLater(bundleModel.rebuildPresentation) }
-                    }
+                }
+                // DelegateModel's default property is a lazy delegate Component;
+                // keep source notifications outside it so they are live immediately.
+                Connections {
+                    target: store
+                    ignoreUnknownSignals: true
+                    function onDataChanged() { Qt.callLater(bundleModel.rebuildPresentation) }
+                    function onSenderPhotoChanged() { Qt.callLater(bundleModel.rebuildPresentation) }
+                    function onRowsMoved() { Qt.callLater(bundleModel.rebuildPresentation) }
+                    function onModelReset() { Qt.callLater(bundleModel.rebuildPresentation) }
                 }
                 delegate: Item {
                     required property int slot
@@ -1324,6 +1368,8 @@ ApplicationWindow {
                     readonly property var card: entry.card
                     readonly property string cardId: entry.cardId
                     readonly property string title: entry.title
+                    // Photo completion explicitly rebuilds this cache-backed presentation value.
+                    readonly property string senderPhoto: entry.senderPhoto || ""
                     id: cardRow
                     readonly property bool selected: cardId === window.selectedCardId
                     readonly property string displaySection: card.bundle_leader !== undefined
@@ -1535,6 +1581,8 @@ ApplicationWindow {
                                         width: window.compactInbox ? 32 : 28
                                         height: width
                                         name: (cardRow.bundleSummary.senders || [])[0] || bundleToggle.text
+                                        // R67: head card's cached Google photo; "" keeps initials.
+                                        photoSource: cardRow.senderPhoto
                                     }
                                     onClicked: window.toggleBundle(card.bundle_id)
                                     Keys.onReturnPressed: clicked()
@@ -1684,6 +1732,8 @@ ApplicationWindow {
                                             width: window.compactInbox ? 32 : 28
                                             height: width
                                             name: card.source === "mail" ? window.mailSender(card) : window.cardKindLabel(card)
+                                            // R67: cached Google photo for mail senders; "" keeps initials.
+                                            photoSource: cardRow.senderPhoto
                                         }
                                     }
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
@@ -1789,6 +1839,8 @@ ApplicationWindow {
                                                     width: window.compactInbox ? 32 : 28
                                                     height: width
                                                     name: window.mailSender(card)
+                                                    // R67: cached Google photo; "" keeps initials.
+                                                    photoSource: cardRow.senderPhoto
                                                 }
                                             }
                                         }
@@ -1897,7 +1949,12 @@ ApplicationWindow {
                                     cardTitle: title
                                     accountName: card.account_name || ""
                                     canOpenSource: !!card.source_url
-                                    onCardHandled: function(operation, action) { if (operation) window.showArchiveUndo(operation, action) }
+                                    onCardHandled: function(operation, action) {
+                                        const next = operation && action === "archive"
+                                            ? window.captureArchiveContinuation(cardId) : null
+                                        if (operation) window.showArchiveUndo(operation, action)
+                                        if (next) next()
+                                    }
                                     onNoteRequested: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() }
                                     onOpenRequested: {
                                         if (card.source_url) Qt.openUrlExternally(card.source_url)

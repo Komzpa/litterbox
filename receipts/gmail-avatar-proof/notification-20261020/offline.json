@@ -1,0 +1,6 @@
+[
+  {"resize": [1440, 1000]},
+  {"wait": 2000},
+  {"eval": "(function(){function find(o,n){if(!o)return null;if(o.objectName===n)return o;const c=o.children||[];for(let i=0;i<c.length;++i){const r=find(c[i],n);if(r)return r}return null}const ids=store.cardIds();const rows=ids.map(function(id){const h=window.cardHandles[id];const image=find(h,'senderAvatarImage');const initials=find(h,'senderAvatarInitials');return {id:id,cache:store.cachedSenderPhoto(id),source:image?image.source.toString():'',ready:image?image.status===1:false,visible:image?image.visible:false,initials:initials?initials.visible:false}});const granted=rows.find(x=>x.id==='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');if(store.online||ids.length!==3||!granted||!granted.visible||!granted.ready||granted.source.indexOf('file://')!==0||!rows.filter(x=>x!==granted).every(x=>x.initials&&!x.source))throw new Error('OFFLINE_CACHE '+JSON.stringify(rows));return JSON.stringify({case:'offline-cache-server-stopped',online:store.online,rows:rows})})()"},
+  {"shot": "offline-cached-no-server"}
+]

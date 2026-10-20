@@ -1,0 +1,62 @@
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=640564 comm="/tmp/lb-avatar-qt-build/litterbox-qt --capture-scr" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=640801 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=640801 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.193: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=640801 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=640832 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.5' (uid=1000 pid=640836 comm="/usr/libexec/at-spi-bus-launcher" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=640850 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=640850 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+
+(xdg-desktop-portal-gtk:640832): xdg-desktop-portal-gtk-WARNING **: 14:41:36.257: error: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+** (xdg-desktop-portal-gtk:640832): WARNING **: 14:41:36.260: AT-SPI: Could not obtain desktop path or name
+
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=640850 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.260: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+** (xdg-desktop-portal-gtk:640832): WARNING **: 14:41:36.261: atk-bridge: GetRegisteredEvents returned message with unknown signature
+
+** (xdg-desktop-portal-gtk:640832): WARNING **: 14:41:36.261: atk-bridge: get_device_events_reply: unknown signature
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.266: Failed to create RealtimeKit proxy: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.266: Choosing gtk.portal for org.freedesktop.impl.portal.Settings as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.266: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.266: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.267: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.268: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.268: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.270: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.270: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.271: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:640801): xdg-desktop-portal-WARNING **: 14:41:36.271: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[640563]: [session uid=1000 pid=640563 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+Capture script eval step 2: true
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1788:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1788:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1788:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+Capture script eval step 4: {"case":"first-online-no-refresh","online":true,"requests":1,"rows":[{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","cache":"file:///tmp/lb-photo-notify-iu0q5un0/app/cache/Litterbox/Litterbox/sender-photos/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/photo.png","source":"file:///tmp/lb-photo-notify-iu0q5un0/app/cache/Litterbox/Litterbox/sender-photos/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/photo.png","ready":true,"visible":true,"initials":false},{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","cache":"","source":"","ready":false,"visible":false,"initials":true},{"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","cache":"","source":"","ready":false,"visible":false,"initials":true}]}
+Capture script eval step 8: {"case":"authorization-controls","status":[{"account_id":"33333333-3333-4333-8333-333333333333","address":"default@example.test","authorization_required":false,"photo_ready":false},{"account_id":"22222222-2222-4222-8222-222222222222","address":"granted@example.test","authorization_required":false,"photo_ready":true},{"account_id":"44444444-4444-4444-8444-444444444444","address":"missing@example.test","authorization_required":true,"photo_ready":false,"required_scopes":["https://www.googleapis.com/auth/contacts.readonly","https://www.googleapis.com/auth/contacts.other.readonly"]}],"error":""}
+Capture script eval step 12: {"case":"authorization-url-not-opened","url":"https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&client_id=disposable-proof-client&code_challenge=ppm_oD1o73TJeuCQDayWT31-y34WcMBvgviK3_TmAmY&code_challenge_method=S256&prompt=consent&redirect_uri=http%3A%2F%2F127.0.0.1%3A18085%2Fv1%2Fgmail%2Foauth%2Fcallback&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.modify+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcontacts.readonly+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcontacts.other.readonly&state=MTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExLjg2OGE3YjY0MmIyYzRhNzY5NTRiOGU3MWRlYmE2NDc5.hee5T6msSVeqJq0L937zeIFN3vErURW1xo2atBllqk8","error":""}
+A connection to the bus can't be made

@@ -27,9 +27,44 @@ const (
 	DefaultTokenURL   = "https://oauth2.googleapis.com/token"
 	DefaultProfileURL = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
 
-	// ScopeGmailModify is the only scope Litterbox requests (ARCHITECTURE).
+	// ScopeGmailModify is the Gmail sync scope (ARCHITECTURE).
 	ScopeGmailModify = "https://www.googleapis.com/auth/gmail.modify"
+	// ScopeContactsReadonly authorizes people.connections.list
+	// personFields=emailAddresses,photos (saved contacts plus linked profile photos).
+	ScopeContactsReadonly = "https://www.googleapis.com/auth/contacts.readonly"
+	// ScopeOtherContactsReadonly authorizes otherContacts.list
+	// readMask=emailAddresses,photos with CONTACT and PROFILE read sources.
+	ScopeOtherContactsReadonly = "https://www.googleapis.com/auth/contacts.other.readonly"
 )
+// PhotoScopes lists the incremental People scopes that unlock real Google
+// sender photos. Gmail.modify alone carries no sender-photo field.
+func PhotoScopes() []string {
+	return []string{ScopeContactsReadonly, ScopeOtherContactsReadonly}
+}
+// FullPhotoScope joins Gmail.modify with the incremental photo scopes for a
+// single consent URL. Google grants incrementally; existing Gmail access is
+// preserved when the user approves the added scopes.
+func FullPhotoScope() string {
+	return ScopeGmailModify + " " + ScopeContactsReadonly + " " + ScopeOtherContactsReadonly
+}
+// HasPhotoScopes reports whether a granted scope string (space-separated,
+// as returned by Google token responses) contains both photo scopes.
+// Callers MUST check the actually granted scopes, not the requested ones.
+func HasPhotoScopes(granted string) bool {
+	hasContacts, hasOther := false, false
+	for _, field := range splitScopes(granted) {
+		switch field {
+		case ScopeContactsReadonly:
+			hasContacts = true
+		case ScopeOtherContactsReadonly:
+			hasOther = true
+		}
+	}
+	return hasContacts && hasOther
+}
+func splitScopes(granted string) []string {
+	return strings.Fields(granted)
+}
 
 const (
 	callbackPath   = "/oauth2/callback"

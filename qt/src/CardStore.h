@@ -29,7 +29,7 @@ class CardStore : public QAbstractListModel {
     Q_PROPERTY(QString offlineReason READ offlineReason NOTIFY offlineReasonChanged)
     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
 public:
-    enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole };
+    enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole, SenderPhotoRole };
     Q_ENUM(Role)
     explicit CardStore(QObject *parent = nullptr);
     ~CardStore() override;
@@ -100,6 +100,17 @@ public:
     // using only the sanitized name= parameter, and returns the local file URL
     // ("" on any mismatch). Never uses a producer-supplied path.
     Q_INVOKABLE QString openCachedFile(const QString &cardId, const QString &dataUrl) const;
+    // R67: device-cached Google sender photos (server-mediated bytes only).
+    // sender_photo is a local file:// URL ("" when absent); sender_has_photo
+    // comes from the server payload. requestSenderPhoto emits
+    // requestSenderPhotoGet for the authenticated binary route while online;
+    // applyRemoteSenderPhoto validates, persists, and injects the file URL;
+    // reportSenderPhotoFailed never deletes cached bytes. 404 means
+    // genuinely unavailable (initials); 403 means authorization_required.
+    Q_INVOKABLE QString cachedSenderPhoto(const QString &cardId) const;
+    Q_INVOKABLE void requestSenderPhoto(const QString &cardId);
+    Q_INVOKABLE void applyRemoteSenderPhoto(const QString &cardId, const QByteArray &bytes, const QString &contentType);
+    Q_INVOKABLE void reportSenderPhotoFailed(const QString &cardId, int status = 0);
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -112,8 +123,11 @@ signals:
     void requestPost(const QString &opId, const QString &path, const QVariantMap &body);
     void requestCards(const QString &path, quint64 requestId);
     void requestMailBodyGet(const QString &cardId, const QString &path);
+    void requestSenderPhotoGet(const QString &cardId, const QString &path);
     void mailBodyChanged(const QString &cardId);
     void mailBodyFailed(const QString &cardId);
+    void senderPhotoChanged(const QString &cardId);
+    void senderPhotoFailed(const QString &cardId);
     void operationFailed(const QString &opId, int status, const QVariantMap &response);
     void storageError(const QString &message);
     void flushFinished();
@@ -127,6 +141,9 @@ private:
     void flushNext();
     void queueMailBodyPrefetch();
     void prefetchNextMailBody();
+    void queueSenderPhotoPrefetch();
+    void prefetchNextSenderPhoto();
+    void injectSenderPhotos(QList<QVariantMap> &cards);
     bool execute(const QString &sql);
     void deriveBundles(QList<QVariantMap> &cards);
     QString m_connection;
@@ -168,6 +185,18 @@ private:
     QHash<QString, QDeadlineTimer> m_bodyRequests;
     QTimer m_bodyPrefetchTimer;
     QDeadlineTimer m_nextBodyPrefetch{0, Qt::PreciseTimer};
+    // R67: device-cached sender-photo file URLs by card id (local file://,
+    // never provider URLs). Persisted in sender_photo_files; injected into
+    // card maps as sender_photo so delegates render without extra lookups.
+    QHash<QString, QString> m_senderPhotos;
+    QStringList m_photoPrefetchQueue;
+    QHash<QString, QDeadlineTimer> m_photoRequests;
+    QTimer m_photoPrefetchTimer;
+    QDeadlineTimer m_nextPhotoPrefetch{0, Qt::PreciseTimer};
+    // Cards whose photo route answered 404/403: genuinely unavailable or
+    // authorization_required. Excluded from prefetch until the next snapshot
+    // re-marks eligibility; never logged with addresses.
+    QSet<QString> m_photoUnavailable;
     bool m_online = false;
     QString m_offlineReason;
     QString m_inFlight;

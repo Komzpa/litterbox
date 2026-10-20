@@ -39,7 +39,10 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 		               'account_id', c.account_id, 'gmail_thread_id', c.gmail_thread_id
 		           ) ORDER BY m.received_at)
 		           FROM messages m WHERE m.tenant_id = c.tenant_id AND m.card_id = c.id
-		       ), '[]'::jsonb)
+		       ), '[]'::jsonb),
+		       (to_regclass('public.sender_photos') IS NOT NULL AND EXISTS(
+		           SELECT 1 FROM sender_photos sp WHERE sp.tenant_id=c.tenant_id AND sp.account_id=c.account_id
+		           AND c.sender_address <> '' AND sp.sender_address=LOWER(c.sender_address)))
 		FROM cards c
 		WHERE c.tenant_id = $1 AND c.state = 'open'
 		ORDER BY c.sort_at DESC`, tenant)
@@ -56,15 +59,22 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 		var source, sourceKind string
 		var sortAt any
 		var messages []byte
- 		if err = rows.Scan(&id, &subject, &sender, &senderName, &state, &sortAt, &note, &accountID, &threadID, &source, &sourceKind, &messages); err != nil {
+		var hasPhoto bool
+ 		if err = rows.Scan(&id, &subject, &sender, &senderName, &state, &sortAt, &note, &accountID, &threadID, &source, &sourceKind, &messages, &hasPhoto); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		b, _ := json.Marshal(map[string]any{
+		fields := map[string]any{
  			"id": id, "subject": subject, "sender": sender, "sender_name": senderName, "state": state, "account_id": accountID.String, "gmail_thread_id": threadID.String,
  			"sort_at": sortAt, "note": note, "messages": json.RawMessage(messages),
  			"source": source, "source_kind": sourceKind,
-		})
+		}
+		// R67: device cache carries the photo flag so offline rows keep real
+		// photos; false stays omitted (initials fallback, same as the API).
+		if hasPhoto {
+			fields["sender_has_photo"] = true
+		}
+		b, _ := json.Marshal(fields)
 		cards = append(cards, b)
 	}
 	if err = rows.Err(); err != nil {

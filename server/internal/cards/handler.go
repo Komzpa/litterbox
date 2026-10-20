@@ -217,6 +217,13 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
+	rows.Close()
+	// R67: one account-scoped photo lookup for the whole page. Cards whose
+	// normalized sender_address has a decoded People photo get
+	// sender_has_photo; everyone else stays explicitly uncovered (initials).
+	if len(all) > 0 {
+		markSenderPhotos(r.Context(), tx, tenant, all)
+	}
 	if err := tx.Commit(); err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -224,6 +231,47 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	sections := Section(all, now)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(sections)
+}
+// markSenderPhotos sets SenderHasPhoto for cards whose normalized
+// sender_address has a stored People photo in the same tenant/account.
+// Best-effort: any lookup failure leaves the flag false (initials), never
+// a 500, so a missing sender_photos table on old deployments degrades to
+// the genuinely-unavailable fallback instead of breaking the list.
+func markSenderPhotos(ctx context.Context, tx *sql.Tx, tenant string, all []Card) {
+	ids := make([]string, 0, len(all))
+	byID := make(map[string]*Card, len(all))
+	for i := range all {
+		ids = append(ids, all[i].ID)
+		byID[all[i].ID] = &all[i]
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT c.id::text FROM cards c
+WHERE c.tenant_id=$1 AND c.id = ANY($2::uuid[])
+AND c.sender_address <> '' AND EXISTS(SELECT 1 FROM sender_photos sp
+WHERE sp.tenant_id=c.tenant_id AND sp.account_id=c.account_id
+AND sp.sender_address=LOWER(c.sender_address))`, tenant, "{"+joinIDs(ids)+"}")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return
+		}
+		if c, ok := byID[id]; ok {
+			c.SenderHasPhoto = true
+		}
+	}
+}
+func joinIDs(ids []string) string {
+	out := ""
+	for i, id := range ids {
+		if i > 0 {
+			out += ","
+		}
+		out += id
+	}
+	return out
 }
 
 type feedback struct {

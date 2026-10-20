@@ -1,0 +1,69 @@
+********* Start testing of bundleexpand *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.0), debian unknown
+PASS   : bundleexpand::SenderPhotoPaint::initTestCase()
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=513908 comm="/tmp/lb-avatar-qt-build/tests/tst_bundleexpand -in" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=516605 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=516605 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:36.842: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=516605 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+QWARN  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() file:///home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/qml/InboxView.qml:1784:37: QML Shortcut: Shortcut: Only binding to one of multiple key bindings associated with 7. Use 'sequences: [ <key> ]' to bind to all of them.
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=516751 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.5' (uid=1000 pid=516892 comm="/usr/libexec/at-spi-bus-launcher" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=516932 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=516932 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+(xdg-desktop-portal-gtk:516751): xdg-desktop-portal-gtk-WARNING **: 14:31:37.424: error: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+
+** (xdg-desktop-portal-gtk:516751): WARNING **: 14:31:37.432: AT-SPI: Could not obtain desktop path or name
+
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=1000 pid=516932 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha" label="unconfined")
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.438: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+** (xdg-desktop-portal-gtk:516751): WARNING **: 14:31:37.438: atk-bridge: GetRegisteredEvents returned message with unknown signature
+
+** (xdg-desktop-portal-gtk:516751): WARNING **: 14:31:37.438: atk-bridge: get_device_events_reply: unknown signature
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.467: Failed to create RealtimeKit proxy: Не ўдалося злучыцца: Няма такога файла ці каталога
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.467: Choosing gtk.portal for org.freedesktop.impl.portal.Settings as a last-resort fallback
+FAIL!  : bundleexpand::SenderPhotoPaint::test_senderPhotoConsumers() left photo pixels are painted, not initials
+   Actual   (): 255
+   Expected (): 220
+   Loc: [/home/kom/proj/ai_pr/litterbox-ui-desktop-mobile-20261018/qt/tests/tst_senderphotopaint.qml(112)]
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.468: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.470: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.471: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.472: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.473: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+PASS   : bundleexpand::SenderPhotoPaint::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 1802ms
+********* Finished testing of bundleexpand *********
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.527: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.527: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.527: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:516605): xdg-desktop-portal-WARNING **: 14:31:37.531: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[513880]: [session uid=1000 pid=513880 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+A connection to the bus can't be made

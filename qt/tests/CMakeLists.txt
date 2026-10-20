@@ -46,6 +46,8 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS QuickTest)
 add_executable(tst_bundleexpand bundle_runner.cpp ../src/CardStore.cpp ../src/CardStore.h)
 target_include_directories(tst_bundleexpand PRIVATE ../src)
+target_compile_definitions(tst_bundleexpand PRIVATE
+    LB_PHOTO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sender-photo-64x64.png")
 target_link_libraries(tst_bundleexpand PRIVATE Qt6::QuickTest Qt6::Sql KF6::Kirigami)
 add_test(NAME bundleexpand COMMAND tst_bundleexpand
     -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_bundleexpand.qml
@@ -57,6 +59,15 @@ add_test(NAME markspam COMMAND tst_bundleexpand
     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
 set_tests_properties(markspam PROPERTIES ENVIRONMENT
     "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+# R67 sender-photo consumer regression: first online paint after cache-download
+# completion must appear without a manual refresh(); offline cached paint and
+# the default/missing/auth-state initials fallbacks must survive in one run.
+add_test(NAME senderphotopaint COMMAND tst_bundleexpand
+    -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_senderphotopaint.qml
+    -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
+set_tests_properties(senderphotopaint PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 
 # Same real CardStore runner, with the large-bundle timing and wheel oracle.
 add_test(NAME scrollresilience COMMAND tst_bundleexpand

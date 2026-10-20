@@ -1,0 +1,15 @@
+[
+  {"resize": [1440, 1000]},
+  {"eval": "window.cardHandles._photoProofRequests=0; store.requestCards.connect(function(){++window.cardHandles._photoProofRequests}); store.online=true"},
+  {"wait": 12000},
+  {"eval": "(function(){function find(o,n){if(!o)return null;if(o.objectName===n)return o;const c=o.children||[];for(let i=0;i<c.length;++i){const r=find(c[i],n);if(r)return r}return null}const ids=store.cardIds();const rows=ids.map(function(id){const h=window.cardHandles[id];const image=find(h,'senderAvatarImage');const initials=find(h,'senderAvatarInitials');return {id:id,cache:store.cachedSenderPhoto(id),source:image?image.source.toString():'',ready:image?image.status===1:false,visible:image?image.visible:false,initials:initials?initials.visible:false}});const granted=rows.find(x=>x.id==='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');const fallbacks=rows.filter(x=>x!==granted);const ok=store.online&&ids.length===3&&window.cardHandles._photoProofRequests===1&&granted&&granted.visible&&granted.ready&&granted.source.indexOf('file://')===0&&fallbacks.every(x=>x.initials&&!x.source);if(!ok)throw new Error('FIRST_ONLINE_NO_REFRESH '+JSON.stringify(rows)+' requests='+window.cardHandles._photoProofRequests);return JSON.stringify({case:'first-online-no-refresh',online:store.online,requests:window.cardHandles._photoProofRequests,rows:rows})})()"},
+  {"shot": "online-first-paint-no-refresh"},
+  {"click": "navAccounts"},
+  {"wait": 1500},
+  {"eval": "(function(){const p=stack.currentItem;const s=p.photoStatus;if(p.photoStatusError||s.length!==3||!s.some(x=>x.photo_ready)||!s.some(x=>!x.photo_ready&&!x.authorization_required)||!s.some(x=>x.authorization_required&&(x.required_scopes||[]).length===2))throw new Error('PHOTO_STATUS '+JSON.stringify(s));return JSON.stringify({case:'authorization-controls',status:s,error:p.photoStatusError})})()"},
+  {"shot": "accounts-three-states"},
+  {"click": "photoConsentButton"},
+  {"wait": 1000},
+  {"eval": "(function(){const p=stack.currentItem;const u=p.photoConsentUrl;if(p.photoConsentError||u.indexOf('https://accounts.google.com/')!==0||decodeURIComponent(u).indexOf('contacts.readonly')<0||decodeURIComponent(u).indexOf('contacts.other.readonly')<0)throw new Error('PHOTO_CONSENT '+p.photoConsentError);return JSON.stringify({case:'authorization-url-not-opened',url:u,error:p.photoConsentError})})()"},
+  {"shot": "accounts-consent-not-opened"}
+]

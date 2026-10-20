@@ -1,0 +1,338 @@
+[
+  {
+    "path": "qt/src/CardStore.cpp",
+    "bytes": 76189,
+    "sha256": "0d84ac5f90fa12f7ae69ed52ccb7af346726cbbef8d7b5ab624e3b3938a24832",
+    "kind": "changed-source"
+  },
+  {
+    "path": "qt/qml/InboxView.qml",
+    "bytes": 141833,
+    "sha256": "f8c4af20bf89f5d1581f2263a0c59225b1280824fbc0bafad54b55dea3a6cf86",
+    "kind": "changed-source"
+  },
+  {
+    "path": "qt/tests/tst_senderphotopaint.qml",
+    "bytes": 13138,
+    "sha256": "55c242d5d1a84d99ad9168cd3c224713eaf7266b02ec5361561bc196c5e73fe4",
+    "kind": "changed-source"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/CANDIDATE.sha256",
+    "bytes": 1050,
+    "sha256": "117ee59a466aba2407a50597d2874b0e0b0f7fe6f91c0cd62c2c257fc805a8d6",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/DIAGNOSTIC.md",
+    "bytes": 1835,
+    "sha256": "7fb2a12097ae33165e7c089c09a9681dd0ff0e4717095ab611d148611cc46ed7",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/PROOF.md",
+    "bytes": 12868,
+    "sha256": "7537912892cc864ef31f10bf3eb783d6b8067c9ae04c01683052416a5ce74af8",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-captures/accounts-consent-not-opened.json",
+    "bytes": 64,
+    "sha256": "7756d8d6ecec44633723bbe82740f4f62b8ecf1a87168bf7c0a55939eb78e772",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-captures/accounts-consent-not-opened.png",
+    "bytes": 73682,
+    "sha256": "099900f6371dc8794105741360304ec90d823a792b1ef56bd2ad21b29ad28cb3",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-captures/accounts-three-states.json",
+    "bytes": 64,
+    "sha256": "7756d8d6ecec44633723bbe82740f4f62b8ecf1a87168bf7c0a55939eb78e772",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-captures/accounts-three-states.png",
+    "bytes": 59135,
+    "sha256": "7ff67a8bfcc3bccb9d2bdec616183bfa1c5b13b143c699ffed04cf087c8d0b91",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-captures/online-first-paint-no-refresh.json",
+    "bytes": 64,
+    "sha256": "37dd1c9c7e5893bd01a259f5e6b184a3059c4e5db362a2e4b770e727f3e00a33",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-captures/online-first-paint-no-refresh.png",
+    "bytes": 39033,
+    "sha256": "bcbe6dc806ea5ebbdc3fb698eced2935d6a5dd84b4979309049bc4e335631c2f",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/app-environment.json",
+    "bytes": 903,
+    "sha256": "c44f8e65008f6844cd7456f54ba1d13459226025e4d32679ea74f8c34336e019",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/build-command.json",
+    "bytes": 377,
+    "sha256": "21fba182e548f247ffef26cd4fc52577c64e956c846046fa2e748b4ecc9e5756",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/build.log",
+    "bytes": 150715,
+    "sha256": "8c9bdd47fadcdb42927af2b49ad6f9c9120b5ee32847da4ac1710f218b0f1c5f",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/cold-boundary-state.json",
+    "bytes": 1113,
+    "sha256": "660c22f561e74ba206084c33b8910988e77b1f789b8005afd6ce7868c4b5a27f",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/cold-diagnostic-captures/cold-boundary-diagnostic.json",
+    "bytes": 64,
+    "sha256": "37dd1c9c7e5893bd01a259f5e6b184a3059c4e5db362a2e4b770e727f3e00a33",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/cold-diagnostic-captures/cold-boundary-diagnostic.png",
+    "bytes": 42506,
+    "sha256": "7a86feb929495d26ed704be4df65c2c635174b687491f6dd8cfab31ca310bccd",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/cold-diagnostic.json",
+    "bytes": 641,
+    "sha256": "8b96248c4aafe4279eea8120ab856bd8bf42f67ea54c8f8807f4c461ff87a5df",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/cold-role-failure/commands.json",
+    "bytes": 4620,
+    "sha256": "f75b0bf4087abc099ee4719d436c23d5136a4e1c4de5ad271c36fe1f32fc1a3c",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/cold-role-failure/online-app.log",
+    "bytes": 7273,
+    "sha256": "677b162ae70ea8df4bcfb8bdfb86a92023feb0698f04dc9d480492274bc3cd09",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/commands.json",
+    "bytes": 5833,
+    "sha256": "e99641e92907d0ec2ed462ef7796cc84bd49ada492a58f60914c1d32d60f56c7",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/fallback-requests/commands.json",
+    "bytes": 995,
+    "sha256": "74541b7d1464242185bf7864fa869d0354e44f51fea2ba1329c1517b21ba92c0",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/fallback-requests/senderphotopaint.log",
+    "bytes": 7992,
+    "sha256": "e7fca087937a8d7cd16863194d1d7ecf5670b687bbe089eb6a54fee2218f8d5b",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/final-build-command.json",
+    "bytes": 1567,
+    "sha256": "63e203dc451b8c65a5e8d6e06ec9071a45462df0779bdfb6d63a40c170eefdb0",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/frame-wait/commands.json",
+    "bytes": 995,
+    "sha256": "5507e7e6d36bd011bcc578d243485910ac227032afdbc863793205e753969ccd",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/frame-wait/senderphotopaint.log",
+    "bytes": 11192,
+    "sha256": "4fe8cf395754a29d2abcd578f9f73621371c52a72c03fefdc43635ec1f996310",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/initial/commands.json",
+    "bytes": 995,
+    "sha256": "27f4b586bfba738657b9bda716705d36a4aa9aca11ec8f25e2c8a4de3a7857db",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/initial/senderphotopaint.log",
+    "bytes": 8000,
+    "sha256": "d65e088c409568fa071c169ea205bfee504193fa415ef6238db25740e8157b33",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/native-captures/accounts-consent-not-opened.json",
+    "bytes": 64,
+    "sha256": "7756d8d6ecec44633723bbe82740f4f62b8ecf1a87168bf7c0a55939eb78e772",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/native-captures/accounts-consent-not-opened.png",
+    "bytes": 74726,
+    "sha256": "22d2402c6ea2ae6ad631289300dfc1fe85b2fc8565a7512041997b4861f8b518",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/native-captures/accounts-three-states.json",
+    "bytes": 64,
+    "sha256": "7756d8d6ecec44633723bbe82740f4f62b8ecf1a87168bf7c0a55939eb78e772",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/native-captures/accounts-three-states.png",
+    "bytes": 59718,
+    "sha256": "c7457c4729efe8f6979a1e96cfd93e63d05e68fa0558d6876d4b740b6f8e77f3",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/native-captures/online-first-paint-no-refresh.json",
+    "bytes": 64,
+    "sha256": "37dd1c9c7e5893bd01a259f5e6b184a3059c4e5db362a2e4b770e727f3e00a33",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/native-captures/online-first-paint-no-refresh.png",
+    "bytes": 41739,
+    "sha256": "b06ffa2abc217c55c848f8983168e32cb6095df6dbfc44589c581158d69b506f",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/notification-negative.log",
+    "bytes": 7926,
+    "sha256": "a60a0b6e636fdd2ea9084bd76af69916fcf1d527b64288b20b3f706c426d54bd",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/offline-app-captures/offline-cached-no-server.json",
+    "bytes": 64,
+    "sha256": "37dd1c9c7e5893bd01a259f5e6b184a3059c4e5db362a2e4b770e727f3e00a33",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/offline-app-captures/offline-cached-no-server.png",
+    "bytes": 40967,
+    "sha256": "23c950717c70086b25cfd5372f4eacd38720845b39d298539af9f2fb9fbab92c",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/offline-app.log",
+    "bytes": 7366,
+    "sha256": "0261c92066d5a180fd0b1000d646532f419d59e6d6a3985ffaf18dfe71d239c3",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/offline.json",
+    "bytes": 1057,
+    "sha256": "89ac138f534fb3ed78aaa3a46446baa99720c0a328f12bb5e7c9dbb47c73d0b7",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/online-app.log",
+    "bytes": 8745,
+    "sha256": "d37dffb5a99db7d0321497bbb080160876b6d0731bc315500da968c709df1184",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/online.json",
+    "bytes": 2408,
+    "sha256": "2171c9a4fb4fa13d24d99d525ecba3c8df139ef1e99ba742db04aa443f9889af",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/paint-offline.json",
+    "bytes": 184,
+    "sha256": "2f852753e4fa15756bbe2bb7190f479ca0197645375c271a895b100aea013f6e",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/paint-online.json",
+    "bytes": 586,
+    "sha256": "e278cce0a0f4d1cc7a953bfff3f88988e92025d3d1cd4a57c9bab7becc07f518",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/photo-status.log",
+    "bytes": 557,
+    "sha256": "7e8b5def780258323098fb27fcf3735cc93d31edca048626c1668f87296cbae9",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/profile-path.txt",
+    "bytes": 42,
+    "sha256": "dcddd48116b2788ab44bae366906c0a06a9e602f329ac13b7fdfa5acdf1f5a8a",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/provider-bytes.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/provider-photo.png",
+    "bytes": 162,
+    "sha256": "662f2dc6f113dfcce1e4fca794b61b0708d56d5805462d9c12f7308c7ba88757",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/qml-captures/offline-01-cached-paint-fallbacks.png",
+    "bytes": 45803,
+    "sha256": "2835c92468f0c12c2089914462b5f23c818959b0f2aaca2509a0d73c82de53f4",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/qml-captures/online-00-baseline-initials.png",
+    "bytes": 46717,
+    "sha256": "059f8492424ecc31fcc4250da164c0dca7451a6392a62a07201051eec6117337",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/qml-captures/online-01-first-paint-no-refresh.png",
+    "bytes": 43848,
+    "sha256": "c7bb83875c6687e6ea91628ae056efb4f8c80b22be15240e43831d1b75f51878",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/qml-captures/online-02-default-missing-fallback.png",
+    "bytes": 43848,
+    "sha256": "c7bb83875c6687e6ea91628ae056efb4f8c80b22be15240e43831d1b75f51878",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/retained-diff.txt",
+    "bytes": 63152,
+    "sha256": "28a0c07fd63e643c0c3e39bf76b754d44e22f0a9deea1e49ddcdb32d38f08121",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/run_proof.py",
+    "bytes": 7745,
+    "sha256": "bafb6da075c35542f0e40608b99450407c7b246ac9067a3c2daae9d7db5a5679",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/scratch-path.txt",
+    "bytes": 30,
+    "sha256": "b0a4bae91e9c08f5b9d67eeb63de076683bf6e5bf0ce95ccb3f32a81f8581c1f",
+    "kind": "new-receipt"
+  },
+  {
+    "path": "receipts/gmail-avatar-proof/notification-20261020/senderphotopaint.log",
+    "bytes": 9021,
+    "sha256": "e4fbb018af9da5f604b99f9df79d7771e0bfb7edd867c2094ff9828449f9ef60",
+    "kind": "new-receipt"
+  }
+]

@@ -438,18 +438,43 @@ the final acceptance; until he sees it each item is partial.
   nesting under a source mail stays open because agent producers do not yet
   report a source mail or issue key.
 - **R67 Sender avatars** (decided, Darafei 2026-10-15 msg 15887 «Аватарок не
-  хватает»; avatar coverage corrected 2026-10-19). Every displayed sender
-  identity line — single cards, bundle heads, nested members and agent cards
-  — shows a compact avatar beside its metadata line on desktop and Android
-  without adding row height. The fallback is a circle with initials in a
-  stable per-sender colour; forge, domain and Gravatar images, when added,
-  come only through the server and are cached on the device. Remote images
-  inside mail bodies stay blocked. The avatar is omitted only on the
-  identity line that R36 already omits — a nested member whose identity
-  repeats the summary's — never on the bundle head itself, which always
-  shows its avatar; future sender images come only through the server.
-  Oracle: `tst_inboxlayout` sender-avatar rows at 1440×1000, 412×915 and
-  480×915 with a stable fallback colour across rebuilds.
+  хватает»; avatar coverage corrected 2026-10-19; real-photo path 2026-10-20).
+  Every displayed sender identity line — single cards, bundle heads, nested
+  members and agent cards — shows a compact avatar beside its metadata line
+  on desktop and Android without adding row height. Real photos are available
+  Google contact photos only: `people.connections.list` with
+  `personFields=emailAddresses,photos` (`contacts.readonly`) plus
+  `otherContacts.list` with `readMask=emailAddresses,photos` and CONTACT and
+  PROFILE read sources (`contacts.other.readonly`); paginated, exact mailbox
+  match (no display-name or dot/plus rewriting), non-default photos only
+  (`Photo.default=true` rejected), primary preferred. `Gmail.modify` alone
+  carries no sender-photo field. Incremental consent: `POST
+  /v1/gmail/photo-consent` returns an `authorization_url` (Gmail.modify plus
+  both photo scopes) and performs no grant; `GET
+  /v1/gmail/sender-photos/status` reports per-account `photo_ready` and
+  explicit `authorization_required` with `required_scopes` without touching
+  Google. Server-mediated and device-cached: photos are fetched and decoded
+  server-side (bounded 512 KiB, `image.DecodeConfig`-verified) into
+  tenant/account-scoped `sender_photos`, delivered through authenticated `GET
+  /v1/cards/{id}/sender-photo` (card id lookup; no provider URLs, tokens, or
+  addresses in URLs/logs), flagged by `sender_has_photo` in cards/snapshot,
+  and cached on the device as local `file://` (`sender_photo` role, offline
+  capable). The genuinely-absent fallback is a circle with initials in a
+  stable per-sender colour in unchanged geometry, shown on `unavailable`
+  (404) and on `authorization_required` (403). Explicit non-coverage: a
+  sender absent from both contact datasets stays uncovered even when Gmail
+  itself renders a photo — there is no supported arbitrary-email lookup
+  (`people.get` needs an account id, Gmail messages expose no photo field),
+  and no Gravatar, third-party lookup, or undocumented Google endpoint. The
+  avatar is omitted only on the identity line that R36 already omits — a
+  nested member whose identity repeats the summary's — never on the bundle
+  head itself, which always shows its avatar. Remote images inside mail
+  bodies stay blocked. Oracle: `tst_inboxlayout` sender-avatar rows at
+  1440×1000, 412×915 and 480×915 with a stable fallback colour across
+  rebuilds, plus a photo case where decoded provider bytes render in the
+  real `SenderAvatar` (image ready, offline reopen keeps them); negative
+  control: a Gmail-only grant reports `authorization_required` with no photo
+  bytes on any surface.
 - **R68 Scroll stays put after Archive** (decided, Darafei 2026-10-15 msg
   15893 «После архивации сообщений скролл еуда-то улетает постоянно»;
   local-archive reader follow-up 2026-10-19). Archive, Spam, swipe and Undo

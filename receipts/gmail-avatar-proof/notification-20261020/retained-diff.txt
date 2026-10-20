@@ -1,0 +1,1084 @@
+diff --git a/qt/pages/GmailAccountsPage.qml b/qt/pages/GmailAccountsPage.qml
+index 932ad8e..06235aa 100644
+--- a/qt/pages/GmailAccountsPage.qml
++++ b/qt/pages/GmailAccountsPage.qml
+@@ -49,6 +49,17 @@ Kirigami.ScrollablePage {
+     property bool loading: false
+     property string errorText: ""
+     property string lastConnectUrl: ""
++    // R67 sender-photo consent/status, server-reported only. The status
++    // contract (GET /v1/gmail/sender-photos/status) carries per-account
++    // photo_ready / authorization_required / required_scopes; the consent
++    // contract (POST /v1/gmail/photo-consent) only returns an
++    // authorization_url and performs no grant. No scope or Google config
++    // checks are invented here: every state shown is what the server said.
++    property var photoStatus: [] // [{ account_id, address, photo_ready, authorization_required, required_scopes }]
++    property string photoStatusError: ""
++    property string photoConsentUrl: ""
++    property string photoConsentError: ""
++    property bool requestingPhotoConsent: false
+ 
+     title: qsTr("Gmail Accounts")
+ 
+@@ -65,6 +76,38 @@ Kirigami.ScrollablePage {
+             accountsLoaded(accounts)
+             if (accounts.every(account => account.status === "active")) connecting = false
+         })
++        reloadPhotoStatus()
++    }
++
++    // Server-reported photo readiness per account; never guessed from the
++    // account list and never inferred from Google configuration.
++    function reloadPhotoStatus() {
++        photoStatusError = ""
++        api.get("/v1/gmail/sender-photos/status", function (error, response) {
++            if (error || !response || !response.body || !Array.isArray(response.body.accounts)) {
++                photoStatus = []
++                photoStatusError = qsTr("Could not load sender photo status.")
++                return
++            }
++            photoStatus = response.body.accounts
++        })
++    }
++
++    // Starts the incremental photo grant (Gmail.modify + both People photo
++    // scopes). The server returns the authorization_url and performs no
++    // grant: the user approves in their own browser through the explicit
++    // open action below. This function never opens a browser itself.
++    function requestPhotoConsent() {
++        photoConsentError = ""
++        requestingPhotoConsent = true
++        api.post("/v1/gmail/photo-consent", {}, function (error, response) {
++            requestingPhotoConsent = false
++            if (error || !response || !response.body || !response.body.authorization_url) {
++                photoConsentError = qsTr("Could not start photo authorization.")
++                return
++            }
++            photoConsentUrl = response.body.authorization_url
++        })
+     }
+ 
+     function connectAccount() {
+@@ -218,6 +261,110 @@ Kirigami.ScrollablePage {
+                 text: qsTr("No accounts connected.")
+             }
+         }
++
++        // R67 sender-photo consent/status section. Each row's state is the
++        // server's (photo_ready / authorization_required), the required
++        // scopes are the server's list, and the only action here is asking
++        // the server for the incremental grant URL and showing it; the user
++        // opens it themselves.
++        Kirigami.Heading {
++            text: qsTr("Sender photos")
++            level: 3
++            color: root.ink
++            visible: root.photoStatus.length > 0 || root.photoStatusError !== ""
++            Layout.fillWidth: true
++        }
++
++        QQC2.Label {
++            objectName: "photoStatusError"
++            visible: root.photoStatusError !== ""
++            text: root.photoStatusError
++            color: Kirigami.Theme.negativeTextColor
++            wrapMode: Text.Wrap
++            Layout.fillWidth: true
++        }
++
++        Repeater {
++            model: root.photoStatus
++            delegate: ColumnLayout {
++                id: photoRow
++                objectName: "photoStatusRow"
++                Layout.fillWidth: true
++                spacing: 6
++                readonly property bool needsAuth: !!modelData.authorization_required
++                readonly property bool photoReady: !!modelData.photo_ready
++
++                QQC2.Label {
++                    objectName: "photoStatusAddress"
++                    text: modelData.address
++                    color: root.ink
++                    elide: Text.ElideRight
++                    Layout.fillWidth: true
++                }
++                QQC2.Label {
++                    objectName: "photoStateLabel"
++                    text: photoRow.photoReady ? qsTr("Sender photos ready")
++                        : photoRow.needsAuth ? qsTr("Sender photos need authorization")
++                        : qsTr("Authorized — photos appear after they sync")
++                    color: photoRow.needsAuth ? Kirigami.Theme.negativeTextColor : root.mutedInk
++                    wrapMode: Text.Wrap
++                    Layout.fillWidth: true
++                }
++                QQC2.Label {
++                    objectName: "photoRequiredScopes"
++                    visible: photoRow.needsAuth && (modelData.required_scopes || []).length > 0
++                    text: (modelData.required_scopes || []).join("\n")
++                    color: root.mutedInk
++                    font: Kirigami.Theme.smallFont
++                    wrapMode: Text.Wrap
++                    Layout.fillWidth: true
++                }
++                MailActionButton {
++                    objectName: "photoConsentButton"
++                    text: root.requestingPhotoConsent ? qsTr("Starting authorization…") : qsTr("Authorize sender photos…")
++                    visible: photoRow.needsAuth
++                    enabled: !root.requestingPhotoConsent
++                    onClicked: root.requestPhotoConsent()
++                }
++            }
++        }
++
++        QQC2.Label {
++            objectName: "photoConsentError"
++            visible: root.photoConsentError !== ""
++            text: root.photoConsentError
++            color: Kirigami.Theme.negativeTextColor
++            wrapMode: Text.Wrap
++            Layout.fillWidth: true
++        }
++
++        QQC2.Label {
++            objectName: "photoConsentPrompt"
++            visible: root.photoConsentUrl !== ""
++            text: qsTr("Open this authorization link to grant sender photo access. Litterbox never grants it for you.")
++            color: root.ink
++            wrapMode: Text.Wrap
++            Layout.fillWidth: true
++        }
++        QQC2.TextField {
++            objectName: "photoConsentUrlText"
++            visible: root.photoConsentUrl !== ""
++            readOnly: true
++            text: root.photoConsentUrl
++            color: root.ink
++            selectByMouse: true
++            Layout.fillWidth: true
++        }
++        MailActionButton {
++            objectName: "photoConsentOpenButton"
++            text: qsTr("Open authorization page")
++            visible: root.photoConsentUrl !== ""
++            icon.name: "document-open"
++            onClicked: {
++                if (root.openLinks)
++                    Qt.openUrlExternally(root.photoConsentUrl)
++            }
++        }
+     }
+     }
+ }
+diff --git a/qt/qml/InboxView.qml b/qt/qml/InboxView.qml
+index 14b330c..13d51ed 100644
+--- a/qt/qml/InboxView.qml
++++ b/qt/qml/InboxView.qml
+@@ -157,18 +157,42 @@ ApplicationWindow {
+             // R66: agent report boilerplate labels are not the preview.
+             .replace(/^(?:\**\s*(?:What happened|Summary|Result|Итог|Что сделано)\s*:\s*\**\s*)/i, "")
+     }
+-    component SenderAvatar: Rectangle {
++    // R67: real Google contact photos with initials fallback. The fallback
++    // keeps the existing circle geometry, palette, and initials; the photo
++    // layer fills the same slot only when the device cached server-mediated
++    // bytes (card.sender_photo file:// + sender_has_photo flag). Remote mail
++    // body images stay blocked; no provider URLs reach the UI.
++    component SenderAvatar: Item {
++        objectName: "senderAvatar"
+         property string name: ""
++        property string photoSource: ""
+         width: 32
+         height: 32
+-        radius: width / 2
+-        color: window.avatarColor(name)
+-        Label {
+-            anchors.centerIn: parent
+-            text: window.avatarInitials(parent.name)
+-            color: "#ffffff"
+-            font.pointSize: Math.max(7, window.themeFont.pointSize - 2)
+-            font.weight: Font.DemiBold
++        Rectangle {
++            objectName: "senderAvatarInitials"
++            anchors.fill: parent
++            radius: width / 2
++            color: window.avatarColor(parent.name)
++            visible: parent.photoSource === ""
++            Label {
++                anchors.centerIn: parent
++                text: window.avatarInitials(parent.name)
++                color: "#ffffff"
++                font.pointSize: Math.max(7, window.themeFont.pointSize - 2)
++                font.weight: Font.DemiBold
++            }
++        }
++        // Installed Kirigami (5.116) provides no Avatar type; a plain Image
++        // fills the same 32x32 slot so the photo paints without new imports
++        // or row-height change. Initials above keep the circle geometry.
++        Image {
++            objectName: "senderAvatarImage"
++            anchors.fill: parent
++            visible: parent.photoSource !== ""
++            source: parent.photoSource
++            fillMode: Image.PreserveAspectCrop
++            cache: true
++            asynchronous: false
+         }
+     }
+     component InboxMenuItem: MenuItem {
+@@ -315,12 +339,28 @@ ApplicationWindow {
+         return qsTr("%1 %2").arg(value).arg(value === 1 ? qsTr("email") : qsTr("emails"))
+     }
+     function archiveBundle(bundleId) {
++        const selectedBefore = selectedCardId
++        let next = null
++        if (readerOpen && selectedBefore && bundleModel) {
++            const rows = bundleModel.rows
++            for (let i = 0; i < rows.length; ++i) {
++                const entry = rows[i]
++                if (entry && entry.cardId === selectedBefore && entry.card
++                        && entry.card.bundle_id === bundleId) {
++                    next = captureArchiveContinuation(selectedBefore)
++                    break
++                }
++            }
++        }
+         const result = store.archiveBundleNow(bundleId)
+         if (!result || !result.token || Number(result.count) < 1) return false
+         bundleArchiveToken = result.token
+         mailArchiveUndoOp = ""
+         archiveUndoAvailable = true
+         bundleArchiveStatus = Number(result.count) === 1 ? qsTr("Archived") : qsTr("Archived %1").arg(emailCountText(result.count))
++        // ponytail: pinned members survive archiveBundleNow; advance only when
++        // the open card was actually removed, no pinned predicate duplicated.
++        if (next && store.cardIds().indexOf(selectedBefore) < 0) next()
+         return true
+     }
+     function showArchiveUndo(opId, action) {
+@@ -1535,6 +1575,8 @@ ApplicationWindow {
+                                         width: window.compactInbox ? 32 : 28
+                                         height: width
+                                         name: (cardRow.bundleSummary.senders || [])[0] || bundleToggle.text
++                                        // R67: head card's cached Google photo; "" keeps initials.
++                                        photoSource: (card && card.sender_photo) || ""
+                                     }
+                                     onClicked: window.toggleBundle(card.bundle_id)
+                                     Keys.onReturnPressed: clicked()
+@@ -1684,6 +1726,8 @@ ApplicationWindow {
+                                             width: window.compactInbox ? 32 : 28
+                                             height: width
+                                             name: card.source === "mail" ? window.mailSender(card) : window.cardKindLabel(card)
++                                            // R67: cached Google photo for mail senders; "" keeps initials.
++                                            photoSource: (card && card.sender_photo) || ""
+                                         }
+                                     }
+                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
+@@ -1789,6 +1833,8 @@ ApplicationWindow {
+                                                     width: window.compactInbox ? 32 : 28
+                                                     height: width
+                                                     name: window.mailSender(card)
++                                                    // R67: cached Google photo; "" keeps initials.
++                                                    photoSource: (card && card.sender_photo) || ""
+                                                 }
+                                             }
+                                         }
+@@ -1897,7 +1943,12 @@ ApplicationWindow {
+                                     cardTitle: title
+                                     accountName: card.account_name || ""
+                                     canOpenSource: !!card.source_url
+-                                    onCardHandled: function(operation, action) { if (operation) window.showArchiveUndo(operation, action) }
++                                    onCardHandled: function(operation, action) {
++                                        const next = operation && action === "archive"
++                                            ? window.captureArchiveContinuation(cardId) : null
++                                        if (operation) window.showArchiveUndo(operation, action)
++                                        if (next) next()
++                                    }
+                                     onNoteRequested: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() }
+                                     onOpenRequested: {
+                                         if (card.source_url) Qt.openUrlExternally(card.source_url)
+diff --git a/qt/src/CardStore.cpp b/qt/src/CardStore.cpp
+index 97bebc2..ad1ec20 100644
+--- a/qt/src/CardStore.cpp
++++ b/qt/src/CardStore.cpp
+@@ -45,6 +45,9 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
+     m_bodyPrefetchTimer.setSingleShot(true);
+     m_bodyPrefetchTimer.setTimerType(Qt::PreciseTimer);
+     connect(&m_bodyPrefetchTimer, &QTimer::timeout, this, &CardStore::queueMailBodyPrefetch);
++    m_photoPrefetchTimer.setSingleShot(true);
++    m_photoPrefetchTimer.setTimerType(Qt::PreciseTimer);
++    connect(&m_photoPrefetchTimer, &QTimer::timeout, this, &CardStore::queueSenderPhotoPrefetch);
+     m_storage->moveToThread(&m_storageThread);
+     connect(&m_storageThread, &QThread::finished, m_storage, &QObject::deleteLater);
+     m_storageThread.start();
+@@ -53,6 +56,9 @@ CardStore::~CardStore() {
+     m_bodyPrefetchTimer.stop();
+     m_bodyPrefetchQueue.clear();
+     m_bodyRequests.clear();
++    m_photoPrefetchTimer.stop();
++    m_photoPrefetchQueue.clear();
++    m_photoRequests.clear();
+     // Drain queued commits before closing: an offline action survives exit.
+     QMetaObject::invokeMethod(m_storage, [this] {
+         m_db.close();
+@@ -76,8 +82,13 @@ bool CardStore::open(const QString &path) {
+     m_bodyPrefetchTimer.stop();
+     m_bodyPrefetchQueue.clear();
+     m_bodyRequests.clear();
++    m_photoPrefetchTimer.stop();
++    m_photoPrefetchQueue.clear();
++    m_photoRequests.clear();
++    m_photoUnavailable.clear();
+     QList<QVariantMap> cards, outbox;
+     QHash<QString, QVariantMap> bodies;
++    QHash<QString, QString> photos;
+     bool opened = false;
+     // Startup only, before the window exists. Every subsequent write is queued.
+     QMetaObject::invokeMethod(m_storage, [&, this] {
+@@ -87,7 +98,8 @@ bool CardStore::open(const QString &path) {
+         if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
+             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
+             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
+-            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]')"))) return;
++            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]')")) ||
++            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS sender_photo_files (card_id TEXT PRIMARY KEY, file_url TEXT NOT NULL)"))) return;
+         QSqlQuery bodyColumns(m_db);
+         if (!bodyColumns.exec(QStringLiteral("PRAGMA table_info(mail_bodies)"))) return;
+         bool hasMessages = false;
+@@ -121,6 +133,14 @@ bool CardStore::open(const QString &path) {
+                 {QStringLiteral("source_url"), q.value(2)},
+                 {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}});
+         }
++        // R67: device photo cache survives restart; file URLs are local only.
++        if (!q.exec(QStringLiteral("SELECT card_id,file_url FROM sender_photo_files"))) return;
++        while (q.next()) {
++            const QString id = q.value(0).toString();
++            const QString fileUrl = q.value(1).toString();
++            if (!id.isEmpty() && fileUrl.startsWith(QStringLiteral("file://")))
++                photos.insert(id, fileUrl);
++        }
+         opened = true;
+     }, Qt::BlockingQueuedConnection);
+     if (!opened) return false;
+@@ -128,10 +148,13 @@ bool CardStore::open(const QString &path) {
+     m_outbox = std::move(outbox);
+     for (const auto &op : m_outbox) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
+     m_mailBodies = std::move(bodies);
++    m_senderPhotos = std::move(photos);
++    injectSenderPhotos(cards);
+     replaceCards(std::move(cards));
+     emit pendingOpsChanged();
+     flush();
+     queueMailBodyPrefetch();
++    queueSenderPhotoPrefetch();
+     return true;
+ }
+ 
+@@ -217,6 +240,9 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
+     const auto stored = [](QVariantMap card) {
+         card.remove(QStringLiteral("bundle_leader"));
+         card.remove(QStringLiteral("bundle_member_count"));
++        // R67: sender_photo is a device-local file:// URL, never durable in
++        // the card payload; the mapping lives in sender_photo_files.
++        card.remove(QStringLiteral("sender_photo"));
+         if (!card.contains(QStringLiteral("sender_name")))
+             card.insert(QStringLiteral("sender_name"), QStringLiteral(""));
+         return card;
+@@ -371,11 +397,14 @@ void CardStore::setOnline(bool online) {
+     }
+     if (m_online == online) return;
+     m_online = online; emit onlineChanged();
+-    if (online) { flush(); refresh(); queueMailBodyPrefetch(); }
++    if (online) { flush(); refresh(); queueMailBodyPrefetch(); queueSenderPhotoPrefetch(); }
+     else {
+         m_bodyPrefetchTimer.stop();
+         m_bodyPrefetchQueue.clear();
+         m_bodyRequests.clear();
++        m_photoPrefetchTimer.stop();
++        m_photoPrefetchQueue.clear();
++        m_photoRequests.clear();
+     }
+ }
+ void CardStore::reportOffline(const QString &reason) {
+@@ -493,11 +522,15 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections, quint64 requestId)
+         }
+     }
+     const auto before = m_cards;
++    injectSenderPhotos(cards);
+     replaceCards(cards);
+     persistCards(before, cards);
+     // Keep every fetchable body available offline without exhausting the shared
+     // API limit. The queue survives snapshots; foreground reads bypass its pace.
+     queueMailBodyPrefetch();
++    // R67: same pacing for sender photos; only sender_has_photo cards without
++    // a cached file fetch, and 404/403 parks until eligibility re-marks.
++    queueSenderPhotoPrefetch();
+     return true;
+ }
+ QStringList CardStore::pinnedCardIds() const {
+@@ -1171,6 +1204,159 @@ QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl)
+     file.close();
+     return QUrl::fromLocalFile(filePath).toString();
+ }
++void CardStore::injectSenderPhotos(QList<QVariantMap> &cards) {
++    // Device-local file URLs render without extra lookups. Only cards the
++    // server flags sender_has_photo keep a file URL; everything else shows
++    // initials, so a stale cache never renders after the flag flips false.
++    for (QVariantMap &card : cards) {
++        const QString id = card.value(QStringLiteral("id")).toString();
++        const QString fileUrl = m_senderPhotos.value(id);
++        if (!fileUrl.isEmpty() && card.value(QStringLiteral("sender_has_photo")).toBool())
++            card.insert(QStringLiteral("sender_photo"), fileUrl);
++        else
++            card.remove(QStringLiteral("sender_photo"));
++    }
++}
++void CardStore::queueSenderPhotoPrefetch() {
++    if (!m_online || !m_open) return;
++    for (auto it = m_photoRequests.begin(); it != m_photoRequests.end();) {
++        if (it.value().hasExpired()) it = m_photoRequests.erase(it);
++        else ++it;
++    }
++    QSet<QString> eligible;
++    for (const QVariantMap &card : m_cards) {
++        if (!card.value(QStringLiteral("sender_has_photo")).toBool()) continue;
++        const QString id = card.value(QStringLiteral("id")).toString();
++        if (id.isEmpty() || !m_senderPhotos.value(id).isEmpty() || m_photoRequests.contains(id)) continue;
++        if (m_photoUnavailable.contains(id)) continue;
++        eligible.insert(id);
++    }
++    m_photoPrefetchQueue.erase(std::remove_if(m_photoPrefetchQueue.begin(), m_photoPrefetchQueue.end(),
++        [&](const QString &id) { return !eligible.contains(id); }), m_photoPrefetchQueue.end());
++    QSet<QString> queued(m_photoPrefetchQueue.begin(), m_photoPrefetchQueue.end());
++    for (const QVariantMap &card : m_cards) {
++        const QString id = card.value(QStringLiteral("id")).toString();
++        if (eligible.contains(id) && !queued.contains(id)) {
++            m_photoPrefetchQueue.append(id);
++            queued.insert(id);
++        }
++    }
++    // Drop negative marks for cards that left the eligible set so a later
++    // grant or re-appearing photo retries instead of sticking forever.
++    for (auto it = m_photoUnavailable.begin(); it != m_photoUnavailable.end();) {
++        if (!eligible.contains(*it) && !m_senderPhotos.contains(*it)) it = m_photoUnavailable.erase(it);
++        else ++it;
++    }
++    if (m_photoPrefetchTimer.isActive()) return;
++    if (m_photoPrefetchQueue.isEmpty() && m_photoRequests.isEmpty()) return;
++    if (!m_nextPhotoPrefetch.hasExpired()) {
++        m_photoPrefetchTimer.start(int(m_nextPhotoPrefetch.remainingTime()));
++        return;
++    }
++    prefetchNextSenderPhoto();
++}
++void CardStore::prefetchNextSenderPhoto() {
++    if (!m_online || !m_open) return;
++    m_nextPhotoPrefetch = QDeadlineTimer(3000, Qt::PreciseTimer);
++    m_photoPrefetchTimer.start(3000);
++    if (m_photoPrefetchQueue.isEmpty()) return;
++    const QString id = m_photoPrefetchQueue.takeFirst();
++    m_photoRequests.insert(id, QDeadlineTimer(60000, Qt::PreciseTimer));
++    emit requestSenderPhotoGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/sender-photo"));
++}
++QString CardStore::cachedSenderPhoto(const QString &cardId) const {
++    if (!m_open || cardId.isEmpty()) return {};
++    return m_senderPhotos.value(cardId, QString());
++}
++void CardStore::requestSenderPhoto(const QString &cardId) {
++    if (!m_open || cardId.isEmpty()) return;
++    if (!m_senderPhotos.value(cardId).isEmpty()) {
++        emit senderPhotoChanged(cardId);
++        return;
++    }
++    if (!m_online || m_photoUnavailable.contains(cardId)) return;
++    const QVariantMap *card = nullptr;
++    for (const QVariantMap &c : m_cards) {
++        if (c.value(QStringLiteral("id")).toString() == cardId) { card = &c; break; }
++    }
++    if (!card || !card->value(QStringLiteral("sender_has_photo")).toBool()) return;
++    m_photoPrefetchQueue.removeAll(cardId);
++    const auto inFlight = m_photoRequests.constFind(cardId);
++    if (inFlight != m_photoRequests.cend() && !inFlight.value().hasExpired()) return;
++    m_photoRequests.insert(cardId, QDeadlineTimer(60000, Qt::PreciseTimer));
++    if (!m_photoPrefetchTimer.isActive()) m_photoPrefetchTimer.start(3000);
++    emit requestSenderPhotoGet(cardId, QStringLiteral("/v1/cards/") + cardId + QStringLiteral("/sender-photo"));
++}
++void CardStore::applyRemoteSenderPhoto(const QString &cardId, const QByteArray &bytes, const QString &contentType) {
++    if (!m_open || cardId.isEmpty()) return;
++    m_photoRequests.remove(cardId);
++    m_photoPrefetchQueue.removeAll(cardId);
++    // Bounded server-mediated bytes only: 1..512 KiB, image magic, no
++    // provider URLs or tokens touch the device cache. The server already
++    // DecodeConfig-verified; the magic check is defense in depth so a
++    // corrupt transport never persists.
++    if (bytes.size() < 1 || bytes.size() > (512 << 10)) { emit senderPhotoFailed(cardId); return; }
++    const auto hasMagic = [&] {
++        const auto u = reinterpret_cast<const unsigned char *>(bytes.constData());
++        const int n = bytes.size();
++        if (n >= 3 && u[0] == 0xFF && u[1] == 0xD8 && u[2] == 0xFF) return true;
++        if (n >= 8 && u[0] == 0x89 && u[1] == 0x50 && u[2] == 0x4E && u[3] == 0x47) return true;
++        if (n >= 6 && u[0] == 0x47 && u[1] == 0x49 && u[2] == 0x46 && u[3] == 0x38) return true;
++        if (n >= 12 && u[0] == 0x52 && u[1] == 0x49 && u[2] == 0x46 && u[3] == 0x46
++            && u[8] == 0x57 && u[9] == 0x45 && u[10] == 0x42 && u[11] == 0x50) return true;
++        return false;
++    };
++    if (!hasMagic()) { emit senderPhotoFailed(cardId); return; }
++    if (cardId.contains(QLatin1Char('/')) || cardId.contains(QLatin1Char('\\')) ||
++        cardId.contains(QStringLiteral("..")) || cardId.contains(QChar(u'\0')) ||
++        cardId.startsWith(QLatin1Char('.'))) { emit senderPhotoFailed(cardId); return; }
++    QString ext = QStringLiteral(".jpg");
++    const QString ct = contentType.toLower().split(QLatin1Char(';')).first().trimmed();
++    if (ct == QStringLiteral("image/png")) ext = QStringLiteral(".png");
++    else if (ct == QStringLiteral("image/gif")) ext = QStringLiteral(".gif");
++    else if (ct == QStringLiteral("image/webp")) ext = QStringLiteral(".webp");
++    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
++    if (base.isEmpty()) { emit senderPhotoFailed(cardId); return; }
++    QDir dir(base + QStringLiteral("/sender-photos/") + cardId);
++    if (!dir.mkpath(QStringLiteral("."))) { emit senderPhotoFailed(cardId); return; }
++    const QString filePath = dir.filePath(QStringLiteral("photo") + ext);
++    if (QDir::cleanPath(filePath) != QDir::cleanPath(dir.absolutePath() + QStringLiteral("/photo") + ext)) { emit senderPhotoFailed(cardId); return; }
++    QFile file(filePath);
++    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(bytes) != bytes.size()) { emit senderPhotoFailed(cardId); return; }
++    file.close();
++    const QString fileUrl = QUrl::fromLocalFile(filePath).toString();
++    m_senderPhotos.insert(cardId, fileUrl);
++    m_photoUnavailable.remove(cardId);
++    QMetaObject::invokeMethod(m_storage, [this, cardId, fileUrl] {
++        QSqlQuery q(m_db);
++        q.prepare(QStringLiteral("INSERT INTO sender_photo_files(card_id,file_url) VALUES(?,?) "
++                                 "ON CONFLICT(card_id) DO UPDATE SET file_url=excluded.file_url"));
++        q.addBindValue(cardId); q.addBindValue(fileUrl);
++        const bool ok = q.exec();
++        const QString error = q.lastError().text();
++        QMetaObject::invokeMethod(this, [this, cardId, ok, error] {
++            if (!ok) emit storageError(error);
++        }, Qt::QueuedConnection);
++    }, Qt::QueuedConnection);
++    for (int row = 0; row < m_cards.size(); ++row) {
++        if (m_cards[row].value(QStringLiteral("id")).toString() != cardId) continue;
++        m_cards[row].insert(QStringLiteral("sender_photo"), fileUrl);
++        emit dataChanged(index(row), index(row));
++        break;
++    }
++    emit senderPhotoChanged(cardId);
++}
++void CardStore::reportSenderPhotoFailed(const QString &cardId, int status) {
++    m_photoRequests.remove(cardId);
++    // 404 genuinely unavailable and 403 authorization_required must not spin:
++    // park until the next snapshot re-marks eligibility. Transport/offline
++    // failures stay retryable through the prefetch queue.
++    if (status == 404 || status == 403 || status == 401)
++        m_photoUnavailable.insert(cardId);
++    else
++        m_photoPrefetchQueue.removeAll(cardId);
++    emit senderPhotoFailed(cardId);
++}
+ int CardStore::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : m_cards.size(); }
+ QVariant CardStore::data(const QModelIndex &index, int role) const {
+     if (!index.isValid() || index.row() < 0 || index.row() >= m_cards.size()) return {};
+@@ -1181,9 +1367,10 @@ QVariant CardStore::data(const QModelIndex &index, int role) const {
+     case TitleRole: return card.value(QStringLiteral("title"));
+     case SectionRole: return card.value(QStringLiteral("section"));
+     case SenderNameRole: return card.value(QStringLiteral("sender_name"));
++    case SenderPhotoRole: return card.value(QStringLiteral("sender_photo"), QString());
+     default: return {};
+     }
+ }
+ QHash<int,QByteArray> CardStore::roleNames() const {
+-    return {{CardRole,"card"},{CardIdRole,"cardId"},{TitleRole,"title"},{SectionRole,"section"},{SenderNameRole,"sender_name"}};
++    return {{CardRole,"card"},{CardIdRole,"cardId"},{TitleRole,"title"},{SectionRole,"section"},{SenderNameRole,"sender_name"},{SenderPhotoRole,"sender_photo"}};
+ }
+diff --git a/qt/src/CardStore.h b/qt/src/CardStore.h
+index b47bf30..305d9eb 100644
+--- a/qt/src/CardStore.h
++++ b/qt/src/CardStore.h
+@@ -29,7 +29,7 @@ class CardStore : public QAbstractListModel {
+     Q_PROPERTY(QString offlineReason READ offlineReason NOTIFY offlineReasonChanged)
+     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
+ public:
+-    enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole };
++    enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole, SenderPhotoRole };
+     Q_ENUM(Role)
+     explicit CardStore(QObject *parent = nullptr);
+     ~CardStore() override;
+@@ -100,6 +100,17 @@ public:
+     // using only the sanitized name= parameter, and returns the local file URL
+     // ("" on any mismatch). Never uses a producer-supplied path.
+     Q_INVOKABLE QString openCachedFile(const QString &cardId, const QString &dataUrl) const;
++    // R67: device-cached Google sender photos (server-mediated bytes only).
++    // sender_photo is a local file:// URL ("" when absent); sender_has_photo
++    // comes from the server payload. requestSenderPhoto emits
++    // requestSenderPhotoGet for the authenticated binary route while online;
++    // applyRemoteSenderPhoto validates, persists, and injects the file URL;
++    // reportSenderPhotoFailed never deletes cached bytes. 404 means
++    // genuinely unavailable (initials); 403 means authorization_required.
++    Q_INVOKABLE QString cachedSenderPhoto(const QString &cardId) const;
++    Q_INVOKABLE void requestSenderPhoto(const QString &cardId);
++    Q_INVOKABLE void applyRemoteSenderPhoto(const QString &cardId, const QByteArray &bytes, const QString &contentType);
++    Q_INVOKABLE void reportSenderPhotoFailed(const QString &cardId, int status = 0);
+     int rowCount(const QModelIndex &parent = {}) const override;
+     QVariant data(const QModelIndex &index, int role) const override;
+     QHash<int, QByteArray> roleNames() const override;
+@@ -112,8 +123,11 @@ signals:
+     void requestPost(const QString &opId, const QString &path, const QVariantMap &body);
+     void requestCards(const QString &path, quint64 requestId);
+     void requestMailBodyGet(const QString &cardId, const QString &path);
++    void requestSenderPhotoGet(const QString &cardId, const QString &path);
+     void mailBodyChanged(const QString &cardId);
+     void mailBodyFailed(const QString &cardId);
++    void senderPhotoChanged(const QString &cardId);
++    void senderPhotoFailed(const QString &cardId);
+     void operationFailed(const QString &opId, int status, const QVariantMap &response);
+     void storageError(const QString &message);
+     void flushFinished();
+@@ -127,6 +141,9 @@ private:
+     void flushNext();
+     void queueMailBodyPrefetch();
+     void prefetchNextMailBody();
++    void queueSenderPhotoPrefetch();
++    void prefetchNextSenderPhoto();
++    void injectSenderPhotos(QList<QVariantMap> &cards);
+     bool execute(const QString &sql);
+     void deriveBundles(QList<QVariantMap> &cards);
+     QString m_connection;
+@@ -168,6 +185,18 @@ private:
+     QHash<QString, QDeadlineTimer> m_bodyRequests;
+     QTimer m_bodyPrefetchTimer;
+     QDeadlineTimer m_nextBodyPrefetch{0, Qt::PreciseTimer};
++    // R67: device-cached sender-photo file URLs by card id (local file://,
++    // never provider URLs). Persisted in sender_photo_files; injected into
++    // card maps as sender_photo so delegates render without extra lookups.
++    QHash<QString, QString> m_senderPhotos;
++    QStringList m_photoPrefetchQueue;
++    QHash<QString, QDeadlineTimer> m_photoRequests;
++    QTimer m_photoPrefetchTimer;
++    QDeadlineTimer m_nextPhotoPrefetch{0, Qt::PreciseTimer};
++    // Cards whose photo route answered 404/403: genuinely unavailable or
++    // authorization_required. Excluded from prefetch until the next snapshot
++    // re-marks eligibility; never logged with addresses.
++    QSet<QString> m_photoUnavailable;
+     bool m_online = false;
+     QString m_offlineReason;
+     QString m_inFlight;
+diff --git a/qt/src/api.cpp b/qt/src/api.cpp
+index d815f81..94ec53d 100644
+--- a/qt/src/api.cpp
++++ b/qt/src/api.cpp
+@@ -133,6 +133,30 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
+         });
+     });
+ }
++void Api::trackBytesReply(int id, QNetworkReply *reply)
++{
++    // R67: binary sender-photo download. Bounded on the device (1 MiB cap);
++    // the server already enforces 512 KiB + DecodeConfig. No body bytes in
++    // logs; errors carry status only, never the card id or address (the
++    // caller maps ids without logging them here).
++    m_bytesReplies.insert(id, reply);
++    connect(reply, &QNetworkReply::finished, this, [this, id, reply]() {
++        m_bytesReplies.remove(id);
++        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
++        const QString contentType = reply->header(QNetworkRequest::ContentTypeHeader).toString();
++        const QByteArray body = reply->readAll();
++        const QString transportError = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
++        reply->deleteLater();
++        QMetaObject::invokeMethod(this, [this, id, status, body, contentType, transportError] {
++            if (status < 200 || status >= 300 || body.isEmpty() || body.size() > (1 << 20)) {
++                const QString error = status != 0 ? QStringLiteral("HTTP %1").arg(status) : transportError;
++                emit requestFailed(id, status, error);
++                return;
++            }
++            emit requestFinishedBytes(id, body, contentType, status);
++        }, Qt::QueuedConnection);
++    });
++}
+ 
+ void Api::trackStreamReply(int id, QNetworkReply *reply)
+ {
+@@ -186,6 +210,15 @@ int Api::del(const QString &path, const QJSValue &callback)
+     trackJsonReply(id, m_nam->deleteResource(buildRequest(path)));
+     return id;
+ }
++int Api::getBytes(const QString &path)
++{
++    const int id = m_nextId++;
++    QNetworkRequest request = buildRequest(path);
++    request.setPriority(QNetworkRequest::LowPriority);
++    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
++    trackBytesReply(id, m_nam->get(request));
++    return id;
++}
+ 
+ int Api::stream(const QString &path)
+ {
+diff --git a/qt/src/api.h b/qt/src/api.h
+index de7abb9..f97cd4b 100644
+--- a/qt/src/api.h
++++ b/qt/src/api.h
+@@ -45,6 +45,10 @@ public:
+     Q_INVOKABLE int post(const QString &path, const QJsonObject &body = QJsonObject(),
+                          const QJSValue &callback = QJSValue());
+     Q_INVOKABLE int del(const QString &path, const QJSValue &callback = QJSValue());
++    // R67: authenticated binary GET for card-scoped sender photos. Answers
++    // with requestFinishedBytes (bytes + contentType) or requestFailed; the
++    // JSON signals never fire for this id. Bearer auth reuses buildRequest.
++    Q_INVOKABLE int getBytes(const QString &path);
+     void setEngine(QJSEngine *engine) { m_engine = engine; }
+     // Streaming GET for the tenant-scoped SSE endpoint; consumers parse
+     // streamLine and reconnect on streamFinished.
+@@ -55,12 +59,16 @@ signals:
+     void tokenChanged();
+     void requestFinished(int requestId, const QJsonValue &data, int statusCode);
+     void requestFailed(int requestId, int statusCode, const QString &error, const QJsonValue &data = QJsonValue());
++    // R67: binary answer for getBytes ids (sender-photo bytes + content
++    // type). requestFinished never fires for these ids.
++    void requestFinishedBytes(int requestId, const QByteArray &data, const QString &contentType, int statusCode);
+     void streamLine(int requestId, const QString &line);
+     void streamFinished(int requestId, const QString &error);
+ 
+ private:
+     QNetworkRequest buildRequest(const QString &path) const;
+     void trackJsonReply(int id, QNetworkReply *reply);
++    void trackBytesReply(int id, QNetworkReply *reply);
+     void trackStreamReply(int id, QNetworkReply *reply);
+ 
+     QNetworkAccessManager *m_nam;
+@@ -70,6 +78,7 @@ private:
+     QJSEngine *m_engine = nullptr;
+     QHash<int, QJSValue> m_callbacks;
+     QHash<int, QPointer<QNetworkReply>> m_jsonReplies;
++    QHash<int, QPointer<QNetworkReply>> m_bytesReplies;
+     QHash<int, QPointer<QNetworkReply>> m_streamReplies;
+     QThreadPool m_jsonPool;
+ };
+diff --git a/qt/src/main.cpp b/qt/src/main.cpp
+index 98239d0..e0bdf4c 100644
+--- a/qt/src/main.cpp
++++ b/qt/src/main.cpp
+@@ -374,10 +374,18 @@ int main(int argc, char *argv[])
+     QHash<int, quint64> cardsRequests;
+     QHash<int, QString> operationRequests;
+     QHash<int, QString> mailBodyRequests;
++    QHash<int, QString> senderPhotoRequests;
+     QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
+         [&](const QString &cardId, const QString &path) {
+             mailBodyRequests.insert(api.get(path), cardId);
+         });
++    // R67: authenticated card-scoped sender photos (binary bytes, no
++    // addresses or tokens in logs). 404 means genuinely unavailable
++    // (initials); 403 means authorization_required until consent.
++    QObject::connect(&store, &CardStore::requestSenderPhotoGet, &app,
++        [&](const QString &cardId, const QString &path) {
++            senderPhotoRequests.insert(api.getBytes(path), cardId);
++        });
+     QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path, quint64 requestId) {
+         cardsRequests.insert(api.get(path), requestId);
+     });
+@@ -419,10 +427,18 @@ int main(int argc, char *argv[])
+                 store.reportPostResult(operationRequests.take(id), status, response);
+             }
+         });
++    QObject::connect(&api, &Api::requestFinishedBytes, &app,
++        [&](int id, const QByteArray &data, const QString &contentType, int status) {
++            Q_UNUSED(status);
++            if (senderPhotoRequests.contains(id)) {
++                store.applyRemoteSenderPhoto(senderPhotoRequests.take(id), data, contentType);
++            }
++        });
+     QObject::connect(&api, &Api::requestFailed, &app,
+         [&](int id, int status, const QString &error, const QJsonValue &data) {
+             cardsRequests.remove(id);
+             if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id));
++            if (senderPhotoRequests.contains(id)) store.reportSenderPhotoFailed(senderPhotoRequests.take(id), status);
+             if (operationRequests.contains(id)) {
+                 qWarning().noquote() << "Operation request failed:" << status << error;
+                 store.reportPostResult(operationRequests.take(id), status, data.toObject().toVariantMap());
+diff --git a/qt/tests/CMakeLists.txt b/qt/tests/CMakeLists.txt
+index 4a81d3a..c364bce 100644
+--- a/qt/tests/CMakeLists.txt
++++ b/qt/tests/CMakeLists.txt
+@@ -46,6 +46,8 @@ endif()
+ find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+ add_executable(tst_bundleexpand bundle_runner.cpp ../src/CardStore.cpp ../src/CardStore.h)
+ target_include_directories(tst_bundleexpand PRIVATE ../src)
++target_compile_definitions(tst_bundleexpand PRIVATE
++    LB_PHOTO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sender-photo-64x64.png")
+ target_link_libraries(tst_bundleexpand PRIVATE Qt6::QuickTest Qt6::Sql KF6::Kirigami)
+ add_test(NAME bundleexpand COMMAND tst_bundleexpand
+     -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_bundleexpand.qml
+@@ -57,6 +59,15 @@ add_test(NAME markspam COMMAND tst_bundleexpand
+     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
+ set_tests_properties(markspam PROPERTIES ENVIRONMENT
+     "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
++# R67 sender-photo consumer regression: first online paint after cache-download
++# completion must appear without a manual refresh(); offline cached paint and
++# the default/missing/auth-state initials fallbacks must survive in one run.
++add_test(NAME senderphotopaint COMMAND tst_bundleexpand
++    -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_senderphotopaint.qml
++    -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
++set_tests_properties(senderphotopaint PROPERTIES
++    TIMEOUT 120
++    ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+ 
+ # Same real CardStore runner, with the large-bundle timing and wheel oracle.
+ add_test(NAME scrollresilience COMMAND tst_bundleexpand
+diff --git a/qt/tests/archive_undo_consumer.py b/qt/tests/archive_undo_consumer.py
+index 0b85b3b..f449079 100755
+--- a/qt/tests/archive_undo_consumer.py
++++ b/qt/tests/archive_undo_consumer.py
+@@ -6,15 +6,20 @@ database, registered loopback fake Gmail). Private Xvfb/HOME/XDG; no display,
+ phone or production state is touched. Exits non-zero unless the actual Qt
+ cache restored the card in order and the neighbour never moved.
+ """
+-import argparse, hashlib, json, os, pathlib, sqlite3, subprocess, sys
++import argparse, hashlib, json, os, pathlib, sqlite3, subprocess, sys, threading, time, urllib.error, urllib.request
+ 
+ p = argparse.ArgumentParser()
+ p.add_argument("--binary", required=True)
+ p.add_argument("--output", required=True)
++p.add_argument("--entry", choices=("toolbar", "row", "bundle", "bundle_pinned", "end", "external", "spam", "done", "snooze"), default="toolbar")
+ a = p.parse_args()
+ out = pathlib.Path(a.output).resolve()
+ body = "<p>B</p>"
+ url, token, card, neighbor = (os.environ[k] for k in ("LB_UNDO_URL", "LB_UNDO_TOKEN", "LB_UNDO_CARD", "LB_UNDO_NEIGHBOR"))
++extra = os.environ.get("LB_UNDO_EXTRA", "")
++pinned = os.environ.get("LB_UNDO_PINNED", "")
++entry = a.entry
++initial_ids = [pinned, card, extra, neighbor] if entry == "bundle_pinned" else [card] + ([extra] if extra else []) + [neighbor]
+ env = {k: v for k, v in os.environ.items() if k in ("PATH", "USER", "LOGNAME", "LANG", "LC_ALL")}
+ for name, var in (("home", "HOME"), ("runtime", "XDG_RUNTIME_DIR"), ("config", "XDG_CONFIG_HOME"), ("data", "XDG_DATA_HOME"), ("cache", "XDG_CACHE_HOME")):
+     d = out / (out.name + "-" + name)
+@@ -25,16 +30,18 @@ profile = out.parent / (out.name + "-profile")
+ profile.mkdir(mode=0o700, exist_ok=True)
+ (profile / "profile.json").write_text(json.dumps({"server_url": url, "token": token}))
+ (profile / "profile.json").chmod(0o600)
+-state = "JSON.stringify({at:Date.now(),online:store.online,ids:store.cardIds(),pending:store.pendingOps,undoAvailable:archiveUndoAvailable,token:bundleArchiveToken,message:bundleArchiveStatus,readerOpen:readerOpen,selected:selectedCardId,body:(stack.currentItem && stack.currentItem.html ? stack.currentItem.html : '')})"
+-guard = "(function(){const ids=store.cardIds();if(!store.online||ids.indexOf('%s')<0||ids.indexOf('%s')<0)throw new Error('PRECONDITION');return JSON.stringify({online:store.online,ids:ids});})()" % (card, neighbor)
++state = "JSON.stringify({at:Date.now(),online:store.online,ids:store.cardIds(),pending:store.pendingOps,undoAvailable:archiveUndoAvailable,token:bundleArchiveToken,message:bundleArchiveStatus,readerOpen:readerOpen,selected:selectedCardId,depth:stack.depth,body:((stack.currentItem && stack.currentItem.html) ? stack.currentItem.html : ((typeof mailDetailPage !== 'undefined' && mailDetailPage && mailDetailPage.html) ? mailDetailPage.html : ''))})"
++guard = "(function(){const ids=store.cardIds();const expected=%s;if(!store.online||JSON.stringify(ids)!==JSON.stringify(expected))throw new Error('PRECONDITION');return JSON.stringify({online:store.online,ids:ids});})()" % json.dumps(initial_ids)
+ leg = "JSON.stringify({leg:\'%s\',ids:store.cardIds(),pending:store.pendingOps,undoAvailable:archiveUndoAvailable,readerOpen:readerOpen,selected:selectedCardId})"
+ reject = os.environ.get("LB_UNDO_REJECT") == "1"
++external_result = {}
++external_worker = None
+ if reject:
+     script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [412, 915]}, {"wait": 1500}, {"eval": state}, {"eval": guard},
+               {"openCard": card}, {"wait": 1500}, {"eval": state},
+               {"click": "archiveMail"}, {"wait": 4000}, {"eval": state},
+               {"wait": 2000}, {"eval": state}, {"shot": "reject-after-archive"}]
+-else:
++elif entry == "toolbar":
+     script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [412, 915]}, {"wait": 1500}, {"eval": state}, {"eval": guard}, {"shot": "01-before-archive"},
+               {"openCard": card}, {"wait": 1500}, {"eval": state},
+               {"click": "archiveMail"}, {"wait": 4000}, {"eval": state}, {"shot": "02-reader-successor-B"},
+@@ -47,7 +54,75 @@ else:
+               {"shot": "06-offline-archived"},
+               {"click": "bundleArchiveUndoButton"}, {"wait": 500}, {"eval": leg % "offline-undone"},
+               {"eval": "store.online=true; store.refresh()"}, {"wait": 1500}, {"eval": leg % "offline-settled"}]
+-import urllib.request, urllib.error
++elif entry == "row":
++    action = "doneButton-" + card
++    script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [1440, 1000]}, {"wait": 1500}, {"eval": state}, {"eval": guard}, {"shot": entry + "-before"},
++              {"openCard": card}, {"wait": 1500}, {"eval": state},
++              {"click": action}, {"wait": 4000}, {"eval": state}, {"shot": entry + "-successor-B"},
++              {"eval": "window.undoBundleArchive()"}, {"wait": 2000}, {"eval": state}, {"shot": entry + "-undo-keeps-B"},
++              {"eval": "store.refresh()"}, {"wait": 1500}, {"eval": state}]
++elif entry == "bundle":
++    action = "archiveBundle-" + card
++    script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [1440, 1000]}, {"wait": 1500}, {"eval": state}, {"eval": guard}, {"shot": entry + "-before"},
++              {"click": "bundleToggle-" + card}, {"wait": 800}, {"eval": state},
++              {"openCard": card}, {"wait": 1500}, {"eval": state},
++              {"click": action}, {"wait": 4000}, {"eval": state}, {"shot": entry + "-successor-B"},
++              {"eval": "window.undoBundleArchive()"}, {"wait": 2000}, {"eval": state}, {"shot": entry + "-undo-keeps-B"},
++              {"eval": "store.refresh()"}, {"wait": 1500}, {"eval": state}]
++elif entry == "bundle_pinned":
++    action = "archiveBundle-" + card
++    script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [1440, 1000]}, {"wait": 1500}, {"eval": state}, {"eval": guard}, {"shot": entry + "-before"},
++              {"click": "bundleToggle-" + card}, {"wait": 800}, {"eval": state},
++              {"openCard": pinned}, {"wait": 1500}, {"eval": state},
++              {"click": action}, {"wait": 4000}, {"eval": state}, {"shot": entry + "-pinned-keeps-P"},
++              {"eval": "window.undoBundleArchive()"}, {"wait": 2000}, {"eval": state}, {"shot": entry + "-undo-restores"},
++              {"openCard": card}, {"wait": 1500}, {"eval": state},
++              {"click": action}, {"wait": 4000}, {"eval": state}, {"shot": entry + "-successor-B"},
++              {"eval": "window.undoBundleArchive()"}, {"wait": 2000}, {"eval": state}, {"shot": entry + "-undo-keeps-B"},
++              {"eval": "store.refresh()"}, {"wait": 1500}, {"eval": state}]
++elif entry == "end":
++    script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [1440, 1000]}, {"wait": 1500}, {"eval": state}, {"eval": guard},
++              {"openCard": neighbor}, {"wait": 1500}, {"eval": state}, {"click": "archiveMail"}, {"wait": 4000}, {"eval": state}, {"shot": "end-closes-without-wrap"},
++              {"eval": "window.undoBundleArchive()"}, {"wait": 2000}, {"eval": state}, {"shot": "end-undo-stays-in-list"}]
++elif entry == "external":
++    script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [1440, 1000]}, {"wait": 1500}, {"eval": state}, {"eval": guard},
++              {"openCard": card}, {"wait": 1500}, {"eval": state}, {"eval": "JSON.stringify({externalReady:readerOpen,selected:selectedCardId})"},
++              {"shot": "external-before-snapshot"}, {"wait": 1000}, {"eval": "store.refresh()"}, {"wait": 3000}, {"eval": state}, {"shot": "external-no-advance"}]
++elif entry in ("spam", "done", "snooze"):
++    action = {"spam": "actionRow-spam-", "snooze": "actionRow-snooze-"}.get(entry)
++    script = [{"eval": "store.online=true; store.refresh()"}, {"resize": [1440, 1000]}, {"wait": 1500}, {"eval": state}, {"eval": guard},
++              {"openCard": card}, {"wait": 1500}, {"eval": state}]
++    if entry == "done":
++        script.append({"click": "doneButton-" + card})
++    else:
++        script.extend([{"click": "inboxActions", "index": 0}, {"wait": 300}, {"click": action + card}])
++        if entry == "snooze":
++            script.extend([{"wait": 300}, {"click": "snoozePreset-hour"}])
++    script.extend([{"wait": 4000}, {"eval": state}, {"shot": entry + "-no-advance"}])
++
++def remove_externally_when_reader_is_open(log_path):
++    marker = '"externalReady":true,"selected":"' + card + '"'
++    deadline = time.monotonic() + 45
++    while time.monotonic() < deadline:
++        try:
++            if marker in log_path.read_text(errors="replace"):
++                req = urllib.request.Request(url + "/v1/__test/external-archive/" + card, data=b"", method="POST",
++                                            headers={"Authorization": "Bearer " + token})
++                with urllib.request.urlopen(req, timeout=5) as response:
++                    external_result["status"] = response.status
++                return
++        except FileNotFoundError:
++            pass
++        except Exception as exc:
++            external_result["error"] = str(exc)
++            return
++        time.sleep(0.05)
++    external_result["error"] = "reader-open marker not observed"
++
++if entry == "external":
++    external_worker = threading.Thread(target=remove_externally_when_reader_is_open,
++                                       args=(out / "native.log",), daemon=True)
++    external_worker.start()
+ def get(path, bearer=True):
+     req = urllib.request.Request(url + path, headers={"Authorization": "Bearer " + token} if bearer else {})
+     try:
+@@ -65,41 +140,91 @@ try:
+     (out.parent / (out.name + "-captures")).mkdir(exist_ok=True)
+     with (out / "native.log").open("w") as log:
+         rc = subprocess.run(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=120).returncode
+-    states = [json.loads(l.split(": ", 1)[1]) for l in (out / "native.log").read_text().splitlines() if l.startswith("Capture script eval step") and ': {"at"' in l]
++    if external_worker:
++        external_worker.join(timeout=5)
++        if external_worker.is_alive():
++            external_result["error"] = "external snapshot trigger did not finish"
++    native_log = (out / "native.log").read_text(errors="replace")
++    states = [json.loads(l.split(": ", 1)[1]) for l in native_log.splitlines() if l.startswith("Capture script eval step") and ': {"at"' in l]
+     cache = sqlite3.connect(profile / "cards.sqlite")
+     cached = [r[0] for r in cache.execute("SELECT id FROM cards ORDER BY position")]
+     outbox = list(cache.execute("SELECT op_id,payload FROM outbox"))
+-    receipt = {"exit": rc, "binary_sha256": hashlib.sha256(pathlib.Path(a.binary).read_bytes()).hexdigest(), "states": states, "cache_ids": cached, "outbox": outbox,
++    receipt = {"entry": entry, "exit": rc, "binary_sha256": hashlib.sha256(pathlib.Path(a.binary).read_bytes()).hexdigest(),
++               "states": states, "cache_ids": cached, "outbox": outbox, "external": external_result,
+                "screenshots": {q.name: hashlib.sha256(q.read_bytes()).hexdigest() for q in sorted((out.parent / (out.name + "-captures")).glob("*.png"))}}
+-    legs = [json.loads(l.split(": ", 1)[1]) for l in (out / "native.log").read_text().splitlines() if l.startswith("Capture script eval step") and '"leg"' in l]
++    legs = [json.loads(l.split(": ", 1)[1]) for l in native_log.splitlines() if l.startswith("Capture script eval step") and '"leg"' in l]
+     legmap = {l["leg"]: l for l in legs}
+     if reject:
+-        # fail=true Undo-rejection: the reader shows the failure truthfully, no false success.
+-        # The rejection surfaces as "Action failed (HTTP 422)."; no settled state ever claims
+-        # "Archived", and the card is restored rather than left falsely archived. (A later
+-        # "Undo has expired." is a truthful undo-window expiry, not a false success.)
+         ok = rc == 0 and len(states) == 4
+-        ok = ok and card in states[0]["ids"] and neighbor in states[0]["ids"] and not states[0]["readerOpen"]
++        ok = ok and states[0]["ids"] == initial_ids and not states[0]["readerOpen"]
+         ok = ok and states[1]["readerOpen"] and states[1]["selected"] == card
+         ok = ok and any("Action failed" in s["message"] for s in states[2:])
+         for s in states[2:]:
+             ok = ok and "Archived" not in s["message"] and card in s["ids"]
+         ok = ok and not outbox
+-    else:
+-        # states: 0 loaded, 1 reader A, 2 reader B after ACK, 3 immediate Undo, 4 settled, 5 after snapshot
+-        ok = rc == 0 and len(states) == 6 and states[0]["ids"] == [card, neighbor]
++    elif entry == "toolbar":
++        ok = rc == 0 and len(states) == 6 and states[0]["ids"] == initial_ids
++        ok = ok and states[1]["readerOpen"] and states[1]["selected"] == card
++        ok = ok and states[2]["ids"] == initial_ids[1:] and states[2]["readerOpen"] and states[2]["selected"] == neighbor
++        ok = ok and states[3]["readerOpen"] and states[3]["selected"] == neighbor and states[3]["ids"] == initial_ids
++        ok = ok and states[4]["pending"] == 0 and states[5]["ids"] == initial_ids and cached == initial_ids
++        ok = ok and not outbox and states[5]["body"] != "" and "B" in states[5]["body"]
++        ok = ok and len(legs) == 4 and legmap["offline-start"]["ids"] == initial_ids
++        ok = ok and legmap["offline-archived"]["pending"] == 1 and neighbor not in legmap["offline-archived"]["ids"]
++        ok = ok and legmap["offline-undone"]["pending"] == 0 and legmap["offline-undone"]["ids"] == initial_ids
++        ok = ok and legmap["offline-settled"]["ids"] == initial_ids
++    elif entry == "row":
++        ok = rc == 0 and len(states) == 5 and states[0]["ids"] == initial_ids
+         ok = ok and states[1]["readerOpen"] and states[1]["selected"] == card
+         ok = ok and states[2]["ids"] == [neighbor] and states[2]["readerOpen"] and states[2]["selected"] == neighbor
+-        ok = ok and states[3]["readerOpen"] and states[3]["selected"] == neighbor and states[3]["ids"] == [card, neighbor]
+-        ok = ok and states[4]["pending"] == 0 and states[5]["ids"] == [card, neighbor] and cached == [card, neighbor]
++        ok = ok and states[2]["body"] != "" and "B" in states[2]["body"]
++        ok = ok and states[3]["ids"] == initial_ids and states[3]["readerOpen"] and states[3]["selected"] == neighbor
++        ok = ok and states[4]["ids"] == initial_ids and states[4]["readerOpen"] and states[4]["selected"] == neighbor
++        ok = ok and states[4]["body"] != "" and "B" in states[4]["body"] and cached == initial_ids and not outbox
++    elif entry == "bundle":
++        ok = rc == 0 and len(states) == 6 and states[0]["ids"] == initial_ids
++        ok = ok and not states[1]["readerOpen"] and states[1]["ids"] == initial_ids
++        ok = ok and states[2]["readerOpen"] and states[2]["selected"] == card
++        ok = ok and states[3]["ids"] == [neighbor] and states[3]["readerOpen"] and states[3]["selected"] == neighbor
++        ok = ok and states[3]["body"] != "" and "B" in states[3]["body"]
++        ok = ok and states[4]["ids"] == initial_ids and states[4]["readerOpen"] and states[4]["selected"] == neighbor
++        ok = ok and states[5]["ids"] == initial_ids and states[5]["readerOpen"] and states[5]["selected"] == neighbor
++        ok = ok and states[5]["body"] != "" and "B" in states[5]["body"] and cached == initial_ids and not outbox
++    elif entry == "bundle_pinned":
++        ok = rc == 0 and len(states) == 9 and states[0]["ids"] == initial_ids
++        ok = ok and not states[1]["readerOpen"] and states[1]["ids"] == initial_ids
++        ok = ok and states[2]["readerOpen"] and states[2]["selected"] == pinned
++        ok = ok and states[2]["body"] != "" and "P" in states[2]["body"]
++        ok = ok and states[3]["ids"] == [pinned, neighbor] and states[3]["readerOpen"] and states[3]["selected"] == pinned
++        ok = ok and states[3]["body"] != "" and "P" in states[3]["body"]
++        ok = ok and states[4]["ids"] == initial_ids and states[4]["readerOpen"] and states[4]["selected"] == pinned
++        ok = ok and states[4]["body"] != "" and "P" in states[4]["body"]
++        ok = ok and states[5]["readerOpen"] and states[5]["selected"] == card and states[5]["ids"] == initial_ids
++        ok = ok and states[6]["ids"] == [pinned, neighbor] and states[6]["readerOpen"] and states[6]["selected"] == neighbor
++        ok = ok and states[6]["body"] != "" and "B" in states[6]["body"]
++        ok = ok and states[7]["ids"] == initial_ids and states[7]["readerOpen"] and states[7]["selected"] == neighbor
++        ok = ok and states[7]["body"] != "" and "B" in states[7]["body"]
++        ok = ok and states[8]["ids"] == initial_ids and states[8]["readerOpen"] and states[8]["selected"] == neighbor
++        ok = ok and states[8]["body"] != "" and "B" in states[8]["body"] and cached == initial_ids and not outbox
++    elif entry == "end":
++        ok = rc == 0 and len(states) == 4 and states[0]["ids"] == initial_ids
++        ok = ok and states[1]["readerOpen"] and states[1]["selected"] == neighbor
++        ok = ok and neighbor not in states[2]["ids"] and not states[2]["readerOpen"] and states[2]["depth"] == 1
++        ok = ok and states[2]["selected"] != card
++        ok = ok and states[3]["ids"] == initial_ids and not states[3]["readerOpen"] and states[3]["depth"] == 1
++        ok = ok and cached == initial_ids and not outbox
++    elif entry == "external":
++        ok = rc == 0 and len(states) == 3 and states[0]["ids"] == initial_ids
++        ok = ok and states[1]["readerOpen"] and states[1]["selected"] == card
++        ok = ok and external_result.get("status") == 204 and not external_result.get("error")
++        ok = ok and card not in states[2]["ids"] and not states[2]["readerOpen"] and states[2]["depth"] == 1
++        ok = ok and states[2]["selected"] != neighbor and not outbox
++    else:
++        ok = rc == 0 and len(states) == 3 and states[0]["ids"] == initial_ids
++        ok = ok and states[1]["readerOpen"] and states[1]["selected"] == card
++        ok = ok and card not in states[2]["ids"] and neighbor in states[2]["ids"]
++        ok = ok and not states[2]["readerOpen"] and states[2]["depth"] == 1 and states[2]["selected"] != neighbor
+         ok = ok and not outbox
+-        # B HTML asserted through the production mailbody route (reader on B serves the real card_bodies row)
+-        ok = ok and states[5]["body"] != "" and "B" in states[5]["body"]
+-        # offline queued-cancel leg: archive B offline (queued, reader open) then Undo cancels with zero server contact
+-        ok = ok and len(legs) == 4 and legmap["offline-start"]["ids"] == [card, neighbor]
+-        ok = ok and legmap["offline-archived"]["pending"] == 1 and neighbor not in legmap["offline-archived"]["ids"]
+-        ok = ok and legmap["offline-undone"]["pending"] == 0 and legmap["offline-undone"]["ids"] == [card, neighbor]
+-        ok = ok and legmap["offline-settled"]["ids"] == [card, neighbor]
+     receipt["reject"] = reject
+     receipt["legs"] = legs
+     (out / "driver-receipt.json").write_text(json.dumps(receipt, indent=1))
+diff --git a/qt/tests/bundle_runner.cpp b/qt/tests/bundle_runner.cpp
+index ef60f71..5e00b54 100644
+--- a/qt/tests/bundle_runner.cpp
++++ b/qt/tests/bundle_runner.cpp
+@@ -29,6 +29,19 @@ public slots:
+         engine->rootContext()->setContextProperty(QStringLiteral("bundleCachePath"), database);
+         engine->rootContext()->setContextProperty(QStringLiteral("bundleProofDirectory"), qEnvironmentVariable("LB_BUNDLE_PROOF"));
+         engine->rootContext()->setContextProperty(QStringLiteral("bundleProofWidth"), qEnvironmentVariableIntValue("LB_BUNDLE_WIDTH"));
++#ifdef LB_PHOTO_FIXTURE
++        // R67 sender-photo consumer regression fixture: the valid 64x64
++        // red-left/green-right PNG served by the staged smoke. Fed to
++        // CardStore::applyRemoteSenderPhoto exactly as main.cpp's
++        // requestFinishedBytes leg feeds Api reply bytes.
++        {
++            QFile fixture(QStringLiteral(LB_PHOTO_FIXTURE));
++            if (!fixture.open(QIODevice::ReadOnly)) qFatal("Cannot open sender-photo fixture");
++            engine->rootContext()->setContextProperty(QStringLiteral("senderPhotoFixtureBytes"), fixture.readAll());
++        }
++        engine->rootContext()->setContextProperty(QStringLiteral("senderPhotoGarbageBytes"),
++            QByteArrayLiteral("not-a-real-image-payload"));
++#endif
+     }
+ private:
+     QTemporaryDir m_directory;
