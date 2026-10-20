@@ -265,7 +265,7 @@ match §2 exactly.
 | `qt/src/api.h` | `b422391234b783ddb60d2a71b467d2f7a6430a94374dbbd92986bb2f507f491c` |
 | `qt/src/main.cpp` | `030c546a5e4ca25fb300bb681a206de4e284697403c98f19dee1a1fe01ae9b9c` |
 | `qt/tests/CMakeLists.txt` | `8426f67a0301ecff3b92c19cde8e8fcf80a804b5dda6d694ddd53e758c458ae7` |
-| `qt/tests/archive_undo_consumer.py` | `1ad62bd0bc30387cb11208c09cceaa47cdfd48925228b87a8dfb6ef34dd` |
+| `qt/tests/archive_undo_consumer.py` | `1ad62bd0bc30387cb11208c09cceaa47cdfd48925228c320eb47a8dfb6ef34dd` |
 | `qt/tests/bundle_runner.cpp` | `b5700c7cfbc26bcdb39de02ff66dca1de1a676ae190e354561f908bb25cf7cca` |
 | `qt/tests/tst_senderphotopaint.qml` | `55c242d5d1a84d99ad9168cd3c224713eaf7266b02ec5361561bc196c5e73fe4` |
 | `qt/tests/fixtures/sender-photo-64x64.png` | `662f2dc6f113dfcce1e4fca794b61b0708d56d5805462d9c12f7308c7ba88757` |
@@ -390,3 +390,17 @@ without re-deriving anything.
   `scripts/credentials.json`, superseded run dirs, STALE
   `archive-undo-successor-proof.md`, and all other out-of-scope receipts
   remain untracked and untouched in the worktree.
+
+## 12. Erratum — malformed hash in §10.1 (2026-10-20, publisher self-check)
+
+Chief verification flag was correct: the §10.1 cell for
+`qt/tests/archive_undo_consumer.py` held a 59-hex transcription truncation
+(`…48925228b87a8dfb6ef34dd`). Blob truth at `f7845ee`, confirmed by
+`git show f7845ee:qt/tests/archive_undo_consumer.py | sha256sum`:
+`1ad62bd0bc30387cb11208c09cceaa47cdfd48925228c320eb47a8dfb6ef34dd`
+— corrected in place above. Full re-verification of all 49 hash cells against
+blobs at `f7845ee`: 43 match; the 3 `/tmp/…` cells (§2c, disposable binaries,
+never in git) and the 2 superseded lane-local cells (§2d, explicitly superseded
+by §10.1) are non-blobs by design, not mismatches. Builders: verify exported
+source against the Git blob, never the table alone. Build identity unchanged:
+`f7845ee`.
