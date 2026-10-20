@@ -368,3 +368,25 @@ Durable repair: this §10 is the single publisher-owned inventory — one fresh
 hash table, one settled QML value, one clause correction, one publication
 tuple — so desktop/Android/suite builders share the same immutable source
 without re-deriving anything.
+
+## 11. Publication readback (filled post-push, 2026-10-20)
+
+- Freeze commit: `f7845eea380fddef0b62f2ec3f8450dc3659f118` (91 files,
+  +8320/-85; author/committer `Darafei Praliaskouski <me@komzpa.net>` from
+  configured identity — no invented identity).
+- Push command (exact): `git push
+  --force-with-lease=refs/heads/ui-desktop-mobile-redesign-20261018:929f275946f7906cfbe67e0f4dfd08f83402a202
+  origin ui-desktop-mobile-redesign-20261018:refs/heads/ui-desktop-mobile-redesign-20261018`
+  → `929f275..f7845ee`, fast-forward, lease held.
+- Forge readback (`git ls-remote origin
+  'refs/heads/ui-desktop-mobile-redesign-20261018'`):
+  `f7845eea380fddef0b62f2ec3f8450dc3659f118` — matches local HEAD.
+- Immutable source SHA for desktop/Android/suite builders: **`f7845eea380fddef0b62f2ec3f8450dc3659f118`**.
+- Rollback (protected, same full ref expecting new OID): `git push
+  --force-with-lease=refs/heads/ui-desktop-mobile-redesign-20261018:f7845eea380fddef0b62f2ec3f8450dc3659f118
+  git@github.com:Komzpa/litterbox.git
+  929f275946f7906cfbe67e0f4dfd08f83402a202:refs/heads/ui-desktop-mobile-redesign-20261018`.
+- Unrelated state preserved: mobileux PNGs, `__pycache__`, `*.pid`,
+  `scripts/credentials.json`, superseded run dirs, STALE
+  `archive-undo-successor-proof.md`, and all other out-of-scope receipts
+  remain untracked and untouched in the worktree.
