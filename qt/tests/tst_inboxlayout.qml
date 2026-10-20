@@ -9,6 +9,7 @@ TestCase {
     name: "InboxLayout"
     when: windowShown
     width: 572
+    property url pagesDir: Qt.resolvedUrl("../pages/")
     height: 881
 
     ListModel {
@@ -34,7 +35,9 @@ TestCase {
 
     function test_desktopRailSearchAndSplitGeometry_data() {
         const splitWidth = Math.max(1220, Kirigami.Units.gridUnit * 70)
-        return [{tag: "narrow-negative-control", viewWidth: 899, rail: false, reader: false},
+        return [{tag: "narrow-negative-control", viewWidth: 250, rail: false, reader: false},
+                {tag: "phone", viewWidth: 412, rail: false, reader: false},
+                {tag: "desktop-negative-control", viewWidth: 899, rail: false, reader: false},
                 {tag: "desktop-rail-boundary", viewWidth: 900, rail: true, reader: false},
                 {tag: "before-split", viewWidth: splitWidth - 1, rail: true, reader: false},
                 {tag: "split-boundary", viewWidth: splitWidth, rail: true, reader: true},
@@ -96,6 +99,134 @@ TestCase {
             verify(readerBox.x + reader.width <= split.width + 1)
             fuzzyCompare(reader.height, stack.height, 1)
         }
+        inbox.close()
+    }
+
+    function test_densityMenuIndicatorsDoNotCoverLabels() {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 323, height: 429
+        })
+        verify(inbox)
+        inbox.show()
+        mouseClick(findChild(inbox, "inboxCommands"))
+        const menu = findChild(inbox, "headerMenu")
+        tryCompare(menu, "visible", true)
+        for (const name of ["densityComfortable", "densityCompact"]) {
+            const item = findChild(menu, name)
+            const label = findChild(item, "menuItemLabel")
+            const check = findChild(item, "densityMenuCheck")
+            verify(item && label && check && check.visible)
+            const labelBox = label.mapToItem(item, 0, 0)
+            const checkBox = check.mapToItem(item, 0, 0)
+            verify(labelBox.x + label.width <= checkBox.x, "density label must end before its check indicator")
+            verify(labelBox.y >= 0 && labelBox.y + label.height <= item.height)
+        }
+        const comfortable = findChild(menu, "densityComfortable")
+        wait(180)
+        grabImage(menu.contentItem).save("/tmp/litterbox-density-menu-popup-323x429.png")
+        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-density-menu-323x429.png")
+        mouseClick(comfortable)
+        tryCompare(inbox, "compactDensity", false)
+        tryCompare(menu, "visible", false)
+        inbox.close()
+    }
+
+    function test_emptyInboxMenuSettingsUsesPointerHitTest() {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 323, height: 429
+        })
+        verify(inbox)
+        inbox.show()
+        const emptyState = findChild(inbox, "inboxEmptyState")
+        tryCompare(emptyState, "visible", true)
+        compare(emptyState.z, 0, "empty content must not outrank popup content")
+        mouseClick(findChild(inbox, "inboxCommands"))
+        const menu = findChild(inbox, "headerMenu")
+        tryCompare(menu, "visible", true)
+        wait(180)
+        const settings = findChild(menu, "headerMenuSettings")
+        const icon = findChild(inbox, "inboxEmptyIcon")
+        const target = settings.mapToItem(inbox.contentItem, settings.width / 2, settings.height / 2)
+        const iconBox = icon.mapToItem(inbox.contentItem, 0, 0)
+        compare(icon.layer.enabled, true, "the icon render node must composite below popup content")
+        console.log("empty-menu-geometry", JSON.stringify({
+            settingsCenter: {x: target.x, y: target.y},
+            envelope: {x: iconBox.x, y: iconBox.y, width: icon.width, height: icon.height}
+        }))
+        // Dispatch at window coordinates, not directly to the menu item's signal.
+        mouseClick(inbox.contentItem, target.x, target.y)
+        tryCompare(menu, "visible", false)
+        tryCompare(findChild(inbox, "pageStack").currentItem, "objectName", "settingsPage")
+        inbox.close()
+    }
+
+    function test_narrowNavigationUsesDrawerWithoutSidebar() {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 250, height: 430
+        })
+        verify(inbox)
+        inbox.show()
+        const canvas = inbox.contentItem
+        const rail = findChild(inbox, "desktopNavigation")
+        const split = findChild(inbox, "inboxSplit")
+        compare(rail.visible, false)
+        verify(Math.abs(split.width - canvas.width) <= 1, "narrow content must not lose width to a permanent sidebar")
+        grabImage(canvas.parent).save("/tmp/litterbox-navigation-250x430.png")
+        const opener = findChild(inbox, "openNavigation")
+        verify(opener.visible && opener.width >= 48 && opener.height >= 48)
+        mouseClick(opener)
+        const drawer = findChild(inbox, "navigationDrawer")
+        tryCompare(drawer, "visible", true)
+        for (const name of ["navInbox", "navAccounts", "navAgents", "navSettings"])
+            verify(findChild(drawer, name).visible, name + " remains reachable")
+        wait(180)
+        grabImage(drawer.contentItem).save("/tmp/litterbox-navigation-drawer-popup-250x430.png")
+        grabImage(canvas.parent).save("/tmp/litterbox-navigation-drawer-250x430.png")
+        mouseClick(findChild(drawer, "navSettings"))
+        tryCompare(drawer, "visible", false)
+        compare(findChild(inbox, "pageStack").currentItem.objectName, "settingsPage")
+        inbox.handleBack()
+        tryCompare(findChild(inbox, "pageStack"), "depth", 1)
+        mouseClick(opener)
+        tryCompare(drawer, "visible", true)
+        mouseClick(findChild(drawer, "navigationSearch"))
+        tryCompare(drawer, "visible", false)
+        const searchField = findChild(inbox, "inboxSearch")
+        tryCompare(inbox, "searchShown", true)
+        tryCompare(searchField, "visible", true)
+        verify(searchField.visible)
+        inbox.close()
+    }
+    function test_navigationNeighbor480() {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 480, height: 915
+        })
+        verify(inbox)
+        inbox.show()
+        const canvas = inbox.contentItem
+        const rail = findChild(inbox, "desktopNavigation")
+        compare(rail.visible, false)
+        grabImage(canvas.parent).save("/tmp/litterbox-navigation-480x915.png")
+        const opener = findChild(inbox, "openNavigation")
+        mouseClick(opener)
+        const drawer = findChild(inbox, "navigationDrawer")
+        tryCompare(drawer, "visible", true)
+        wait(180)
+        grabImage(drawer.contentItem).save("/tmp/litterbox-navigation-drawer-popup-480x915.png")
+        grabImage(canvas.parent).save("/tmp/litterbox-navigation-drawer-480x915.png")
+        mouseClick(findChild(drawer, "navAccounts"))
+        tryCompare(drawer, "visible", false)
+        compare(findChild(inbox, "pageStack").currentItem.objectName, "gmailAccountsPage")
+        inbox.handleBack()
+        tryCompare(findChild(inbox, "pageStack"), "depth", 1)
         inbox.close()
     }
 

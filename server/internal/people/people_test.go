@@ -8,10 +8,12 @@ package people
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	_ "image/png"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,16 +32,49 @@ func tinyPNG(t *testing.T) []byte {
 }
 
 // fakePeople serves the two documented photo surfaces plus provider image
-// bytes. It records the exact personFields/readMask/readSource parameters
-// so the test proves the official contracts, not just parsing.
+// bytes. It records the exact personFields/readMask/sources parameters so
+// the test proves the official contracts, not just parsing, and it rejects
+// query names the method does not define exactly the way Google's
+// gRPC-JSON transcoder does (400 "Invalid JSON payload received. Unknown
+// name ...: Cannot bind query parameter."), so a wrong parameter name can
+// never silently pass against this fixture.
 type fakePeople struct {
 	t              *testing.T
 	png            []byte
 	personFields   []string
 	readMasks      []string
-	readSources    []string
+	sources        []string
+	unknownQueries []string
 	connectionsHit int
 	otherHit       int
+}
+
+// otherContactsQueryNames lists the documented otherContacts.list query
+// parameters (Method: otherContacts.list, People API REST reference).
+var otherContactsQueryNames = map[string]bool{
+	"readMask":         true,
+	"sources":          true,
+	"pageSize":         true,
+	"pageToken":        true,
+	"requestSyncToken": true,
+	"syncToken":        true,
+}
+
+// rejectUnknownQuery answers like Google's transcoder when a request
+// carries a query parameter the method does not define. Returns true when
+// the request was rejected.
+func (f *fakePeople) rejectUnknownQuery(w http.ResponseWriter, r *http.Request, allowed map[string]bool) bool {
+	for name := range r.URL.Query() {
+		if allowed[name] {
+			continue
+		}
+		f.unknownQueries = append(f.unknownQueries, name)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":{"code":400,"message":"Invalid JSON payload received. Unknown name %q: Cannot bind query parameter.","status":"INVALID_ARGUMENT"}}`, name)
+		return true
+	}
+	return false
 }
 
 func (f *fakePeople) photoURL(r *http.Request, name string) string {
@@ -76,9 +111,12 @@ func (f *fakePeople) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 {"url":"https://` + r.Host + `/frank2.jpg","default":false,"metadata":{"primary":true}}]}
 ]}`))
 	case strings.HasPrefix(r.URL.Path, "/otherContacts"):
+		if f.rejectUnknownQuery(w, r, otherContactsQueryNames) {
+			return
+		}
 		f.otherHit++
 		f.readMasks = append(f.readMasks, r.URL.Query().Get("readMask"))
-		f.readSources = append(f.readSources, r.URL.Query().Get("readSource"))
+		f.sources = append(f.sources, r.URL.Query()["sources"]...)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"otherContacts":[
 {"emailAddresses":[{"value":"eve@example.com"}],"photos":[
@@ -133,8 +171,19 @@ func TestBuildIndexExactMatchRejectsDefault(t *testing.T) {
 	if len(fake.readMasks) == 0 || fake.readMasks[0] != "emailAddresses,photos" {
 		t.Fatalf("otherContacts readMask = %v", fake.readMasks)
 	}
-	if len(fake.readSources) == 0 || !strings.Contains(fake.readSources[0], "READ_SOURCE_TYPE_CONTACT") || !strings.Contains(fake.readSources[0], "READ_SOURCE_TYPE_PROFILE") {
-		t.Fatalf("otherContacts readSource = %v", fake.readSources)
+	// Google documents repeated sources[] values and forbids PROFILE alone.
+	wantSources := map[string]bool{
+		"READ_SOURCE_TYPE_CONTACT": true,
+		"READ_SOURCE_TYPE_PROFILE": true,
+	}
+	for _, s := range fake.sources {
+		if !wantSources[s] {
+			t.Fatalf("otherContacts sources = %v, undocumented value %q", fake.sources, s)
+		}
+		delete(wantSources, s)
+	}
+	if len(wantSources) != 0 {
+		t.Fatalf("otherContacts sources = %v, missing %v", fake.sources, wantSources)
 	}
 	if fake.connectionsHit < 2 || fake.otherHit < 1 {
 		t.Fatalf("pagination incomplete: connections=%d other=%d", fake.connectionsHit, fake.otherHit)
@@ -165,6 +214,31 @@ func TestFetchPhotoDecodesRealImage(t *testing.T) {
 	}
 	if _, _, err = FetchPhoto(context.Background(), server.Client(), "http://example.test/a.jpg"); err == nil {
 		t.Fatal("non-https photo URL must be rejected")
+	}
+}
+
+// TestOtherContactsRejectsUndocumentedQuery is the broken-baseline negative
+// control for the People parameter contract: the pre-fix singular
+// readSource name must be rejected exactly like Google rejected it on
+// production (400 "Invalid JSON payload received. Unknown name
+// \"readSource\": Cannot bind query parameter."), while the documented
+// sources name is accepted. This keeps the regression honest: if the
+// fixture stops rejecting the wrong query, this test fails.
+func TestOtherContactsRejectsUndocumentedQuery(t *testing.T) {
+	fake := &fakePeople{t: t, png: tinyPNG(t)}
+	server := httptest.NewTLSServer(fake)
+	defer server.Close()
+	res, err := server.Client().Get(server.URL + "/otherContacts?readMask=emailAddresses%2Cphotos&readSource=READ_SOURCE_TYPE_CONTACT%2CREAD_SOURCE_TYPE_PROFILE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), `Unknown name "readSource": Cannot bind query parameter.`) {
+		t.Fatalf("undocumented query name not rejected like Google: %d %s", res.StatusCode, body)
+	}
+	if len(fake.unknownQueries) != 1 || fake.unknownQueries[0] != "readSource" {
+		t.Fatalf("unknownQueries = %v", fake.unknownQueries)
 	}
 }
 

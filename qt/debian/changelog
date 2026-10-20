@@ -1,3 +1,13 @@
+litterbox-qt (0.1-42) unstable; urgency=medium
+
+  * Keep the narrow navigation drawer instead of reserving a permanent rail.
+  * Give density menu checks a separate trailing slot, away from option labels.
+  * Keep the empty-inbox illustration below popup paint and pointer input,
+    with an empty-window Settings hit-test and real-input screenshot proof.
+  * Add narrow-window navigation and menu-geometry coverage.
+
+ -- Litterbox <litterbox@example.com>  Tue, 20 Oct 2026 20:00:00 +0400
+
 litterbox-qt (0.1-41) unstable; urgency=medium
 
   * Keep the inbox presentation DelegateModel subscribed to source updates

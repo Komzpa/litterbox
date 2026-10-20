@@ -5,9 +5,10 @@
 //   - people.connections.list with personFields=emailAddresses,photos
 //     (ScopeContactsReadonly): the authenticated user's saved contacts,
 //     including linked profile photos where Google merges them.
-//   - otherContacts.list with readMask=emailAddresses,photos and
-//     READ_SOURCE_TYPE_CONTACT plus READ_SOURCE_TYPE_PROFILE
-//     (ScopeOtherContactsReadonly): existing "other contacts".
+//   - otherContacts.list with readMask=emailAddresses,photos and the
+//     documented sources[] parameter READ_SOURCE_TYPE_CONTACT plus
+//     READ_SOURCE_TYPE_PROFILE (ScopeOtherContactsReadonly): existing
+//     "other contacts".
 //
 // There is no supported arbitrary-email lookup: Gmail messages expose no
 // sender-photo field, people.get needs an account id (not an email), and
@@ -139,14 +140,15 @@ func (c *Client) ListConnections(ctx context.Context, accessToken, pageToken str
 }
 
 // ListOtherContacts pages otherContacts.list with
-// readMask=emailAddresses,photos and both CONTACT and PROFILE read
-// sources (profile-only is disallowed by Google). otherContacts.search
-// cannot return photos, so the list endpoint is the photo pipeline.
+// readMask=emailAddresses,photos and the documented repeated sources[] query
+// values READ_SOURCE_TYPE_CONTACT and READ_SOURCE_TYPE_PROFILE. Profile-only
+// is disallowed; otherContacts.search cannot return photos, so the list
+// endpoint is the photo pipeline.
 func (c *Client) ListOtherContacts(ctx context.Context, accessToken, pageToken string) ([]Person, string, error) {
 	q := url.Values{
-		"readMask":   {"emailAddresses,photos"},
-		"pageSize":   {fmt.Sprint(listPageSize)},
-		"readSource": {"READ_SOURCE_TYPE_CONTACT,READ_SOURCE_TYPE_PROFILE"},
+		"readMask": {"emailAddresses,photos"},
+		"pageSize": {fmt.Sprint(listPageSize)},
+		"sources": {"READ_SOURCE_TYPE_CONTACT", "READ_SOURCE_TYPE_PROFILE"},
 	}
 	if pageToken != "" {
 		q.Set("pageToken", pageToken)

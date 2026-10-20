@@ -35,6 +35,7 @@ ApplicationWindow {
     onDesktopReaderChanged: Qt.callLater(placeReader)
     property bool compactDensity: true
     property bool searchShown: false
+    property bool focusSearchAfterDrawerClose: false
     property string searchQuery: ""
     readonly property bool searching: searchQuery.trim().length > 0
     property bool wasSearching: false
@@ -206,6 +207,7 @@ ApplicationWindow {
         bottomPadding: 8
         icon.width: window.actionIconSize
         icon.height: window.actionIconSize
+        indicator: Item { implicitWidth: 0; implicitHeight: 0 }
         contentItem: RowLayout {
             spacing: 12
             Kirigami.Icon {
@@ -216,12 +218,21 @@ ApplicationWindow {
                 Layout.preferredHeight: window.actionIconSize
             }
             Label {
+                objectName: "menuItemLabel"
                 text: entry.text
                 color: entry.enabled ? window.ink : window.mutedInk
                 font: window.themeFont
                 elide: Text.ElideRight
                 Layout.fillWidth: true
                 verticalAlignment: Text.AlignVCenter
+            }
+            Kirigami.Icon {
+                objectName: "densityMenuCheck"
+                source: entry.checked ? "dialog-ok" : ""
+                visible: entry.checkable
+                color: window.accent
+                Layout.preferredWidth: entry.checkable ? 20 : 0
+                Layout.preferredHeight: 20
             }
         }
         background: Rectangle {
@@ -799,8 +810,8 @@ ApplicationWindow {
                         InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; visible: !api.token; onTriggered: openPage("EnrollmentPage") }
                         InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; onTriggered: store.refresh() }
                         InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
-                        InboxMenuItem { text: qsTr("Comfortable density"); checkable: true; checked: !window.compactDensity; onTriggered: window.compactDensity = false }
-                        InboxMenuItem { text: qsTr("Compact density"); checkable: true; checked: window.compactDensity; onTriggered: window.compactDensity = true }
+                        InboxMenuItem { objectName: "densityComfortable"; text: qsTr("Comfortable density"); checkable: true; checked: !window.compactDensity; onTriggered: window.compactDensity = false }
+                        InboxMenuItem { objectName: "densityCompact"; text: qsTr("Compact density"); checkable: true; checked: window.compactDensity; onTriggered: window.compactDensity = true }
                     }
                 }
             }
@@ -1015,6 +1026,11 @@ ApplicationWindow {
         width: Math.min(window.width - 48, Math.max(260, Kirigami.Units.gridUnit * 16))
         height: window.height
         edge: Qt.LeftEdge
+        onClosed: {
+            if (!window.focusSearchAfterDrawerClose) return
+            window.focusSearchAfterDrawerClose = false
+            Qt.callLater(function() { inboxSearch.forceActiveFocus() })
+        }
         background: Rectangle { color: window.surface }
         contentItem: ScrollView {
             clip: true
@@ -1024,11 +1040,16 @@ ApplicationWindow {
                 Label { text: qsTr("Litterbox"); font.family: window.themeFont.family; font.pointSize: window.themeFont.pointSize; font.bold: true; color: window.ink; padding: 16; Layout.fillWidth: true }
                 Destinations { Layout.fillWidth: true; Layout.margins: 8 }
                 ToolButton {
+                    objectName: "navigationSearch"
                     text: qsTr("Search inbox")
                     icon.name: "edit-find"
                     implicitHeight: 48
                     Layout.fillWidth: true
-                    onClicked: { window.navigateTo(""); window.searchShown = true; inboxSearch.forceActiveFocus() }
+                    onClicked: {
+                        window.searchShown = true
+                        window.focusSearchAfterDrawerClose = true
+                        window.navigateTo("")
+                    }
                 }
                 ToolButton { text: qsTr("Close navigation"); icon.name: "go-previous"; implicitHeight: 48; Layout.fillWidth: true; onClicked: navigationDrawer.close() }
             }
@@ -1987,14 +2008,19 @@ ApplicationWindow {
                 objectName: "inboxEmptyState"
                 anchors.fill: parent
                 visible: inboxList.count === 0
-                z: 2
+                // Keep the empty state in normal content order, below popup
+                // overlays; lifting it above the list also covers menu rows.
                 ColumnLayout {
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 2 * window.edgeSpacing, 420)
                     spacing: Kirigami.Units.mediumSpacing
                     Kirigami.Icon {
+                        objectName: "inboxEmptyIcon"
                         source: "mail-mark-read"
                         color: window.accent
+                        // Composite the icon within its own content layer so
+                        // its render node cannot paint over popup overlays.
+                        layer.enabled: true
                         implicitWidth: Kirigami.Units.iconSizes.large
                         implicitHeight: implicitWidth
                         Layout.alignment: Qt.AlignHCenter
