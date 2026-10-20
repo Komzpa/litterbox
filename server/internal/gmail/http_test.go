@@ -28,13 +28,17 @@ func webTestDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql"} {
-		b, err := os.ReadFile(filepath.Join("..", "..", "db", name))
+	files, err := filepath.Glob("../../db/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		b, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err = db.Exec(tdb.Migration(string(b))); err != nil {
-			t.Fatalf("migration %s: %v", name, err)
+			t.Fatalf("migration %s: %v", file, err)
 		}
 	}
 	return db

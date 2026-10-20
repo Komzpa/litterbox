@@ -63,6 +63,26 @@ TestCase {
         verify(list.itemAtIndex(0).visible)
         inbox.close()
     }
+    // R67/R68: a cold inbox must follow source changes, not just its first
+    // snapshot; photo notifications must not disable DelegateModel updates.
+    function test_liveSnapshotPresentation() {
+        verify(store.applyRemoteCards({now: [], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 900
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        compare(list.count, 0)
+        verify(store.applyRemoteCards({now: [card("cold-first", "", "now")], later: [], missed: []}))
+        tryCompare(list, "count", 1)
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        compare(list.itemAtIndex(0).cardId, "cold-first")
+        verify(store.applyRemoteCards({now: [card("cold-replacement", "", "now")], later: [], missed: []}))
+        tryVerify(function() { return list.itemAtIndex(0).cardId === "cold-replacement" })
+        verify(store.applyRemoteCards({now: [], later: [], missed: []}))
+        tryCompare(list, "count", 0)
+        inbox.close()
+    }
     function test_senderSummary_data() {
         const cases = [
             {tag: "one-sender", names: ["LinkedIn", "LinkedIn"]},

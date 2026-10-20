@@ -1,3 +1,12 @@
+litterbox-qt (0.1-41) unstable; urgency=medium
+
+  * Keep the inbox presentation DelegateModel subscribed to source updates
+    with an explicit delegate, preserving cold snapshots and sender photos.
+  * Register the sender-photo consumer test only with its BundleTest runner;
+    remove ineffective readiness polling and native-driver delay additions.
+
+ -- Litterbox <litterbox@example.com>  Tue, 20 Oct 2026 15:30:00 +0400
+
 litterbox-qt (0.1-40) unstable; urgency=medium
 
   * Complete the narrow reader pop before reusing its retained page for the

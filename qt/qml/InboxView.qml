@@ -1210,6 +1210,9 @@ ApplicationWindow {
                     id: bundleModel
                     objectName: "bundlePresentation"
                     model: store
+                    // A non-null delegate keeps DelegateModel subscribed to source
+                    // inserts, removals and resets even though rows render below.
+                    delegate: QtObject {}
                     property var rows: []
                     property var sourceEntries: []
                     // Read source roles without ever mutating DelegateModel's groups.

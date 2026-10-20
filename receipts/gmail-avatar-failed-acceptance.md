@@ -21,7 +21,7 @@ Wiring:
 - OAuth callback persists granted scopes to `accounts.granted_photo_scopes` (migration 022, additive with legacy fallback); `people.HasPhotoScopes` gates on both `contacts.readonly` + `contacts.other.readonly` actually granted.
 - `people.BuildIndex`: `connections.list` (`personFields=emailAddresses,photos`) + `otherContacts.list` (`readMask=emailAddresses,photos`, CONTACT+PROFILE readSources), paginated, exact case-insensitive mailbox match, `Photo.default=true` rejected, primary preferred. `Gmail.modify` alone carries no photo field (asserted by status oracle, not by a network call).
 - `people.FetchPhoto`: https-only, ≤512 KiB, `image.DecodeConfig`-verified, jpeg/png/gif/webp.
-- `senderphoto.Upsert` (pgx `Execer`, transaction-friendly) → tenant/account-scoped `sender_photos` (022, RLS same shape as cards).
+- `senderphoto.Upsert` (pgx `Execer`, transaction-friendly) → tenant/account-scoped `sender_photos` (table + columns in 022; runtime grants and `tenant_isolation` RLS policy in 023 — 022 shipped neither grants nor RLS, corrected here; 023 follows the 002 `tenant_isolation` shape used by cards).
 - `cards.List` → `markSenderPhotos` (one account-scoped lookup per page; silent no-op on pre-022 schemas) → `sender_has_photo`; offline snapshot carries the flag (CF14: existing route shapes unchanged, additive field only); Qt `sender_photo` role + file:// device cache; QML `SenderAvatar` shows bytes, keeps existing geometry, initials only when genuinely unavailable.
 - Explicit unsupported parity: senders absent from both contact datasets stay uncovered even if Gmail renders a photo; no Gravatar, no third-party lookup, no undocumented Google endpoint.
 

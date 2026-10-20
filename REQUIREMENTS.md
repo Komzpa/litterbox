@@ -459,8 +459,15 @@ the final acceptance; until he sees it each item is partial.
   /v1/cards/{id}/sender-photo` (card id lookup; no provider URLs, tokens, or
   addresses in URLs/logs), flagged by `sender_has_photo` in cards/snapshot,
   and cached on the device as local `file://` (`sender_photo` role, offline
-  capable). The genuinely-absent fallback is a circle with initials in a
-  stable per-sender colour in unchanged geometry, shown on `unavailable`
+  capable). Runtime access to `sender_photos` is granted to `litterbox_app`
+  with the same `tenant_isolation` row-level-security policy shape as the
+  other tenant tables (unset or empty `litterbox.tenant_id` hides every row),
+  shipped as the upgrade-safe follow-up migration `023_sender_photos_security`
+  (022 created the table and columns but no grants or policy). Tests apply
+  the canonical lexical `server/db/*.sql` set (never a hand-maintained
+  per-test subset) so new migrations reach every fixture. The
+  genuinely-absent fallback is a circle with initials in a stable per-sender
+  colour in unchanged geometry, shown on `unavailable`
   (404) and on `authorization_required` (403). Explicit non-coverage: a
   sender absent from both contact datasets stays uncovered even when Gmail
   itself renders a photo — there is no supported arbitrary-email lookup
@@ -475,6 +482,12 @@ the final acceptance; until he sees it each item is partial.
   real `SenderAvatar` (image ready, offline reopen keeps them); negative
   control: a Gmail-only grant reports `authorization_required` with no photo
   bytes on any surface.
+  The presentation source model must keep a non-null delegate independently
+  of its live photo Connections: a cold empty inbox realizes arriving cards,
+  and later snapshots, removals and photo completions update those rows.
+  Regression: `BundleExpand::test_liveSnapshotPresentation` covers cold
+  insert, same-count replacement and removal; `senderphotopaint` runs only
+  through the registered BundleTest runner and preserves no-refresh/offline paint.
 - **R68 Scroll stays put after Archive** (decided, Darafei 2026-10-15 msg
   15893 «После архивации сообщений скролл еуда-то улетает постоянно»;
   local-archive reader follow-up 2026-10-19). Archive, Spam, swipe and Undo

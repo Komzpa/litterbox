@@ -320,7 +320,11 @@ func TestArchiveUndoNativeConsumerReject(t *testing.T) {
 	hash := sha256.Sum256([]byte(token))
 	if _, err := f.db.Exec(ctx, `INSERT INTO devices(tenant_id,id,token_hash) VALUES($1,$2,$3)`, f.tenant, device, hash[:]); err != nil { t.Fatal(err) }
 	defer f.db.Exec(ctx, `UPDATE devices SET revoked_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, device)
-	if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,source,external_id,pinned_rank) VALUES($1,$2,'manual','reject-neighbor',1)`, f.tenant, neighbor); err != nil { t.Fatal(err) }
+	if _, err := f.db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,sender_name,subject,created_at,sort_at) VALUES($1,$2,$3,'thread-2','mail','Neighbor','Successor B',now()-interval '1 hour',now()-interval '1 hour')`, f.tenant, neighbor, f.account); err != nil { t.Fatal(err) }
+	if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>B</p>')`, f.tenant, neighbor); err != nil { t.Fatal(err) }
+	if _, err := f.db.Exec(ctx, `UPDATE cards SET created_at=now(), sort_at=now() WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+	if _, err := f.db.Exec(ctx, `UPDATE cards SET subject='Disposable Archive Undo proof' WHERE tenant_id=$1 AND id=$2`, f.tenant, f.card); err != nil { t.Fatal(err) }
+	if _, err := f.db.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,'<p>Reject target</p>')`, f.tenant, f.card); err != nil { t.Fatal(err) }
 	f.fail = true // provider rejects the archive op: the reader must surface the failure truthfully
 	rejectOutput := output + "-reject"
 	if err := os.MkdirAll(rejectOutput, 0o700); err != nil { t.Fatal(err) }

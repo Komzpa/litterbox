@@ -404,3 +404,78 @@ never in git) and the 2 superseded lane-local cells (§2d, explicitly superseded
 by §10.1) are non-blobs by design, not mismatches. Builders: verify exported
 source against the Git blob, never the table alone. Build identity unchanged:
 `f7845ee`.
+
+## 11. Publication readback (filled post-push, 2026-10-20)
+
+- Freeze commit: `f7845eea380fddef0b62f2ec3f8450dc3659f118` (91 files,
+  +8320/-85; author/committer `Darafei Praliaskouski <me@komzpa.net>` from
+  `git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`, config provenance
+  `user.name`/`user.email` in `.git/config`; no `--author` injected, no agent identity).
+- Pushed to `git@github.com:Komzpa/litterbox.git`
+  `refs/heads/ui-desktop-mobile-redesign-20261018` with lease
+  `refs/heads/ui-desktop-mobile-redesign-20261018:06ac0f54732ccd2fc8a60c15ff66efe0da5aceb5`
+  (the pre-push local HEAD, observed via `git rev-parse HEAD` before the push; the remote
+  already carried `06ac0f5` per `git ls-remote origin refs/heads/ui-desktop-mobile-redesign-20261018`
+  at the time, so the lease was satisfied and the push was a no-op fast-forward confirmation
+  rather than a new write).
+- Readback after push: `git ls-remote origin refs/heads/ui-desktop-mobile-redesign-20261018`
+  → `06ac0f54732ccd2fc8a60c15ff66efe0da5aceb5`. Local branch
+  `ui-desktop-mobile-redesign-20261018` HEAD = `06ac0f54732ccd2fc8a60c15ff66efe0da5aceb5`.
+  **Local branch and published ref are the same OID but are recorded separately** — equal OIDs
+  never substitute for matching repo and ref, and this tuple is the publication evidence.
+- Source SHA at freeze: `f7845ee` (successor commit tree). The successor commit itself is
+  `06ac0f5` (receipt-only, no source delta relative to `f7845ee`).
+
+## 12. Erratum — malformed hash in §10.1 (2026-10-20, publisher self-check)
+
+Chief verification flag was correct: the §10.1 cell for `qt/tests/archive_undo_consumer.py`
+held a 59-hex transcription truncation (`1ad62bd0bc30387cb11208c09cceaa47cdfd48925228c320eb47a8dfb6ef34d`,
+59 chars, missing one nibble). The settled worktree file hashes to the full 64-hex
+`1ad62bd0bc30387cb11208c09cceaa47cdfd48925228c320eb47a8dfb6ef34dd`. No other §10.1 cell
+was affected; the remaining 35 hashes re-verified byte-identical against the settled worktree at
+publication time. The §2d lane-local value `b1f5b1bcd58263f287cd500753fd52dbf2888f95af844b54b96860dd7b0ca11f`
+is an earlier archive-lane snapshot and is **not** the frozen value — §10.1 supersedes it per its
+own stated rule.
+
+## 13. Durable reject-fixture proof summary (transferred evidence, 2026-10-20)
+
+Source of truth: `/home/kom/proj/ai_pr/litterbox-correction-suite-20261020/reject-fixture-1544/`.
+Copied here so the evidence travels with the freeze rather than living only in an OUT
+directory. No source fix; the fixture's negative oracle is preserved verbatim.
+
+- **Test:** `TestArchiveUndoNativeConsumerReject` in `server/internal/gmailsync/archive_undo_test.go`.
+- **Result:** `PASS`, `ok github.com/Komzpa/litterbox/server/internal/gmailsync 20.726s`.
+- **Fixture inputs (coherent mail order + real body, the two missing inputs the prior
+  successor-1526/native-undo-reject run lacked):**
+  - target mail `95b1b519-fbab-4635-b47e-0c5536030123`, `source=mail`, title
+    `Disposable Archive Undo proof`, body `<p>Reject target</p>`, `has_body=true`;
+  - neighbor `dc22d2e9-4469-4bd3-b9b6-a19e5334bdef`, `source=mail`, title `Successor B`,
+    body `<p>B</p>`, `has_body=true`;
+  - both `account_name=origin@example.test`, `pinned_rank=null`, `state=open`;
+  - target `created_at`/`sort_at` set to `now()` so it sorts **first** (the earlier fixture
+    left the target unranked and the neighbor `pinned_rank=1`, which made the authenticated
+    `/v1/cards` return the neighbor first and broke the exact ordered guard at script step 5).
+- **Observed consumer states (driver-receipt.json, 4 states, entry `toolbar`, exit 0):**
+  1. cold: `ids=[target, neighbor]`, `readerOpen=false`, `selected=""`, `depth=1`, `body=""`;
+  2. after `openCard(target)`: `readerOpen=true`, `selected=target`, `depth=2`,
+     `body="<html><head></head><body><p>Reject target</p></body></html>"`;
+  3. after `click(archiveMail)` + provider 403: `undoAvailable=true`,
+     `token=452e1d81-e37b-460e-9807-6a56d2563d01`,
+     `message="Action failed (HTTP 422)."`, `selected=neighbor`, `depth=2`,
+     `body="<html><head></head><body><p>B</p></body></html>"`;
+  4. after Undo expiry: `undoAvailable=false`, `message="Undo has expired."`.
+- **Reject semantics exercised:** provider returned
+  `gmail API POST /threads/thread-1/modify: 403 Forbidden: fixture Gmail denied`; the
+  consumer surfaced it as `Action failed (HTTP 422)` with a real undo token, the target
+  stayed open, `pending=0` throughout, final `outbox=[]`, `durable_ops=null`,
+  `gmail_calls=[{Thread:"thread-1", removeLabelIds:["INBOX"]}]` (one call, the rejected
+  archive), `fail=true`. This is the negative criterion: **one rejected provider archive,
+  Action failed rather than Archived, target remains open, zero durable receipts, no
+  leftover outbox** — satisfied, not repinned.
+- **Screenshot:** `reject-after-archive.png` (412x915, stack_depth 2), sha256
+  `9c1e4e10694a25c254f37a2e19e26f9f584ae6cf118f5babe921f217e8b0ac12`.
+- **Binary used:** `99c246546e6b0f4582ea16fa2ced645a816faba31cdf94701b99645af8bb0ac6`
+  (the presentation-root-1538 native build, `OUT/qt-build/litterbox-qt`).
+- **Not claimed:** this does not close the row/bundle/end/external/spam/done/snooze native
+  entries, real-Google grant/photo acceptance, or installed-release acceptance. Those gates
+  remain open per §8.
