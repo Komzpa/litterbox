@@ -1,3 +1,11 @@
+litterbox-qt (0.1-45) unstable; urgency=medium
+
+  * A reader opened on a card id outside the open-list snapshot (archived
+    elsewhere, stale bundle row) reports the mail-body failure and shows its
+    error text instead of hanging on a blank loading pane.
+
+ -- Litterbox <litterbox@example.com>  Wed, 21 Oct 2026 16:00:00 +0400
+
 litterbox-qt (0.1-44) unstable; urgency=medium
 
   * Named senders without a Google photo show their initial instead of '?'.
