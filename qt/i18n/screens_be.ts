@@ -6,67 +6,67 @@
     <message>
         <location filename="../pages/AgentChatPage.qml" line="24"/>
         <source>Agent chat</source>
-        <translation type="unfinished"></translation>
+        <translation>Чат з агентам</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="49"/>
         <source>not delivered</source>
-        <translation type="unfinished"></translation>
+        <translation>не даслана</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="81"/>
         <source>Could not load messages. Tap Refresh to try again.</source>
-        <translation type="unfinished"></translation>
+        <translation>Не ўдалося загрузіць паведамленні. Націсніце «Абнавіць», каб паўтарыць.</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="101"/>
         <source>Message is too long (maximum 4096 bytes).</source>
-        <translation type="unfinished"></translation>
+        <translation>Паведамленне занадта доўгае (максімум 4096 байт).</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="119"/>
         <source>Send not confirmed. Retry uses the same message ID.</source>
-        <translation type="unfinished"></translation>
+        <translation>Адпраўка не пацверджана. Паўторная спроба выкарыстоўвае той жа ідэнтыфікатар паведамлення.</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="142"/>
         <source>Back</source>
-        <translation type="unfinished"></translation>
+        <translation>Назад</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="166"/>
         <source>Refresh</source>
-        <translation type="unfinished"></translation>
+        <translation>Абнавіць</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="217"/>
         <source>Observed</source>
-        <translation type="unfinished"></translation>
+        <translation>Назірана</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="218"/>
         <source>You</source>
-        <translation type="unfinished"></translation>
+        <translation>Вы</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="244"/>
         <source>Retry</source>
-        <translation type="unfinished"></translation>
+        <translation>Паўтарыць</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="254"/>
         <source>No messages yet.</source>
-        <translation type="unfinished"></translation>
+        <translation>Паведамленняў пакуль няма.</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="267"/>
         <source>Message this agent…</source>
-        <translation type="unfinished"></translation>
+        <translation>Напішыце гэтаму агенту…</translation>
     </message>
     <message>
         <location filename="../pages/AgentChatPage.qml" line="273"/>
         <source>Send</source>
-        <translation type="unfinished"></translation>
+        <translation>Адправіць</translation>
     </message>
 </context>
 <context>
@@ -74,47 +74,47 @@
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="51"/>
         <source>Agents</source>
-        <translation type="unfinished"></translation>
+        <translation>Агенты</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="61"/>
         <source>Could not load the agent list.</source>
-        <translation type="unfinished"></translation>
+        <translation>Не ўдалося загрузіць спіс агентаў.</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="76"/>
         <source>Online</source>
-        <translation type="unfinished"></translation>
+        <translation>У сетцы</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="77"/>
         <source>Busy</source>
-        <translation type="unfinished"></translation>
+        <translation>Занята</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="78"/>
         <source>Offline</source>
-        <translation type="unfinished"></translation>
+        <translation>Не ў сетцы</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="79"/>
         <source>Unknown</source>
-        <translation type="unfinished"></translation>
+        <translation>Невядома</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="140"/>
         <source>No agents yet.</source>
-        <translation type="unfinished"></translation>
+        <translation>Агентаў пакуль няма.</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="157"/>
         <source>%1, %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1, %2</translation>
     </message>
     <message>
         <location filename="../pages/AgentThreadsPage.qml" line="193"/>
         <source>No messages yet</source>
-        <translation type="unfinished"></translation>
+        <translation>Паведамленняў пакуль няма</translation>
     </message>
 </context>
 <context>
@@ -122,7 +122,7 @@
     <message>
         <location filename="../pages/BackToInboxBar.qml" line="14"/>
         <source>Back to inbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Назад да ўваходных</translation>
     </message>
 </context>
 <context>
@@ -131,7 +131,7 @@
         <location filename="../qml/BundlePresentation.js" line="9"/>
         <location filename="../qml/BundlePresentation.js" line="19"/>
         <source>Bundle</source>
-        <translation type="unfinished"></translation>
+        <translation>Пакет</translation>
     </message>
 </context>
 <context>
@@ -145,7 +145,7 @@
         <location filename="../pages/EnrollmentPage.qml" line="81"/>
         <location filename="../pages/EnrollmentPage.qml" line="154"/>
         <source>Enter a valid HTTP or HTTPS server URL.</source>
-        <translation type="unfinished"></translation>
+        <translation>Увядзіце правільны адрас сервера HTTP або HTTPS.</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="85"/>
@@ -155,7 +155,7 @@
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="100"/>
         <source>Can&apos;t reach the server at %1. Check the address and that you&apos;re on the home Wi-Fi.</source>
-        <translation type="unfinished"></translation>
+        <translation>Не ўдаецца падключыцца да сервера %1. Праверце адрас і тое, ці вы ў хатняй Wi-Fi сетцы.</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="102"/>
@@ -165,12 +165,12 @@
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="104"/>
         <source>Server error %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>Памылка сервера %1.</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="137"/>
         <source>Server:</source>
-        <translation type="unfinished"></translation>
+        <translation>Сервер:</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="163"/>
@@ -210,12 +210,12 @@
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="260"/>
         <source>This device is enrolled. No invite code is needed.</source>
-        <translation type="unfinished"></translation>
+        <translation>Гэта прылада зарэгістравана. Код запрашэння не патрэбны.</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="268"/>
         <source>Enrollment is saved on this device.</source>
-        <translation type="unfinished"></translation>
+        <translation>Рэгістрацыя захавана на гэтай прыладзе.</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="267"/>
@@ -238,12 +238,12 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="100"/>
         <source>Could not load sender photo status.</source>
-        <translation type="unfinished"></translation>
+        <translation>Не ўдалося загрузіць стан фота адпраўнікоў.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="119"/>
         <source>Could not start photo authorization.</source>
-        <translation type="unfinished"></translation>
+        <translation>Не ўдалося пачаць аўтарызацыю фота.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="132"/>
@@ -263,17 +263,17 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="256"/>
         <source>Access expired</source>
-        <translation type="unfinished"></translation>
+        <translation>Доступ скончыўся</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="256"/>
         <source>Connected</source>
-        <translation type="unfinished"></translation>
+        <translation>Падключаны</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="260"/>
         <source>Reconnect</source>
-        <translation type="unfinished"></translation>
+        <translation>Падключыць нанова</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="266"/>
@@ -288,47 +288,47 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="286"/>
         <source>Sender photos</source>
-        <translation type="unfinished"></translation>
+        <translation>Фота адпраўнікоў</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="321"/>
         <source>Sender photos ready</source>
-        <translation type="unfinished"></translation>
+        <translation>Фота адпраўнікоў гатовыя</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="322"/>
         <source>Sender photos need authorization</source>
-        <translation type="unfinished"></translation>
+        <translation>Фота адпраўнікоў патрабуюць аўтарызацыі</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="323"/>
         <source>Authorized — photos appear after they sync</source>
-        <translation type="unfinished"></translation>
+        <translation>Аўтарызавана — фота з&apos;явяцца пасля сінхранізацыі</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="339"/>
         <source>Starting authorization…</source>
-        <translation type="unfinished"></translation>
+        <translation>Запуск аўтарызацыі…</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="339"/>
         <source>Authorize sender photos…</source>
-        <translation type="unfinished"></translation>
+        <translation>Аўтарызаваць фота адпраўнікоў…</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="360"/>
         <source>Open this authorization link to grant sender photo access for %1. It is bound to that account: approving with another Google account is refused and stores nothing. Litterbox never grants it for you.</source>
-        <translation type="unfinished"></translation>
+        <translation>Адкрыйце гэтую спасылку аўтарызацыі, каб даць доступ да фота адпраўнікоў для %1. Яна прывязана да гэтага акаўнта: пацвярджэнне з іншым акаўнтам Google адхіляецца і нічога не захоўвае. Litterbox ніколі не дае доступ за вас.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="361"/>
         <source>Open this authorization link to grant sender photo access. Litterbox never grants it for you.</source>
-        <translation type="unfinished"></translation>
+        <translation>Адкрыйце гэтую спасылку аўтарызацыі, каб даць доступ да фота адпраўнікоў. Litterbox ніколі не дае яго за вас.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="377"/>
         <source>Open authorization page</source>
-        <translation type="unfinished"></translation>
+        <translation>Адкрыць старонку аўтарызацыі</translation>
     </message>
 </context>
 <context>
@@ -338,128 +338,128 @@
         <location filename="../qml/InboxView.qml" line="128"/>
         <location filename="../qml/InboxView.qml" line="815"/>
         <source>Accounts</source>
-        <translation type="unfinished"></translation>
+        <translation>Акаўнты</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="50"/>
         <location filename="../qml/InboxView.qml" line="129"/>
         <location filename="../qml/InboxView.qml" line="816"/>
         <source>Agents</source>
-        <translation type="unfinished"></translation>
+        <translation>Агенты</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="51"/>
         <location filename="../qml/InboxView.qml" line="130"/>
         <location filename="../qml/InboxView.qml" line="817"/>
         <source>Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Налады</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="52"/>
         <location filename="../qml/InboxView.qml" line="52"/>
         <location filename="../qml/InboxView.qml" line="127"/>
         <source>Inbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Уваходныя</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="94"/>
         <source>Today</source>
-        <translation type="unfinished"></translation>
+        <translation>Сёння</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="94"/>
         <source>Upcoming</source>
-        <translation type="unfinished"></translation>
+        <translation>Наступныя</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="95"/>
         <source>Yesterday</source>
-        <translation type="unfinished"></translation>
+        <translation>Учора</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="95"/>
         <source>Earlier</source>
-        <translation type="unfinished"></translation>
+        <translation>Раней</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="286"/>
         <source>Gmail access for %1 expired. Reconnect it in Accounts → Connect account…</source>
-        <translation type="unfinished"></translation>
+        <translation>Доступ Gmail для %1 скончыўся. Падключыце яго нанова ў Акаўнтах → Падключыць акаўнт…</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="331"/>
         <location filename="../qml/InboxView.qml" line="2442"/>
         <source>Task</source>
-        <translation type="unfinished"></translation>
+        <translation>Задача</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="331"/>
         <source>Journal</source>
-        <translation type="unfinished"></translation>
+        <translation>Дзённік</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="331"/>
         <source>To-do</source>
-        <translation type="unfinished"></translation>
+        <translation>Спіс спраў</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="332"/>
         <source>Reminder</source>
-        <translation type="unfinished"></translation>
+        <translation>Напамінанне</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="332"/>
         <source>Meeting</source>
-        <translation type="unfinished"></translation>
+        <translation>Сустрэча</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="332"/>
         <location filename="../qml/InboxView.qml" line="333"/>
         <source>Agent</source>
-        <translation type="unfinished"></translation>
+        <translation>Агент</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="333"/>
         <source>Home Assistant</source>
-        <translation type="unfinished"></translation>
+        <translation>Home Assistant</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="333"/>
         <source>Dating</source>
-        <translation type="unfinished"></translation>
+        <translation>Знаёмствы</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="379"/>
         <location filename="../qml/InboxView.qml" line="389"/>
         <source>Archived</source>
-        <translation type="unfinished"></translation>
+        <translation>Архіўная</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="379"/>
         <source>Archived %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Архіў %1</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="389"/>
         <source>Marked as spam</source>
-        <translation type="unfinished"></translation>
+        <translation>Пазначана як спам</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="401"/>
         <source>Action failed (HTTP %1).</source>
-        <translation type="unfinished"></translation>
+        <translation>Дзеянне не выканана (HTTP %1).</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="419"/>
         <location filename="../qml/InboxView.qml" line="437"/>
         <location filename="../qml/InboxView.qml" line="448"/>
         <source>Undo has expired.</source>
-        <translation type="unfinished"></translation>
+        <translation>Тэрмін адмены скончыўся.</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="709"/>
         <source>Can&apos;t reach the server</source>
-        <translation type="unfinished"></translation>
+        <translation>Няма сувязі з серверам</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/InboxView.qml" line="358"/>
@@ -482,12 +482,12 @@
     <message>
         <location filename="../qml/InboxView.qml" line="713"/>
         <source>synced %1</source>
-        <translation type="unfinished"></translation>
+        <translation>сінхранізавана %1</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="738"/>
         <source>Navigation</source>
-        <translation type="unfinished"></translation>
+        <translation>Навігацыя</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="752"/>
@@ -496,147 +496,147 @@
         <location filename="../qml/InboxView.qml" line="839"/>
         <location filename="../qml/InboxView.qml" line="1052"/>
         <source>Search inbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Пошук ва ўваходных</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="765"/>
         <location filename="../qml/InboxView.qml" line="2072"/>
         <source>Add card</source>
-        <translation type="unfinished"></translation>
+        <translation>Дадаць картку</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="792"/>
         <location filename="../qml/InboxView.qml" line="796"/>
         <source>Inbox commands</source>
-        <translation type="unfinished"></translation>
+        <translation>Каманды ўваходных</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="818"/>
         <source>Enroll device</source>
-        <translation type="unfinished"></translation>
+        <translation>Зарэгістраваць прыладу</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="819"/>
         <source>Refresh</source>
-        <translation type="unfinished"></translation>
+        <translation>Абнавіць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="820"/>
         <source>Check updates</source>
-        <translation type="unfinished"></translation>
+        <translation>Праверыць абнаўленні</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="821"/>
         <source>Comfortable density</source>
-        <translation type="unfinished"></translation>
+        <translation>Прасторная шчыльнасць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="822"/>
         <source>Compact density</source>
-        <translation type="unfinished"></translation>
+        <translation>Кампактная шчыльнасць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="846"/>
         <location filename="../qml/InboxView.qml" line="2072"/>
         <source>Clear search</source>
-        <translation type="unfinished"></translation>
+        <translation>Ачысціць пошук</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="861"/>
         <source>Comfortable</source>
-        <translation type="unfinished"></translation>
+        <translation>Прасторны</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="861"/>
         <source>Compact</source>
-        <translation type="unfinished"></translation>
+        <translation>Кампактны</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="865"/>
         <source>Inbox density</source>
-        <translation type="unfinished"></translation>
+        <translation>Шчыльнасць уваходных</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="886"/>
         <source>Retry</source>
-        <translation type="unfinished"></translation>
+        <translation>Паўтарыць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="896"/>
         <source>Details: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Падрабязнасці: %1</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="910"/>
         <source>Update ready</source>
-        <translation type="unfinished"></translation>
+        <translation>Абнаўленне гатова</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="917"/>
         <location filename="../qml/InboxView.qml" line="2488"/>
         <source>Install</source>
-        <translation type="unfinished"></translation>
+        <translation>Усталяваць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="950"/>
         <source>Reconnect</source>
-        <translation type="unfinished"></translation>
+        <translation>Падключыць нанова</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1000"/>
         <source>Undo</source>
-        <translation type="unfinished"></translation>
+        <translation>Адмяніць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1018"/>
         <source>Checking for updates…</source>
-        <translation type="unfinished"></translation>
+        <translation>Праверка абнаўленняў…</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1019"/>
         <source>No update available</source>
-        <translation type="unfinished"></translation>
+        <translation>Абнаўленняў няма</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1027"/>
         <source>Allow installs from Litterbox in Android settings, then tap Install again</source>
-        <translation type="unfinished"></translation>
+        <translation>Дазвольце ўстаноўку з Litterbox у наладах Android, потым націсніце «Усталяваць» яшчэ раз</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1048"/>
         <source>Litterbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Litterbox</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1062"/>
         <source>Close navigation</source>
-        <translation type="unfinished"></translation>
+        <translation>Закрыць навігацыю</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1099"/>
         <source>Inbox pane width</source>
-        <translation type="unfinished"></translation>
+        <translation>Шырыня панэлі ўваходных</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Pinned</source>
-        <translation type="unfinished"></translation>
+        <translation>Замацаваныя</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Now</source>
-        <translation type="unfinished"></translation>
+        <translation>Зараз</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1501"/>
         <location filename="../qml/InboxView.qml" line="2486"/>
         <source>Later</source>
-        <translation type="unfinished"></translation>
+        <translation>Пазней</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Missed</source>
-        <translation type="unfinished"></translation>
+        <translation>Прапушчаныя</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/InboxView.qml" line="1571"/>
@@ -678,7 +678,7 @@
         <location filename="../qml/InboxView.qml" line="1687"/>
         <location filename="../qml/InboxView.qml" line="1697"/>
         <source>Archive bundle</source>
-        <translation type="unfinished"></translation>
+        <translation>Архіваваць пакет</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/InboxView.qml" line="1631"/>
@@ -701,143 +701,143 @@
     <message>
         <location filename="../qml/InboxView.qml" line="1712"/>
         <source>Bundle details</source>
-        <translation type="unfinished"></translation>
+        <translation>Падрабязнасці пакета</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1742"/>
         <source>Mark bundle as spam · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Пазначыць пакет як спам · %1</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1817"/>
         <source>Drag to reorder</source>
-        <translation type="unfinished"></translation>
+        <translation>Перацягніце, каб змяніць парадак</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1818"/>
         <source>Hold and drag to a new position</source>
-        <translation type="unfinished"></translation>
+        <translation>Утрымлівайце і перацягвайце на новае месца</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1818"/>
         <source>Position is fixed by pin or time</source>
-        <translation type="unfinished"></translation>
+        <translation>Месца зафіксавана замацаваннем або часам</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1836"/>
         <source>Open %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Адкрыць %1</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Archive</source>
-        <translation type="unfinished"></translation>
+        <translation>Архіваваць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Done</source>
-        <translation type="unfinished"></translation>
+        <translation>Гатова</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2058"/>
         <source>No matching cards</source>
-        <translation type="unfinished"></translation>
+        <translation>Няма адпаведных картак</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2058"/>
         <source>You&apos;re all caught up</source>
-        <translation type="unfinished"></translation>
+        <translation>Вы ўсё праглядзелі</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2065"/>
         <source>Try another subject, sender, account or source, or clear the search to return to your inbox.</source>
-        <translation type="unfinished"></translation>
+        <translation>Паспрабуйце іншую тэму, адпраўніка, акаўнт або крыніцу, ці ачысціце пошук, каб вярнуцца да ўваходных.</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2065"/>
         <source>New cards will appear here. Add a private note or task whenever you need one.</source>
-        <translation type="unfinished"></translation>
+        <translation>Новыя карткі з&apos;явяцца тут. Дадавайце прыватную нататку або задачу, калі спатрэбіцца.</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2150"/>
         <source>This card is fixed to its scheduled time</source>
-        <translation type="unfinished"></translation>
+        <translation>Гэтая картка замацавана на запланаваны час</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2271"/>
         <source>Select a card to read</source>
-        <translation type="unfinished"></translation>
+        <translation>Выберыце картку для чытання</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2279"/>
         <source>Your inbox stays here while you read. Drag the divider to adjust the panes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Уваходныя застаюцца тут, пакуль вы чытаеце. Перацягніце раздзяляльнік, каб наладзіць панэлі.</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2303"/>
         <source>Card note</source>
-        <translation type="unfinished"></translation>
+        <translation>Нататка да карткі</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2318"/>
         <source>Save</source>
-        <translation type="unfinished">Захаваць</translation>
+        <translation>Захаваць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2333"/>
         <location filename="../qml/InboxView.qml" line="2424"/>
         <source>Cancel</source>
-        <translation type="unfinished">Скасаваць</translation>
+        <translation>Скасаваць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2386"/>
         <source>Create card</source>
-        <translation type="unfinished"></translation>
+        <translation>Стварыць картку</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2399"/>
         <source>Create</source>
-        <translation type="unfinished"></translation>
+        <translation>Стварыць</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2442"/>
         <source>Private journal note</source>
-        <translation type="unfinished"></translation>
+        <translation>Прыватны запіс у дзённіку</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2444"/>
         <source>Card kind</source>
-        <translation type="unfinished"></translation>
+        <translation>Від карткі</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2447"/>
         <source>Title</source>
-        <translation type="unfinished"></translation>
+        <translation>Назва</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2448"/>
         <source>Details (optional)</source>
-        <translation type="unfinished"></translation>
+        <translation>Падрабязнасці (неабавязкова)</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2456"/>
         <source>Write a private note…</source>
-        <translation type="unfinished"></translation>
+        <translation>Напішыце прыватную нататку…</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2463"/>
         <source>Private · saved offline and synced to your inbox. Your assistant can read it, not write it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Прыватна · захоўваецца офлайн і сінхранізуецца з вашымі ўваходнымі. Ваш асістэнт можа чытаць, але не пісаць.</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2472"/>
         <source>Install Android update</source>
-        <translation type="unfinished"></translation>
+        <translation>Усталяваць абнаўленне Android</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2482"/>
         <source>Version %1 is downloaded and checksum-verified. Android will ask you to confirm installation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Версія %1 загружана і правераная па кантрольнай суме. Android запытае пацверджанне ўсталёўкі.</translation>
     </message>
 </context>
 <context>
@@ -850,52 +850,52 @@
     <message>
         <location filename="../pages/MailDetailPage.qml" line="86"/>
         <source>Details</source>
-        <translation type="unfinished"></translation>
+        <translation>Падрабязнасці</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="103"/>
         <source>This message is not cached on this device yet.</source>
-        <translation type="unfinished"></translation>
+        <translation>Гэта паведамленне яшчэ не захавана ў кэш на гэтай прыладзе.</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="120"/>
         <source>Message unavailable. Reconnect to cache it; opening it never archives it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Паведамленне недаступна. Падключыцеся, каб захаваць яго ў кэш; адкрыццё яго ніколі не архівуе.</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="241"/>
         <source>Earlier message</source>
-        <translation type="unfinished"></translation>
+        <translation>Раней атрыманае паведамленне</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="290"/>
         <source>Back to inbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Назад да ўваходных</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Archive</source>
-        <translation type="unfinished"></translation>
+        <translation>Архіваваць</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Archive note</source>
-        <translation type="unfinished"></translation>
+        <translation>Архіваваць нататку</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Complete</source>
-        <translation type="unfinished"></translation>
+        <translation>Завяршыць</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Dismiss</source>
-        <translation type="unfinished"></translation>
+        <translation>Адхіліць</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="340"/>
         <source>Open source</source>
-        <translation type="unfinished"></translation>
+        <translation>Адкрыць крыніцу</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="340"/>
@@ -1019,89 +1019,91 @@
     <message>
         <location filename="../pages/SettingsPage.qml" line="24"/>
         <source>Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Налады</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="57"/>
         <source>Account details unavailable while offline.</source>
-        <translation type="unfinished"></translation>
+        <translation>Даныя акаўнта недаступныя афлайн.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="72"/>
         <source>Server URL</source>
-        <translation type="unfinished"></translation>
+        <translation>Адрас сервера</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="85"/>
         <source>Enter a valid HTTP or HTTPS server URL.</source>
-        <translation type="unfinished"></translation>
+        <translation>Увядзіце правільны адрас сервера HTTP або HTTPS.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="92"/>
         <source>Save server URL</source>
-        <translation type="unfinished"></translation>
+        <translation>Захаваць адрас сервера</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="97"/>
         <source>Server URL saved.</source>
-        <translation type="unfinished"></translation>
+        <translation>Адрас сервера захаваны.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="102"/>
         <source>Enrollment</source>
-        <translation type="unfinished"></translation>
+        <translation>Рэгістрацыя</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="105"/>
         <source>Enrolled</source>
-        <translation type="unfinished"></translation>
+        <translation>Зарэгістравана</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="105"/>
         <source>Not enrolled</source>
-        <translation type="unfinished"></translation>
+        <translation>Не зарэгістравана</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="111"/>
         <source>Use Enroll device in the inbox menu to connect.</source>
-        <translation type="unfinished"></translation>
+        <translation>Каб падключыцца, выкарыстайце «Зарэгістраваць прыладу» ў меню ўваходных.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="113"/>
         <source>Device: %1
 Device ID: %2
 Tenant: %3</source>
-        <translation type="unfinished"></translation>
+        <translation>Прылада: %1
+ID прылады: %2
+Прастора: %3</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="114"/>
         <source>Enrollment is saved on this device. Device details were not saved by the previous version.</source>
-        <translation type="unfinished"></translation>
+        <translation>Рэгістрацыя захавана на гэтай прыладзе. Даныя прылады не былі захаваны папярэдняй версіяй.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="120"/>
         <source>Connected accounts</source>
-        <translation type="unfinished"></translation>
+        <translation>Падключаныя акаўнты</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="123"/>
         <source>No accounts connected.</source>
-        <translation type="unfinished">Няма падключаных акаўнтаў.</translation>
+        <translation>Няма падключаных акаўнтаў.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="131"/>
         <source>Checking updates…</source>
-        <translation type="unfinished"></translation>
+        <translation>Праверка абнаўленняў…</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="131"/>
         <source>Check updates</source>
-        <translation type="unfinished"></translation>
+        <translation>Праверыць абнаўленні</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="139"/>
         <source>In-app updates are available on Android.</source>
-        <translation type="unfinished"></translation>
+        <translation>Абнаўленні ў праграме даступныя на Android.</translation>
     </message>
 </context>
 </TS>
