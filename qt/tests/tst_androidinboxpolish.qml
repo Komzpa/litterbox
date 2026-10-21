@@ -84,9 +84,16 @@ TestCase {
             const date = findChild(row, (bundle ? "bundleDate-" : "mailDate-") + id)
             const archive = findChild(row, (bundle ? "archiveBundle-" : "doneButton-") + id)
             const more = findChild(row, bundle ? "bundleOptions-" + id : "inboxActions")
-            fuzzyCompare(title.mapToItem(frame, 0, 0).x, singleTitle.mapToItem(singleFrame, 0, 0).x, 1)
-            fuzzyCompare(date.mapToItem(frame, date.width, 0).x, singleDate.mapToItem(singleFrame, singleDate.width, 0).x, 1)
-            fuzzyCompare(archive.mapToItem(frame, 0, 0).x, singleArchive.mapToItem(singleFrame, 0, 0).x, 1)
+            compare(title.mapToItem(frame, 0, 0).x, singleTitle.mapToItem(singleFrame, 0, 0).x)
+            compare(date.parent.width - date.x - date.width, (48 - inbox.actionIconSize) / 2, "date has the same trailing inset as action icon ink")
+            compare(archive.mapToItem(frame, 0, 0).x, singleArchive.mapToItem(singleFrame, 0, 0).x)
+            compare(archive.icon.width, singleArchive.icon.width, "bundle and single archive icons have equal width")
+            compare(archive.icon.height, singleArchive.icon.height, "bundle and single archive icons have equal height")
+            if (bundle && id !== "yesterday-head") {
+                const bundleAvatar = findChild(row, "senderAvatar")
+                const singleAvatar = findChild(single, "senderAvatar")
+                compare(bundleAvatar.mapToItem(frame, 0, 0).x, singleAvatar.mapToItem(singleFrame, 0, 0).x, "bundle and single avatars share the leading x")
+            }
             verify(Math.abs(title.mapToItem(frame, 0, 0).y - date.mapToItem(frame, 0, 0).y) <= 6, "time shares the title line")
             fuzzyCompare(archive.mapToItem(frame, 0, 0).y, more.mapToItem(frame, 0, 0).y, 1)
             for (const item of [title, date, archive, more]) {

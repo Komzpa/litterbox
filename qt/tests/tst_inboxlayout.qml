@@ -617,11 +617,18 @@ TestCase {
             verify(label.text.indexOf("\n") < 0 && label.text.indexOf("\r") < 0, id + " must not render an ellipsis-only line")
             compare(label.lineCount, 1)
         }
-        const mail = findChild(list.itemAtIndex(0), "mailTitle-postgis6144")
-        const bundle = findChild(list.itemAtIndex(2), "bundleTitleLabel-miles")
+        function rowFor(id) {
+            for (let i = 0; i < list.count; ++i) {
+                const row = list.itemAtIndex(i)
+                if (row && row.cardId === id) return row
+            }
+            fail("Missing rendered preview row " + id)
+        }
+        const mail = findChild(rowFor("postgis6144"), "mailTitle-postgis6144")
+        const bundle = findChild(rowFor("miles"), "bundleTitleLabel-miles")
         compare(mail.mapToItem(list, 0, 0).x, bundle.mapToItem(list, 0, 0).x)
-        compare(findChild(list.itemAtIndex(0), "mailSnippet-postgis6144").text, "PostgreSQL and POSTGIS version:")
-        compare(findChild(list.itemAtIndex(1), "mailSnippet-postgis6143").visible, false, "signature-only reply has no server snippet")
+        compare(findChild(rowFor("postgis6144"), "mailSnippet-postgis6144").text, "PostgreSQL and POSTGIS version:")
+        compare(findChild(rowFor("postgis6143"), "mailSnippet-postgis6143").visible, false, "signature-only reply has no server snippet")
         inbox.close()
     }
     // Popup anchoring (bundle-popup-20261021): the bundle-details menu is

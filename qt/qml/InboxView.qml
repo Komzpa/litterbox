@@ -1642,7 +1642,7 @@ ApplicationWindow {
                                     // leading column with the R36 chevron, so it uses R67's compact 28dp
                                     // circle while the chevron icon keeps the column's right side.
                                     SenderAvatar {
-                                        x: 0
+                                        x: window.compactInbox ? 8 : 0
                                         y: 2
                                         width: window.compactInbox ? 32 : 28
                                         height: width
@@ -1672,6 +1672,7 @@ ApplicationWindow {
                                         color: window.mutedInk
                                         font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                         Layout.fillWidth: true
+                                        Layout.rightMargin: (48 - window.actionIconSize) / 2
                                         horizontalAlignment: Text.AlignRight
                                     }
                                     GridLayout {
@@ -1681,7 +1682,7 @@ ApplicationWindow {
                                         layoutDirection: window.compactInbox ? Qt.RightToLeft : Qt.LeftToRight
                                         rowSpacing: 0
                                         columnSpacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
-                                Button {
+                                ToolButton {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
                                     text: qsTr("Archive bundle")
@@ -1960,6 +1961,7 @@ ApplicationWindow {
                                         color: window.mutedInk
                                         font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                         Layout.fillWidth: true
+                                        Layout.rightMargin: (48 - window.actionIconSize) / 2
                                         horizontalAlignment: Text.AlignRight
                                     }
                                     GridLayout {
