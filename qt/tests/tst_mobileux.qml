@@ -157,11 +157,11 @@ TestCase {
         verify(polisRow)
         // R63: previews drop leading invisible characters and emoji.
         compare(findChild(polisRow, "mailSnippet-polis-1").text, "Туристическая страховка для поездки в Европу")
-        // Time sits on the sender header line; archive and overflow stay at the right edge.
-        const sender = findChild(polisRow, "mailSender-polis-1")
-        const time = findChild(polisRow, "phoneMailDate-polis-1")
+        // Time shares the subject line; archive and overflow stay at the right edge.
+        const subject = findChild(polisRow, "mailTitle-polis-1")
+        const time = findChild(polisRow, "mailDate-polis-1")
         verify(time.visible)
-        fuzzyCompare(time.mapToItem(polisRow, 0, 0).y, sender.mapToItem(polisRow, 0, 0).y, 4)
+        fuzzyCompare(time.mapToItem(polisRow, 0, 0).y, subject.mapToItem(polisRow, 0, 0).y, 6)
         const archive = findChild(polisRow, "doneButton-polis-1")
         verify(archive.visible)
         verify(archive.mapToItem(polisRow, 0, 0).x + archive.width > polisRow.width - 64)

@@ -376,7 +376,7 @@ TestCase {
             const row = list.itemAtIndex(i)
             const memberContext = findChild(row, "mailContext-bundle-" + i)
             const memberSender = findChild(row, "mailSender-bundle-" + i)
-            const memberDate = findChild(row, (inbox.compactInbox ? "phoneMailDate-" : "mailDate-") + "bundle-" + i)
+            const memberDate = findChild(row, "mailDate-bundle-" + i)
             const memberSnippet = findChild(row, "mailSnippet-bundle-" + i)
             verify(memberContext && memberContext.visible, "expanded bundle mail context must be visible")
             verify(memberSender && memberSender.visible, "expanded bundle sender must be visible")
@@ -438,7 +438,7 @@ TestCase {
             const row = list.itemAtIndex(i)
             compare(findChild(row, "mailTitle-" + cards[i].id).text, cards[i].title)
             compare(findChild(row, "mailSnippet-" + cards[i].id).text, cards[i].snippet)
-            verify(findChild(row, (inbox.compactInbox ? "phoneMailDate-" : "mailDate-") + cards[i].id).visible)
+            verify(findChild(row, "mailDate-" + cards[i].id).visible)
         }
         const singleRow = list.itemAtIndex(3)
         verify(findChild(singleRow, "mailSender-single-context").visible)
@@ -518,16 +518,23 @@ TestCase {
         wait(200)
         const phase = "after"
         grabImage(inbox.contentItem).save("/tmp/litterbox-clean-previews/" + phase + "-" + data.viewWidth + ".png")
-        const flying = findChild(list.itemAtIndex(0), "mailSnippet-flying")
-        const jasmine = findChild(list.itemAtIndex(3), "mailSnippet-jasmine")
-        const qgis = findChild(list.itemAtIndex(4), "mailSnippet-qgis")
+        function rowFor(id) {
+            for (let i = 0; i < list.count; ++i) {
+                const row = list.itemAtIndex(i)
+                if (row && row.cardId === id) return row
+            }
+            fail("Missing preview row " + id)
+        }
+        const flying = findChild(rowFor("flying"), "mailSnippet-flying")
+        const jasmine = findChild(rowFor("jasmine"), "mailSnippet-jasmine")
+        const qgis = findChild(rowFor("qgis"), "mailSnippet-qgis")
         compare(flying.visible, false, "sender-only preview must not repeat the sender")
         compare(qgis.text, "Hi list")
         verify(jasmine.text.indexOf("\n") < 0 && jasmine.text.indexOf("\r") < 0,
                "preview whitespace must not create an ellipsis-only line")
         compare(jasmine.lineCount, 1)
-        const mailRow = list.itemAtIndex(3)
-        const bundleRow = list.itemAtIndex(1)
+        const mailRow = rowFor("jasmine")
+        const bundleRow = rowFor("odm")
         function x(row, name) {
             const item = findChild(row, name)
             return item.mapToItem(list, 0, 0).x + (item.leftPadding || 0)
@@ -560,10 +567,9 @@ TestCase {
         const bundleActions = actionGroup(bundleRow, "archiveBundle-odm", "bundleOptions-odm")
         compare(mailActions.left, bundleActions.left)
         compare(mailActions.right, bundleActions.right)
-        // R36/R50 use the list pane, not the 1440px window, as the breakpoint.
-        // Hidden desktop dates have no layout position in a compact split.
-        const mailDateName = (inbox.compactInbox ? "phoneMailDate-" : "mailDate-") + "jasmine"
-        const bundleDateName = (inbox.compactInbox ? "phoneBundleDate-" : "bundleDate-") + "odm"
+        // Phone and desktop use the same title-aligned trailing date column.
+        const mailDateName = "mailDate-jasmine"
+        const bundleDateName = "bundleDate-odm"
         const mailDate = findChild(mailRow, mailDateName)
         const bundleDate = findChild(bundleRow, bundleDateName)
         for (const pair of [[mailRow, mailDate], [bundleRow, bundleDate]]) {
@@ -576,8 +582,8 @@ TestCase {
         }
         if (inbox.compactInbox) {
             const mailTitle = findChild(mailRow, "mailTitle-jasmine")
-            verify(mailDate.mapToItem(list, mailDate.width, 0).x <= mailTitle.mapToItem(list, mailTitle.width, 0).x,
-                   "Compact mail arrival stays in the main text column, clear of the action group")
+            verify(mailDate.mapToItem(list, 0, 0).x >= mailTitle.mapToItem(list, mailTitle.width, 0).x,
+                   "Compact mail arrival stays beside the subject, above the action group")
             verify(bundleDate.mapToItem(list, 0, bundleDate.height).y <= bundleActions.top,
                    "Compact bundle arrival stays above its action group")
         } else {

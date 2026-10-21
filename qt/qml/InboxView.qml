@@ -786,7 +786,7 @@ ApplicationWindow {
                 }
                 ToolButton {
                     objectName: "inboxCommands"
-                    icon.name: "application-menu"
+                    icon.name: "overflow-menu"
                     icon.width: 24
                     icon.height: 24
                     text: qsTr("Inbox commands")
@@ -1296,6 +1296,39 @@ ApplicationWindow {
                             window.bundleSections = sections
                         }
                         let ordered = [].concat(...groups)
+                        // Sort ordinary mail only; manual/timed/pinned priorities stay
+                        // source-owned. Keep each bundle together at its newest arrival.
+                        const units = []
+                        const bundleUnits = {}
+                        for (const entry of ordered) {
+                            if (entry.card.bundle_leader === false) continue
+                            const unit = [entry]
+                            units.push(unit)
+                            if (entry.card.bundle_leader === true) bundleUnits[entry.card.bundle_id] = unit
+                        }
+                        for (const entry of ordered) {
+                            if (entry.card.bundle_leader !== false) continue
+                            const unit = bundleUnits[entry.card.bundle_id]
+                            if (unit) unit.push(entry)
+                        }
+                        function ordinaryMail(unit) {
+                            const card = unit[0].card
+                            return card.source === "mail" && !card.timed && card.pinned_rank == null && card.section !== "pinned"
+                        }
+                        function arrival(unit) {
+                            const card = unit[0].card
+                            const summary = summaries[card.bundle_id]
+                            return Date.parse(summary && summary.latestAt ? summary.latestAt : card.received_at) || 0
+                        }
+                        for (let start = 0; start < units.length;) {
+                            if (!ordinaryMail(units[start])) { ++start; continue }
+                            let end = start + 1
+                            while (end < units.length && ordinaryMail(units[end]) && units[end][0].card.section === units[start][0].card.section) ++end
+                            const run = units.slice(start, end).sort((a, b) => arrival(b) - arrival(a))
+                            units.splice(start, end - start, ...run)
+                            start = end
+                        }
+                        ordered = [].concat(...units)
                         if (window.searching) {
                             const matches = {}
                             const matchingBundles = {}
@@ -1324,6 +1357,8 @@ ApplicationWindow {
                         for (const entry of ordered) {
                             const card = entry.card
                             if (card.bundle_leader === false && (window.searching ? window.searchCollapsedBundles[card.bundle_id] : !window.expandedBundles[card.bundle_id])) continue
+                            // Expanded children share the head's date landmark.
+                            if (card.bundle_leader === false) continue
                             const section = card.bundle_leader !== undefined ? sections[card.bundle_id] : card.section
                             headings[entry.cardId] = section !== previousSection
                             const summary = summaries[card.bundle_id]
@@ -1499,7 +1534,8 @@ ApplicationWindow {
                                 visible: cardRow.bundled && cardRow.bundleExpanded && !cardRow.bundleLeader
                             }
                             Rectangle {
-                                x: window.edgeSpacing
+                                objectName: "bundleRail"
+                                x: window.edgeSpacing + 24
                                 y: cardRow.bundleLeader ? cardFrame.topPadding + bundleDivider.y : 0
                                 width: 3
                                 height: parent.height - y - (cardRow.lastMember ? window.edgeSpacing : 0)
@@ -1515,14 +1551,14 @@ ApplicationWindow {
                                 Layout.minimumHeight: window.compactDensity ? 0 : 84
                                 columnSpacing: Kirigami.Units.smallSpacing
                                 rowSpacing: Kirigami.Units.smallSpacing
-                                columns: window.compactInbox ? 1 : 2
+                                columns: 2
                                 Button {
                                     id: bundleToggle
                                     objectName: "bundleToggle-" + cardId
                                     Layout.row: 0
                                     Layout.column: 0
                                     Layout.fillWidth: true
-                                    Layout.minimumWidth: 48
+                                    Layout.minimumWidth: 0
                                     implicitHeight: Math.max(48, contentItem.implicitHeight)
                                     padding: 0
                                     leftPadding: 0
@@ -1552,7 +1588,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); wrapMode: window.compactInbox ? Text.WordWrap : Text.Wrap; Layout.fillWidth: true; Layout.maximumWidth: Infinity }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize * 1.10, bold: true}); wrapMode: Text.WordWrap; maximumLineCount: window.largeText ? Infinity : 2; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                             Rectangle {
                                                 Layout.row: window.compactInbox ? 1 : 0
                                                 Layout.column: window.compactInbox ? 0 : 2
@@ -1624,38 +1660,29 @@ ApplicationWindow {
                                     Keys.onEscapePressed: { if (cardRow.bundleExpanded) window.toggleBundle(card.bundle_id) }
                                 }
                                 ColumnLayout {
-                                    Layout.row: window.compactInbox ? 1 : 0
-                                    Layout.column: window.compactInbox ? 0 : 1
+                                    Layout.row: 0
+                                    Layout.column: 1
                                     Layout.alignment: Qt.AlignTop
-                                    Layout.fillWidth: window.compactInbox
-                                    Layout.preferredWidth: window.compactInbox ? -1 : 120
-                                    Layout.minimumWidth: window.compactInbox ? 0 : 120
-                                    Layout.maximumWidth: window.compactInbox ? Infinity : 120
+                                    Layout.preferredWidth: window.compactInbox ? 96 : 120
+                                    Layout.minimumWidth: window.compactInbox ? 96 : 120
+                                    Layout.maximumWidth: window.compactInbox ? 96 : 120
                                     spacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
                                     Label {
                                         objectName: "bundleDate-" + cardId
                                         text: window.mailArrival(cardRow.latestCard)
-                                        visible: !window.compactInbox && text.length > 0
+                                        visible: text.length > 0
                                         color: window.mutedInk
-                                        font: window.themeFont
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignRight
                                     }
                                     GridLayout {
-                                        // R63: phones stack the newest time over the archive so the title keeps the width.
+                                        // Match the single-mail trailing action column.
                                         Layout.alignment: Qt.AlignRight
-                                        columns: window.compactInbox ? 2 : 3
+                                        columns: 2
+                                        layoutDirection: window.compactInbox ? Qt.RightToLeft : Qt.LeftToRight
                                         rowSpacing: 0
                                         columnSpacing: window.compactInbox ? 0 : Kirigami.Units.smallSpacing
-                                        Label {
-                                            objectName: "phoneBundleDate-" + cardId
-                                            Layout.alignment: Qt.AlignRight
-                                            Layout.columnSpan: window.compactInbox ? 2 : 1
-                                            visible: window.compactInbox
-                                            text: window.mailArrival(cardRow.latestCard)
-                                            color: window.mutedInk
-                                            font.pointSize: window.themeFont.pointSize - 2
-                                        }
                                 Button {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
@@ -1827,6 +1854,8 @@ ApplicationWindow {
                                     }
                                     Layout.minimumHeight: 48
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    Layout.alignment: Qt.AlignTop
                                     spacing: window.compactInbox ? 2 : Kirigami.Units.smallSpacing
                                     Kirigami.Heading {
                                         objectName: "mailTitle-" + cardId
@@ -1836,14 +1865,14 @@ ApplicationWindow {
                                         // Same as Kirigami's level-4 size without a per-row Theme object.
                                         font.pointSize: window.themeFont.pointSize * 1.10
                                         font.weight: Font.DemiBold
-                                        wrapMode: !window.compactDensity || window.largeText ? Text.Wrap : Text.NoWrap
-                                        maximumLineCount: !window.compactDensity || window.largeText ? 2 : 1
+                                        wrapMode: window.compactInbox || !window.compactDensity || window.largeText ? Text.Wrap : Text.NoWrap
+                                        maximumLineCount: window.largeText ? Infinity : window.compactInbox && cardRow.bundled ? 3 : window.compactInbox || !window.compactDensity ? 2 : 1
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
-                                        visible: card.source === "mail" && (window.compactInbox || (cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
+                                        visible: card.source === "mail" && ((cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing
                                         Label {
@@ -1889,15 +1918,6 @@ ApplicationWindow {
                                             elide: Text.ElideLeft
                                             Layout.maximumWidth: Math.min(180, cardText.width / 2)
                                         }
-                                        Item { Layout.fillWidth: true; visible: window.compactInbox && !mailSenderLabel.visible }
-                                        // R63: the arrival time sits on the header line, right-aligned.
-                                        Label {
-                                            objectName: "phoneMailDate-" + cardId
-                                            visible: window.compactInbox && card.source === "mail" && text.length > 0
-                                            text: card.source === "mail" ? window.mailArrival(card) : ""
-                                            color: window.mutedInk
-                                            font.pointSize: window.themeFont.pointSize - 2
-                                        }
                                     }
                                     Label {
                                         objectName: "sourceLabel-" + cardId
@@ -1938,9 +1958,9 @@ ApplicationWindow {
                                     Label {
                                         objectName: "mailDate-" + cardId
                                         text: window.mailArrival(card)
-                                        visible: !window.compactInbox && card.source === "mail" && text.length > 0
+                                        visible: card.source === "mail" && text.length > 0
                                         color: window.mutedInk
-                                        font: window.themeFont
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignRight
                                     }
