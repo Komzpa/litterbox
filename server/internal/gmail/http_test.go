@@ -311,3 +311,63 @@ func stateURL(res *httptest.ResponseRecorder) string {
 	_ = json.Unmarshal(res.Body.Bytes(), &start)
 	return start.URL
 }
+
+// TestCallbackLegacySchemaConnect pins the pre-024 degrade path: on a
+// deployment without the flow/account_id columns the plain connect callback
+// still completes through the legacy state row, while photo consent fails
+// closed with 503 instead of storing a state row the callback could never
+// verify.
+func TestCallbackLegacySchemaConnect(t *testing.T) {
+	db := webTestDB(t)
+	if _, err := db.Exec(`ALTER TABLE gmail_oauth_states DROP COLUMN IF EXISTS flow, DROP COLUMN IF EXISTS account_id`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE accounts DROP COLUMN IF EXISTS granted_photo_scopes`); err != nil {
+		t.Fatal(err)
+	}
+	tenant := uuid.New()
+	if _, err := db.Exec("INSERT INTO tenants(id) VALUES($1)", tenant); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider(t)
+	provider.tokenBody = `{"access_token":"at-fake","refresh_token":"rt-fake","token_type":"Bearer","expires_in":3600,"scope":"` + ScopeGmailModify + `"}`
+	mux := http.NewServeMux()
+	h := &WebHandler{DB: db, Config: WebConfig{Credentials: &Credentials{ClientID: "fake-client-id", ClientSecret: "fake-client-secret"}, CallbackURL: "https://example.test/v1/gmail/oauth/callback", AuthURL: provider.server.URL + "/auth", TokenURL: provider.server.URL + "/token", ProfileURL: provider.server.URL + "/profile", RevokeURL: provider.server.URL + "/revoke", StateSecret: []byte("12345678901234567890123456789012")}}
+	h.Routes(mux)
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r = r.WithContext(WithTenant(r.Context(), tenant.String()))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	start := call("POST", ConnectPath, "")
+	if start.Code != 200 {
+		t.Fatalf("connect: %d %s", start.Code, start.Body.String())
+	}
+	var parsed struct {
+		URL string `json:"authorization_url"`
+	}
+	if err := json.Unmarshal(start.Body.Bytes(), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	auth, err := url.Parse(parsed.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", OAuthCallbackPath+"?state="+url.QueryEscape(auth.Query().Get("state"))+"&code=fake-code", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("legacy connect callback: %d %s", w.Code, w.Body.String())
+	}
+	var accountID uuid.UUID
+	if err := db.QueryRow("SELECT id FROM accounts WHERE tenant_id=$1 AND address='owner@example.org'", tenant).Scan(&accountID); err != nil {
+		t.Fatal(err)
+	}
+	provider.tokenBody = `{"access_token":"at-photo","refresh_token":"rt-photo","token_type":"Bearer","expires_in":3600,"scope":"` + FullPhotoScope() + `"}`
+	if got := call("POST", PhotoConsentPath, `{"account_id":"`+accountID.String()+`"}`); got.Code != 503 || !strings.Contains(got.Body.String(), "migration 024") {
+		t.Fatalf("legacy photo consent: %d %s", got.Code, got.Body.String())
+	}
+}

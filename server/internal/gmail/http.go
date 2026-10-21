@@ -209,6 +209,13 @@ func (h *WebHandler) beginPhotoConsent(w http.ResponseWriter, r *http.Request) {
 	}
 	_, e = tx.ExecContext(r.Context(), `INSERT INTO gmail_oauth_states(tenant_id,state_hash,code_verifier,redirect_uri,expires_at,flow,account_id) VALUES($1,$2,$3,$4,now()+interval '10 minutes','photo',$5)`, tenant, stateHash(state), verifier, h.Config.CallbackURL, accountID)
 	if e != nil {
+		// Old deployments without migration 024 cannot bind the consent
+		// to an account: fail closed and say so instead of storing an
+		// unbound state row that the callback could never verify.
+		if isUndefinedColumn(e) {
+			http.Error(w, "sender photo consent needs a server database update (migration 024). Plain Gmail connect still works.", 503)
+			return
+		}
 		http.Error(w, "could not save OAuth state", 500)
 		return
 	}
@@ -217,6 +224,11 @@ func (h *WebHandler) beginPhotoConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"authorization_url": authURL})
+}
+// isUndefinedColumn reports PostgreSQL undefined-column (42703), used to
+// degrade truthfully on deployments without the latest migration.
+func isUndefinedColumn(e error) bool {
+	return e != nil && strings.Contains(e.Error(), "42703")
 }
 func (h *WebHandler) newState(tenant uuid.UUID) (string, error) {
 	nonce, e := randomState()
@@ -268,7 +280,23 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	var verifier, redirect, flow string
 	var boundID sql.NullString
+	// A failed statement aborts the whole transaction in PostgreSQL, so the
+	// legacy retry below needs a savepoint: without one the retry would always
+	// die with "current transaction is aborted".
+	_, _ = tx.ExecContext(r.Context(), "SAVEPOINT oauth_consume")
 	e = tx.QueryRowContext(r.Context(), `DELETE FROM gmail_oauth_states WHERE tenant_id=$1 AND state_hash=$2 AND expires_at>now() RETURNING code_verifier,redirect_uri,flow,account_id::text`, tenant, stateHash(state)).Scan(&verifier, &redirect, &flow, &boundID)
+	if e != nil {
+		// Old deployments without migration 024 degrade to the plain
+		// connect flow: consume the legacy state row. Photo binding
+		// needs 024 applied; it never silently degrades to unbound.
+		_, _ = tx.ExecContext(r.Context(), "ROLLBACK TO SAVEPOINT oauth_consume")
+		e = tx.QueryRowContext(r.Context(), `DELETE FROM gmail_oauth_states WHERE tenant_id=$1 AND state_hash=$2 AND expires_at>now() RETURNING code_verifier,redirect_uri`, tenant, stateHash(state)).Scan(&verifier, &redirect)
+		if e == nil {
+			flow = "connect"
+		}
+	} else {
+		_, _ = tx.ExecContext(r.Context(), "RELEASE SAVEPOINT oauth_consume")
+	}
 	if e != nil {
 		httpapi.MessagePage(w, 400, "Invalid or expired OAuth state. Start connecting Gmail again from Litterbox.")
 		return
@@ -349,17 +377,27 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 	// gets unioned with it (that would claim scopes the stored token does not
 	// carry). Old deployments without granted_photo_scopes degrade to
 	// Gmail-only: try the new column, fall back to the legacy insert.
+	// A failed statement aborts the transaction, so the legacy retries below
+	// share one savepoint established before the first new-column probe: the
+	// scope-preservation SELECT itself fails closed (42703) on old schemas.
+	_, _ = store.ExecContext(r.Context(), "SAVEPOINT oauth_store")
 	newToken, newScopes := []byte(tok.RefreshToken), tok.Scope
 	if !HasPhotoScopes(newScopes) {
 		var oldToken []byte
 		var oldScopes string
 		if err := store.QueryRowContext(r.Context(), `SELECT refresh_token,granted_photo_scopes FROM accounts WHERE tenant_id=$1 AND address=$2`, tenant, email).Scan(&oldToken, &oldScopes); err == nil && HasPhotoScopes(oldScopes) {
 			newToken, newScopes = oldToken, oldScopes
+		} else if err != nil {
+			_, _ = store.ExecContext(r.Context(), "ROLLBACK TO SAVEPOINT oauth_store")
+			_, _ = store.ExecContext(r.Context(), "SAVEPOINT oauth_store")
 		}
 	}
 	_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status,granted_photo_scopes) VALUES($1,$2,$3,$4,'active',$5) ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active',granted_photo_scopes=EXCLUDED.granted_photo_scopes`, tenant, accountID, email, newToken, newScopes)
 	if e != nil {
+		_, _ = store.ExecContext(r.Context(), "ROLLBACK TO SAVEPOINT oauth_store")
 		_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active'`, tenant, accountID, email, newToken)
+	} else {
+		_, _ = store.ExecContext(r.Context(), "RELEASE SAVEPOINT oauth_store")
 	}
 	if e != nil {
 		httpapi.MessagePage(w, 500, "Could not save Gmail account. Try connecting Gmail again from Litterbox.")
