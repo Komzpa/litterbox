@@ -1101,13 +1101,17 @@ void CardStore::requestMailBody(const QString &cardId) {
     if (!m_online) return;
     // Mail cards keep their existing fetchable body; non-mail cards opt in
     // via has_body from /v1/cards. Cards without either have no body route.
+    // A reader opened on an id the open-list snapshot no longer contains
+    // (archived elsewhere, stale bundle row) must still stop loading: with
+    // no cached body and no fetch possible, report the failure so the reader
+    // shows its error text instead of a blank pane stuck on loading.
     const QVariantMap *card = nullptr;
     for (const QVariantMap &c : m_cards) {
         if (c.value(QStringLiteral("id")).toString() == cardId) { card = &c; break; }
     }
-    if (!card) return;
+    if (!card) { emit mailBodyFailed(cardId); return; }
     const bool isMail = card->value(QStringLiteral("source")).toString() == QStringLiteral("mail");
-    if (!isMail && !card->value(QStringLiteral("has_body")).toBool()) return;
+    if (!isMail && !card->value(QStringLiteral("has_body")).toBool()) { emit mailBodyFailed(cardId); return; }
     m_bodyPrefetchQueue.removeAll(cardId);
     const auto inFlight = m_bodyRequests.constFind(cardId);
     if (inFlight != m_bodyRequests.cend() && !inFlight.value().hasExpired()) return;

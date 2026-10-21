@@ -880,12 +880,13 @@ private slots:
         QSignalSpy failed(&store, &CardStore::mailBodyFailed);
         store.setOnline(true);
         QCOMPARE(requested.size(), 1);
+        // Unfetchable ids now report failure instead of hanging the reader.
         store.requestMailBody(manual);
         store.requestMailBody("missing");
         store.requestMailBody(cardId);
         QCOMPARE(requested.size(), 1);
         store.applyRemoteMailBody(cardId, {{"html", "   "}});
-        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.size(), 3);
         QVERIFY(store.cachedMailBody(cardId).isEmpty());
         store.requestMailBody(cardId);
         QCOMPARE(requested.size(), 2);
@@ -894,7 +895,7 @@ private slots:
         const QVariantMap useful = store.cachedMailBody(cardId);
         store.applyRemoteMailBody(cardId, {{"error", "rate limit exceeded"}});
         store.reportMailBodyFailed(cardId);
-        QCOMPARE(failed.size(), 3);
+        QCOMPARE(failed.size(), 5);
         QCOMPARE(store.cachedMailBody(cardId), useful);
         store.requestMailBody(cardId);
         QCOMPARE(changed.size(), 2);
@@ -905,6 +906,34 @@ private slots:
         QCOMPARE(requested.size(), 2);
         QCOMPARE(store.pendingOps(), 0);
         QCOMPARE(store.rowCount(), 2);
+    }
+    void unknownCardBodyRequestReportsFailure() {
+        // A reader opened on an id the open-list snapshot no longer contains
+        // (archived elsewhere, stale bundle row) must not hang with loading
+        // stuck on: with no cached body and no fetch possible, report the
+        // failure so the reader shows its error instead of a blank pane.
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("body-unknown.sqlite")));
+        const QString manual = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"source", "mail"}},
+            QVariantMap{{"id", manual}, {"source", "manual"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        store.setOnline(true);
+        QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
+        QSignalSpy failed(&store, &CardStore::mailBodyFailed);
+        // Unknown id: no request is possible, but the failure is reported so
+        // MailDetailPage.reload stops loading and shows its error text.
+        store.requestMailBody("no-such-card");
+        QCOMPARE(requested.size(), 0);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(0).toString(), QString("no-such-card"));
+        // Known card with no body route (non-mail, no has_body): same contract.
+        store.requestMailBody(manual);
+        QCOMPARE(requested.size(), 0);
+        QCOMPARE(failed.size(), 2);
+        QCOMPARE(failed.last().at(0).toString(), manual);
     }
     void archive429StaysDurableAndOptimisticThenAcksSameOp() {
         QTemporaryDir directory;
