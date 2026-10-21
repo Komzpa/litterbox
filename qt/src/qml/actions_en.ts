@@ -6,99 +6,99 @@
     <message>
         <location filename="CardActions.qml" line="30"/>
         <source>Archive in Gmail%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Archive in Gmail%1</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="30"/>
         <source>Archive private note</source>
-        <translation type="unfinished"></translation>
+        <translation>Archive private note</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="30"/>
         <source>Dismiss Home Assistant notification</source>
-        <translation type="unfinished"></translation>
+        <translation>Dismiss Home Assistant notification</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="30"/>
         <source>Complete task in Litterbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Complete task in Litterbox</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="30"/>
         <source>Dismiss in Litterbox only</source>
-        <translation type="unfinished"></translation>
+        <translation>Dismiss in Litterbox only</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="51"/>
         <source>In one hour</source>
-        <translation type="unfinished"></translation>
+        <translation>In one hour</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="54"/>
         <source>This evening</source>
-        <translation type="unfinished"></translation>
+        <translation>This evening</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="55"/>
         <source>Tomorrow morning</source>
-        <translation type="unfinished"></translation>
+        <translation>Tomorrow morning</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="56"/>
         <source>Next Monday morning</source>
-        <translation type="unfinished"></translation>
+        <translation>Next Monday morning</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="110"/>
         <location filename="CardActions.qml" line="116"/>
         <location filename="CardActions.qml" line="687"/>
         <source>Enter a valid future local date and time.</source>
-        <translation type="unfinished"></translation>
+        <translation>Enter a valid future local date and time.</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="147"/>
         <source>More actions</source>
-        <translation type="unfinished"></translation>
+        <translation>More actions</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="155"/>
         <source>More actions for %1</source>
-        <translation type="unfinished"></translation>
+        <translation>More actions for %1</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="240"/>
         <source>Close</source>
-        <translation type="unfinished"></translation>
+        <translation>Close</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="312"/>
         <source>Mark as spam%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Mark as spam%1</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="324"/>
         <source>Open in Gmail</source>
-        <translation type="unfinished"></translation>
+        <translation>Open in Gmail</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="324"/>
         <source>Open source</source>
-        <translation type="unfinished"></translation>
+        <translation>Open source</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="331"/>
         <source>Read cached · stays in Litterbox</source>
-        <translation type="unfinished"></translation>
+        <translation>Read cached · stays in Litterbox</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="338"/>
         <source>Note · instruction for this card</source>
-        <translation type="unfinished"></translation>
+        <translation>Note · instruction for this card</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="344"/>
         <source>Snooze · choose when</source>
-        <translation type="unfinished"></translation>
+        <translation>Snooze · choose when</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="350"/>
@@ -118,66 +118,66 @@
     <message>
         <location filename="CardActions.qml" line="471"/>
         <source>Custom date and time…</source>
-        <translation type="unfinished"></translation>
+        <translation>Custom date and time…</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="499"/>
         <source>Snooze until</source>
-        <translation type="unfinished"></translation>
+        <translation>Snooze until</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="515"/>
         <location filename="CardActions.qml" line="714"/>
         <source>OK</source>
-        <translation type="unfinished"></translation>
+        <translation>OK</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="543"/>
         <location filename="CardActions.qml" line="729"/>
         <source>Cancel</source>
-        <translation type="unfinished"></translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="607"/>
         <location filename="CardActions.qml" line="616"/>
         <source>Year</source>
-        <translation type="unfinished"></translation>
+        <translation>Year</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="618"/>
         <location filename="CardActions.qml" line="627"/>
         <source>Month</source>
-        <translation type="unfinished"></translation>
+        <translation>Month</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="629"/>
         <source>Day</source>
-        <translation type="unfinished"></translation>
+        <translation>Day</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="638"/>
         <source>Day of month</source>
-        <translation type="unfinished"></translation>
+        <translation>Day of month</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="644"/>
         <source>Time</source>
-        <translation type="unfinished"></translation>
+        <translation>Time</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="654"/>
         <source>Hour</source>
-        <translation type="unfinished"></translation>
+        <translation>Hour</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="664"/>
         <source>Minute</source>
-        <translation type="unfinished"></translation>
+        <translation>Minute</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="668"/>
         <source>Brings the card back %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Brings the card back %1</translation>
     </message>
     <message>
         <location filename="CardActions.qml" line="706"/>

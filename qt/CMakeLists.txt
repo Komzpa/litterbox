@@ -33,9 +33,11 @@ qt_add_executable(litterbox-qt
     src/timerules.cpp
 )
 qt_add_translations(litterbox-qt
-    TS_FILES i18n/screens_ru.ts i18n/screens_be.ts src/qml/actions_ru.ts src/qml/actions_be.ts
+    TS_FILES i18n/screens_ru.ts i18n/screens_be.ts i18n/screens_en.ts src/qml/actions_ru.ts src/qml/actions_be.ts src/qml/actions_en.ts
     RESOURCE_PREFIX "/i18n"
 )
+# C++ updater strings (src/androidupdater.cpp) ship in the screens catalogs
+# via the target's default lupdate sources; English catalogs carry source text.
 if(NOT ANDROID)
     target_sources(litterbox-qt PRIVATE src/maildocumentprofile.h src/maildocumentprofile.cpp
         src/updatewatcher.h src/updatewatcher.cpp)

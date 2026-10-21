@@ -118,6 +118,121 @@
     </message>
 </context>
 <context>
+    <name>AndroidUpdater</name>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="219"/>
+        <source>update server, package, and device token are required</source>
+        <translation>необходимы сервер обновлений, пакет и токен устройства</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="227"/>
+        <source>update server URL is invalid</source>
+        <translation>недопустимый URL сервера обновлений</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="231"/>
+        <source>installed Android version is unavailable</source>
+        <translation>установленная версия Android недоступна</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="307"/>
+        <source>update manifest exceeds size limit</source>
+        <translation>манифест обновления превышает ограничение размера</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="315"/>
+        <source>update manifest unavailable (HTTP %1)</source>
+        <translation>манифест обновления недоступен (HTTP %1)</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="322"/>
+        <source>update manifest is not valid JSON</source>
+        <translation>манифест обновления не является корректным JSON</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="332"/>
+        <source>update manifest is missing required fields</source>
+        <translation>в манифесте обновления отсутствуют обязательные поля</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="336"/>
+        <source>update package identity does not match this app</source>
+        <translation>идентификатор пакета обновления не соответствует этому приложению</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="340"/>
+        <source>update manifest SHA-256 is invalid</source>
+        <translation>недопустимый SHA-256 манифеста обновления</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="344"/>
+        <source>update download path is not the fixed same-origin route</source>
+        <translation>путь скачивания обновления не является фиксированным маршрутом того же источника</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="351"/>
+        <source>update version is not a valid versionCode</source>
+        <translation>версия обновления не является допустимым versionCode</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="375"/>
+        <source>could not create download directory</source>
+        <translation>не удалось создать каталог загрузки</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="389"/>
+        <source>could not write update file</source>
+        <translation>не удалось записать файл обновления</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="408"/>
+        <location filename="../src/androidupdater.cpp" line="432"/>
+        <source>update APK exceeds size limit</source>
+        <translation>APK обновления превышает ограничение размера</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="414"/>
+        <location filename="../src/androidupdater.cpp" line="434"/>
+        <source>could not write complete update APK</source>
+        <translation>не удалось записать полный APK обновления</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="457"/>
+        <source>update download failed (HTTP %1)</source>
+        <translation>загрузка обновления не удалась (HTTP %1)</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="462"/>
+        <source>update checksum verification failed</source>
+        <translation>проверка контрольной суммы обновления не удалась</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="467"/>
+        <source>could not finalize update file</source>
+        <translation>не удалось завершить файл обновления</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="495"/>
+        <source>no verified update is ready to install</source>
+        <translation>нет проверенного обновления, готового к установке</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="501"/>
+        <source>Android context unavailable</source>
+        <translation>контекст Android недоступен</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="512"/>
+        <source>could not build installer content URI</source>
+        <translation>не удалось построить content URI установщика</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="546"/>
+        <source>in-app install is only supported on Android</source>
+        <translation>установка из приложения поддерживается только на Android</translation>
+    </message>
+</context>
+<context>
     <name>BackToInboxBar</name>
     <message>
         <location filename="../pages/BackToInboxBar.qml" line="14"/>

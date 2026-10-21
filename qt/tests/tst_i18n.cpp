@@ -95,6 +95,55 @@ private slots:
         QVERIFY(body.contains(QStringLiteral("<numerusform>%n письма</numerusform>")));
         QVERIFY(body.contains(QStringLiteral("<numerusform>%n писем</numerusform>")));
     }
+    void belarusianCatalogComplete()
+    {
+        const QString qtDir = QStringLiteral(LB_QT_SOURCE_DIR);
+        const QString screens = qtDir + QStringLiteral("/i18n/screens_be.ts");
+        const QString actions = qtDir + QStringLiteral("/src/qml/actions_be.ts");
+        for (const QString &path : {screens, actions}) {
+            QFile f(path);
+            QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text),
+                     qPrintable(QStringLiteral("missing %1").arg(path)));
+            const QString body = QString::fromUtf8(f.readAll());
+            QVERIFY2(!body.contains(QStringLiteral("type=\"unfinished\"")),
+                     qPrintable(QStringLiteral("%1 has unfinished entries").arg(path)));
+        }
+        // Spot-check Belarusian key strings (not English passthrough).
+        QFile f(screens);
+        f.open(QIODevice::ReadOnly | QIODevice::Text);
+        const QString body = QString::fromUtf8(f.readAll());
+        QVERIFY(body.contains(QStringLiteral("Назад да ўваходных")));
+        QFile g(actions);
+        g.open(QIODevice::ReadOnly | QIODevice::Text);
+        const QString abody = QString::fromUtf8(g.readAll());
+        QVERIFY(abody.contains(QStringLiteral("Архіваваць у Gmail")));
+    }
+
+    void androidUpdaterCatalogued()
+    {
+        const QString qtDir = QStringLiteral(LB_QT_SOURCE_DIR);
+        const QStringList screens = {
+            qtDir + QStringLiteral("/i18n/screens_ru.ts"),
+            qtDir + QStringLiteral("/i18n/screens_be.ts"),
+            qtDir + QStringLiteral("/i18n/screens_en.ts"),
+        };
+        for (const QString &path : screens) {
+            QFile f(path);
+            QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text),
+                     qPrintable(QStringLiteral("missing %1").arg(path)));
+            const QString body = QString::fromUtf8(f.readAll());
+            const int ctxAt = body.indexOf(QStringLiteral("<name>AndroidUpdater</name>"));
+            QVERIFY2(ctxAt >= 0,
+                     qPrintable(QStringLiteral("%1 lacks AndroidUpdater context").arg(path)));
+            const int ctxEnd = body.indexOf(QStringLiteral("</context>"), ctxAt);
+            QVERIFY(ctxEnd > ctxAt);
+            const QString ctx = body.mid(ctxAt, ctxEnd - ctxAt);
+            QVERIFY2(!ctx.contains(QStringLiteral("type=\"unfinished\"")),
+                     qPrintable(QStringLiteral("%1 AndroidUpdater has unfinished entries").arg(path)));
+            QVERIFY2(ctx.contains(QStringLiteral("<source>update manifest SHA-256 is invalid</source>")),
+                     qPrintable(QStringLiteral("%1 AndroidUpdater misses manifest strings").arg(path)));
+        }
+    }
 };
 
 QTEST_MAIN(I18nTest)

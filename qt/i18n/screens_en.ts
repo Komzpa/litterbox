@@ -118,6 +118,121 @@
     </message>
 </context>
 <context>
+    <name>AndroidUpdater</name>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="219"/>
+        <source>update server, package, and device token are required</source>
+        <translation>update server, package, and device token are required</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="227"/>
+        <source>update server URL is invalid</source>
+        <translation>update server URL is invalid</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="231"/>
+        <source>installed Android version is unavailable</source>
+        <translation>installed Android version is unavailable</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="307"/>
+        <source>update manifest exceeds size limit</source>
+        <translation>update manifest exceeds size limit</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="315"/>
+        <source>update manifest unavailable (HTTP %1)</source>
+        <translation>update manifest unavailable (HTTP %1)</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="322"/>
+        <source>update manifest is not valid JSON</source>
+        <translation>update manifest is not valid JSON</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="332"/>
+        <source>update manifest is missing required fields</source>
+        <translation>update manifest is missing required fields</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="336"/>
+        <source>update package identity does not match this app</source>
+        <translation>update package identity does not match this app</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="340"/>
+        <source>update manifest SHA-256 is invalid</source>
+        <translation>update manifest SHA-256 is invalid</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="344"/>
+        <source>update download path is not the fixed same-origin route</source>
+        <translation>update download path is not the fixed same-origin route</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="351"/>
+        <source>update version is not a valid versionCode</source>
+        <translation>update version is not a valid versionCode</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="375"/>
+        <source>could not create download directory</source>
+        <translation>could not create download directory</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="389"/>
+        <source>could not write update file</source>
+        <translation>could not write update file</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="408"/>
+        <location filename="../src/androidupdater.cpp" line="432"/>
+        <source>update APK exceeds size limit</source>
+        <translation>update APK exceeds size limit</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="414"/>
+        <location filename="../src/androidupdater.cpp" line="434"/>
+        <source>could not write complete update APK</source>
+        <translation>could not write complete update APK</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="457"/>
+        <source>update download failed (HTTP %1)</source>
+        <translation>update download failed (HTTP %1)</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="462"/>
+        <source>update checksum verification failed</source>
+        <translation>update checksum verification failed</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="467"/>
+        <source>could not finalize update file</source>
+        <translation>could not finalize update file</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="495"/>
+        <source>no verified update is ready to install</source>
+        <translation>no verified update is ready to install</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="501"/>
+        <source>Android context unavailable</source>
+        <translation>Android context unavailable</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="512"/>
+        <source>could not build installer content URI</source>
+        <translation>could not build installer content URI</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="546"/>
+        <source>in-app install is only supported on Android</source>
+        <translation>in-app install is only supported on Android</translation>
+    </message>
+</context>
+<context>
     <name>BackToInboxBar</name>
     <message>
         <location filename="../pages/BackToInboxBar.qml" line="14"/>

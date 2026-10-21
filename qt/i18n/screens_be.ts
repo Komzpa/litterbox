@@ -118,6 +118,121 @@
     </message>
 </context>
 <context>
+    <name>AndroidUpdater</name>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="219"/>
+        <source>update server, package, and device token are required</source>
+        <translation>неабходныя сервер абнаўленняў, пакет і токен прылады</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="227"/>
+        <source>update server URL is invalid</source>
+        <translation>несапраўдны URL сервера абнаўленняў</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="231"/>
+        <source>installed Android version is unavailable</source>
+        <translation>усталяваная версія Android недаступная</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="307"/>
+        <source>update manifest exceeds size limit</source>
+        <translation>маніфест абнаўлення перавышае абмежаванне памеру</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="315"/>
+        <source>update manifest unavailable (HTTP %1)</source>
+        <translation>маніфест абнаўлення недаступны (HTTP %1)</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="322"/>
+        <source>update manifest is not valid JSON</source>
+        <translation>маніфест абнаўлення не зʼяўляецца карэктным JSON</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="332"/>
+        <source>update manifest is missing required fields</source>
+        <translation>у маніфесце абнаўлення няма абавязковых палёў</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="336"/>
+        <source>update package identity does not match this app</source>
+        <translation>ідэнтыфікатар пакета абнаўлення не адпавядае гэтай праграме</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="340"/>
+        <source>update manifest SHA-256 is invalid</source>
+        <translation>несапраўдны SHA-256 маніфеста абнаўлення</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="344"/>
+        <source>update download path is not the fixed same-origin route</source>
+        <translation>шлях спампоўвання абнаўлення не зʼяўляецца фіксаваным маршрутам той жа крыніцы</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="351"/>
+        <source>update version is not a valid versionCode</source>
+        <translation>версія абнаўлення не зʼяўляецца дапушчальным versionCode</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="375"/>
+        <source>could not create download directory</source>
+        <translation>не ўдалося стварыць каталог загрузкі</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="389"/>
+        <source>could not write update file</source>
+        <translation>не ўдалося запісаць файл абнаўлення</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="408"/>
+        <location filename="../src/androidupdater.cpp" line="432"/>
+        <source>update APK exceeds size limit</source>
+        <translation>APK абнаўлення перавышае абмежаванне памеру</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="414"/>
+        <location filename="../src/androidupdater.cpp" line="434"/>
+        <source>could not write complete update APK</source>
+        <translation>не ўдалося запісаць поўны APK абнаўлення</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="457"/>
+        <source>update download failed (HTTP %1)</source>
+        <translation>спампоўванне абнаўлення не ўдалося (HTTP %1)</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="462"/>
+        <source>update checksum verification failed</source>
+        <translation>праверка кантрольнай сумы абнаўлення не ўдалася</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="467"/>
+        <source>could not finalize update file</source>
+        <translation>не ўдалося завяршыць файл абнаўлення</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="495"/>
+        <source>no verified update is ready to install</source>
+        <translation>няма праверанага абнаўлення, гатовага да ўсталёўкі</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="501"/>
+        <source>Android context unavailable</source>
+        <translation>кантэкст Android недаступны</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="512"/>
+        <source>could not build installer content URI</source>
+        <translation>не ўдалося пабудаваць content URI усталёўшчыка</translation>
+    </message>
+    <message>
+        <location filename="../src/androidupdater.cpp" line="546"/>
+        <source>in-app install is only supported on Android</source>
+        <translation>усталёўка з праграмы падтрымліваецца толькі на Android</translation>
+    </message>
+</context>
+<context>
     <name>BackToInboxBar</name>
     <message>
         <location filename="../pages/BackToInboxBar.qml" line="14"/>
