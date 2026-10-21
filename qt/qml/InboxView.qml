@@ -1320,13 +1320,17 @@ ApplicationWindow {
                             const summary = summaries[card.bundle_id]
                             return Date.parse(summary && summary.latestAt ? summary.latestAt : card.received_at) || 0
                         }
-                        for (let start = 0; start < units.length;) {
-                            if (!ordinaryMail(units[start])) { ++start; continue }
-                            let end = start + 1
-                            while (end < units.length && ordinaryMail(units[end]) && units[end][0].card.section === units[start][0].card.section) ++end
-                            const run = units.slice(start, end).sort((a, b) => arrival(b) - arrival(a))
-                            units.splice(start, end - start, ...run)
-                            start = end
+                        const mailSlots = {}
+                        for (let i = 0; i < units.length; ++i) {
+                            if (!ordinaryMail(units[i])) continue
+                            const section = units[i][0].card.section
+                            if (!mailSlots[section]) mailSlots[section] = []
+                            mailSlots[section].push(i)
+                        }
+                        for (const section in mailSlots) {
+                            const slots = mailSlots[section]
+                            const sorted = slots.map(i => units[i]).sort((a, b) => arrival(b) - arrival(a))
+                            for (let i = 0; i < slots.length; ++i) units[slots[i]] = sorted[i]
                         }
                         ordered = [].concat(...units)
                         if (window.searching) {
@@ -1352,7 +1356,7 @@ ApplicationWindow {
                         window.bundleSummaries = refresh ? summaries : Object.assign({}, summaries)
                         const headings = {}
                         const dates = {}
-                        let previousDate = ""
+                        const seenDates = {}
                         let previousSection = ""
                         for (const entry of ordered) {
                             const card = entry.card
@@ -1363,8 +1367,11 @@ ApplicationWindow {
                             headings[entry.cardId] = section !== previousSection
                             const summary = summaries[card.bundle_id]
                             const date = window.dateLandmark(card.bundle_leader === true && summary && summary.latestAt ? {received_at: summary.latestAt} : card)
-                            if (date && (date !== previousDate || section !== previousSection)) dates[entry.cardId] = date
-                            previousDate = date
+                            const dateKey = section + ":" + date
+                            if (date && !seenDates[dateKey]) {
+                                dates[entry.cardId] = date
+                                seenDates[dateKey] = true
+                            }
                             previousSection = section
                         }
                         window.sectionStarts = headings
@@ -1512,11 +1519,11 @@ ApplicationWindow {
                         x: (parent.width - width) / 2
                         y: sectionHeader.height + (cardRow.lifted ? window.dragOffset : 0)
                         padding: window.edgeSpacing
-                        topPadding: window.compactDensity ? 6 : 12
-                        bottomPadding: window.compactDensity ? 6 : 12
+                        topPadding: cardRow.bundled && !cardRow.bundleLeader ? 4 : window.compactDensity ? 6 : 12
+                        bottomPadding: cardRow.bundled && !cardRow.bundleLeader ? 4 : window.compactDensity ? 6 : 12
                         rightPadding: window.compactInbox ? 0 : window.edgeSpacing
                         background: Rectangle {
-                            color: cardRow.lifted ? "#e4efed" : cardRow.selected ? "#e7f1ee" : window.surface
+                            color: cardRow.lifted ? "#e4efed" : cardRow.selected ? "#e7f1ee" : cardRow.bundled && !cardRow.bundleLeader ? "#f7faf9" : window.surface
                             border.color: cardRow.selected || cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus || cardRow.lifted ? window.accent : cardRow.bundled ? "#cbded8" : "#edf0ef"
                             border.width: cardRow.bundled && cardRow.bundleExpanded ? 0 : cardRow.selected || cardText.activeFocus || bundleToggle.activeFocus || archiveBundle.activeFocus || bundleOptions.activeFocus ? 2 : 1
                             radius: cardRow.bundled && cardRow.bundleExpanded ? 0 : Kirigami.Units.cornerRadius
@@ -1527,8 +1534,8 @@ ApplicationWindow {
                             Rectangle { width: parent.width; height: 1; color: "#cbded8"; visible: cardRow.bundled && cardRow.bundleExpanded && cardRow.bundleLeader }
                             Rectangle { y: parent.height - 1; width: parent.width; height: 1; color: "#cbded8"; visible: cardRow.bundled && cardRow.bundleExpanded && cardRow.lastMember }
                             Rectangle {
-                                x: window.edgeSpacing
-                                width: parent.width - 2 * window.edgeSpacing
+                                x: window.edgeSpacing + cardRow.bundleTextInset
+                                width: parent.width - x - window.edgeSpacing
                                 height: 1
                                 color: "#e0e9e6"
                                 visible: cardRow.bundled && cardRow.bundleExpanded && !cardRow.bundleLeader
@@ -1590,6 +1597,7 @@ ApplicationWindow {
                                             }
                                             Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize * 1.10, bold: true}); wrapMode: Text.WordWrap; maximumLineCount: window.largeText ? Infinity : 2; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                             Rectangle {
+                                                visible: (card.bundle_member_count || 0) >= 2
                                                 Layout.row: window.compactInbox ? 1 : 0
                                                 Layout.column: window.compactInbox ? 0 : 2
                                                 Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0
