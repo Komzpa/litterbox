@@ -27,7 +27,8 @@
 #include <QTimer>
 #include <QThread>
 #include <QDateTime>
-#include <QImage>
+#include <QLocale>
+#include <QTranslator>
 #include <QQuickWindow>
 #include <QSize>
 #include <QSqlDatabase>
@@ -124,6 +125,33 @@ int main(int argc, char *argv[])
 #endif
     app.setApplicationName(QStringLiteral("Litterbox"));
     app.setOrganizationName(QStringLiteral("Litterbox"));
+    // i18n: load compiled translators for the system locale, fall back to
+    // English (source strings) when no catalog matches. Screens cover
+    // qml+pages, actions cover src/qml/CardActions. Both are embedded by
+    // qt_add_translations under :/i18n (e.g. :/i18n/screens_ru.qm).
+    QTranslator screensTranslator, actionsTranslator;
+    {
+        const QLocale sysLocale = QLocale::system();
+        const QString localeName = sysLocale.name();
+        const QString lang = localeName.split(QLatin1Char('_')).constFirst();
+        const QStringList candidates = { localeName, lang };
+        for (const QString &tag : candidates) {
+            if (screensTranslator.isEmpty()
+                && screensTranslator.load(QStringLiteral(":/i18n/screens_%1.qm").arg(tag)))
+                app.installTranslator(&screensTranslator);
+            if (actionsTranslator.isEmpty()
+                && actionsTranslator.load(QStringLiteral(":/i18n/actions_%1.qm").arg(tag)))
+                app.installTranslator(&actionsTranslator);
+            if (!screensTranslator.isEmpty() && !actionsTranslator.isEmpty())
+                break;
+        }
+        // Qt's own load(locale, base, "_", dir) form as a second chance:
+        // covers screens_ru_RU-style names if the catalog ever uses them.
+        if (screensTranslator.isEmpty() && screensTranslator.load(sysLocale, QStringLiteral("screens"), QStringLiteral("_"), QStringLiteral(":/i18n")))
+            app.installTranslator(&screensTranslator);
+        if (actionsTranslator.isEmpty() && actionsTranslator.load(sysLocale, QStringLiteral("actions"), QStringLiteral("_"), QStringLiteral(":/i18n")))
+            app.installTranslator(&actionsTranslator);
+    }
     // UI stall meter (opt-in via LITTERBOX_STALL_LOG=1, off by default):
     // a precise 16 ms heartbeat on the GUI thread; any gap >100 ms means the
     // event loop was blocked and is logged with a wall-clock timestamp.

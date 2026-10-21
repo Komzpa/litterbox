@@ -10,8 +10,12 @@ QString TimeRules::format(const QString &at, const QDateTime &now)
     const QTimeZone zone("Asia/Tbilisi");
     const QDateTime local = instant.toTimeZone(zone);
     const QDateTime reference = now.toTimeZone(zone);
-    const QLocale belarusian(QLocale::Belarusian, QLocale::Belarus);
-    const QString clock = belarusian.toString(local.time(), QStringLiteral("HH:mm"));
+    // R30: display uses the system locale. The product zone stays
+    // Asia/Tbilisi for day boundaries; only the formatting locale follows
+    // the system (was hardcoded Belarusian, so ru_RU still showed
+    // Belarusian month names).
+    const QLocale locale = QLocale::system();
+    const QString clock = locale.toString(local.time(), QStringLiteral("HH:mm"));
     if (local.date() == reference.date()) return clock;
-    return belarusian.toString(local.date(), QStringLiteral("d MMM")) + QLatin1Char(' ') + clock;
+    return locale.toString(local.date(), QStringLiteral("d MMM")) + QLatin1Char(' ') + clock;
 }

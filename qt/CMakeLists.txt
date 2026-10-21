@@ -7,7 +7,7 @@ project(litterbox-qt VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Test QuickControls2 Svg)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Test QuickControls2 Svg LinguistTools)
 find_package(KF6Kirigami CONFIG REQUIRED)
 if(NOT ANDROID)
     find_package(Qt6 6.5 REQUIRED COMPONENTS WebEngineQuick)
@@ -31,6 +31,10 @@ qt_add_executable(litterbox-qt
     src/CardStore.cpp
     src/timerules.h
     src/timerules.cpp
+)
+qt_add_translations(litterbox-qt
+    TS_FILES i18n/screens_ru.ts i18n/screens_be.ts src/qml/actions_ru.ts src/qml/actions_be.ts
+    RESOURCE_PREFIX "/i18n"
 )
 if(NOT ANDROID)
     target_sources(litterbox-qt PRIVATE src/maildocumentprofile.h src/maildocumentprofile.cpp
@@ -150,6 +154,10 @@ qt_add_executable(tst_timerules tests/tst_timerules.cpp src/timerules.h src/time
 target_include_directories(tst_timerules PRIVATE src)
 target_link_libraries(tst_timerules PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME timerules COMMAND tst_timerules)
+qt_add_executable(tst_i18n tests/tst_i18n.cpp)
+target_link_libraries(tst_i18n PRIVATE Qt6::Core Qt6::Test)
+target_compile_definitions(tst_i18n PRIVATE LB_QT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME i18n COMMAND tst_i18n)
 
 qt_add_executable(tst_api tests/tst_api.cpp src/api.h src/api.cpp)
 target_include_directories(tst_api PRIVATE src)

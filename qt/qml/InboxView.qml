@@ -354,7 +354,8 @@ ApplicationWindow {
     }
     function emailCountText(count) {
         const value = Number(count)
-        return qsTr("%1 %2").arg(value).arg(value === 1 ? qsTr("email") : qsTr("emails"))
+        // %n plural: Qt selects one/few/many for ru/be, singular/plural for en.
+        return qsTr("%1 email", "%1 emails", value).arg(value)
     }
     function archiveBundle(bundleId) {
         const selectedBefore = selectedCardId
@@ -2281,7 +2282,7 @@ ApplicationWindow {
         Material.accent: window.accent
         Material.primary: window.accent
         property string cardId
-        title: "Card note"
+        title: qsTr("Card note")
         modal: true
         width: Math.min(392, window.width - 32)
         implicitWidth: width
