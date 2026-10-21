@@ -105,6 +105,49 @@ TestCase {
     function avatarImage(row) { return findChild(findChild(row, "reorderHandle-" + row.cardId), "senderAvatarImage") }
     function initialsOf(row) { return findChild(findChild(row, "reorderHandle-" + row.cardId), "senderAvatarInitials") }
 
+    function test_senderAvatarInitialGlyphs() {
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 1440, height: 1000
+        })
+        verify(inbox)
+        compare(inbox.avatarInitials("SciTools"), "S", "display name parser keeps the sender name")
+        compare(inbox.avatarInitials("heidi@scitools.com"), "H", "bare address parser keeps its local part")
+        verify(inbox.avatarInitials("") === "?", "empty sender identity retains fallback")
+        const cases = [
+            {id: "avatar-name", sender_name: "SciTools", sender_address: "heidi@scitools.com", expected: "S"},
+            {id: "avatar-address", sender_name: "", sender_address: "heidi@scitools.com", expected: "H"},
+            {id: "avatar-empty", sender_name: "", sender_address: "", expected: "?"}
+        ]
+        verify(store.applyRemoteCards({now: cases.map(function(item) {
+            return card(item.id, {sender_name: item.sender_name, sender_address: item.sender_address})
+        }), later: [], missed: []}))
+        tryVerify(function() { return cases.every(function(item) { return rowFor(inbox, item.id) !== null }) }, 10000)
+        for (const item of cases) {
+            const row = rowFor(inbox, item.id)
+            const initials = initialsOf(row)
+            verify(initials && initials.visible, "initials fallback visible for " + item.id)
+            const glyph = findChild(initials, "senderAvatarGlyph")
+            verify(glyph, "avatar glyph label exists for " + item.id)
+            compare(glyph.text, item.expected, "avatar glyph for " + item.id)
+        }
+        // Owned-Xvfb proof: grab the full canvas (same surface verifyPaint
+        // samples) and record each avatar's mapped rect for an exact crop.
+        if (bundleProofDirectory) {
+            const canvas = inbox.contentItem.parent
+            verify(waitForRendering(canvas), "canvas rendered before grab")
+            const rects = {}
+            for (const id of ["avatar-name", "avatar-address", "avatar-empty"]) {
+                const av = initialsOf(rowFor(inbox, id))
+                const p = av.mapToItem(canvas, 0, 0)
+                rects[id] = {x: Math.round(p.x), y: Math.round(p.y), w: Math.round(av.width), h: Math.round(av.height)}
+            }
+            console.log("AVATAR_RECTS " + JSON.stringify(rects))
+            // save() returns false on this Qt yet writes the PNG (same as the
+            // existing capture() helper), so do not assert its return here.
+            grabImage(canvas).save(bundleProofDirectory + "/avatar-proof-full.png")
+        }
+    }
+
     function verifyPaint(inbox, row) {
         const image = avatarImage(row)
         verify(image && image.visible, "real inbox avatar image is visible")

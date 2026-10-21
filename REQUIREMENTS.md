@@ -490,9 +490,12 @@ the final acceptance; until he sees it each item is partial.
   the canonical lexical `server/db/*.sql` set (never a hand-maintained
   per-test subset) so new migrations reach every fixture. The
   genuinely-absent fallback is a circle with initials in a stable per-sender
-  colour in unchanged geometry, shown on `unavailable`
-  (404) and on `authorization_required` (403). Explicit non-coverage: a
-  sender absent from both contact datasets stays uncovered even when Gmail
+  colour in unchanged geometry, shown on `unavailable` (404) and on
+  `authorization_required` (403): a named sender without a Google photo shows
+  its initial instead of `?`, a bare address-only sender shows the address's
+  first letter, and `?` remains only for a truly empty name and address.
+  Explicit non-coverage: a sender absent from both contact datasets stays
+  uncovered even when Gmail
   itself renders a photo — there is no supported arbitrary-email lookup
   (`people.get` needs an account id, Gmail messages expose no photo field),
   and no Gravatar, third-party lookup, or undocumented Google endpoint. The

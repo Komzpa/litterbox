@@ -144,7 +144,12 @@ ApplicationWindow {
         return avatarPalette[hash % avatarPalette.length]
     }
     function avatarInitials(name) {
-        const words = String(name || "").replace(/\[bot\]|[<>"@].*$/gi, "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(w => w.length)
+        const text = String(name || "").trim()
+        // R67: a bare address-only sender (no display name) shows the address's
+        // first letter, not first+last of its local/domain words.
+        if (/^[^\s<>"]+@[^\s<>"]+$/.test(text))
+            return text[0].toUpperCase()
+        const words = text.replace(/\[bot\]|[<>"@].*$/gi, "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(w => w.length)
         if (!words.length) return "?"
         return (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase()
     }
@@ -164,6 +169,7 @@ ApplicationWindow {
     // bytes (card.sender_photo file:// + sender_has_photo flag). Remote mail
     // body images stay blocked; no provider URLs reach the UI.
     component SenderAvatar: Item {
+        id: avatarItem
         objectName: "senderAvatar"
         property string name: ""
         property string photoSource: ""
@@ -177,7 +183,8 @@ ApplicationWindow {
             visible: parent.photoSource === ""
             Label {
                 anchors.centerIn: parent
-                text: window.avatarInitials(parent.name)
+                objectName: "senderAvatarGlyph"
+                text: window.avatarInitials(avatarItem.name)
                 color: "#ffffff"
                 font.pointSize: Math.max(7, window.themeFont.pointSize - 2)
                 font.weight: Font.DemiBold

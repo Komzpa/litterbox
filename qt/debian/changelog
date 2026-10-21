@@ -1,3 +1,9 @@
+litterbox-qt (0.1-44) unstable; urgency=medium
+
+  * Named senders without a Google photo show their initial instead of '?'.
+
+ -- Litterbox <litterbox@example.com>  Wed, 21 Oct 2026 14:20:00 +0400
+
 litterbox-qt (0.1-43) unstable; urgency=medium
 
   * Bind sender-photo consent to the account that starts it: the consent
