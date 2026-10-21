@@ -355,7 +355,7 @@ ApplicationWindow {
     function emailCountText(count) {
         const value = Number(count)
         // %n plural: Qt selects one/few/many for ru/be, singular/plural for en.
-        return qsTr("%1 email", "%1 emails", value).arg(value)
+        return qsTr("%n email", "", value)
     }
     function archiveBundle(bundleId) {
         const selectedBefore = selectedCardId
@@ -708,7 +708,7 @@ ApplicationWindow {
     function offlineSummary() {
         let text = qsTr("Can't reach the server")
         if (store.pendingOps > 0)
-            text += " · " + (store.pendingOps === 1 ? qsTr("1 change waiting") : qsTr("%1 changes waiting").arg(store.pendingOps))
+            text += " · " + qsTr("%n change waiting", "", store.pendingOps)
         if (window.lastSyncAt > 0)
             text += " · " + qsTr("synced %1").arg(Qt.formatTime(new Date(window.lastSyncAt), "HH:mm"))
         return text
@@ -1568,7 +1568,7 @@ ApplicationWindow {
                                     focusPolicy: Qt.StrongFocus
                                     text: window.bundleTitle(card)
                                     icon.name: cardRow.bundleExpanded ? "arrow-down" : "arrow-right"
-                                    Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1, %2 emails") : qsTr("Expand %1, %2 emails")).arg(text).arg(card.bundle_member_count || 0)
+                                    Accessible.name: (cardRow.bundleExpanded ? qsTr("Collapse %1, %n email", "", card.bundle_member_count || 0) : qsTr("Expand %1, %n email", "", card.bundle_member_count || 0)).arg(text)
                                     background: Rectangle {
                                         color: bundleToggle.down ? "#e7f1ee" : bundleToggle.hovered ? "#f3f7f6" : "transparent"
                                         radius: Kirigami.Units.cornerRadius
@@ -1604,7 +1604,7 @@ ApplicationWindow {
                                         }
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
-                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%1 accounts").arg(cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
+                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
                                             color: window.mutedInk
                                             font.family: window.themeFont.family
                                             font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
@@ -1628,9 +1628,7 @@ ApplicationWindow {
                                         }
                                         Label {
                                             visible: cardRow.bundleSummary.important > 0
-                                            text: cardRow.bundleSummary.important === 1
-                                                ? qsTr("1 important email stays separate; archive includes all %1 unpinned emails").arg(cardRow.bundleSummary.unpinned)
-                                                : qsTr("%1 important emails stay separate; archive includes all %2 unpinned emails").arg(cardRow.bundleSummary.important).arg(cardRow.bundleSummary.unpinned)
+                                            text: qsTr("%n important email stays separate", "", cardRow.bundleSummary.important) + "; " + qsTr("archive includes all %n unpinned email", "", cardRow.bundleSummary.unpinned)
                                             objectName: "importantDisclosure-" + cardId
                                             color: window.mutedInk
                                             font: window.themeFont
@@ -1697,7 +1695,7 @@ ApplicationWindow {
                                     Layout.maximumWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
-                                    Accessible.description: qsTr("Archives all %1 unpinned %2; pinned cards stay open").arg(cardRow.bundleSummary.unpinned).arg(cardRow.bundleSummary.unpinned === 1 ? qsTr("email") : qsTr("emails"))
+                                    Accessible.description: qsTr("Archives all %n unpinned email; pinned cards stay open", "", cardRow.bundleSummary.unpinned)
                                     ToolTip.text: Accessible.name
                                     ToolTip.visible: hovered
                                     background: Rectangle {

@@ -91,9 +91,9 @@ private slots:
         const QString abody = QString::fromUtf8(g.readAll());
         QVERIFY(abody.contains(QStringLiteral("Архивировать в Gmail")));
         // %n plural must carry all three Russian forms.
-        QVERIFY(body.contains(QStringLiteral("<numerusform>%1 письмо</numerusform>")));
-        QVERIFY(body.contains(QStringLiteral("<numerusform>%1 письма</numerusform>")));
-        QVERIFY(body.contains(QStringLiteral("<numerusform>%1 писем</numerusform>")));
+        QVERIFY(body.contains(QStringLiteral("<numerusform>%n письмо</numerusform>")));
+        QVERIFY(body.contains(QStringLiteral("<numerusform>%n письма</numerusform>")));
+        QVERIFY(body.contains(QStringLiteral("<numerusform>%n писем</numerusform>")));
     }
 };
 

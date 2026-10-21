@@ -388,7 +388,7 @@
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="331"/>
-        <location filename="../qml/InboxView.qml" line="2424"/>
+        <location filename="../qml/InboxView.qml" line="2442"/>
         <source>Task</source>
         <translation type="unfinished"></translation>
     </message>
@@ -429,29 +429,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1673"/>
-        <source>email</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1673"/>
-        <source>emails</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../qml/InboxView.qml" line="379"/>
         <location filename="../qml/InboxView.qml" line="389"/>
         <source>Archived</source>
         <translation type="unfinished"></translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/InboxView.qml" line="358"/>
-        <source>%1 email</source>
-        <comment>%1 emails</comment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-        </translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="379"/>
@@ -480,15 +461,21 @@
         <source>Can&apos;t reach the server</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="711"/>
-        <source>1 change waiting</source>
-        <translation type="unfinished"></translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="358"/>
+        <source>%n email</source>
+        <translation>
+            <numerusform>%n email</numerusform>
+            <numerusform>%n emails</numerusform>
+        </translation>
     </message>
-    <message>
+    <message numerus="yes">
         <location filename="../qml/InboxView.qml" line="711"/>
-        <source>%1 changes waiting</source>
-        <translation type="unfinished"></translation>
+        <source>%n change waiting</source>
+        <translation>
+            <numerusform>%n change waiting</numerusform>
+            <numerusform>%n changes waiting</numerusform>
+        </translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="713"/>
@@ -511,7 +498,7 @@
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="765"/>
-        <location filename="../qml/InboxView.qml" line="2054"/>
+        <location filename="../qml/InboxView.qml" line="2072"/>
         <source>Add card</source>
         <translation type="unfinished"></translation>
     </message>
@@ -548,7 +535,7 @@
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="846"/>
-        <location filename="../qml/InboxView.qml" line="2054"/>
+        <location filename="../qml/InboxView.qml" line="2072"/>
         <source>Clear search</source>
         <translation type="unfinished"></translation>
     </message>
@@ -584,7 +571,7 @@
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="917"/>
-        <location filename="../qml/InboxView.qml" line="2470"/>
+        <location filename="../qml/InboxView.qml" line="2488"/>
         <source>Install</source>
         <translation type="unfinished"></translation>
     </message>
@@ -629,200 +616,218 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466"/>
+        <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Pinned</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466"/>
+        <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Now</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466"/>
-        <location filename="../qml/InboxView.qml" line="2468"/>
+        <location filename="../qml/InboxView.qml" line="1501"/>
+        <location filename="../qml/InboxView.qml" line="2486"/>
         <source>Later</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466"/>
+        <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Missed</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1535"/>
-        <source>Collapse %1, %2 emails</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1535"/>
-        <source>Expand %1, %2 emails</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
+    <message numerus="yes">
         <location filename="../qml/InboxView.qml" line="1571"/>
-        <source>%1 accounts</source>
-        <translation type="unfinished"></translation>
+        <source>Collapse %1, %n email</source>
+        <translation>
+            <numerusform>Collapse %1, %n email</numerusform>
+            <numerusform>Collapse %1, %n emails</numerusform>
+        </translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1596"/>
-        <source>1 important email stays separate; archive includes all %1 unpinned emails</source>
-        <translation type="unfinished"></translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1571"/>
+        <source>Expand %1, %n email</source>
+        <translation>
+            <numerusform>Expand %1, %n email</numerusform>
+            <numerusform>Expand %1, %n emails</numerusform>
+        </translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1597"/>
-        <source>%1 important emails stay separate; archive includes all %2 unpinned emails</source>
-        <translation type="unfinished"></translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1607"/>
+        <source>%n account</source>
+        <translation>
+            <numerusform>%n account</numerusform>
+            <numerusform>%n accounts</numerusform>
+        </translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1662"/>
-        <location filename="../qml/InboxView.qml" line="1672"/>
-        <source>Archive bundle</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1673"/>
-        <source>Archives all %1 unpinned %2; pinned cards stay open</source>
-        <translation type="unfinished"></translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1698"/>
+        <source>Archives all %n unpinned email; pinned cards stay open</source>
+        <translation>
+            <numerusform>Archives all %n unpinned email; pinned cards stay open</numerusform>
+            <numerusform>Archives all %n unpinned emails; pinned cards stay open</numerusform>
+        </translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1687"/>
+        <location filename="../qml/InboxView.qml" line="1697"/>
+        <source>Archive bundle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1631"/>
+        <source>%n important email stays separate</source>
+        <translation>
+            <numerusform>%n important email stays separate</numerusform>
+            <numerusform>%n important emails stay separate</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1631"/>
+        <source>archive includes all %n unpinned email</source>
+        <translation>
+            <numerusform>archive includes all %n unpinned email</numerusform>
+            <numerusform>archive includes all %n unpinned emails</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/InboxView.qml" line="1712"/>
         <source>Bundle details</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1717"/>
+        <location filename="../qml/InboxView.qml" line="1742"/>
         <source>Mark bundle as spam · %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1792"/>
+        <location filename="../qml/InboxView.qml" line="1817"/>
         <source>Drag to reorder</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1793"/>
+        <location filename="../qml/InboxView.qml" line="1818"/>
         <source>Hold and drag to a new position</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1793"/>
+        <location filename="../qml/InboxView.qml" line="1818"/>
         <source>Position is fixed by pin or time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1811"/>
+        <location filename="../qml/InboxView.qml" line="1836"/>
         <source>Open %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1956"/>
+        <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Archive</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1956"/>
+        <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2040"/>
+        <location filename="../qml/InboxView.qml" line="2058"/>
         <source>No matching cards</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2040"/>
+        <location filename="../qml/InboxView.qml" line="2058"/>
         <source>You&apos;re all caught up</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2047"/>
+        <location filename="../qml/InboxView.qml" line="2065"/>
         <source>Try another subject, sender, account or source, or clear the search to return to your inbox.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2047"/>
+        <location filename="../qml/InboxView.qml" line="2065"/>
         <source>New cards will appear here. Add a private note or task whenever you need one.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2132"/>
+        <location filename="../qml/InboxView.qml" line="2150"/>
         <source>This card is fixed to its scheduled time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2253"/>
+        <location filename="../qml/InboxView.qml" line="2271"/>
         <source>Select a card to read</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2261"/>
+        <location filename="../qml/InboxView.qml" line="2279"/>
         <source>Your inbox stays here while you read. Drag the divider to adjust the panes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2285"/>
+        <location filename="../qml/InboxView.qml" line="2303"/>
         <source>Card note</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2300"/>
+        <location filename="../qml/InboxView.qml" line="2318"/>
         <source>Save</source>
         <translation type="unfinished">Save</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2315"/>
-        <location filename="../qml/InboxView.qml" line="2406"/>
+        <location filename="../qml/InboxView.qml" line="2333"/>
+        <location filename="../qml/InboxView.qml" line="2424"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancel</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2368"/>
+        <location filename="../qml/InboxView.qml" line="2386"/>
         <source>Create card</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2381"/>
+        <location filename="../qml/InboxView.qml" line="2399"/>
         <source>Create</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2424"/>
+        <location filename="../qml/InboxView.qml" line="2442"/>
         <source>Private journal note</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2426"/>
+        <location filename="../qml/InboxView.qml" line="2444"/>
         <source>Card kind</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2429"/>
+        <location filename="../qml/InboxView.qml" line="2447"/>
         <source>Title</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2430"/>
+        <location filename="../qml/InboxView.qml" line="2448"/>
         <source>Details (optional)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2438"/>
+        <location filename="../qml/InboxView.qml" line="2456"/>
         <source>Write a private note…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2445"/>
+        <location filename="../qml/InboxView.qml" line="2463"/>
         <source>Private · saved offline and synced to your inbox. Your assistant can read it, not write it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2454"/>
+        <location filename="../qml/InboxView.qml" line="2472"/>
         <source>Install Android update</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2464"/>
+        <location filename="../qml/InboxView.qml" line="2482"/>
         <source>Version %1 is downloaded and checksum-verified. Android will ask you to confirm installation.</source>
         <translation type="unfinished"></translation>
     </message>

@@ -1,69 +1,70 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
 <TS version="2.1" language="ru_RU">
 <context>
     <name>AgentChatPage</name>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="24" />
+        <location filename="../pages/AgentChatPage.qml" line="24"/>
         <source>Agent chat</source>
         <translation>Чат с агентом</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="49" />
+        <location filename="../pages/AgentChatPage.qml" line="49"/>
         <source>not delivered</source>
         <translation>не доставлено</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="81" />
+        <location filename="../pages/AgentChatPage.qml" line="81"/>
         <source>Could not load messages. Tap Refresh to try again.</source>
         <translation>Не удалось загрузить сообщения. Нажмите «Обновить», чтобы попробовать снова.</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="101" />
+        <location filename="../pages/AgentChatPage.qml" line="101"/>
         <source>Message is too long (maximum 4096 bytes).</source>
         <translation>Сообщение слишком длинное (максимум 4096 байт).</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="119" />
+        <location filename="../pages/AgentChatPage.qml" line="119"/>
         <source>Send not confirmed. Retry uses the same message ID.</source>
         <translation>Отправка не подтверждена. Повтор использует тот же ID сообщения.</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="142" />
+        <location filename="../pages/AgentChatPage.qml" line="142"/>
         <source>Back</source>
         <translation>Назад</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="166" />
+        <location filename="../pages/AgentChatPage.qml" line="166"/>
         <source>Refresh</source>
         <translation>Обновить</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="217" />
+        <location filename="../pages/AgentChatPage.qml" line="217"/>
         <source>Observed</source>
         <translation>Наблюдение</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="218" />
+        <location filename="../pages/AgentChatPage.qml" line="218"/>
         <source>You</source>
         <translation>Вы</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="244" />
+        <location filename="../pages/AgentChatPage.qml" line="244"/>
         <source>Retry</source>
         <translation>Повторить</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="254" />
+        <location filename="../pages/AgentChatPage.qml" line="254"/>
         <source>No messages yet.</source>
         <translation>Пока нет сообщений.</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="267" />
+        <location filename="../pages/AgentChatPage.qml" line="267"/>
         <source>Message this agent…</source>
         <translation>Сообщение агенту…</translation>
     </message>
     <message>
-        <location filename="../pages/AgentChatPage.qml" line="273" />
+        <location filename="../pages/AgentChatPage.qml" line="273"/>
         <source>Send</source>
         <translation>Отправить</translation>
     </message>
@@ -71,47 +72,47 @@
 <context>
     <name>AgentThreadsPage</name>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="51" />
+        <location filename="../pages/AgentThreadsPage.qml" line="51"/>
         <source>Agents</source>
         <translation>Агенты</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="61" />
+        <location filename="../pages/AgentThreadsPage.qml" line="61"/>
         <source>Could not load the agent list.</source>
         <translation>Не удалось загрузить список агентов.</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="76" />
+        <location filename="../pages/AgentThreadsPage.qml" line="76"/>
         <source>Online</source>
         <translation>В сети</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="77" />
+        <location filename="../pages/AgentThreadsPage.qml" line="77"/>
         <source>Busy</source>
         <translation>Занят</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="78" />
+        <location filename="../pages/AgentThreadsPage.qml" line="78"/>
         <source>Offline</source>
         <translation>Не в сети</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="79" />
+        <location filename="../pages/AgentThreadsPage.qml" line="79"/>
         <source>Unknown</source>
         <translation>Неизвестно</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="140" />
+        <location filename="../pages/AgentThreadsPage.qml" line="140"/>
         <source>No agents yet.</source>
         <translation>Пока нет агентов.</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="157" />
+        <location filename="../pages/AgentThreadsPage.qml" line="157"/>
         <source>%1, %2</source>
         <translation>%1, %2</translation>
     </message>
     <message>
-        <location filename="../pages/AgentThreadsPage.qml" line="193" />
+        <location filename="../pages/AgentThreadsPage.qml" line="193"/>
         <source>No messages yet</source>
         <translation>Пока нет сообщений</translation>
     </message>
@@ -119,7 +120,7 @@
 <context>
     <name>BackToInboxBar</name>
     <message>
-        <location filename="../pages/BackToInboxBar.qml" line="14" />
+        <location filename="../pages/BackToInboxBar.qml" line="14"/>
         <source>Back to inbox</source>
         <translation>Назад во входящие</translation>
     </message>
@@ -127,8 +128,8 @@
 <context>
     <name>BundlePresentation</name>
     <message>
-        <location filename="../qml/BundlePresentation.js" line="9" />
-        <location filename="../qml/BundlePresentation.js" line="19" />
+        <location filename="../qml/BundlePresentation.js" line="9"/>
+        <location filename="../qml/BundlePresentation.js" line="19"/>
         <source>Bundle</source>
         <translation>Группа</translation>
     </message>
@@ -136,88 +137,88 @@
 <context>
     <name>EnrollmentPage</name>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="64" />
+        <location filename="../pages/EnrollmentPage.qml" line="64"/>
         <source>Connect to Server</source>
         <translation>Подключение к серверу</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="81" />
-        <location filename="../pages/EnrollmentPage.qml" line="154" />
+        <location filename="../pages/EnrollmentPage.qml" line="81"/>
+        <location filename="../pages/EnrollmentPage.qml" line="154"/>
         <source>Enter a valid HTTP or HTTPS server URL.</source>
         <translation>Введите корректный HTTP- или HTTPS-адрес сервера.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="85" />
+        <location filename="../pages/EnrollmentPage.qml" line="85"/>
         <source>Invite code and device name are required.</source>
         <translation>Требуются код приглашения и имя устройства.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="100" />
-        <source>Can't reach the server at %1. Check the address and that you're on the home Wi-Fi.</source>
+        <location filename="../pages/EnrollmentPage.qml" line="100"/>
+        <source>Can&apos;t reach the server at %1. Check the address and that you&apos;re on the home Wi-Fi.</source>
         <translation>Не удаётся связаться с сервером %1. Проверьте адрес и домашний Wi-Fi.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="102" />
+        <location filename="../pages/EnrollmentPage.qml" line="102"/>
         <source>Invite is used, expired, or invalid.</source>
         <translation>Приглашение уже использовано, истекло или недействительно.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="104" />
+        <location filename="../pages/EnrollmentPage.qml" line="104"/>
         <source>Server error %1.</source>
         <translation>Ошибка сервера %1.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="137" />
+        <location filename="../pages/EnrollmentPage.qml" line="137"/>
         <source>Server:</source>
         <translation>Сервер:</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="163" />
+        <location filename="../pages/EnrollmentPage.qml" line="163"/>
         <source>Invite code:</source>
         <translation>Код приглашения:</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="180" />
+        <location filename="../pages/EnrollmentPage.qml" line="180"/>
         <source>Device name:</source>
         <translation>Имя устройства:</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="181" />
+        <location filename="../pages/EnrollmentPage.qml" line="181"/>
         <source>Phone</source>
         <translation>Телефон</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="181" />
+        <location filename="../pages/EnrollmentPage.qml" line="181"/>
         <source>Desktop</source>
         <translation>Компьютер</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="195" />
+        <location filename="../pages/EnrollmentPage.qml" line="195"/>
         <source>Platform:</source>
         <translation>Платформа:</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="227" />
+        <location filename="../pages/EnrollmentPage.qml" line="227"/>
         <source>Enrolling…</source>
         <translation>Регистрация…</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="227" />
+        <location filename="../pages/EnrollmentPage.qml" line="227"/>
         <source>Enroll</source>
         <translation>Зарегистрировать</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="260" />
+        <location filename="../pages/EnrollmentPage.qml" line="260"/>
         <source>This device is enrolled. No invite code is needed.</source>
         <translation>Это устройство уже зарегистрировано. Код приглашения не нужен.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="268" />
+        <location filename="../pages/EnrollmentPage.qml" line="268"/>
         <source>Enrollment is saved on this device.</source>
         <translation>Регистрация сохранена на этом устройстве.</translation>
     </message>
     <message>
-        <location filename="../pages/EnrollmentPage.qml" line="267" />
+        <location filename="../pages/EnrollmentPage.qml" line="267"/>
         <source>Device: %1 · Tenant: %2</source>
         <translation>Устройство: %1 · Пространство: %2</translation>
     </message>
@@ -225,107 +226,107 @@
 <context>
     <name>GmailAccountsPage</name>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="68" />
+        <location filename="../pages/GmailAccountsPage.qml" line="68"/>
         <source>Gmail Accounts</source>
         <translation>Аккаунты Gmail</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="83" />
+        <location filename="../pages/GmailAccountsPage.qml" line="83"/>
         <source>Could not load the account list.</source>
         <translation>Не удалось загрузить список аккаунтов.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="100" />
+        <location filename="../pages/GmailAccountsPage.qml" line="100"/>
         <source>Could not load sender photo status.</source>
         <translation>Не удалось загрузить статус фото отправителей.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="119" />
+        <location filename="../pages/GmailAccountsPage.qml" line="119"/>
         <source>Could not start photo authorization.</source>
         <translation>Не удалось начать авторизацию фото.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="132" />
+        <location filename="../pages/GmailAccountsPage.qml" line="132"/>
         <source>Could not start the Gmail connection.</source>
         <translation>Не удалось начать подключение Gmail.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="146" />
+        <location filename="../pages/GmailAccountsPage.qml" line="146"/>
         <source>Could not disconnect the account.</source>
         <translation>Не удалось отключить аккаунт.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="182" />
+        <location filename="../pages/GmailAccountsPage.qml" line="182"/>
         <source>Connect account…</source>
         <translation>Подключить аккаунт…</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="256" />
+        <location filename="../pages/GmailAccountsPage.qml" line="256"/>
         <source>Access expired</source>
         <translation>Доступ истёк</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="256" />
+        <location filename="../pages/GmailAccountsPage.qml" line="256"/>
         <source>Connected</source>
         <translation>Подключено</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="260" />
+        <location filename="../pages/GmailAccountsPage.qml" line="260"/>
         <source>Reconnect</source>
         <translation>Переподключить</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="266" />
+        <location filename="../pages/GmailAccountsPage.qml" line="266"/>
         <source>Disconnect</source>
         <translation>Отключить</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="276" />
+        <location filename="../pages/GmailAccountsPage.qml" line="276"/>
         <source>No accounts connected.</source>
         <translation>Нет подключённых аккаунтов.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="286" />
+        <location filename="../pages/GmailAccountsPage.qml" line="286"/>
         <source>Sender photos</source>
         <translation>Фото отправителей</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="321" />
+        <location filename="../pages/GmailAccountsPage.qml" line="321"/>
         <source>Sender photos ready</source>
         <translation>Фото отправителей готовы</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="322" />
+        <location filename="../pages/GmailAccountsPage.qml" line="322"/>
         <source>Sender photos need authorization</source>
         <translation>Для фото отправителей нужна авторизация</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="323" />
+        <location filename="../pages/GmailAccountsPage.qml" line="323"/>
         <source>Authorized — photos appear after they sync</source>
         <translation>Авторизовано — фото появятся после синхронизации</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="339" />
+        <location filename="../pages/GmailAccountsPage.qml" line="339"/>
         <source>Starting authorization…</source>
         <translation>Запуск авторизации…</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="339" />
+        <location filename="../pages/GmailAccountsPage.qml" line="339"/>
         <source>Authorize sender photos…</source>
         <translation>Авторизовать фото отправителей…</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="360" />
+        <location filename="../pages/GmailAccountsPage.qml" line="360"/>
         <source>Open this authorization link to grant sender photo access for %1. It is bound to that account: approving with another Google account is refused and stores nothing. Litterbox never grants it for you.</source>
         <translation>Откройте эту ссылку авторизации, чтобы разрешить доступ к фото отправителей для %1. Она привязана к этому аккаунту: подтверждение другим аккаунтом Google будет отклонено и ничего не сохранит. Litterbox никогда не подтверждает её за вас.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="361" />
+        <location filename="../pages/GmailAccountsPage.qml" line="361"/>
         <source>Open this authorization link to grant sender photo access. Litterbox never grants it for you.</source>
         <translation>Откройте эту ссылку авторизации, чтобы разрешить доступ к фото отправителей. Litterbox никогда не подтверждает её за вас.</translation>
     </message>
     <message>
-        <location filename="../pages/GmailAccountsPage.qml" line="377" />
+        <location filename="../pages/GmailAccountsPage.qml" line="377"/>
         <source>Open authorization page</source>
         <translation>Открыть страницу авторизации</translation>
     </message>
@@ -333,493 +334,508 @@
 <context>
     <name>InboxView</name>
     <message>
-        <location filename="../qml/InboxView.qml" line="49" />
-        <location filename="../qml/InboxView.qml" line="128" />
-        <location filename="../qml/InboxView.qml" line="815" />
+        <location filename="../qml/InboxView.qml" line="49"/>
+        <location filename="../qml/InboxView.qml" line="128"/>
+        <location filename="../qml/InboxView.qml" line="815"/>
         <source>Accounts</source>
         <translation>Аккаунты</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="50" />
-        <location filename="../qml/InboxView.qml" line="129" />
-        <location filename="../qml/InboxView.qml" line="816" />
+        <location filename="../qml/InboxView.qml" line="50"/>
+        <location filename="../qml/InboxView.qml" line="129"/>
+        <location filename="../qml/InboxView.qml" line="816"/>
         <source>Agents</source>
         <translation>Агенты</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="51" />
-        <location filename="../qml/InboxView.qml" line="130" />
-        <location filename="../qml/InboxView.qml" line="817" />
+        <location filename="../qml/InboxView.qml" line="51"/>
+        <location filename="../qml/InboxView.qml" line="130"/>
+        <location filename="../qml/InboxView.qml" line="817"/>
         <source>Settings</source>
         <translation>Настройки</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="52" />
-        <location filename="../qml/InboxView.qml" line="52" />
-        <location filename="../qml/InboxView.qml" line="127" />
+        <location filename="../qml/InboxView.qml" line="52"/>
+        <location filename="../qml/InboxView.qml" line="52"/>
+        <location filename="../qml/InboxView.qml" line="127"/>
         <source>Inbox</source>
         <translation>Входящие</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="94" />
+        <location filename="../qml/InboxView.qml" line="94"/>
         <source>Today</source>
         <translation>Сегодня</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="94" />
+        <location filename="../qml/InboxView.qml" line="94"/>
         <source>Upcoming</source>
         <translation>Предстоящие</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="95" />
+        <location filename="../qml/InboxView.qml" line="95"/>
         <source>Yesterday</source>
         <translation>Вчера</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="95" />
+        <location filename="../qml/InboxView.qml" line="95"/>
         <source>Earlier</source>
         <translation>Ранее</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="286" />
+        <location filename="../qml/InboxView.qml" line="286"/>
         <source>Gmail access for %1 expired. Reconnect it in Accounts → Connect account…</source>
         <translation>Доступ Gmail для %1 истёк. Переподключите в Аккаунты → Подключить аккаунт…</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="331" />
-        <location filename="../qml/InboxView.qml" line="2424" />
+        <location filename="../qml/InboxView.qml" line="331"/>
+        <location filename="../qml/InboxView.qml" line="2442"/>
         <source>Task</source>
         <translation>Задача</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="331" />
+        <location filename="../qml/InboxView.qml" line="331"/>
         <source>Journal</source>
         <translation>Дневник</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="331" />
+        <location filename="../qml/InboxView.qml" line="331"/>
         <source>To-do</source>
         <translation>Дело</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="332" />
+        <location filename="../qml/InboxView.qml" line="332"/>
         <source>Reminder</source>
         <translation>Напоминание</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="332" />
+        <location filename="../qml/InboxView.qml" line="332"/>
         <source>Meeting</source>
         <translation>Встреча</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="332" />
-        <location filename="../qml/InboxView.qml" line="333" />
+        <location filename="../qml/InboxView.qml" line="332"/>
+        <location filename="../qml/InboxView.qml" line="333"/>
         <source>Agent</source>
         <translation>Агент</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="333" />
+        <location filename="../qml/InboxView.qml" line="333"/>
         <source>Home Assistant</source>
         <translation>Home Assistant</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="333" />
+        <location filename="../qml/InboxView.qml" line="333"/>
         <source>Dating</source>
         <translation>Знакомства</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1673" />
-        <source>email</source>
-        <translation>письмо</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1673" />
-        <source>emails</source>
-        <translation>писем</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="379" />
-        <location filename="../qml/InboxView.qml" line="389" />
+        <location filename="../qml/InboxView.qml" line="379"/>
+        <location filename="../qml/InboxView.qml" line="389"/>
         <source>Archived</source>
         <translation>Архивировано</translation>
     </message>
-    <message numerus="yes">
-        <location filename="../qml/InboxView.qml" line="358" />
-        <source>%1 email</source>
-        <comment>%1 emails</comment>
-        <translation>
-            <numerusform>%1 письмо</numerusform><numerusform>%1 письма</numerusform><numerusform>%1 писем</numerusform></translation>
-    </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="379" />
+        <location filename="../qml/InboxView.qml" line="379"/>
         <source>Archived %1</source>
         <translation>Архивировано: %1</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="389" />
+        <location filename="../qml/InboxView.qml" line="389"/>
         <source>Marked as spam</source>
         <translation>Отмечено как спам</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="401" />
+        <location filename="../qml/InboxView.qml" line="401"/>
         <source>Action failed (HTTP %1).</source>
         <translation>Действие не выполнено (HTTP %1).</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="419" />
-        <location filename="../qml/InboxView.qml" line="437" />
-        <location filename="../qml/InboxView.qml" line="448" />
+        <location filename="../qml/InboxView.qml" line="419"/>
+        <location filename="../qml/InboxView.qml" line="437"/>
+        <location filename="../qml/InboxView.qml" line="448"/>
         <source>Undo has expired.</source>
         <translation>Отмена уже недоступна.</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="709" />
-        <source>Can't reach the server</source>
+        <location filename="../qml/InboxView.qml" line="709"/>
+        <source>Can&apos;t reach the server</source>
         <translation>Нет связи с сервером</translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="711" />
-        <source>1 change waiting</source>
-        <translation>1 изменение ожидает</translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="358"/>
+        <source>%n email</source>
+        <translation>
+            <numerusform>%n письмо</numerusform>
+            <numerusform>%n письма</numerusform>
+            <numerusform>%n писем</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="711"/>
+        <source>%n change waiting</source>
+        <translation>
+            <numerusform>%n изменение ожидает</numerusform>
+            <numerusform>%n изменения ожидают</numerusform>
+            <numerusform>%n изменений ожидают</numerusform>
+        </translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="711" />
-        <source>%1 changes waiting</source>
-        <translation>Изменений в очереди: %1</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="713" />
+        <location filename="../qml/InboxView.qml" line="713"/>
         <source>synced %1</source>
         <translation>синхронизировано %1</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="738" />
+        <location filename="../qml/InboxView.qml" line="738"/>
         <source>Navigation</source>
         <translation>Навигация</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="752" />
-        <location filename="../qml/InboxView.qml" line="831" />
-        <location filename="../qml/InboxView.qml" line="838" />
-        <location filename="../qml/InboxView.qml" line="839" />
-        <location filename="../qml/InboxView.qml" line="1052" />
+        <location filename="../qml/InboxView.qml" line="752"/>
+        <location filename="../qml/InboxView.qml" line="831"/>
+        <location filename="../qml/InboxView.qml" line="838"/>
+        <location filename="../qml/InboxView.qml" line="839"/>
+        <location filename="../qml/InboxView.qml" line="1052"/>
         <source>Search inbox</source>
         <translation>Поиск во входящих</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="765" />
-        <location filename="../qml/InboxView.qml" line="2054" />
+        <location filename="../qml/InboxView.qml" line="765"/>
+        <location filename="../qml/InboxView.qml" line="2072"/>
         <source>Add card</source>
         <translation>Добавить карточку</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="792" />
-        <location filename="../qml/InboxView.qml" line="796" />
+        <location filename="../qml/InboxView.qml" line="792"/>
+        <location filename="../qml/InboxView.qml" line="796"/>
         <source>Inbox commands</source>
         <translation>Команды входящих</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="818" />
+        <location filename="../qml/InboxView.qml" line="818"/>
         <source>Enroll device</source>
         <translation>Подключить устройство</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="819" />
+        <location filename="../qml/InboxView.qml" line="819"/>
         <source>Refresh</source>
         <translation>Обновить</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="820" />
+        <location filename="../qml/InboxView.qml" line="820"/>
         <source>Check updates</source>
         <translation>Проверить обновления</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="821" />
+        <location filename="../qml/InboxView.qml" line="821"/>
         <source>Comfortable density</source>
         <translation>Обычная плотность</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="822" />
+        <location filename="../qml/InboxView.qml" line="822"/>
         <source>Compact density</source>
         <translation>Компактная плотность</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="846" />
-        <location filename="../qml/InboxView.qml" line="2054" />
+        <location filename="../qml/InboxView.qml" line="846"/>
+        <location filename="../qml/InboxView.qml" line="2072"/>
         <source>Clear search</source>
         <translation>Очистить поиск</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="861" />
+        <location filename="../qml/InboxView.qml" line="861"/>
         <source>Comfortable</source>
         <translation>Обычная</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="861" />
+        <location filename="../qml/InboxView.qml" line="861"/>
         <source>Compact</source>
         <translation>Компактная</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="865" />
+        <location filename="../qml/InboxView.qml" line="865"/>
         <source>Inbox density</source>
         <translation>Плотность входящих</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="886" />
+        <location filename="../qml/InboxView.qml" line="886"/>
         <source>Retry</source>
         <translation>Повторить</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="896" />
+        <location filename="../qml/InboxView.qml" line="896"/>
         <source>Details: %1</source>
         <translation>Подробности: %1</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="910" />
+        <location filename="../qml/InboxView.qml" line="910"/>
         <source>Update ready</source>
         <translation>Обновление готово</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="917" />
-        <location filename="../qml/InboxView.qml" line="2470" />
+        <location filename="../qml/InboxView.qml" line="917"/>
+        <location filename="../qml/InboxView.qml" line="2488"/>
         <source>Install</source>
         <translation>Установить</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="950" />
+        <location filename="../qml/InboxView.qml" line="950"/>
         <source>Reconnect</source>
         <translation>Переподключить</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1000" />
+        <location filename="../qml/InboxView.qml" line="1000"/>
         <source>Undo</source>
         <translation>Отменить</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1018" />
+        <location filename="../qml/InboxView.qml" line="1018"/>
         <source>Checking for updates…</source>
         <translation>Проверка обновлений…</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1019" />
+        <location filename="../qml/InboxView.qml" line="1019"/>
         <source>No update available</source>
         <translation>Обновлений нет</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1027" />
+        <location filename="../qml/InboxView.qml" line="1027"/>
         <source>Allow installs from Litterbox in Android settings, then tap Install again</source>
         <translation>Разрешите установку из Litterbox в настройках Android, затем снова нажмите «Установить»</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1048" />
+        <location filename="../qml/InboxView.qml" line="1048"/>
         <source>Litterbox</source>
         <translation>Litterbox</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1062" />
+        <location filename="../qml/InboxView.qml" line="1062"/>
         <source>Close navigation</source>
         <translation>Закрыть навигацию</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1099" />
+        <location filename="../qml/InboxView.qml" line="1099"/>
         <source>Inbox pane width</source>
         <translation>Ширина панели входящих</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466" />
+        <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Pinned</source>
         <translation>Закреплённые</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466" />
+        <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Now</source>
         <translation>Сейчас</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466" />
-        <location filename="../qml/InboxView.qml" line="2468" />
+        <location filename="../qml/InboxView.qml" line="1501"/>
+        <location filename="../qml/InboxView.qml" line="2486"/>
         <source>Later</source>
         <translation>Позже</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1466" />
+        <location filename="../qml/InboxView.qml" line="1501"/>
         <source>Missed</source>
         <translation>Пропущенные</translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1535" />
-        <source>Collapse %1, %2 emails</source>
-        <translation>Свернуть %1, %2 писем</translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1571"/>
+        <source>Collapse %1, %n email</source>
+        <translation>
+            <numerusform>Свернуть %1, %n письмо</numerusform>
+            <numerusform>Свернуть %1, %n письма</numerusform>
+            <numerusform>Свернуть %1, %n писем</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1571"/>
+        <source>Expand %1, %n email</source>
+        <translation>
+            <numerusform>Развернуть %1, %n письмо</numerusform>
+            <numerusform>Развернуть %1, %n письма</numerusform>
+            <numerusform>Развернуть %1, %n писем</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1607"/>
+        <source>%n account</source>
+        <translation>
+            <numerusform>%n аккаунт</numerusform>
+            <numerusform>%n аккаунта</numerusform>
+            <numerusform>%n аккаунтов</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1698"/>
+        <source>Archives all %n unpinned email; pinned cards stay open</source>
+        <translation>
+            <numerusform>Архивирует %n незакреплённое письмо; закреплённые карточки остаются открытыми</numerusform>
+            <numerusform>Архивирует %n незакреплённых письма; закреплённые карточки остаются открытыми</numerusform>
+            <numerusform>Архивирует %n незакреплённых писем; закреплённые карточки остаются открытыми</numerusform>
+        </translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1535" />
-        <source>Expand %1, %2 emails</source>
-        <translation>Развернуть %1, %2 писем</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1571" />
-        <source>%1 accounts</source>
-        <translation>Аккаунтов: %1</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1596" />
-        <source>1 important email stays separate; archive includes all %1 unpinned emails</source>
-        <translation>1 важное письмо показано отдельно; в архив уйдут все %1 незакреплённых писем</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1597" />
-        <source>%1 important emails stay separate; archive includes all %2 unpinned emails</source>
-        <translation>%1 важных писем показаны отдельно; в архив уйдут все %2 незакреплённых писем</translation>
-    </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1662" />
-        <location filename="../qml/InboxView.qml" line="1672" />
+        <location filename="../qml/InboxView.qml" line="1687"/>
+        <location filename="../qml/InboxView.qml" line="1697"/>
         <source>Archive bundle</source>
         <translation>Архивировать группу</translation>
     </message>
-    <message>
-        <location filename="../qml/InboxView.qml" line="1673" />
-        <source>Archives all %1 unpinned %2; pinned cards stay open</source>
-        <translation>Архивирует все %1 незакреплённых (%2); закреплённые останутся</translation>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1631"/>
+        <source>%n important email stays separate</source>
+        <translation>
+            <numerusform>%n важное письмо остаётся отдельно</numerusform>
+            <numerusform>%n важных письма остаются отдельно</numerusform>
+            <numerusform>%n важных писем остаются отдельно</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/InboxView.qml" line="1631"/>
+        <source>archive includes all %n unpinned email</source>
+        <translation>
+            <numerusform>архив включает %n незакреплённое письмо</numerusform>
+            <numerusform>архив включает %n незакреплённых письма</numerusform>
+            <numerusform>архив включает %n незакреплённых писем</numerusform>
+        </translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1687" />
+        <location filename="../qml/InboxView.qml" line="1712"/>
         <source>Bundle details</source>
         <translation>Детали группы</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1717" />
+        <location filename="../qml/InboxView.qml" line="1742"/>
         <source>Mark bundle as spam · %1</source>
         <translation>Отметить группу как спам · %1</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1792" />
+        <location filename="../qml/InboxView.qml" line="1817"/>
         <source>Drag to reorder</source>
         <translation>Потяните, чтобы изменить порядок</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1793" />
+        <location filename="../qml/InboxView.qml" line="1818"/>
         <source>Hold and drag to a new position</source>
         <translation>Удерживайте и перетащите на новое место</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1793" />
+        <location filename="../qml/InboxView.qml" line="1818"/>
         <source>Position is fixed by pin or time</source>
         <translation>Положение зафиксировано закрепами или временем</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1811" />
+        <location filename="../qml/InboxView.qml" line="1836"/>
         <source>Open %1</source>
         <translation>Открыть %1</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1956" />
+        <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Archive</source>
         <translation>Архивировать</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="1956" />
+        <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Done</source>
         <translation>Готово</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2040" />
+        <location filename="../qml/InboxView.qml" line="2058"/>
         <source>No matching cards</source>
         <translation>Нет подходящих карточек</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2040" />
-        <source>You're all caught up</source>
+        <location filename="../qml/InboxView.qml" line="2058"/>
+        <source>You&apos;re all caught up</source>
         <translation>Вы всё разобрали</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2047" />
+        <location filename="../qml/InboxView.qml" line="2065"/>
         <source>Try another subject, sender, account or source, or clear the search to return to your inbox.</source>
         <translation>Попробуйте другую тему, отправителя, аккаунт или источник, либо очистите поиск, чтобы вернуться во входящие.</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2047" />
+        <location filename="../qml/InboxView.qml" line="2065"/>
         <source>New cards will appear here. Add a private note or task whenever you need one.</source>
         <translation>Новые карточки появятся здесь. Добавьте личную заметку или задачу, когда понадобится.</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2132" />
+        <location filename="../qml/InboxView.qml" line="2150"/>
         <source>This card is fixed to its scheduled time</source>
         <translation>Эта карточка привязана к своему времени</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2253" />
+        <location filename="../qml/InboxView.qml" line="2271"/>
         <source>Select a card to read</source>
         <translation>Выберите карточку для чтения</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2261" />
+        <location filename="../qml/InboxView.qml" line="2279"/>
         <source>Your inbox stays here while you read. Drag the divider to adjust the panes.</source>
         <translation>Входящие останутся здесь, пока вы читаете. Потяните разделитель, чтобы настроить панели.</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2285" />
+        <location filename="../qml/InboxView.qml" line="2303"/>
         <source>Card note</source>
         <translation>Заметка к карточке</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2300" />
+        <location filename="../qml/InboxView.qml" line="2318"/>
         <source>Save</source>
         <translation>Сохранить</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2315" />
-        <location filename="../qml/InboxView.qml" line="2406" />
+        <location filename="../qml/InboxView.qml" line="2333"/>
+        <location filename="../qml/InboxView.qml" line="2424"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2368" />
+        <location filename="../qml/InboxView.qml" line="2386"/>
         <source>Create card</source>
         <translation>Создать карточку</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2381" />
+        <location filename="../qml/InboxView.qml" line="2399"/>
         <source>Create</source>
         <translation>Создать</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2424" />
+        <location filename="../qml/InboxView.qml" line="2442"/>
         <source>Private journal note</source>
         <translation>Личная заметка дневника</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2426" />
+        <location filename="../qml/InboxView.qml" line="2444"/>
         <source>Card kind</source>
         <translation>Тип карточки</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2429" />
+        <location filename="../qml/InboxView.qml" line="2447"/>
         <source>Title</source>
         <translation>Название</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2430" />
+        <location filename="../qml/InboxView.qml" line="2448"/>
         <source>Details (optional)</source>
         <translation>Подробности (необязательно)</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2438" />
+        <location filename="../qml/InboxView.qml" line="2456"/>
         <source>Write a private note…</source>
         <translation>Напишите личную заметку…</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2445" />
+        <location filename="../qml/InboxView.qml" line="2463"/>
         <source>Private · saved offline and synced to your inbox. Your assistant can read it, not write it.</source>
         <translation>Личное · сохраняется офлайн и синхронизируется во входящие. Ваш ассистент может это читать, но не писать.</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2454" />
+        <location filename="../qml/InboxView.qml" line="2472"/>
         <source>Install Android update</source>
         <translation>Установить обновление Android</translation>
     </message>
     <message>
-        <location filename="../qml/InboxView.qml" line="2464" />
+        <location filename="../qml/InboxView.qml" line="2482"/>
         <source>Version %1 is downloaded and checksum-verified. Android will ask you to confirm installation.</source>
         <translation>Версия %1 загружена и проверена. Android попросит подтвердить установку.</translation>
     </message>
@@ -827,62 +843,62 @@
 <context>
     <name>MailDetailPage</name>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="86" />
+        <location filename="../pages/MailDetailPage.qml" line="86"/>
         <source>Message</source>
         <translation>Сообщение</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="86" />
+        <location filename="../pages/MailDetailPage.qml" line="86"/>
         <source>Details</source>
         <translation>Детали</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="103" />
+        <location filename="../pages/MailDetailPage.qml" line="103"/>
         <source>This message is not cached on this device yet.</source>
         <translation>Это сообщение пока не сохранено на устройстве.</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="120" />
+        <location filename="../pages/MailDetailPage.qml" line="120"/>
         <source>Message unavailable. Reconnect to cache it; opening it never archives it.</source>
         <translation>Сообщение недоступно. Переподключитесь, чтобы сохранить его; открытие никогда его не архивирует.</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="241" />
+        <location filename="../pages/MailDetailPage.qml" line="241"/>
         <source>Earlier message</source>
         <translation>Предыдущее сообщение</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="290" />
+        <location filename="../pages/MailDetailPage.qml" line="290"/>
         <source>Back to inbox</source>
         <translation>Назад во входящие</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="327" />
+        <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Archive</source>
         <translation>Архивировать</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="327" />
+        <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Archive note</source>
         <translation>Архивировать заметку</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="327" />
+        <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Complete</source>
         <translation>Завершить</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="327" />
+        <location filename="../pages/MailDetailPage.qml" line="327"/>
         <source>Dismiss</source>
         <translation>Закрыть</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="340" />
+        <location filename="../pages/MailDetailPage.qml" line="340"/>
         <source>Open source</source>
         <translation>Открыть источник</translation>
     </message>
     <message>
-        <location filename="../pages/MailDetailPage.qml" line="340" />
+        <location filename="../pages/MailDetailPage.qml" line="340"/>
         <source>Open in Gmail</source>
         <translation>Открыть в Gmail</translation>
     </message>
@@ -890,42 +906,42 @@
 <context>
     <name>McpTokensPage</name>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="49" />
+        <location filename="../pages/McpTokensPage.qml" line="49"/>
         <source>MCP Tokens</source>
         <translation>Токены MCP</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="57" />
+        <location filename="../pages/McpTokensPage.qml" line="57"/>
         <source>Could not create a token.</source>
         <translation>Не удалось создать токен.</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="76" />
+        <location filename="../pages/McpTokensPage.qml" line="76"/>
         <source>Could not revoke the token.</source>
         <translation>Не удалось отозвать токен.</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="88" />
+        <location filename="../pages/McpTokensPage.qml" line="88"/>
         <source>MCP tokens let external tools read your journal and create cards.</source>
         <translation>Токены MCP позволяют внешним инструментам читать дневник и создавать карточки.</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="95" />
+        <location filename="../pages/McpTokensPage.qml" line="95"/>
         <source>Create token</source>
         <translation>Создать токен</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="138" />
+        <location filename="../pages/McpTokensPage.qml" line="138"/>
         <source>Hide</source>
         <translation>Скрыть</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="147" />
+        <location filename="../pages/McpTokensPage.qml" line="147"/>
         <source>Revoke</source>
         <translation>Отозвать</translation>
     </message>
     <message>
-        <location filename="../pages/McpTokensPage.qml" line="156" />
+        <location filename="../pages/McpTokensPage.qml" line="156"/>
         <source>No tokens created in this session.</source>
         <translation>В этом сеансе токены не создавались.</translation>
     </message>
@@ -933,67 +949,67 @@
 <context>
     <name>ReminderDialog</name>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="46" />
+        <location filename="../pages/ReminderDialog.qml" line="46"/>
         <source>New Reminder</source>
         <translation>Новое напоминание</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="59" />
+        <location filename="../pages/ReminderDialog.qml" line="59"/>
         <source>Title is required.</source>
         <translation>Введите название.</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="64" />
+        <location filename="../pages/ReminderDialog.qml" line="64"/>
         <source>Enter the date and time in your locale format (%1).</source>
         <translation>Введите дату и время в формате вашей локали (%1).</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="73" />
+        <location filename="../pages/ReminderDialog.qml" line="73"/>
         <source>Could not save the reminder.</source>
         <translation>Не удалось сохранить напоминание.</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="86" />
+        <location filename="../pages/ReminderDialog.qml" line="86"/>
         <source>Title:</source>
         <translation>Название:</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="94" />
+        <location filename="../pages/ReminderDialog.qml" line="94"/>
         <source>When (%1):</source>
         <translation>Когда (%1):</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="108" />
+        <location filename="../pages/ReminderDialog.qml" line="108"/>
         <source>Will remind: %1</source>
         <translation>Напомним: %1</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="112" />
+        <location filename="../pages/ReminderDialog.qml" line="112"/>
         <source>Repeats:</source>
         <translation>Повтор:</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="116" />
+        <location filename="../pages/ReminderDialog.qml" line="116"/>
         <source>Never</source>
         <translation>Никогда</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="116" />
+        <location filename="../pages/ReminderDialog.qml" line="116"/>
         <source>Daily</source>
         <translation>Ежедневно</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="116" />
+        <location filename="../pages/ReminderDialog.qml" line="116"/>
         <source>Weekly</source>
         <translation>Еженедельно</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="131" />
+        <location filename="../pages/ReminderDialog.qml" line="131"/>
         <source>Save</source>
         <translation>Сохранить</translation>
     </message>
     <message>
-        <location filename="../pages/ReminderDialog.qml" line="136" />
+        <location filename="../pages/ReminderDialog.qml" line="136"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
@@ -1001,57 +1017,57 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="24" />
+        <location filename="../pages/SettingsPage.qml" line="24"/>
         <source>Settings</source>
         <translation>Настройки</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="57" />
+        <location filename="../pages/SettingsPage.qml" line="57"/>
         <source>Account details unavailable while offline.</source>
         <translation>Данные аккаунта недоступны офлайн.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="72" />
+        <location filename="../pages/SettingsPage.qml" line="72"/>
         <source>Server URL</source>
         <translation>Адрес сервера</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="85" />
+        <location filename="../pages/SettingsPage.qml" line="85"/>
         <source>Enter a valid HTTP or HTTPS server URL.</source>
         <translation>Введите корректный HTTP- или HTTPS-адрес сервера.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="92" />
+        <location filename="../pages/SettingsPage.qml" line="92"/>
         <source>Save server URL</source>
         <translation>Сохранить адрес сервера</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="97" />
+        <location filename="../pages/SettingsPage.qml" line="97"/>
         <source>Server URL saved.</source>
         <translation>Адрес сервера сохранён.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="102" />
+        <location filename="../pages/SettingsPage.qml" line="102"/>
         <source>Enrollment</source>
         <translation>Регистрация</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="105" />
+        <location filename="../pages/SettingsPage.qml" line="105"/>
         <source>Enrolled</source>
         <translation>Зарегистрировано</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="105" />
+        <location filename="../pages/SettingsPage.qml" line="105"/>
         <source>Not enrolled</source>
         <translation>Не зарегистрировано</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="111" />
+        <location filename="../pages/SettingsPage.qml" line="111"/>
         <source>Use Enroll device in the inbox menu to connect.</source>
         <translation>Используйте «Подключить устройство» в меню входящих для подключения.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="113" />
+        <location filename="../pages/SettingsPage.qml" line="113"/>
         <source>Device: %1
 Device ID: %2
 Tenant: %3</source>
@@ -1060,32 +1076,32 @@ ID устройства: %2
 Пространство: %3</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="114" />
+        <location filename="../pages/SettingsPage.qml" line="114"/>
         <source>Enrollment is saved on this device. Device details were not saved by the previous version.</source>
         <translation>Регистрация сохранена на этом устройстве. Детали устройства не были сохранены предыдущей версией.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="120" />
+        <location filename="../pages/SettingsPage.qml" line="120"/>
         <source>Connected accounts</source>
         <translation>Подключённые аккаунты</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="123" />
+        <location filename="../pages/SettingsPage.qml" line="123"/>
         <source>No accounts connected.</source>
         <translation>Нет подключённых аккаунтов.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="131" />
+        <location filename="../pages/SettingsPage.qml" line="131"/>
         <source>Checking updates…</source>
         <translation>Проверка обновлений…</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="131" />
+        <location filename="../pages/SettingsPage.qml" line="131"/>
         <source>Check updates</source>
         <translation>Проверить обновления</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="139" />
+        <location filename="../pages/SettingsPage.qml" line="139"/>
         <source>In-app updates are available on Android.</source>
         <translation>Обновления в приложении доступны на Android.</translation>
     </message>

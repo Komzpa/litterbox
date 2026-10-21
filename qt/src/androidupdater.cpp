@@ -216,7 +216,7 @@ bool AndroidUpdater::startCheck(bool automatic)
         return false;
     m_automaticRun = automatic;
     if (m_baseUrl.isEmpty() || m_packageId.isEmpty() || m_token.isEmpty()) {
-        finishWithError(QStringLiteral("update server, package, and device token are required"));
+        finishWithError(tr("update server, package, and device token are required"));
         return false;
     }
     const QUrl origin(m_baseUrl);
@@ -224,11 +224,11 @@ bool AndroidUpdater::startCheck(bool automatic)
                               && origin.scheme() != QStringLiteral("http"))
         || origin.host().isEmpty() || !origin.userInfo().isEmpty() || !origin.query().isEmpty()
         || !origin.fragment().isEmpty()) {
-        finishWithError(QStringLiteral("update server URL is invalid"));
+        finishWithError(tr("update server URL is invalid"));
         return false;
     }
     if (m_installedVersionCode <= 0) {
-        finishWithError(QStringLiteral("installed Android version is unavailable"));
+        finishWithError(tr("installed Android version is unavailable"));
         return false;
     }
 
@@ -304,7 +304,7 @@ void AndroidUpdater::onManifestFinished()
     m_manifestReply = nullptr;
 
     if (m_manifestTooLarge) {
-        finishWithError(QStringLiteral("update manifest exceeds size limit"));
+        finishWithError(tr("update manifest exceeds size limit"));
         return;
     }
     if (transportError || status != 200) {
@@ -312,14 +312,14 @@ void AndroidUpdater::onManifestFinished()
             finishNoUpdate();
             return;
         }
-        finishWithError(QStringLiteral("update manifest unavailable (HTTP %1)").arg(status));
+        finishWithError(tr("update manifest unavailable (HTTP %1)").arg(status));
         return;
     }
 
     QJsonParseError parseError{};
     const QJsonDocument document = QJsonDocument::fromJson(m_manifestBody, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        finishWithError(QStringLiteral("update manifest is not valid JSON"));
+        finishWithError(tr("update manifest is not valid JSON"));
         return;
     }
     const QJsonObject manifest = document.object();
@@ -329,26 +329,26 @@ void AndroidUpdater::onManifestFinished()
     const QString downloadPath = manifest.value(QStringLiteral("download_path")).toString();
 
     if (version.isEmpty() || package.isEmpty() || sha256.isEmpty() || downloadPath.isEmpty()) {
-        finishWithError(QStringLiteral("update manifest is missing required fields"));
+        finishWithError(tr("update manifest is missing required fields"));
         return;
     }
     if (package != m_packageId) {
-        finishWithError(QStringLiteral("update package identity does not match this app"));
+        finishWithError(tr("update package identity does not match this app"));
         return;
     }
     if (!validSha256(sha256)) {
-        finishWithError(QStringLiteral("update manifest SHA-256 is invalid"));
+        finishWithError(tr("update manifest SHA-256 is invalid"));
         return;
     }
     if (downloadPath != QLatin1String(kDownloadPath)) {
-        finishWithError(QStringLiteral("update download path is not the fixed same-origin route"));
+        finishWithError(tr("update download path is not the fixed same-origin route"));
         return;
     }
 
     bool validCode = false;
     const int remoteCode = version.toInt(&validCode);
     if (!validCode || remoteCode <= 0) {
-        finishWithError(QStringLiteral("update version is not a valid versionCode"));
+        finishWithError(tr("update version is not a valid versionCode"));
         return;
     }
     if (remoteCode <= m_installedVersionCode) {
@@ -372,7 +372,7 @@ void AndroidUpdater::startDownload(const QString &relativePath)
 {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (dir.isEmpty() || !QDir().mkpath(dir)) {
-        finishWithError(QStringLiteral("could not create download directory"));
+        finishWithError(tr("could not create download directory"));
         return;
     }
     m_apkPath = dir + QStringLiteral("/update-%1.apk").arg(m_pendingVersion);
@@ -386,7 +386,7 @@ void AndroidUpdater::startDownload(const QString &relativePath)
     m_downloadFile = new QSaveFile(m_apkPath);
     if (!m_downloadFile->open(QIODevice::WriteOnly)) {
         discardDownload();
-        finishWithError(QStringLiteral("could not write update file"));
+        finishWithError(tr("could not write update file"));
         return;
     }
     m_hasher = new QCryptographicHash(QCryptographicHash::Sha256);
@@ -405,13 +405,13 @@ void AndroidUpdater::onDownloadReadyRead()
     if (chunk.isEmpty())
         return;
     if (m_downloadedBytes + chunk.size() > kMaxApkBytes) {
-        m_downloadError = QStringLiteral("update APK exceeds size limit");
+        m_downloadError = tr("update APK exceeds size limit");
         m_downloadReply->abort();
         return;
     }
     const qint64 written = m_downloadFile->write(chunk);
     if (written != chunk.size()) {
-        m_downloadError = QStringLiteral("could not write complete update APK");
+        m_downloadError = tr("could not write complete update APK");
         m_downloadReply->abort();
         return;
     }
@@ -429,9 +429,9 @@ void AndroidUpdater::onDownloadFinished()
         const QByteArray remainder = m_downloadReply->readAll();
         if (!remainder.isEmpty()) {
             if (m_downloadedBytes + remainder.size() > kMaxApkBytes) {
-                m_downloadError = QStringLiteral("update APK exceeds size limit");
+                m_downloadError = tr("update APK exceeds size limit");
             } else if (m_downloadFile->write(remainder) != remainder.size()) {
-                m_downloadError = QStringLiteral("could not write complete update APK");
+                m_downloadError = tr("could not write complete update APK");
             } else {
                 m_downloadedBytes += remainder.size();
                 m_hasher->addData(remainder);
@@ -454,17 +454,17 @@ void AndroidUpdater::onDownloadFinished()
     }
     if (transportError || status != 200 || m_downloadedBytes == 0) {
         discardDownload();
-        finishWithError(QStringLiteral("update download failed (HTTP %1)").arg(status));
+        finishWithError(tr("update download failed (HTTP %1)").arg(status));
         return;
     }
     if (QString::fromLatin1(digest) != m_pendingSha256) {
         discardDownload();
-        finishWithError(QStringLiteral("update checksum verification failed"));
+        finishWithError(tr("update checksum verification failed"));
         return;
     }
     if (!m_downloadFile || !m_downloadFile->commit()) {
         discardDownload();
-        finishWithError(QStringLiteral("could not finalize update file"));
+        finishWithError(tr("could not finalize update file"));
         return;
     }
     delete m_downloadFile;
@@ -492,13 +492,13 @@ void AndroidUpdater::discardDownload()
 void AndroidUpdater::installDownloadedUpdate()
 {
     if (m_readyApkPath.isEmpty()) {
-        emit errorOccurred(QStringLiteral("no verified update is ready to install"));
+        emit errorOccurred(tr("no verified update is ready to install"));
         return;
     }
 #ifdef Q_OS_ANDROID
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     if (!context.isValid()) {
-        emit errorOccurred(QStringLiteral("Android context unavailable"));
+        emit errorOccurred(tr("Android context unavailable"));
         return;
     }
     const QString authority = m_packageId + QStringLiteral(".qtprovider");
@@ -509,7 +509,7 @@ void AndroidUpdater::installDownloadedUpdate()
         "(Landroid/content/Context;Ljava/lang/String;Ljava/io/File;)Landroid/net/Uri;",
         context.object(), QJniObject::fromString(authority).object(), file.object());
     if (!uri.isValid()) {
-        emit errorOccurred(QStringLiteral("could not build installer content URI"));
+        emit errorOccurred(tr("could not build installer content URI"));
         return;
     }
 
@@ -543,7 +543,7 @@ void AndroidUpdater::installDownloadedUpdate()
                             jint(0x10000000)); // FLAG_ACTIVITY_NEW_TASK
     context.callMethod<void>("startActivity", "(Landroid/content/Intent;)V", intent.object());
 #else
-    emit errorOccurred(QStringLiteral("in-app install is only supported on Android"));
+    emit errorOccurred(tr("in-app install is only supported on Android"));
 #endif
 }
 
