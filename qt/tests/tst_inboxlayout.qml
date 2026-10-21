@@ -618,4 +618,130 @@ TestCase {
         compare(findChild(list.itemAtIndex(1), "mailSnippet-postgis6143").visible, false, "signature-only reply has no server snippet")
         inbox.close()
     }
+    // Popup anchoring (bundle-popup-20261021): the bundle-details menu is
+    // parented to its trigger, so its x/y are trigger-local like the neighbor
+    // headerMenu (x: parent.width - width, y: parent.height + 8). Window-width
+    // arithmetic inside trigger coordinates detaches the popup from its trigger.
+    function test_bundleMenuAnchorsToItsTrigger_data() {
+        return [{tag: "split-1440x900-scrolled-bundle", viewWidth: 1440, viewHeight: 900},
+                {tag: "narrow-412x915-viewport-edge", viewWidth: 412, viewHeight: 915}]
+    }
+    function bundleMenuFor(trigger) {
+        for (let i = 0; i < trigger.children.length; ++i) {
+            const child = trigger.children[i]
+            if (child && child.sourceComponent !== undefined && child.item) return child.item
+        }
+        return null
+    }
+    function test_bundleMenuAnchorsToItsTrigger(data) {
+        store.clear()
+        for (let i = 0; i < 6; ++i) {
+            store.append({cardId: "popup-filler-" + i, title: "Scrolled filler " + i, section: "now", card: {
+                id: "popup-filler-" + i, title: "Scrolled filler " + i, source: "manual", section: "now",
+                bundle_id: "", pinned_rank: null, important: false, timed: false, has_body: false,
+                summary: "Disposable filler pushing the bundle below the fold", note: "", account_name: ""
+            }})
+        }
+        for (let i = 0; i < 3; ++i) {
+            store.append({cardId: "popup-" + i, title: "Bundle anchor message " + i, section: "now", card: {
+                id: "popup-" + i, title: "Bundle anchor message " + i, source: "mail", section: "now",
+                bundle_id: "octo", bundle_title: "sender:notifications@github.com", bundle_leader: i === 0,
+                bundle_member_count: 3, pinned_rank: null, important: false, timed: false, has_body: false,
+                summary: "", snippet: "Bundle member preview for popup anchoring", note: "",
+                account_name: "owner@example.test", sender_name: "Octo bot " + i,
+                sender_address: "octo" + i + "@example.test", received_at: new Date().toISOString()
+            }})
+        }
+        for (let i = 0; i < 4; ++i) {
+            store.append({cardId: "popup-tail-" + i, title: "Trailing card " + i, section: "now", card: {
+                id: "popup-tail-" + i, title: "Trailing card " + i, source: "manual", section: "now",
+                bundle_id: "", pinned_rank: null, important: false, timed: false, has_body: false,
+                summary: "Disposable trailing card", note: "", account_name: ""
+            }})
+        }
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.viewWidth, height: data.viewHeight
+        })
+        verify(inbox)
+        inbox.show()
+        // Window surface: the painted root (grabImage target), so popup and
+        // trigger boxes compare in the same mapped space as real screenshots.
+        const surface = inbox.contentItem.parent
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(6) !== null })
+        // Scrolled bundle: the leader starts below six fillers and is scrolled
+        // to the top of the visible list before the popup opens.
+        list.positionViewAtIndex(6, ListView.Beginning)
+        wait(250)
+        list.forceLayout()
+        let trigger = null
+        for (let i = 0; i < list.count && !trigger; ++i) {
+            const row = list.itemAtIndex(i)
+            const candidate = row && findChild(row, "bundleOptions-popup-0")
+            if (candidate && candidate.visible && candidate.width > 0) trigger = candidate
+        }
+        verify(trigger, "the bundle leader must expose its options trigger")
+        const triggerBox = trigger.mapToItem(surface, 0, 0)
+        verify(triggerBox.y >= 0 && triggerBox.y + trigger.height <= surface.height,
+               "the scrolled trigger must sit inside the viewport")
+        // Negative control: the retired window-width formula with its missing
+        // y must fail the same adjacency oracle, so this check can fail.
+        const retiredRight = triggerBox.x + inbox.width - 3 * inbox.edgeSpacing
+        const retiredTop = triggerBox.y
+        const oracleRejectsRetired = Math.abs(retiredRight - (triggerBox.x + trigger.width)) > 2
+                || Math.abs(retiredTop - (triggerBox.y + trigger.height + 8)) > 2
+        verify(oracleRejectsRetired, "negative control: the oracle must reject the retired global-offset formula")
+        mouseClick(trigger)
+        const menu = bundleMenuFor(trigger)
+        verify(menu, "the trigger's Loader must build the bundle-details menu")
+        tryCompare(menu, "visible", true)
+        wait(200)
+        // Evaluated-parent inspection: the popup's parent is the trigger item,
+        // so popup x/y live in trigger-local coordinates and map from there.
+        compare(menu.parent, trigger, "the bundle menu must be parented to its trigger")
+        const popupBox = menu.background.mapToItem(surface, 0, 0)
+        console.log("BUNDLE_POPUP_GEOMETRY " + JSON.stringify({
+            tag: data.tag, viewport: [surface.width, surface.height],
+            trigger: {x: triggerBox.x, y: triggerBox.y, width: trigger.width, height: trigger.height},
+            popup: {x: popupBox.x, y: popupBox.y, width: menu.width, height: menu.height}
+        }))
+        verify(Math.abs(popupBox.x + menu.width - (triggerBox.x + trigger.width)) <= 2,
+               "bundle menu must right-align with its trigger: popupRight " + (popupBox.x + menu.width) + " triggerRight " + (triggerBox.x + trigger.width))
+        verify(Math.abs(popupBox.y - (triggerBox.y + trigger.height + 8)) <= 2,
+               "bundle menu must sit 8px below its trigger: popupTop " + popupBox.y + " expected " + (triggerBox.y + trigger.height + 8))
+        verify(popupBox.x >= -1 && popupBox.x + menu.width <= surface.width + 1,
+               "bundle menu must fit the viewport horizontally: " + popupBox.x + ".." + (popupBox.x + menu.width) + " of " + surface.width)
+        verify(popupBox.y >= -1 && popupBox.y + menu.height <= surface.height + 1,
+               "bundle menu must fit the viewport vertically: " + popupBox.y + ".." + (popupBox.y + menu.height) + " of " + surface.height)
+        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-bundle-popup-" + data.tag + ".png")
+        menu.close()
+        tryCompare(menu, "visible", false)
+        // Header menu as control: the neighbor's identical local anchoring
+        // must pass the same oracle before and after the fix.
+        const commands = findChild(inbox, "inboxCommands")
+        verify(commands)
+        mouseClick(commands)
+        const header = findChild(inbox, "headerMenu")
+        tryCompare(header, "visible", true)
+        wait(150)
+        compare(header.parent, commands, "the header menu keeps its evaluated trigger parent")
+        const commandBox = commands.mapToItem(surface, 0, 0)
+        const headerBox = header.background.mapToItem(surface, 0, 0)
+        console.log("HEADER_MENU_GEOMETRY " + JSON.stringify({
+            tag: data.tag, viewport: [surface.width, surface.height],
+            trigger: {x: commandBox.x, y: commandBox.y, width: commands.width, height: commands.height},
+            popup: {x: headerBox.x, y: headerBox.y, width: header.width, height: header.height}
+        }))
+        verify(Math.abs(headerBox.x + header.width - (commandBox.x + commands.width)) <= 2,
+               "header menu control must right-align with its trigger: popupRight " + (headerBox.x + header.width) + " triggerRight " + (commandBox.x + commands.width))
+        verify(Math.abs(headerBox.y - (commandBox.y + commands.height + 8)) <= 2,
+               "header menu control must sit 8px below its trigger: popupTop " + headerBox.y + " expected " + (commandBox.y + commands.height + 8))
+        verify(headerBox.x >= -1 && headerBox.x + header.width <= surface.width + 1
+               && headerBox.y >= -1 && headerBox.y + header.height <= surface.height + 1,
+               "header menu control must stay inside the viewport: " + headerBox.x + ".." + (headerBox.x + header.width) + " x " + headerBox.y + ".." + (headerBox.y + header.height) + " of " + surface.width + "x" + surface.height)
+        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-header-menu-control-" + data.tag + ".png")
+        header.close()
+        inbox.close()
+    }
 }

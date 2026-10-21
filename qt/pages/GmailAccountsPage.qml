@@ -52,12 +52,16 @@ Kirigami.ScrollablePage {
     // R67 sender-photo consent/status, server-reported only. The status
     // contract (GET /v1/gmail/sender-photos/status) carries per-account
     // photo_ready / authorization_required / required_scopes; the consent
-    // contract (POST /v1/gmail/photo-consent) only returns an
-    // authorization_url and performs no grant. No scope or Google config
-    // checks are invented here: every state shown is what the server said.
+    // contract (POST /v1/gmail/photo-consent with {account_id}) returns an
+    // authorization_url bound to that account and performs no grant — the
+    // callback verifies the approving Google identity against the binding.
+    // No scope or Google config checks are invented here: every state shown
+    // is what the server said.
     property var photoStatus: [] // [{ account_id, address, photo_ready, authorization_required, required_scopes }]
     property string photoStatusError: ""
     property string photoConsentUrl: ""
+    property string photoConsentAccountId: ""
+    property string photoConsentAddress: ""
     property string photoConsentError: ""
     property bool requestingPhotoConsent: false
 
@@ -66,6 +70,13 @@ Kirigami.ScrollablePage {
     function reload() {
         loading = true
         errorText = ""
+        // A consent link that was already opened is consumed server-side
+        // (single-use state); drop the stale URL so the page never invites a
+        // second click that can only fail, and let the status reload below
+        // report the row's real post-grant state.
+        photoConsentUrl = ""
+        photoConsentAccountId = ""
+        photoConsentAddress = ""
         api.get("/v1/gmail/accounts", function (error, response) {
             loading = false
             if (error || !response || !Array.isArray(response.body)) {
@@ -94,19 +105,23 @@ Kirigami.ScrollablePage {
     }
 
     // Starts the incremental photo grant (Gmail.modify + both People photo
-    // scopes). The server returns the authorization_url and performs no
-    // grant: the user approves in their own browser through the explicit
-    // open action below. This function never opens a browser itself.
-    function requestPhotoConsent() {
+    // scopes) for one intended account. The server binds the consent state to
+    // that account_id and returns the authorization_url; it performs no grant:
+    // the user approves in their own browser through the explicit open action
+    // below and the callback checks the approving Google identity against the
+    // binding. This function never opens a browser itself.
+    function requestPhotoConsent(accountId, address) {
         photoConsentError = ""
         requestingPhotoConsent = true
-        api.post("/v1/gmail/photo-consent", {}, function (error, response) {
+        api.post("/v1/gmail/photo-consent", { "account_id": accountId }, function (error, response) {
             requestingPhotoConsent = false
             if (error || !response || !response.body || !response.body.authorization_url) {
                 photoConsentError = qsTr("Could not start photo authorization.")
                 return
             }
             photoConsentUrl = response.body.authorization_url
+            photoConsentAccountId = accountId
+            photoConsentAddress = address
         })
     }
 
@@ -324,7 +339,7 @@ Kirigami.ScrollablePage {
                     text: root.requestingPhotoConsent ? qsTr("Starting authorization…") : qsTr("Authorize sender photos…")
                     visible: photoRow.needsAuth
                     enabled: !root.requestingPhotoConsent
-                    onClicked: root.requestPhotoConsent()
+                    onClicked: root.requestPhotoConsent(modelData.account_id, modelData.address)
                 }
             }
         }
@@ -341,7 +356,9 @@ Kirigami.ScrollablePage {
         QQC2.Label {
             objectName: "photoConsentPrompt"
             visible: root.photoConsentUrl !== ""
-            text: qsTr("Open this authorization link to grant sender photo access. Litterbox never grants it for you.")
+            text: root.photoConsentAddress !== ""
+                ? qsTr("Open this authorization link to grant sender photo access for %1. It is bound to that account: approving with another Google account is refused and stores nothing. Litterbox never grants it for you.").arg(root.photoConsentAddress)
+                : qsTr("Open this authorization link to grant sender photo access. Litterbox never grants it for you.")
             color: root.ink
             wrapMode: Text.Wrap
             Layout.fillWidth: true

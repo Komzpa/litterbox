@@ -28,8 +28,9 @@ type fakeProvider struct {
 	gotRedirectURI atomic.Value // string
 	gotClientID    atomic.Value // string
 
-	tokenStatus int
-	tokenBody   string
+	tokenStatus  int
+	tokenBody    string
+	profileEmail string
 }
 
 func newFakeProvider(t *testing.T) *fakeProvider {
@@ -63,8 +64,12 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 	mux.HandleFunc("/revoke", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
 		p.profileAuth.Store(r.Header.Get("Authorization"))
+		email := p.profileEmail
+		if email == "" {
+			email = "owner@example.org"
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"emailAddress":"owner@example.org"}`)
+		fmt.Fprintf(w, `{"emailAddress":%q}`, email)
 	})
 	p.server = httptest.NewServer(mux)
 	t.Cleanup(p.server.Close)

@@ -1,3 +1,30 @@
+litterbox-qt (0.1-43) unstable; urgency=medium
+
+  * Bind sender-photo consent to the account that starts it: the consent
+    request names the account, the callback refuses a different approving
+    Google identity and stores nothing, and the outcome is truthful (granted,
+    partial with the missing scopes listed, or Gmail-only).
+  * Keep granted photo authority across Gmail-only reconnects instead of
+    downgrading the scopes or replacing the photo-carrying refresh token.
+  * Bind the Gmail accounts photo-consent link to its row and clear the
+    consumed link on return, refreshing the server-reported status.
+  * Fix the bundle-details popup anchoring to its trigger. The popup is
+    parented to its trigger button, so window-width arithmetic in trigger-local
+    coordinates clamped it to the window edge at every viewport; it now uses the
+    header menu's trigger-local anchoring (R49; tst_inboxlayout
+    test_bundleMenuAnchorsToItsTrigger).
+  * Render plain-text-only mail threads from the combined body: an empty
+    trailing thread slot no longer blanks the reader; the latest non-empty
+    message wins, else the combined body paints (tst_maildetail
+    test_scmPlainTextThreadFallsBackToCombinedBody plus
+    test_threadPrefersLastNonEmptyMessage).
+  * Keep exactly one vertical viewport in the reader: message data tables
+    scroll horizontally only and never become a second vertical scroller
+    (tst_maildetail test_newsletterSingleVerticalViewport: computed table
+    overflow-y plus the surviving horizontal port).
+
+ -- Litterbox <litterbox@example.com>  Wed, 21 Oct 2026 05:00:00 +0400
+
 litterbox-qt (0.1-42) unstable; urgency=medium
 
   * Keep the narrow navigation drawer instead of reserving a permanent rail.

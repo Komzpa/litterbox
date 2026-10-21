@@ -128,3 +128,186 @@ func TestWebOAuthStateTokenAndDisconnect(t *testing.T) {
 		t.Fatalf("after delete: %d %s", got.Code, got.Body.String())
 	}
 }
+
+// TestPhotoConsentAccountBinding drives the incremental photo-consent flow
+// against the fake provider and pins the acceptance contract: the consent
+// state is bound to the intended account, the callback verifies the Google
+// identity it receives against that account before storing anything, the
+// recorded scopes are the token's actual authority (never a blind union of
+// requested/stored scopes), the photo / Gmail-only / partial grant classes get
+// distinct truthful pages, and a later Gmail-only reconnect preserves an
+// existing photo grant instead of downgrading it.
+func TestPhotoConsentAccountBinding(t *testing.T) {
+	db := webTestDB(t)
+	tenant := uuid.New()
+	if _, err := db.Exec("INSERT INTO tenants(id) VALUES($1)", tenant); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider(t)
+	mux := http.NewServeMux()
+	h := &WebHandler{DB: db, Config: WebConfig{Credentials: &Credentials{ClientID: "fake-client-id", ClientSecret: "fake-client-secret"}, CallbackURL: "https://example.test/v1/gmail/oauth/callback", AuthURL: provider.server.URL + "/auth", TokenURL: provider.server.URL + "/token", ProfileURL: provider.server.URL + "/profile", RevokeURL: provider.server.URL + "/revoke", StateSecret: []byte("12345678901234567890123456789012")}}
+	h.Routes(mux)
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r = r.WithContext(WithTenant(r.Context(), tenant.String()))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	stateOf := func(res *httptest.ResponseRecorder) string {
+		t.Helper()
+		if res.Code != 200 {
+			t.Fatalf("start: %d %s", res.Code, res.Body.String())
+		}
+		var start struct {
+			URL string `json:"authorization_url"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &start); err != nil {
+			t.Fatal(err)
+		}
+		auth, err := url.Parse(start.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if auth.Query().Get("state") == "" {
+			t.Fatalf("auth URL without state: %s", start.URL)
+		}
+		return auth.Query().Get("state")
+	}
+	callback := func(state string) *httptest.ResponseRecorder {
+		t.Helper()
+		r := httptest.NewRequest("GET", OAuthCallbackPath+"?state="+url.QueryEscape(state)+"&code=fake-code", nil)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+
+	// Gmail-only connect creates the account without photo scopes.
+	provider.tokenBody = `{"access_token":"at-fake","refresh_token":"rt-gmail","token_type":"Bearer","expires_in":3600,"scope":"` + ScopeGmailModify + `"}`
+	if got := call("POST", ConnectPath, ""); got.Code != 200 {
+		t.Fatalf("connect: %d %s", got.Code, got.Body.String())
+	}
+	state := stateOf(call("POST", ConnectPath, ""))
+	if got := callback(state); got.Code != 200 {
+		t.Fatalf("connect callback: %d %s", got.Code, got.Body.String())
+	}
+	var accountID uuid.UUID
+	var token []byte
+	var scopes string
+	if err := db.QueryRow("SELECT id,refresh_token,granted_photo_scopes FROM accounts WHERE tenant_id=$1 AND address=$2", tenant, "owner@example.org").Scan(&accountID, &token, &scopes); err != nil {
+		t.Fatal(err)
+	}
+	if string(token) != "rt-gmail" || HasPhotoScopes(scopes) {
+		t.Fatalf("gmail-only connect stored token=%q scopes=%q", token, scopes)
+	}
+
+	// Photo consent requires the intended account and requests the full scope
+	// join; the state is bound to that account.
+	if got := call("POST", PhotoConsentPath, ""); got.Code != 400 {
+		t.Fatalf("accountless photo consent: %d %s", got.Code, got.Body.String())
+	}
+	if got := call("POST", PhotoConsentPath, `{"account_id":"` + uuid.NewString() + `"}`); got.Code != 400 {
+		t.Fatalf("unknown-account photo consent: %d %s", got.Code, got.Body.String())
+	}
+	start := call("POST", PhotoConsentPath, `{"account_id":"`+accountID.String()+`"}`)
+	state = stateOf(start)
+	auth, _ := url.Parse(stateURL(start))
+	if got := auth.Query().Get("scope"); got != FullPhotoScope() {
+		t.Fatalf("photo consent scope = %q, want %q", got, FullPhotoScope())
+	}
+
+	// Wrong-account negative control: the Google identity differs from the
+	// bound account. Nothing may be stored for it and the bound account must
+	// keep its old token.
+	provider.profileEmail = "intruder@example.org"
+	provider.tokenBody = `{"access_token":"at-intruder","refresh_token":"rt-intruder","token_type":"Bearer","expires_in":3600,"scope":"` + FullPhotoScope() + `"}`
+	got := callback(state)
+	if got.Code == 200 {
+		t.Fatalf("wrong-account callback stored a grant: %d %s", got.Code, got.Body.String())
+	}
+	if !strings.Contains(got.Body.String(), "intruder@example.org") || !strings.Contains(got.Body.String(), "owner@example.org") {
+		t.Fatalf("wrong-account page must name both identities: %q", got.Body.String())
+	}
+	var intruder int
+	if err := db.QueryRow("SELECT count(*) FROM accounts WHERE tenant_id=$1 AND address='intruder@example.org'", tenant).Scan(&intruder); err != nil {
+		t.Fatal(err)
+	}
+	if intruder != 0 {
+		t.Fatal("wrong-account callback created an account row")
+	}
+	if err := db.QueryRow("SELECT refresh_token FROM accounts WHERE tenant_id=$1 AND id=$2", tenant, accountID).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	if string(token) != "rt-gmail" {
+		t.Fatalf("wrong-account callback overwrote the bound account token: %q", token)
+	}
+
+	// Matching identity, full photo grant: distinct truthful page and the
+	// stored scopes are exactly the granted token scopes.
+	provider.profileEmail = "owner@example.org"
+	provider.tokenBody = `{"access_token":"at-photo","refresh_token":"rt-photo","token_type":"Bearer","expires_in":3600,"scope":"` + FullPhotoScope() + `"}`
+	state = stateOf(call("POST", PhotoConsentPath, `{"account_id":"`+accountID.String()+`"}`))
+	got = callback(state)
+	if got.Code != 200 || !strings.Contains(got.Body.String(), "Sender photo access granted") {
+		t.Fatalf("photo grant page: %d %s", got.Code, got.Body.String())
+	}
+	if err := db.QueryRow("SELECT refresh_token,granted_photo_scopes FROM accounts WHERE tenant_id=$1 AND id=$2", tenant, accountID).Scan(&token, &scopes); err != nil {
+		t.Fatal(err)
+	}
+	if string(token) != "rt-photo" || scopes != FullPhotoScope() {
+		t.Fatalf("photo grant stored token=%q scopes=%q", token, scopes)
+	}
+
+	// Reconnect regression: a Gmail-only reconnect on the photo-granted
+	// account must not downgrade the recorded photo authority.
+	provider.tokenBody = `{"access_token":"at-re","refresh_token":"rt-reconnect","token_type":"Bearer","expires_in":3600,"scope":"` + ScopeGmailModify + `"}`
+	state = stateOf(call("POST", ConnectPath, ""))
+	if got := callback(state); got.Code != 200 {
+		t.Fatalf("reconnect callback: %d %s", got.Code, got.Body.String())
+	}
+	if err := db.QueryRow("SELECT refresh_token,granted_photo_scopes FROM accounts WHERE tenant_id=$1 AND id=$2", tenant, accountID).Scan(&token, &scopes); err != nil {
+		t.Fatal(err)
+	}
+	if !HasPhotoScopes(scopes) {
+		t.Fatalf("Gmail-only reconnect dropped the photo grant: scopes=%q", scopes)
+	}
+	if string(token) != "rt-photo" {
+		t.Fatalf("scope kept for a token that lacks it (blind union): token=%q scopes=%q", token, scopes)
+	}
+
+	// Partial grant on a fresh account: the stored scopes are exactly the
+	// partial token authority and the page says so truthfully.
+	provider.profileEmail = "second@example.org"
+	provider.tokenBody = `{"access_token":"at-second","refresh_token":"rt-second","token_type":"Bearer","expires_in":3600,"scope":"` + ScopeGmailModify + `"}`
+	state = stateOf(call("POST", ConnectPath, ""))
+	if got := callback(state); got.Code != 200 {
+		t.Fatalf("second connect: %d %s", got.Code, got.Body.String())
+	}
+	var secondID uuid.UUID
+	if err := db.QueryRow("SELECT id FROM accounts WHERE tenant_id=$1 AND address='second@example.org'", tenant).Scan(&secondID); err != nil {
+		t.Fatal(err)
+	}
+	partial := ScopeGmailModify + " " + ScopeContactsReadonly
+	provider.tokenBody = `{"access_token":"at-partial","refresh_token":"rt-partial","token_type":"Bearer","expires_in":3600,"scope":"` + partial + `"}`
+	state = stateOf(call("POST", PhotoConsentPath, `{"account_id":"`+secondID.String()+`"}`))
+	got = callback(state)
+	if got.Code != 200 || !strings.Contains(got.Body.String(), "partial") || !strings.Contains(got.Body.String(), ScopeOtherContactsReadonly) {
+		t.Fatalf("partial grant page: %d %s", got.Code, got.Body.String())
+	}
+	if err := db.QueryRow("SELECT granted_photo_scopes FROM accounts WHERE tenant_id=$1 AND id=$2", tenant, secondID).Scan(&scopes); err != nil {
+		t.Fatal(err)
+	}
+	if scopes != partial || HasPhotoScopes(scopes) {
+		t.Fatalf("partial grant stored scopes=%q, want exactly %q", scopes, partial)
+	}
+}
+
+// stateURL re-extracts the authorization URL from a start response body.
+func stateURL(res *httptest.ResponseRecorder) string {
+	var start struct {
+		URL string `json:"authorization_url"`
+	}
+	_ = json.Unmarshal(res.Body.Bytes(), &start)
+	return start.URL
+}

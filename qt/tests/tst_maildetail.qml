@@ -280,6 +280,61 @@ TestCase {
         compare(line.text, "Cerebras Systems <welcome@cerebras.net>")
         verify(line.text.indexOf("·") < 0, "stray separator without arrival time: " + line.text)
     }
+    function test_scmPlainTextThreadFallsBackToCombinedBody() {
+        // Live SCM shape (card 8415c61a): body.html carries the <pre> plain-text
+        // fallback while the single thread message stores html:"". The reader
+        // must show the combined body, not a blank document.
+        const scmBody = "<pre>This is an automated email from the git hooks/post-receive script. It was\n"
+            + "generated because a ref change was pushed to the repository containing\n"
+            + "the project \"PostGIS\".\n\nThe branch, master has been updated</pre>"
+        storeStub.cached = {"scm-card": {html: scmBody, source_url: "https://mail.google.com/mail/?authuser=reader%40example.test#all/thread",
+            messages: [{id: "msg-1", gmail_message_id: "gmail-1", sender_name: "git", sender_address: "git@osgeo.org",
+                received_at: "2026-10-21T03:06:03Z", html: ""}]}}
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "scm-card", cardTitle: "[SCM] PostGIS branch master updated", openLinks: false,
+            card: {source: "mail", title: "[SCM] PostGIS branch master updated"}, width: 598, height: 879
+        })
+        verify(page)
+        verify(page.html.indexOf("automated email from the git hooks") >= 0,
+               "SCM plain-text thread shows blank: " + page.html.slice(0, 120))
+        verify(page.hasDocument, "SCM plain-text thread reports no document")
+        compare(page.errorText, "")
+        // Owned-Xvfb proof: the real reader paints the SCM body (not blank).
+        const scmView = findChild(page, "body")
+        verify(scmView && scmView.runJavaScript !== undefined, "reader body surface missing")
+        tryVerify(function() { return !scmView.loading && scmView.loadProgress === 100 }, 15000)
+        let scmText = null
+        scmView.runJavaScript("document.body.innerText", WebEngineScript.ApplicationWorld, function(v) { scmText = v })
+        tryVerify(function() { return scmText !== null }, 5000)
+        verify(String(scmText).indexOf("automated email from the git hooks") >= 0,
+               "rendered SCM reader is blank: " + String(scmText).slice(0, 120))
+        const scmShot = grabImage(page)
+        scmShot.save(mailFixtures.screenshotPath("scm-plain-text-598.png"))
+    }
+
+    function test_threadPrefersLastNonEmptyMessage() {
+        // Plain control: a thread whose latest message has HTML keeps it; an
+        // empty trailing slot must not shadow the earlier good message.
+        storeStub.cached = {"thread-ctl": {html: "<p>Combined fallback</p>", messages: [
+            {id: "m-1", gmail_message_id: "g-1", html: "<p>First original</p>"},
+            {id: "m-2", gmail_message_id: "g-2", html: ""}]}}
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "thread-ctl", cardTitle: "Control", openLinks: false,
+            card: {source: "mail"}, width: 598, height: 879
+        })
+        verify(page)
+        compare(page.html, "<p>First original</p>")
+        storeStub.cached = {"thread-latest": {html: "<p>Combined fallback</p>", messages: [
+            {id: "m-1", gmail_message_id: "g-1", html: "<p>First original</p>"},
+            {id: "m-2", gmail_message_id: "g-2", html: "<p>Latest original</p>"}]}}
+        const latest = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "thread-latest", cardTitle: "Control", openLinks: false,
+            card: {source: "mail"}, width: 598, height: 879
+        })
+        verify(latest)
+        compare(latest.html, "<p>Latest original</p>")
+    }
+
     function test_originalThreadUsesNativeDisclosureInsideSingleDocumentScroll() {
         const historyText = "Second field note. " + "The survey records preserve the river level, bridge observations, and the original field measurements. ".repeat(80)
         storeStub.cached = {"thread": {source_url: "https://mail.synthetic.test/thread/42", messages: [
@@ -355,5 +410,209 @@ TestCase {
         verify(scroll.open && scroll.height > scroll.viewport && scroll.top > 0,
                "Expanded long history scrolls in the original document")
         compare(scroll.nestedScrolls, 0)
+    }
+
+    // Newsletter colors/layout criterion: readable colors while the author's
+    // meaningful HTML, images, quotes and data-table horizontal scrolling all
+    // survive. The scroll criterion has its own evidence in
+    // test_newsletterSingleVerticalViewport below (the next scroll row consumes it).
+    function countMailTags(source) {
+        function count(pattern) { return (source.match(pattern) || []).length }
+        return {
+            a: count(/<a[\s>]/gi), img: count(/<img[\s>]/gi), table: count(/<table[\s>]/gi),
+            pre: count(/<pre[\s>]/gi), quote: count(/<(?:q|blockquote)[\s>]/gi)
+        }
+    }
+
+    // DOM oracle over the rendered document: link/text contrast against the
+    // painted backgrounds, dark slabs, image decode, table scrolling, tag
+    // census and whether the stylesheet conditions are pinned to light-host
+    // semantics (so a dark-preferring host renders the same readable theme).
+    function newsletterReport(body) {
+        let out = null
+        body.runJavaScript(`(function() {
+            function chan(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+            function parse(c) {
+                const m = /rgba?\\(([^)]+)\\)/.exec(c || '')
+                if (!m) return null
+                const p = m[1].split(',').map(s => parseFloat(s))
+                return {r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1}
+            }
+            function lum(c) { return c ? 0.2126 * chan(c.r / 255) + 0.7152 * chan(c.g / 255) + 0.0722 * chan(c.b / 255) : null }
+            function effBg(el) {
+                let e = el
+                while (e) {
+                    const c = parse(getComputedStyle(e).backgroundColor)
+                    if (c && c.a > 0.05) return c
+                    e = e.parentElement
+                }
+                return {r: 255, g: 255, b: 255, a: 1}
+            }
+            function contrast(el) {
+                const fg = parse(getComputedStyle(el).color)
+                const bg = effBg(el)
+                if (!fg) return null
+                const l1 = lum(fg), l2 = lum(bg)
+                return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+            }
+            function visible(el) {
+                const r = el.getBoundingClientRect()
+                const cs = getComputedStyle(el)
+                return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'
+            }
+            const links = Array.from(document.querySelectorAll('a')).filter(visible)
+            const linkContrasts = links.map(contrast).filter(c => c !== null)
+            const textEls = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,td,th,span,div,pre,q,blockquote,summary,a'))
+                .filter(e => visible(e) && e.innerText.trim() && e.children.length === 0)
+            const pale = textEls.map(e => ({tag: e.tagName, text: e.innerText.trim().slice(0, 24), contrast: contrast(e)}))
+                .filter(x => x.contrast !== null && x.contrast < 3)
+            const slabs = Array.from(document.querySelectorAll('*')).filter(e => {
+                if (!visible(e)) return false
+                const r = e.getBoundingClientRect()
+                return r.height > 4 && lum(effBg(e)) < 0.12
+            }).map(e => ({tag: e.tagName, cls: (e.className || '').toString().slice(0, 24),
+                text: e.innerText.trim().slice(0, 24)}))
+            const doc = document.documentElement
+            return JSON.stringify({
+                minLinkContrast: linkContrasts.length ? Math.min.apply(null, linkContrasts) : null,
+                linkCount: links.length,
+                paleText: pale.slice(0, 10),
+                darkSlabs: slabs.slice(0, 10),
+                images: Array.from(document.images).map(i => ({nw: i.naturalWidth, w: Math.round(i.getBoundingClientRect().width)})),
+                tables: Array.from(document.querySelectorAll('table')).map(t => ({
+                    display: getComputedStyle(t).display, ox: getComputedStyle(t).overflowX,
+                    oy: getComputedStyle(t).overflowY, sw: t.scrollWidth, cw: t.clientWidth})),
+                tags: {
+                    a: document.querySelectorAll('a').length,
+                    img: document.querySelectorAll('img').length,
+                    table: document.querySelectorAll('table').length,
+                    pre: document.querySelectorAll('pre').length,
+                    quote: document.querySelectorAll('q,blockquote').length
+                },
+                nestedVertical: Array.from(document.querySelectorAll('*')).filter(e =>
+                    e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length,
+                doc: {sw: doc.scrollWidth, cw: doc.clientWidth, sh: doc.scrollHeight, ch: doc.clientHeight},
+                scrollbar: getComputedStyle(doc).scrollbarWidth,
+                colorScheme: getComputedStyle(doc).colorScheme,
+                pinned: Array.from(document.querySelectorAll('style'))
+                    .every(s => (s.textContent || '').indexOf('prefers-color-scheme') < 0)
+            })
+        })()`, WebEngineScript.ApplicationWorld, function(value) { out = value })
+        tryVerify(function() { return out !== null })
+        return JSON.parse(out)
+    }
+
+    function test_newsletterColorLayout_data() {
+        const rows = []
+        for (const fixture of ["newsletter-lwn", "newsletter-claude"])
+            for (const viewWidth of [598, 360])
+                rows.push({tag: fixture + "-" + viewWidth, fixture: fixture, viewWidth: viewWidth,
+                           strictLight: fixture === "newsletter-lwn"})
+        rows.push({tag: "plain-control-598", fixture: "plain", viewWidth: 598, strictLight: false, control: true})
+        return rows
+    }
+
+    function test_newsletterColorLayout(row) {
+        const source = mailFixtures.read(row.fixture)
+        const shown = openMessage(source, row.viewWidth)
+        const report = newsletterReport(shown.body)
+        console.log("NEWSLETTER_COLOR_LAYOUT", row.tag, JSON.stringify({
+            minLinkContrast: report.minLinkContrast, links: report.linkCount, pale: report.paleText.length,
+            darkSlabs: report.darkSlabs.length, images: report.images.length, tags: report.tags,
+            pinned: report.pinned, colorScheme: report.colorScheme, doc: report.doc}))
+        const shot = grabImage(shown.page)
+        shot.save(mailFixtures.screenshotPath("newsletter-" + row.tag + ".png"))
+        // Readable colors: links and every visible text run clear 3:1 against
+        // what is actually painted behind them.
+        if (report.linkCount > 0)
+            verify(report.minLinkContrast >= 3,
+                   row.tag + " paints an unreadable link at " + report.minLinkContrast + ":1")
+        compare(report.paleText, [], row.tag + " paints unreadable text")
+        // The reader canvas is light, so a dark-palette slab standing on it is
+        // the reported defect. An author band may stay dark only where its own
+        // text stays readable, which the paleText oracle above covers.
+        if (row.strictLight)
+            compare(report.darkSlabs, [], row.tag + " paints dark slabs on the light canvas")
+        // Meaningful HTML survives: the same links, images, tables, pre blocks
+        // and quotes render as the message itself defines them.
+        const expected = countMailTags(source)
+        for (const key of ["a", "img", "table", "pre", "quote"])
+            compare(report.tags[key], expected[key], row.tag + " lost " + key + " markup")
+        for (const image of report.images)
+            verify(image.nw > 0 && image.w > 0, row.tag + " dropped an image")
+        // Actual data tables keep their column relationships and scroll locally.
+        for (const table of report.tables)
+            if (table.sw > table.cw + 1)
+                compare(table.ox, "auto", row.tag + " data table lost horizontal scrolling")
+        verify(report.doc.sw <= report.doc.cw + 1, row.tag + " document overflows its column")
+        // A dark-preferring host must evaluate the message's own stylesheet on
+        // light-host semantics and render the same readable theme.
+        verify(report.pinned, row.tag + " stylesheet conditions are not pinned to light-host semantics")
+        verify(String(report.colorScheme).indexOf("only") >= 0, row.tag + " color scheme is not light-only")
+    }
+
+    // Scroll criterion, evidenced separately from the colors/layout row above:
+    // one vertical viewport — the document's — with its scrollbar left visible.
+    // The only nested scroll surface is the data table's horizontal port that
+    // the layout criterion keeps; the next scroll row consumes this proof.
+    function test_newsletterSingleVerticalViewport_data() {
+        return [{tag: "newsletter-lwn-598", fixture: "newsletter-lwn", wide: false},
+                {tag: "newsletter-claude-598", fixture: "newsletter-claude", wide: true}]
+    }
+
+    function test_newsletterSingleVerticalViewport(row) {
+        const shown = openMessage(mailFixtures.read(row.fixture), 598)
+        const report = newsletterReport(shown.body)
+        const nestedHorizontal = report.tables.filter(function(t) { return t.sw > t.cw + 1 })
+        console.log("NEWSLETTER_SCROLL_IDENT", row.tag, JSON.stringify({
+            doc: report.doc, nestedVertical: report.nestedVertical,
+            nestedHorizontalTables: nestedHorizontal.length, scrollbar: report.scrollbar,
+            tables: report.tables}))
+        compare(report.nestedVertical, 0, row.tag + " has a nested vertical scrollport")
+        // Computed overflow-y is the vertical-scroller oracle: a message table
+        // may never compute a user-scrollable vertical axis (overflow-x:auto
+        // alone computes overflow-y to auto, which nests a vertical scroller).
+        for (const t of report.tables)
+            verify(t.oy !== "auto" && t.oy !== "scroll",
+                   row.tag + " table computes overflow-y:" + t.oy + " (nested vertical scroller)")
+        // The wide data table keeps its horizontal port and really scrolls on
+        // that axis only.
+        if (row.wide) {
+            verify(nestedHorizontal.length > 0, row.tag + " lost the wide data table's horizontal port")
+            let hscroll = null
+            shown.body.runJavaScript(`(function() {
+                return Array.from(document.querySelectorAll('table'))
+                    .filter(e => e.scrollWidth > e.clientWidth + 1)
+                    .map(e => { const was = e.scrollLeft; e.scrollLeft = e.scrollWidth;
+                        const moved = e.scrollLeft; e.scrollLeft = was;
+                        return {moved: moved, sw: e.scrollWidth, cw: e.clientWidth,
+                                ox: getComputedStyle(e).overflowX, oy: getComputedStyle(e).overflowY} })
+            })()`, WebEngineScript.ApplicationWorld, function(v) { hscroll = v })
+            tryVerify(function() { return hscroll !== null })
+            verify(hscroll.length > 0, row.tag + " wide data table is not identified")
+            for (const t of hscroll) {
+                verify(t.moved > 0, row.tag + " wide data table no longer scrolls horizontally")
+                console.log("NEWSLETTER_TABLE_SCROLL", row.tag, JSON.stringify(t))
+            }
+        }
+        const shot = grabImage(shown.page)
+        shot.save(mailFixtures.screenshotPath("scroll-" + row.tag + ".png"))
+        verify(report.doc.sh > report.doc.ch, row.tag + " message is too short to prove scrolling")
+        verify(report.scrollbar !== "none", row.tag + " hides the document scrollbar")
+        let position = null
+        function readPosition() {
+            shown.body.runJavaScript("document.scrollingElement.scrollTop", WebEngineScript.ApplicationWorld,
+                function(value) { position = value })
+        }
+        readPosition()
+        tryVerify(function() { return position !== null })
+        compare(position, 0)
+        mouseWheel(shown.body, shown.body.width / 2, shown.body.height / 2, 0, -120, Qt.NoButton)
+        tryVerify(function() { readPosition(); return position > 0 }, 5000,
+                  "A wheel event must scroll the open newsletter (" + row.tag + ")")
+        console.log("NEWSLETTER_WHEEL", row.tag, 0, "->", position)
+        mouseWheel(shown.body, shown.body.width / 2, shown.body.height / 2, 0, 120, Qt.NoButton)
+        tryVerify(function() { readPosition(); return position === 0 }, 5000,
+                  "Reverse wheel must return to the newsletter start")
     }
 }

@@ -1697,7 +1697,10 @@ ApplicationWindow {
                                                 parent: bundleOptions
                                                 id: bundleDetails
                                                 width: 320
-                                                x: window.width - width - 3 * window.edgeSpacing
+                                                // Trigger-local anchoring like the neighbor headerMenu:
+                                                // parent is the trigger item, so x/y are trigger-relative.
+                                                x: parent.width - width
+                                                y: parent.height + 8
                                                 background: Rectangle { color: window.surface; border.color: "#dce5e3"; radius: Kirigami.Units.cornerRadius }
                                                 MenuItem { text: card.bundle_title || window.bundleTitle(card); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.ink; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }
                                                 MenuItem { text: cardRow.bundleSummary.accounts.join(", "); enabled: false; width: bundleDetails.width; contentItem: Label { text: parent.text; color: window.mutedInk; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter } }

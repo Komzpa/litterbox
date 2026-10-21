@@ -151,15 +151,30 @@ func (h *WebHandler) beginConnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"authorization_url": authURL})
 }
 // beginPhotoConsent returns an incremental authorization_url for Gmail.modify
-// plus both People photo scopes. It stores PKCE state like beginConnect and
-// performs no grant: the account approves in the browser, and the shared
-// OAuth callback persists the actually granted scopes. Without this step the
+// plus both People photo scopes, bound to the account the caller names in the
+// POST body ({account_id}). The binding rides the existing gmail_oauth_states
+// row so the shared callback can verify that the Google identity it receives is
+// the intended account before storing anything. It stores PKCE state like
+// beginConnect and performs no grant: the account approves in the browser, and
+// the callback persists the actually granted scopes. Without this step the
 // photo pipeline stays in authorization_required (Gmail.modify alone carries
 // no sender-photo field).
 func (h *WebHandler) beginPhotoConsent(w http.ResponseWriter, r *http.Request) {
 	tenant, e := tenantFrom(r.Context())
 	if e != nil {
 		http.Error(w, "tenant required", 401)
+		return
+	}
+	var in struct {
+		AccountID string `json:"account_id"`
+	}
+	if e = json.NewDecoder(r.Body).Decode(&in); e != nil || in.AccountID == "" {
+		http.Error(w, "account_id required", 400)
+		return
+	}
+	accountID, e := uuid.Parse(in.AccountID)
+	if e != nil {
+		http.Error(w, "invalid account id", 400)
 		return
 	}
 	if h.Config.Credentials == nil || h.Config.Credentials.ClientID == "" || h.Config.CallbackURL == "" || len(h.Config.StateSecret) < 32 {
@@ -187,7 +202,12 @@ func (h *WebHandler) beginPhotoConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	_, e = tx.ExecContext(r.Context(), `INSERT INTO gmail_oauth_states(tenant_id,state_hash,code_verifier,redirect_uri,expires_at) VALUES($1,$2,$3,$4,now()+interval '10 minutes')`, tenant, stateHash(state), verifier, h.Config.CallbackURL)
+	var address string
+	if e = tx.QueryRowContext(r.Context(), `SELECT address FROM accounts WHERE tenant_id=$1 AND id=$2`, tenant, accountID).Scan(&address); e != nil {
+		http.Error(w, "unknown account", 400)
+		return
+	}
+	_, e = tx.ExecContext(r.Context(), `INSERT INTO gmail_oauth_states(tenant_id,state_hash,code_verifier,redirect_uri,expires_at,flow,account_id) VALUES($1,$2,$3,$4,now()+interval '10 minutes','photo',$5)`, tenant, stateHash(state), verifier, h.Config.CallbackURL, accountID)
 	if e != nil {
 		http.Error(w, "could not save OAuth state", 500)
 		return
@@ -246,8 +266,9 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var verifier, redirect string
-	e = tx.QueryRowContext(r.Context(), `DELETE FROM gmail_oauth_states WHERE tenant_id=$1 AND state_hash=$2 AND expires_at>now() RETURNING code_verifier,redirect_uri`, tenant, stateHash(state)).Scan(&verifier, &redirect)
+	var verifier, redirect, flow string
+	var boundID sql.NullString
+	e = tx.QueryRowContext(r.Context(), `DELETE FROM gmail_oauth_states WHERE tenant_id=$1 AND state_hash=$2 AND expires_at>now() RETURNING code_verifier,redirect_uri,flow,account_id::text`, tenant, stateHash(state)).Scan(&verifier, &redirect, &flow, &boundID)
 	if e != nil {
 		httpapi.MessagePage(w, 400, "Invalid or expired OAuth state. Start connecting Gmail again from Litterbox.")
 		return
@@ -288,6 +309,32 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 		httpapi.MessagePage(w, 502, "Could not read Gmail account. Try connecting Gmail again from Litterbox.")
 		return
 	}
+	// Photo-consent states are bound to one intended account: the Google
+	// identity that approved must match that account's address before any
+	// token is stored, so a grant approved by another identity can never land
+	// on (or create) the wrong account row.
+	if flow == "photo" {
+		bound, parseErr := uuid.Parse(boundID.String)
+		if parseErr != nil {
+			httpapi.MessagePage(w, 400, "Photo authorization state is not bound to an account. Start again from the account's sender-photos row in Litterbox.")
+			return
+		}
+		store, e := h.dbTx(r.Context(), tenant)
+		if e != nil {
+			httpapi.MessagePage(w, 500, "Database unavailable. Try connecting Gmail again from Litterbox.")
+			return
+		}
+		defer store.Rollback()
+		var want string
+		if e = store.QueryRowContext(r.Context(), `SELECT address FROM accounts WHERE tenant_id=$1 AND id=$2`, tenant, bound).Scan(&want); e != nil {
+			httpapi.MessagePage(w, 400, "Photo authorization state is not bound to an account. Start again from the account's sender-photos row in Litterbox.")
+			return
+		}
+		if !strings.EqualFold(email, want) {
+			httpapi.MessagePage(w, 400, "Google account mismatch: this photo authorization was started for "+want+" but "+email+" approved it. Nothing was saved. Sign in as the intended account and start again from its sender-photos row in Litterbox.")
+			return
+		}
+	}
 	accountID := uuid.New()
 	store, e := h.dbTx(r.Context(), tenant)
 	if e != nil {
@@ -297,11 +344,22 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 	defer store.Rollback()
 	// R67: persist the actually granted scopes (not the requested ones) so
 	// the photo pipeline can gate on HasPhotoScopes without a Google call.
-	// Old deployments without granted_photo_scopes degrade to Gmail-only:
-	// try the new column, fall back to the legacy insert.
-	_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status,granted_photo_scopes) VALUES($1,$2,$3,$4,'active',$5) ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active',granted_photo_scopes=EXCLUDED.granted_photo_scopes`, tenant, accountID, email, []byte(tok.RefreshToken), tok.Scope)
+	// The stored scopes track one token's real authority: a grant that lacks
+	// the photo scopes never downgrades a stored photo grant away and never
+	// gets unioned with it (that would claim scopes the stored token does not
+	// carry). Old deployments without granted_photo_scopes degrade to
+	// Gmail-only: try the new column, fall back to the legacy insert.
+	newToken, newScopes := []byte(tok.RefreshToken), tok.Scope
+	if !HasPhotoScopes(newScopes) {
+		var oldToken []byte
+		var oldScopes string
+		if err := store.QueryRowContext(r.Context(), `SELECT refresh_token,granted_photo_scopes FROM accounts WHERE tenant_id=$1 AND address=$2`, tenant, email).Scan(&oldToken, &oldScopes); err == nil && HasPhotoScopes(oldScopes) {
+			newToken, newScopes = oldToken, oldScopes
+		}
+	}
+	_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status,granted_photo_scopes) VALUES($1,$2,$3,$4,'active',$5) ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active',granted_photo_scopes=EXCLUDED.granted_photo_scopes`, tenant, accountID, email, newToken, newScopes)
 	if e != nil {
-		_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active'`, tenant, accountID, email, []byte(tok.RefreshToken))
+		_, e = store.ExecContext(r.Context(), `INSERT INTO accounts(tenant_id,id,address,refresh_token,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(tenant_id,address) DO UPDATE SET refresh_token=EXCLUDED.refresh_token,status='active'`, tenant, accountID, email, newToken)
 	}
 	if e != nil {
 		httpapi.MessagePage(w, 500, "Could not save Gmail account. Try connecting Gmail again from Litterbox.")
@@ -311,7 +369,47 @@ func (h *WebHandler) callback(w http.ResponseWriter, r *http.Request) {
 		httpapi.MessagePage(w, 500, "Could not save Gmail account. Try connecting Gmail again from Litterbox.")
 		return
 	}
-	httpapi.MessagePage(w, 200, "Gmail connected: "+email+". You can close this tab and return to Litterbox.")
+	// Distinct truthful pages per grant class: what the token actually holds
+	// decides the message, so a Gmail-only approval never reads as photo done.
+	switch {
+	case HasPhotoScopes(tok.Scope):
+		httpapi.MessagePage(w, 200, "Sender photo access granted for "+email+". You can close this tab and return to Litterbox — the sender-photos row will update.")
+	case grantedAnyPhotoScope(tok.Scope):
+		httpapi.MessagePage(w, 200, "Partial sender photo access for "+email+": this approval was a partial grant ("+tok.Scope+"), still missing "+strings.Join(missingPhotoScopes(tok.Scope), " ")+". Sender photos need authorization again to complete the grant. You can close this tab and return to Litterbox.")
+	default:
+		msg := "Gmail connected: " + email + ". You can close this tab and return to Litterbox."
+		if flow == "photo" {
+			msg = "Gmail connected: " + email + ", but sender photo access was not granted in this approval. Sender photos need authorization from the account's sender-photos row in Litterbox."
+		}
+		httpapi.MessagePage(w, 200, msg)
+	}
+}
+// grantedAnyPhotoScope reports a partial photo grant: at least one but not all
+// of the photo scopes arrived on the token.
+func grantedAnyPhotoScope(granted string) bool {
+	for _, field := range splitScopes(granted) {
+		if field == ScopeContactsReadonly || field == ScopeOtherContactsReadonly {
+			return !HasPhotoScopes(granted)
+		}
+	}
+	return false
+}
+// missingPhotoScopes lists the photo scopes the granted token does not carry.
+func missingPhotoScopes(granted string) []string {
+	missing := make([]string, 0, 2)
+	for _, want := range PhotoScopes() {
+		found := false
+		for _, field := range splitScopes(granted) {
+			if field == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, want)
+		}
+	}
+	return missing
 }
 func (h *WebHandler) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	tenant, e := tenantFrom(r.Context())
