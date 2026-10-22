@@ -273,3 +273,44 @@ Worker: PrepareGooglePhotoRelease. Status: **SOURCE REPAIR + SCOPED 4/4 TEST + L
 - Photo bytes: none to hash — zero non-default photos exist on the granting account across both surfaces, so `photo_bytes=null` by ground truth, not by omission. No consumer paint or offline proof is claimable from live data today (CF2); seeded captures remain non-acceptance. When any sender gains a non-default contact photo, the next prod sync cycle will populate `sender_photos` with no new grant.
 - Changelog inventory: no server changelog file exists (`find . -maxdepth 3 -type f \( -iname 'changelog*' -o -iname 'news*' \) -print` in `server/` produced only `internal/cards/newsletter_test.go`; no changelog created.
 - Retro (required, max 5 lines): pinning the pooled connection for the tenant setting unblocked the live read after two misleading zero-grant results; the pgx pool drops transaction-local settings across connections, unlike a single-session client. Proving the identical totals through both raw HTTPS and the actual candidate `people.Client` made parameter acceptance airtight. What to repeat: paginate fully before claiming zero photos — the first page alone could not prove it. What to change: keep disposable credential runners out of the repo tree from the start instead of moving them after.
+
+## 17. Stage table, live 0.1-45 (2026-10-22, UTC+4 15:4x; read-only evidence)
+
+Installed: litterbox-server 0.1-45 build 82bef5cb9d97c26b59a8358f7330ef8339799e58; litterbox-qt 0.1-45. Owner names (maumap/sunbim/komzpa) are not mapped to DB rows yet; accounts are identified here by id prefix and address length only.
+
+| Stage | Raw evidence | Result |
+|---|---|---|
+| (a) photo sync per account | `journalctl -u litterbox-server --since today`: one `sender-photos:` row, 15:26:52 `account=8ce5c0f7…: people API /otherContacts: 503 Service Unavailable`. Earlier: 2026-10-21 18:20:57 `account=e09758a2…` 429 on `/people/me/connections`; 2026-10-20 20:35–23:20 every 5 min 400 `readSource` (build d24dc41). No success row is logged. | sync runs; today's run for 8ce5c0f7 failed transiently; 0 success log rows |
+| (b) stored photos per account (DB, superuser read-only, `sender_photos`) | 8ce5c0f7 (addr len 18): 0 photos. e09758a2 (len 16): 3 photos (`duolingo.com` png 4132 B, `pcorp.us` jpg 5747 B, `komzpa.net` jpg 3278 B). 4a08d440 (len 17): 1 photo (`maumap.com` jpg 5186 B). | 4 stored photos across 2 accounts |
+| (c) card list API flags | `GET /v1/cards` 200 (759377 B, 2865 cards in DB). Key `sender_has_photo` present on 1 card: `70e86f3a…` (account 4a08d440, sender `maumap.com`). DB join `cards.sender_address` vs `sender_photos`: 1 match total (same card). Cards with non-empty `sender_address`: 816 of 2865. Per account: 4a08d440 593/593 with address; e09758a2 205/1421; 8ce5c0f7 18/841. | flag reaches API for 1 card; e09758a2's 3 stored senders have 0 cards with a matching address |
+| (d) photo endpoint, owner token | `GET /v1/cards/70e86f3a…/sender-photo` → 200 `image/jpeg`, 5186 B, sha256 prefix `1a888c5310c4`. | PASS for that card |
+| (e) QML binding + paint | `qt/qml/InboxView.qml:1260` `senderPhoto: source.card.sender_has_photo ? store.cachedSenderPhoto(source.cardId) : ""`; `SenderAvatar` at `InboxView.qml:171`, used `:1652`, `:1800`, `:1909`. Cache fill: `CardStore.cpp:1269` requests `/sender-photo`, `:1294 applyRemoteSenderPhoto`. | NOT YET PROVEN (Xvfb capture pending) |
+
+First failing stage so far: (a)/(b) for komzpa-side and the 8ce5c0f7 account (no stored photos, sync 503 today); (c) for the stored senders of e09758a2 (no matching cards). Stage (d) and the single flagged card pass. Stage (e) is open.
+
+## §17 Stage table after fix 26612d7 and server 0.1-46 (2026-10-22)
+
+| Stage | Result | Evidence |
+|---|---|---|
+| (a) sync | Only transient failures logged (503, 429, 400). No success row. Not changed by the fix. | sync logs |
+| (b) DB stored photos | e09758a2: 3 senders (duolingo.com, pcorp.us, komzpa.net). 4a08d440: 1 sender (maumap.com). | DB |
+| (c) cause and fix | Photo flag keyed on cards.sender_address, which is '' on legacy rows (migration 022). Fix in 26612d7 uses latest message sender, falling back to card address. Regression test sender_photo_test.go fails before, passes after. | commit 26612d7 |
+| (d) live API | Server 0.1-46 (build 26612d7) live on 127.0.0.1:8081. GET /v1/cards: 70e86f3a has sender_has_photo true. Photo endpoint 200 image/jpeg 100x100, 5186 B. | release-046/receipt.md |
+| (e) desktop UI | Installed 0.1-45 client caches the photo to sender-photos/70e86f3a…/photo.jpg (5186 B) on a private HOME. Xvfb :99 capture (/tmp/lb-046/litterbox-0.1-45-desktop-xvfb.png) shows inbox rows with initials only. Card 70e86f3a was not in the visible rows, so the rendered avatar is NOT visually proven. | PNG, cache file |
+
+Open: (a) success row not seen. (e) on-screen avatar for 70e86f3a not captured. Desktop 0.1-45 still installed; owner restarts the app to load it.
+
+## 18. Stage (e) visual proof — photo paints on installed 0.1-45 (2026-10-22 ~16:06-16:12 UTC)
+
+Worker: FindMissingSenderAvatars-2. Owned isolated run, no owner desktop/session bus touched. No user scope bus exists in this lane (`systemd-run --user` fails: no user bus), so per Main's direction Xvfb + app ran directly inside one bash call with explicit `DISPLAY=:1` on every command, private `mktemp` HOME/XDG_RUNTIME_DIR, empty `DBUS_SESSION_BUS_ADDRESS`, `env -u WAYLAND_DISPLAY`, `QT_QPA_PLATFORM=xcb`, `/usr/bin/litterbox-qt --test-profile <private profile>` (token copied from the canonical loader into the private HOME, shredded with it afterwards). Never touched :0.
+
+- API ground truth (same run): `GET /v1/version` -> `server_build=26612d796548fa85257a0809f88c38348d7618d9` (0.1-46). `GET /v1/cards` -> exactly 1 flagged card: `70e86f3a-77af-4499-96cf-6e5c0d3544cc`, sender `Darafei Praliaskouski`, title `Re: Updated invitation with note: Darafei / Maksim @ Thu Jan 8, 2026 1pm - 2pm (GMT+4) (…)`.
+- Cache: private-HOME `sender-photos/70e86f3a…/photo.jpg`, 5186 B, sha256 `1a888c5310c4624…` = the §17 endpoint bytes (`image/jpeg 100x100`).
+- Into view without scrolling: inbox search (matches `sender_name`) refined to `note Jan 8` isolates the target row; no scroll step used. Captures via `xwd -root | xwdtopnm | pnmtopng` into `receipts/avatar-046/`.
+- `receipts/avatar-046/desktop-target.png` (1280x4000): search `note Jan 8`, target row `Re: Updated invitation with note… / Darafei Praliaskouski` shows a **face photo**; the neighboring `Notes: 'Darafei / Maksim'` row shows the `G` initials circle (genuinely-unavailable fallback intact).
+- `receipts/avatar-046/target-avatar-crop.png` (43x43, exact circle): same face as `receipts/avatar-046/cached-photo-70e86f3a.png` (the 100x100 endpoint bytes). Photo, not initials.
+- Stage (e) = PASS on the installed 0.1-45 desktop. No client defect found, no code changed, no test added, no desktop release. Prior §17 `(e) NOT YET PROVEN` is superseded; (a) success-row open item stands (transient sync errors only, unchanged).
+
+### 18.1 Retro
+
+The app outlives the launching shell's `$!` capture (window + photo cache proved alive while the pid read empty), so liveness must be read from `xwininfo`/cache, not the pid variable. The first crop hit the neighbor row — verify the crop against the title text, not row order. Search-refinement beats scrolling for deep cards: two query words isolated a January card with zero scroll steps.

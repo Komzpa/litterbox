@@ -1,0 +1,10 @@
+qt.accessibility.atspi: Error in contacting registry: "org.freedesktop.DBus.Error.NameHasNoOwner" "Could not activate remote peer 'org.a11y.atspi.Registry': unit failed"
+qt.qpa.services: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: App info not found for ''")
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1449:21: Unable to assign [undefined] to QString
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1449:21: Unable to assign [undefined] to QString
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1449:21: Unable to assign [undefined] to QString
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1449:21: Unable to assign [undefined] to QString
+qrc:/qt/qml/litterbox/qml/InboxView.qml:1449:21: Unable to assign [undefined] to QString
+The X11 connection broke (error 1). Did the X11 server die?
+The X11 connection broke: I/O error (code 1)
+X connection to :1 broken (explicit kill or server shutdown).
