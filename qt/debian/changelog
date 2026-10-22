@@ -1,3 +1,9 @@
+litterbox-qt (0.1-46) unstable; urgency=medium
+
+  * Align Belarusian UI strings with the KDE translation compendium.
+
+ -- Litterbox <litterbox@example.com>  Wed, 22 Oct 2026 16:15:00 +0400
+
 litterbox-qt (0.1-45) unstable; urgency=medium
 
   * A reader opened on a card id outside the open-list snapshot (archived
