@@ -1,11 +1,13 @@
 // Package senderphoto owns tenant/account-scoped Google sender photos.
 //
-// Source: the documented People API contact surfaces only
+// Source: the documented People API contact surfaces
 // (people.connections.list personFields=emailAddresses,photos plus
 // otherContacts.list readMask=emailAddresses,photos with CONTACT and
-// PROFILE read sources). Gmail.modify alone carries no sender-photo field,
-// and arbitrary senders absent from both datasets stay explicitly
-// uncovered. No Gravatar, third-party lookup, or undocumented endpoint.
+// PROFILE read sources), the Workspace directory, BIMI brand logos, and —
+// when all of those miss — Gravatar plus the sender-domain icon (skipped
+// for personal-mail domains). Gmail.modify alone carries no sender-photo
+// field, and arbitrary senders absent from every dataset stay explicitly
+// uncovered. No undocumented Google endpoint.
 //
 // Transport: photos are fetched and decoded server-side (bounded,
 // image.DecodeConfig-verified), stored as bytes in sender_photos, and

@@ -12,9 +12,10 @@
 //
 // There is no supported arbitrary-email lookup: Gmail messages expose no
 // sender-photo field, people.get needs an account id (not an email), and
-// undocumented endpoints or third-party lookups (Gravatar etc.) are out of
-// scope. A sender absent from both datasets stays explicitly uncovered,
-// even when Gmail itself renders a photo.
+// undocumented endpoints are out of scope. A sender absent from both
+// datasets stays explicitly uncovered by this file, even when Gmail itself
+// renders a photo. The public fallbacks (Gravatar, sender-domain icon)
+// live in avatar.go and run after the contact, directory, and BIMI passes.
 package people
 
 import (

@@ -2,6 +2,9 @@ package gmailsync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -161,7 +164,17 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 	indexCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	fetched, stored, bimiStored := 0, 0, 0
+	gravatarStored, faviconStored := 0, 0
 	domainLogo := map[string]string{}
+	type faviconResult struct {
+		raw   []byte
+		ct    string
+		found bool // false = definitive negative, cached per run
+	}
+	faviconRun := map[string]faviconResult{}
+	globeFetched := false
+	var globeRef []byte
+	var samples []string
 	for _, sender := range senders {
 		key := senderphoto.NormalizeAddress(sender)
 		if key == "" {
@@ -205,6 +218,64 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 				}
 			}
 		}
+		// Gravatar + domain-icon fallback: only when People, directory
+		// and BIMI all missed. Gravatar first; its 404 falls through to
+		// the domain icon (skipped for personal-mail domains). Definitive
+		// negatives land in the process-level miss cache so the same
+		// address is not refetched on every sync; transient errors never
+		// do. Per-domain favicon outcomes are cached for this run.
+		if raw == nil {
+			missKey := people.MissKey(a.TenantID.String(), a.ID.String(), key)
+			if !people.HasMiss(missKey) {
+				transient := false
+				fetched++
+				raw, contentType, err = people.FetchGravatar(indexCtx, httpClient, key)
+				if err != nil {
+					raw = nil
+					if errors.Is(err, people.ErrNoAvatar) {
+						at := strings.LastIndexByte(key, '@')
+						dom := ""
+						if at > 0 && at < len(key)-1 {
+							dom = key[at+1:]
+						}
+						if dom != "" && !people.IsFreeMailDomain(dom) {
+							fr, ok := faviconRun[dom]
+							ferr := people.ErrNoAvatar
+							if !ok {
+								if !globeFetched {
+									globeRef = people.FetchDefaultGlobe(indexCtx, httpClient)
+									globeFetched = true
+								}
+								fetched++
+								fraw, fct, ferr2 := people.FetchFavicon(indexCtx, httpClient, dom, globeRef)
+								ferr = ferr2
+								if ferr2 == nil {
+									fr = faviconResult{raw: fraw, ct: fct, found: true}
+								} else if errors.Is(ferr2, people.ErrNoAvatar) {
+									fr = faviconResult{found: false}
+								} else {
+									transient = true
+								}
+								if fr.found || errors.Is(ferr, people.ErrNoAvatar) {
+									faviconRun[dom] = fr
+								}
+							}
+							if fr.found {
+								raw, contentType = fr.raw, fr.ct
+								source = "favicon"
+							} else if !ok && !errors.Is(ferr, people.ErrNoAvatar) {
+								transient = true
+							}
+						}
+						if raw == nil && !transient {
+							people.AddMiss(missKey)
+						}
+					}
+				} else {
+					source = "gravatar"
+				}
+			}
+		}
 		if raw == nil || source == "" {
 			continue
 		}
@@ -220,11 +291,20 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			continue
 		}
 		stored++
-		if source == "bimi" {
+		switch source {
+		case "bimi":
 			bimiStored++
+		case "gravatar":
+			gravatarStored++
+		case "favicon":
+			faviconStored++
+		}
+		if len(samples) < 10 {
+			sum := sha256.Sum256([]byte(key))
+			samples = append(samples, hex.EncodeToString(sum[:])[:8]+":"+source)
 		}
 	}
-	log.Printf("sender-photos: build=%s account=%s: ok index=%d senders=%d fetched=%d stored=%d bimi=%d", s.Build, a.ID, len(index), len(senders), fetched, stored, bimiStored)
+	log.Printf("sender-photos: build=%s account=%s: ok index=%d senders=%d fetched=%d stored=%d bimi=%d gravatar=%d favicon=%d samples=%v", s.Build, a.ID, len(index), len(senders), fetched, stored, bimiStored, gravatarStored, faviconStored, samples)
 	return nil
 }
 
