@@ -232,8 +232,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(sections)
 }
-// markSenderPhotos sets SenderHasPhoto for cards whose normalized
-// sender_address has a stored People photo in the same tenant/account.
+// markSenderPhotos sets SenderHasPhoto for cards whose effective sender
+// (latest message sender, else the card's sender_address, matching the
+// sender-photo endpoint) has a stored People photo in the same tenant/account.
 // Best-effort: any lookup failure leaves the flag false (initials), never
 // a 500, so a missing sender_photos table on old deployments degrades to
 // the genuinely-unavailable fallback instead of breaking the list.
@@ -246,9 +247,9 @@ func markSenderPhotos(ctx context.Context, tx *sql.Tx, tenant string, all []Card
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT c.id::text FROM cards c
 WHERE c.tenant_id=$1 AND c.id = ANY($2::uuid[])
-AND c.sender_address <> '' AND EXISTS(SELECT 1 FROM sender_photos sp
+AND EXISTS(SELECT 1 FROM sender_photos sp
 WHERE sp.tenant_id=c.tenant_id AND sp.account_id=c.account_id
-AND sp.sender_address=LOWER(c.sender_address))`, tenant, "{"+joinIDs(ids)+"}")
+AND sp.sender_address=LOWER(COALESCE((SELECT m.sender_address FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND m.sender_address<>'' ORDER BY m.received_at DESC LIMIT 1), c.sender_address)))`, tenant, "{"+joinIDs(ids)+"}")
 	if err != nil {
 		return
 	}

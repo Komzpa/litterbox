@@ -42,7 +42,7 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 		       ), '[]'::jsonb),
 		       (to_regclass('public.sender_photos') IS NOT NULL AND EXISTS(
 		           SELECT 1 FROM sender_photos sp WHERE sp.tenant_id=c.tenant_id AND sp.account_id=c.account_id
-		           AND c.sender_address <> '' AND sp.sender_address=LOWER(c.sender_address)))
+		           AND sp.sender_address=LOWER(COALESCE((SELECT m.sender_address FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND m.sender_address<>'' ORDER BY m.received_at DESC LIMIT 1), c.sender_address))))
 		FROM cards c
 		WHERE c.tenant_id = $1 AND c.state = 'open'
 		ORDER BY c.sort_at DESC`, tenant)
