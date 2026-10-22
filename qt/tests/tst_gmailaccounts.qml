@@ -208,7 +208,7 @@ TestCase {
         compare(list.count, 1)
     }
 
-    // A failed accounts reply (e.g. HTTP 429) ends the 2 s connect poll
+    // A failed accounts reply (e.g. HTTP 429) ends the connect poll
     // instead of re-requesting forever against a rate-limited token.
     function test_failedReloadStopsConnectPoll() {
         var gets = 0
@@ -222,7 +222,64 @@ TestCase {
         findChild(page, "connectButton").clicked()
         compare(page.connecting, false)
         var before = gets
-        wait(2500)
+        wait(6000)
         compare(gets, before, "no poll requests after a failed reply")
+    }
+    // During connecting the poll makes at most one accounts-only request
+    // per 5 s, so it stays under the 60/min per-device limit.
+    function test_connectPollRateLimit() {
+        var gets = []
+        var api = {
+            get: function (path, cb) {
+                gets.push(path)
+                if (path.indexOf("sender-photos") >= 0) {
+                    cb(null, {status: 200, body: {accounts: []}})
+                    return
+                }
+                cb(null, {status: 200, body: [{id: "acc-a", address: "a@example.org", status: "reauth_required"}]})
+            },
+            post: function (path, body, cb) { cb(null, {status: 200, body: {authorization_url: "https://accounts.google.com/o/oauth2/auth?state=t"}}) },
+            del: function (path, cb) { }
+        }
+        var page = createTemporaryObject(pageComponent, this, {api: api, openLinks: false})
+        verify(page)
+        findChild(page, "connectButton").clicked()
+        verify(page.connecting)
+        // Component.onCompleted loads once (accounts + status), then the
+        // connect click does a full reload: 4 requests before the poll.
+        var initial = gets.length
+        verify(initial <= 4, "connect starts with at most two accounts + two status requests, got " + initial)
+        for (var i = 0; i < gets.length; ++i)
+            verify(gets[i].indexOf("sender-photos") < 0 || i < initial, "poll issues no status requests")
+        wait(6000)
+        verify(page.connecting, "still polling while replies succeed")
+        var pollGets = gets.length - initial
+        verify(pollGets <= 2, "at most one poll request per 5 s window, got " + pollGets)
+        for (var j = initial; j < gets.length; ++j)
+            verify(gets[j].indexOf("sender-photos") < 0, "poll is accounts-only: " + gets[j])
+        page.connecting = false
+    }
+    // A failed sender-photo status reply stops the connect poll.
+    function test_failedStatusStopsConnectPoll() {
+        var gets = 0
+        var api = {
+            get: function (path, cb) {
+                gets++
+                if (path.indexOf("sender-photos") >= 0) {
+                    cb(new Error("status down"), null)
+                    return
+                }
+                cb(null, {status: 200, body: [{id: "acc-a", address: "a@example.org", status: "reauth_required"}]})
+            },
+            post: function (path, body, cb) { cb(null, {status: 200, body: {authorization_url: "https://accounts.google.com/o/oauth2/auth?state=t"}}) },
+            del: function (path, cb) { }
+        }
+        var page = createTemporaryObject(pageComponent, this, {api: api, openLinks: false})
+        verify(page)
+        findChild(page, "connectButton").clicked()
+        compare(page.connecting, false, "failed status reply stops the poll")
+        var before = gets
+        wait(6000)
+        compare(gets, before, "no poll requests after a failed status reply")
     }
 }

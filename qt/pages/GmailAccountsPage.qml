@@ -74,7 +74,32 @@ Kirigami.ScrollablePage {
     // every window activation and on the 2 s connect poll.
     property bool loadedOnce: false
     function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
-
+    // Connect poll stays under the 60/min per-device limit: at most one
+    // accounts-only request per 5 s, stopped by any failed reply or after
+    // 3 minutes (36 ticks). Photo status is not polled; it loads once with
+    // every full reload (activation, connect completion).
+    property int connectPollTicks: 0
+    readonly property int connectPollMaxTicks: 36
+    function reloadAccountsOnly() {
+        loading = true
+        api.get("/v1/gmail/accounts", function (error, response) {
+            loading = false
+            loadedOnce = true
+            if (error || !response || !Array.isArray(response.body)) {
+                connecting = false
+                errorText = qsTr("Could not load the account list.")
+                return
+            }
+            errorText = ""
+            if (!sameJson(accounts, response.body))
+                accounts = response.body
+            accountsLoaded(accounts)
+            if (accounts.every(account => account.status === "active")) {
+                connecting = false
+                reloadPhotoStatus()
+            }
+        })
+    }
     function reload() {
         loading = true
         // A consent link that was already opened is consumed server-side
@@ -89,7 +114,7 @@ Kirigami.ScrollablePage {
             loadedOnce = true
             if (error || !response || !Array.isArray(response.body)) {
                 // A failed reply (offline, 429 rate limit) ends the connect
-                // poll: re-requesting every 2 s only keeps the device token
+                // poll: re-requesting only keeps the device token
                 // over its rate limit and the page blinking.
                 connecting = false
                 errorText = qsTr("Could not load the account list.")
@@ -106,9 +131,12 @@ Kirigami.ScrollablePage {
 
     // Server-reported photo readiness per account; never guessed from the
     // account list and never inferred from Google configuration.
+    // A failed reply also ends the connect poll so the device stays under
+    // the per-device rate limit.
     function reloadPhotoStatus() {
         api.get("/v1/gmail/sender-photos/status", function (error, response) {
             if (error || !response || !response.body || !Array.isArray(response.body.accounts)) {
+                connecting = false
                 if (photoStatus.length > 0)
                     photoStatus = []
                 photoStatusError = qsTr("Could not load sender photo status.")
@@ -150,6 +178,7 @@ Kirigami.ScrollablePage {
             }
             lastConnectUrl = response.body.authorization_url
             connecting = true
+            connectPollTicks = 0
             reload()
             if (root.openLinks)
                 Qt.openUrlExternally(response.body.authorization_url)
@@ -174,7 +203,7 @@ Kirigami.ScrollablePage {
     Connections {
         target: root.Window.window
         // Returning to the window (from the browser consent) is the reload
-        // that reports the connect result; the 2 s poll is only for while
+        // that reports the connect result; the 5 s poll is only for while
         // the browser has focus, so it ends here instead of running forever
         // on an account that stays reauth_required.
         function onActiveChanged() {
@@ -184,10 +213,17 @@ Kirigami.ScrollablePage {
         }
     }
     Timer {
-        interval: 2000
+        interval: 5000
         repeat: true
         running: root.connecting
-        onTriggered: root.reload()
+        onTriggered: {
+            root.connectPollTicks++
+            if (root.connectPollTicks >= root.connectPollMaxTicks) {
+                root.connecting = false
+                return
+            }
+            root.reloadAccountsOnly()
+        }
     }
 
     Item {

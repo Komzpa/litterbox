@@ -480,7 +480,7 @@ the final acceptance; until he sees it each item is partial.
   Google. The client asks for consent per account row and binds the returned
   URL to that row's identity; returning to the accounts page drops the
   already-consumed URL and refreshes the server-reported status instead of
-  inviting a second click. The accounts page refreshes in place: the busy indicator shows only before the first load, loaded rows and error texts stay put while a request is in flight, an unchanged reply keeps the existing delegates, and a failed reply stops the connect poll instead of re-polling every 2 s (`tst_gmailaccounts.qml` `test_refreshUpdatesInPlaceWithoutFlicker`, `test_failedReloadStopsConnectPoll`). The status report is tenant-scoped through the same request tenant
+  inviting a second click. The accounts page refreshes in place: the busy indicator shows only before the first load, loaded rows and error texts stay put while a request is in flight, an unchanged reply keeps the existing delegates, and a failed reply stops the connect poll instead of re-polling every 2 s (`tst_gmailaccounts.qml` `test_refreshUpdatesInPlaceWithoutFlicker`, `test_failedReloadStopsConnectPoll`). The connect poll stays under the per-device rate limit: at most one request per 5 s, account list only, stopped by any failed reply or after 3 minutes. The status report is tenant-scoped through the same request tenant
   transaction the photo route uses (`set_config('litterbox.tenant_id')` inside
   the request transaction): an authenticated device sees exactly its own
   tenant's accounts in every grant state (both `photo_ready` and
