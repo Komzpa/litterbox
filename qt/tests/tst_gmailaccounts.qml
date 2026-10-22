@@ -150,4 +150,79 @@ TestCase {
         verify(page.photoConsentError !== "")
         compare(findChild(page, "photoConsentError").visible, true)
     }
+
+    // Settings refresh updates in place: while a refresh is in flight the
+    // busy gear stays hidden and loaded rows/errors stay put; an unchanged
+    // reply keeps the same delegates instead of recreating them.
+    function test_refreshUpdatesInPlaceWithoutFlicker() {
+        var pending = []
+        var accountsFail = false
+        var api = {
+            get: function (path, cb) { pending.push({path: path, cb: cb}) },
+            post: function (path, body, cb) { },
+            del: function (path, cb) { }
+        }
+        function flush() {
+            var calls = pending
+            pending = []
+            for (var i = 0; i < calls.length; ++i) {
+                if (calls[i].path.indexOf("sender-photos") >= 0)
+                    calls[i].cb(new Error("status down"), null)
+                else if (accountsFail)
+                    calls[i].cb(new Error("accounts down"), null)
+                else
+                    calls[i].cb(null, {status: 200, body: [{id: "acc-a", address: "a@example.org", status: "active"}]})
+            }
+        }
+        var page = createTemporaryObject(pageComponent, this, {api: api, openLinks: false})
+        verify(page)
+        this.visible = true
+        var busy = findChild(page, "accountsBusy")
+        var list = findChild(page, "accountsList")
+        verify(busy.visible, "first load shows the spinner")
+        flush()
+        verify(!busy.visible)
+        tryCompare(list, "count", 1)
+        var row = list.itemAtIndex(0)
+        verify(row)
+        var accountsBefore = page.accounts
+        var photoError = findChild(page, "photoStatusError")
+        verify(photoError.visible)
+
+        page.reload()
+        verify(!busy.visible, "refresh never shows the busy gear")
+        verify(photoError.visible, "photo error stays while refresh is in flight")
+        compare(list.count, 1)
+        flush()
+        verify(page.accounts === accountsBefore, "unchanged reply keeps the model array")
+        verify(list.itemAtIndex(0) === row, "unchanged reply keeps the delegate")
+        verify(photoError.visible)
+
+        accountsFail = true
+        page.reload()
+        flush()
+        compare(page.errorText, "Could not load the account list.")
+        page.reload()
+        compare(page.errorText, "Could not load the account list.", "error stays while refresh is in flight")
+        verify(!busy.visible)
+        compare(list.count, 1)
+    }
+
+    // A failed accounts reply (e.g. HTTP 429) ends the 2 s connect poll
+    // instead of re-requesting forever against a rate-limited token.
+    function test_failedReloadStopsConnectPoll() {
+        var gets = 0
+        var api = {
+            get: function (path, cb) { gets++; cb(new Error("429 rate limit exceeded"), null) },
+            post: function (path, body, cb) { cb(null, {status: 200, body: {authorization_url: "https://accounts.google.com/o/oauth2/auth?state=t"}}) },
+            del: function (path, cb) { }
+        }
+        var page = createTemporaryObject(pageComponent, this, {api: api, openLinks: false})
+        verify(page)
+        findChild(page, "connectButton").clicked()
+        compare(page.connecting, false)
+        var before = gets
+        wait(2500)
+        compare(gets, before, "no poll requests after a failed reply")
+    }
 }

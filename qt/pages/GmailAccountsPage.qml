@@ -67,9 +67,16 @@ Kirigami.ScrollablePage {
 
     title: qsTr("Gmail Accounts")
 
+    // Refresh updates in place: the busy spinner only covers the first load,
+    // error labels change only when a reply changes them, and an unchanged
+    // reply keeps the existing array so ListView/Repeater keep their
+    // delegates. Clearing everything per request made the page blink on
+    // every window activation and on the 2 s connect poll.
+    property bool loadedOnce: false
+    function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
+
     function reload() {
         loading = true
-        errorText = ""
         // A consent link that was already opened is consumed server-side
         // (single-use state); drop the stale URL so the page never invites a
         // second click that can only fail, and let the status reload below
@@ -79,11 +86,18 @@ Kirigami.ScrollablePage {
         photoConsentAddress = ""
         api.get("/v1/gmail/accounts", function (error, response) {
             loading = false
+            loadedOnce = true
             if (error || !response || !Array.isArray(response.body)) {
+                // A failed reply (offline, 429 rate limit) ends the connect
+                // poll: re-requesting every 2 s only keeps the device token
+                // over its rate limit and the page blinking.
+                connecting = false
                 errorText = qsTr("Could not load the account list.")
                 return
             }
-            accounts = response.body
+            errorText = ""
+            if (!sameJson(accounts, response.body))
+                accounts = response.body
             accountsLoaded(accounts)
             if (accounts.every(account => account.status === "active")) connecting = false
         })
@@ -93,14 +107,16 @@ Kirigami.ScrollablePage {
     // Server-reported photo readiness per account; never guessed from the
     // account list and never inferred from Google configuration.
     function reloadPhotoStatus() {
-        photoStatusError = ""
         api.get("/v1/gmail/sender-photos/status", function (error, response) {
             if (error || !response || !response.body || !Array.isArray(response.body.accounts)) {
-                photoStatus = []
+                if (photoStatus.length > 0)
+                    photoStatus = []
                 photoStatusError = qsTr("Could not load sender photo status.")
                 return
             }
-            photoStatus = response.body.accounts
+            photoStatusError = ""
+            if (!sameJson(photoStatus, response.body.accounts))
+                photoStatus = response.body.accounts
         })
     }
 
@@ -157,7 +173,15 @@ Kirigami.ScrollablePage {
 
     Connections {
         target: root.Window.window
-        function onActiveChanged() { if (root.Window.window.active) root.reload() }
+        // Returning to the window (from the browser consent) is the reload
+        // that reports the connect result; the 2 s poll is only for while
+        // the browser has focus, so it ends here instead of running forever
+        // on an account that stays reauth_required.
+        function onActiveChanged() {
+            if (!root.Window.window.active) return
+            root.connecting = false
+            root.reload()
+        }
     }
     Timer {
         interval: 2000
@@ -218,7 +242,8 @@ Kirigami.ScrollablePage {
         }
 
         QQC2.BusyIndicator {
-            visible: root.loading
+            objectName: "accountsBusy"
+            visible: root.loading && !root.loadedOnce
             Layout.alignment: Qt.AlignHCenter
         }
 
@@ -272,7 +297,7 @@ Kirigami.ScrollablePage {
             QQC2.Label {
                 anchors.centerIn: parent
                 objectName: "emptyStateLabel"
-                visible: list.count === 0 && !root.loading && root.errorText === ""
+                visible: list.count === 0 && root.loadedOnce && root.errorText === ""
                 text: qsTr("No accounts connected.")
             }
         }
