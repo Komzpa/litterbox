@@ -81,8 +81,8 @@ func TestWebOAuthStateTokenAndDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := auth.Query().Get("state")
-	if state == "" || auth.Query().Get("scope") != ScopeGmailModify {
-		t.Fatalf("auth URL: %s", start.URL)
+	if state == "" || auth.Query().Get("scope") != FullPhotoScope() {
+		t.Fatalf("auth URL scope = %q, want %q (url %s)", auth.Query().Get("scope"), FullPhotoScope(), start.URL)
 	}
 	if got := request(uuid.Nil, "GET", OAuthCallbackPath+"?state=corrupted&code=fake-code"); got.Code != 400 {
 		t.Fatalf("bad state: %d", got.Code)

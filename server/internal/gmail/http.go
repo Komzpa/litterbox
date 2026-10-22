@@ -132,7 +132,7 @@ func (h *WebHandler) beginConnect(w http.ResponseWriter, r *http.Request) {
 	if auth == "" {
 		auth = DefaultAuthURL
 	}
-	authURL := buildAuthURL(auth, h.Config.Credentials.ClientID, h.Config.CallbackURL, ScopeGmailModify, state, pkceChallenge(verifier))
+	authURL := buildAuthURL(auth, h.Config.Credentials.ClientID, h.Config.CallbackURL, FullPhotoScope(), state, pkceChallenge(verifier))
 	tx, e := h.dbTx(r.Context(), tenant)
 	if e != nil {
 		http.Error(w, "database unavailable", 500)

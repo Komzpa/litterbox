@@ -71,7 +71,7 @@ Each requirement is **decided** or **open** and names its source.
   Connecting a Gmail account shows Google's unverified-app warning, and the
   app serves at most 100 users. A connected account keeps working without
   weekly reconnection.
-- **R48 Gmail callback and account health** (decided, owner 2026-10-12). The Gmail account list returns id, address and status (`active` or `reauth_required`). Refresh invalid_grant in sync and operations persists `reauth_required`; OAuth callback reconnect restores `active`. Success and error callback pages reuse the homepage/privacy shell and CSS, title Litterbox, escaped account email, and readable reconnect guidance for denied authorization, expired state and exchange failure. Success says “Gmail connected: <email>. You can close this tab and return to Litterbox.” Oracle: Go callback/list/status-transition tests and invalid-grant operation/sync tests, with non-grant errors leaving status active.
+- **R48 Gmail callback and account health** (decided, owner 2026-10-12). The Gmail account list returns id, address and status (`active` or `reauth_required`). Authenticated `GET /v1/gmail/accounts` answers HTTP 200 with a JSON array; authenticated `GET /v1/gmail/sender-photos/status` answers HTTP 200 `{"accounts":[…]}`. HTTP 429 from the per-device rate limiter is an error, not a successful list (the desktop page maps it to “Could not load the account list.” / “Could not load sender photo status.”). Refresh invalid_grant in sync and operations persists `reauth_required`; OAuth callback reconnect restores `active`. Success and error callback pages reuse the homepage/privacy shell and CSS, title Litterbox, escaped account email, and readable reconnect guidance for denied authorization, expired state and exchange failure. Success says “Gmail connected: <email>. You can close this tab and return to Litterbox.” Oracle: Go callback/list/status-transition tests (`TestWebOAuthStateTokenAndDisconnect` list is a JSON array; `TestStatusRouteTenantVisibility` status body has `accounts`) and invalid-grant operation/sync tests, with non-grant errors leaving status active.
 - **R19 Rich mail readable offline** (decided, owner 2026-09-28). Synced mail
   renders its full HTML and images properly, including when read offline.
   The home server fetches remote images during sync, so mail reads offline.
@@ -453,8 +453,12 @@ the final acceptance; until he sees it each item is partial.
   `otherContacts.list` with `readMask=emailAddresses,photos` and CONTACT and
   PROFILE read sources (`contacts.other.readonly`); paginated, exact mailbox
   match (no display-name or dot/plus rewriting), non-default photos only
-  (`Photo.default=true` rejected), primary preferred. `Gmail.modify` alone
-  carries no sender-photo field. Incremental consent is account-bound: `POST
+  (`Photo.default=true` rejected), primary preferred. `POST /v1/gmail/connect`
+  (`beginConnect`) requests `FullPhotoScope()` — Gmail.modify plus both People
+  photo scopes — so a fresh account connect grants sender photos in one
+  consent. `Gmail.modify` alone still carries no sender-photo field: if Google
+  grants only that subset, or for accounts connected before this scope,
+  incremental consent remains account-bound. `POST
   /v1/gmail/photo-consent` requires the target `{account_id}` — an absent or
   unknown account is refused 400 before any state exists — and returns an
   `authorization_url` (Gmail.modify plus both photo scopes) whose single-use
@@ -517,7 +521,9 @@ the final acceptance; until he sees it each item is partial.
   `TestStatusRouteTenantVisibility` (real device-token auth, real
   pg_virtualenv schema as the granted runtime role): own tenant's two
   accounts visible with both grant states, neighbor tenant invisible,
-  unset/bogus credential 401. Account-binding oracle:
+  unset/bogus credential 401. Connect-scope oracle:
+  `TestWebOAuthStateTokenAndDisconnect` — `POST /v1/gmail/connect`
+  `authorization_url` scope equals `FullPhotoScope()`. Account-binding oracle:
   `TestPhotoConsentAccountBinding` (accountless and unknown-account consent
   POSTs are 400; the wrong-account callback names both identities, stores no
   row or token and overwrites nothing; the matching grant stores the
