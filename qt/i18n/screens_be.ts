@@ -254,7 +254,7 @@
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="64"/>
         <source>Connect to Server</source>
-        <translation>Падключыцца да сервера</translation>
+        <translation>Падлучыцца да сервера</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="81"/>
@@ -270,7 +270,7 @@
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="100"/>
         <source>Can&apos;t reach the server at %1. Check the address and that you&apos;re on the home Wi-Fi.</source>
-        <translation>Не ўдаецца падключыцца да сервера %1. Праверце адрас і тое, ці вы ў хатняй Wi-Fi сетцы.</translation>
+        <translation>Не ўдаецца падлучыцца да сервера %1. Праверце адрас і тое, ці вы ў хатняй Wi-Fi сетцы.</translation>
     </message>
     <message>
         <location filename="../pages/EnrollmentPage.qml" line="102"/>
@@ -343,12 +343,12 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="68"/>
         <source>Gmail Accounts</source>
-        <translation>Акаўнты Gmail</translation>
+        <translation>Уліковыя запісы Gmail</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="83"/>
         <source>Could not load the account list.</source>
-        <translation>Не ўдалося загрузіць спіс акаўнтаў.</translation>
+        <translation>Не ўдалося загрузіць спіс уліковых запісаў.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="100"/>
@@ -363,17 +363,17 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="132"/>
         <source>Could not start the Gmail connection.</source>
-        <translation>Не ўдалося пачаць падключэнне Gmail.</translation>
+        <translation>Не ўдалося пачаць злучэнне з Gmail.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="146"/>
         <source>Could not disconnect the account.</source>
-        <translation>Не ўдалося адключыць акаўнт.</translation>
+        <translation>Не ўдалося адлучыць уліковы запіс.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="182"/>
         <source>Connect account…</source>
-        <translation>Падключыць акаўнт…</translation>
+        <translation>Падлучыць уліковы запіс…</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="256"/>
@@ -383,22 +383,22 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="256"/>
         <source>Connected</source>
-        <translation>Падключаны</translation>
+        <translation>Падлучана</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="260"/>
         <source>Reconnect</source>
-        <translation>Падключыць нанова</translation>
+        <translation>Перазлучыцца</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="266"/>
         <source>Disconnect</source>
-        <translation>Адключыць</translation>
+        <translation>Адлучыцца</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="276"/>
         <source>No accounts connected.</source>
-        <translation>Няма падключаных акаўнтаў.</translation>
+        <translation>Няма падлучаных уліковых запісаў.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="286"/>
@@ -433,7 +433,7 @@
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="360"/>
         <source>Open this authorization link to grant sender photo access for %1. It is bound to that account: approving with another Google account is refused and stores nothing. Litterbox never grants it for you.</source>
-        <translation>Адкрыйце гэтую спасылку аўтарызацыі, каб даць доступ да фота адпраўнікоў для %1. Яна прывязана да гэтага акаўнта: пацвярджэнне з іншым акаўнтам Google адхіляецца і нічога не захоўвае. Litterbox ніколі не дае доступ за вас.</translation>
+        <translation>Адкрыйце гэтую спасылку аўтарызацыі, каб даць доступ да фота адпраўнікоў для %1. Яна прывязана да гэтага ўліковага запісу: пацвярджэнне з іншым уліковым запісам Google адхіляецца і нічога не захоўвае. Litterbox ніколі не дае доступ за вас.</translation>
     </message>
     <message>
         <location filename="../pages/GmailAccountsPage.qml" line="361"/>
@@ -453,7 +453,7 @@
         <location filename="../qml/InboxView.qml" line="128"/>
         <location filename="../qml/InboxView.qml" line="815"/>
         <source>Accounts</source>
-        <translation>Акаўнты</translation>
+        <translation>Уліковыя запісы</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="50"/>
@@ -499,7 +499,7 @@
     <message>
         <location filename="../qml/InboxView.qml" line="286"/>
         <source>Gmail access for %1 expired. Reconnect it in Accounts → Connect account…</source>
-        <translation>Доступ Gmail для %1 скончыўся. Падключыце яго нанова ў Акаўнтах → Падключыць акаўнт…</translation>
+        <translation>Доступ Gmail для %1 скончыўся. Перазлучыце яго ва ўліковых запісах → Падлучыць уліковы запіс…</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="331"/>
@@ -695,7 +695,7 @@
     <message>
         <location filename="../qml/InboxView.qml" line="950"/>
         <source>Reconnect</source>
-        <translation>Падключыць нанова</translation>
+        <translation>Перазлучыцца</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="1000"/>
@@ -775,9 +775,9 @@
         <location filename="../qml/InboxView.qml" line="1607"/>
         <source>%n account</source>
         <translation>
-            <numerusform>%n акаўнт</numerusform>
-            <numerusform>%n акаўнты</numerusform>
-            <numerusform>%n акаўнтаў</numerusform>
+            <numerusform>%n уліковы запіс</numerusform>
+            <numerusform>%n уліковыя запісы</numerusform>
+            <numerusform>%n уліковых запісаў</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -851,7 +851,7 @@
     <message>
         <location filename="../qml/InboxView.qml" line="1974"/>
         <source>Done</source>
-        <translation>Гатова</translation>
+        <translation>Завершана</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2058"/>
@@ -866,7 +866,7 @@
     <message>
         <location filename="../qml/InboxView.qml" line="2065"/>
         <source>Try another subject, sender, account or source, or clear the search to return to your inbox.</source>
-        <translation>Паспрабуйце іншую тэму, адпраўніка, акаўнт або крыніцу, ці ачысціце пошук, каб вярнуцца да ўваходных.</translation>
+        <translation>Паспрабуйце іншую тэму, адпраўніка, уліковы запіс або крыніцу, ці ачысціце пошук, каб вярнуцца да ўваходных.</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="2065"/>
@@ -975,7 +975,7 @@
     <message>
         <location filename="../pages/MailDetailPage.qml" line="120"/>
         <source>Message unavailable. Reconnect to cache it; opening it never archives it.</source>
-        <translation>Паведамленне недаступна. Падключыцеся, каб захаваць яго ў кэш; адкрыццё яго ніколі не архівуе.</translation>
+        <translation>Паведамленне недаступна. Перазлучыцеся, каб захаваць яго ў кэш; адкрыццё яго ніколі не архівуе.</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="241"/>
@@ -1139,7 +1139,7 @@
     <message>
         <location filename="../pages/SettingsPage.qml" line="57"/>
         <source>Account details unavailable while offline.</source>
-        <translation>Даныя акаўнта недаступныя афлайн.</translation>
+        <translation>Даныя ўліковага запісу недаступныя афлайн.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="72"/>
@@ -1179,7 +1179,7 @@
     <message>
         <location filename="../pages/SettingsPage.qml" line="111"/>
         <source>Use Enroll device in the inbox menu to connect.</source>
-        <translation>Каб падключыцца, выкарыстайце «Зарэгістраваць прыладу» ў меню ўваходных.</translation>
+        <translation>Каб падлучыцца, выкарыстайце «Зарэгістраваць прыладу» ў меню ўваходных.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="113"/>
@@ -1198,12 +1198,12 @@ ID прылады: %2
     <message>
         <location filename="../pages/SettingsPage.qml" line="120"/>
         <source>Connected accounts</source>
-        <translation>Падключаныя акаўнты</translation>
+        <translation>Падлучаныя ўліковыя запісы</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="123"/>
         <source>No accounts connected.</source>
-        <translation>Няма падключаных акаўнтаў.</translation>
+        <translation>Няма падлучаных уліковых запісаў.</translation>
     </message>
     <message>
         <location filename="../pages/SettingsPage.qml" line="131"/>
