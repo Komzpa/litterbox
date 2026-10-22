@@ -35,6 +35,11 @@ const (
 	// ScopeOtherContactsReadonly authorizes otherContacts.list
 	// readMask=emailAddresses,photos with CONTACT and PROFILE read sources.
 	ScopeOtherContactsReadonly = "https://www.googleapis.com/auth/contacts.other.readonly"
+	// ScopeDirectoryReadonly authorizes people.listDirectoryPeople for Workspace
+	// domain colleagues. Requested only by FullPhotoScope; deliberately absent
+	// from PhotoScopes and HasPhotoScopes so accounts without it keep People and
+	// BIMI photos.
+	ScopeDirectoryReadonly = "https://www.googleapis.com/auth/directory.readonly"
 )
 // PhotoScopes lists the incremental People scopes that unlock real Google
 // sender photos. Gmail.modify alone carries no sender-photo field.
@@ -45,7 +50,7 @@ func PhotoScopes() []string {
 // single consent URL. Google grants incrementally; existing Gmail access is
 // preserved when the user approves the added scopes.
 func FullPhotoScope() string {
-	return ScopeGmailModify + " " + ScopeContactsReadonly + " " + ScopeOtherContactsReadonly
+	return ScopeGmailModify + " " + ScopeContactsReadonly + " " + ScopeOtherContactsReadonly + " " + ScopeDirectoryReadonly
 }
 // HasPhotoScopes reports whether a granted scope string (space-separated,
 // as returned by Google token responses) contains both photo scopes.
@@ -61,6 +66,17 @@ func HasPhotoScopes(granted string) bool {
 		}
 	}
 	return hasContacts && hasOther
+}
+// HasDirectoryScope reports whether the granted scopes include
+// directory.readonly. Gates the Workspace directory pass on its own so an
+// account without it keeps every other photo source.
+func HasDirectoryScope(granted string) bool {
+	for _, field := range splitScopes(granted) {
+		if field == ScopeDirectoryReadonly {
+			return true
+		}
+	}
+	return false
 }
 func splitScopes(granted string) []string {
 	return strings.Fields(granted)

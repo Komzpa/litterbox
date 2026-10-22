@@ -177,3 +177,125 @@ func TestTrySenderPhotosStoresBIMIWhenPeopleMiss(t *testing.T) {
 		t.Fatalf("stored BIMI photo for news@brand.example = %d, want 1 (old People-only path stored 0)", n)
 	}
 }
+
+const testDirectoryScope = "https://www.googleapis.com/auth/directory.readonly"
+
+// TestTrySenderPhotosStoresDirectoryPhoto: a Workspace colleague present only
+// in the domain directory gets a stored photo via the directory pass. Old code
+// had no directory pass and stored 0.
+func TestTrySenderPhotosStoresDirectoryPhoto(t *testing.T) {
+	db, _ := testPool(t)
+	ctx := context.Background()
+	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
+	pngBytes := photoPNG(t)
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token,granted_photo_scopes) VALUES($1,$2,'a@sunbim.example',$3,$4)`,
+		tenant, account, []byte("rt"), testDirectoryScope); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'t','subj','Ann <ann@sunbim.example>')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,'m1','{}','','','\x00',now(),'Ann','ann@sunbim.example')`, tenant, uuid.New(), card); err != nil {
+		t.Fatal(err)
+	}
+	var srv *httptest.Server
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/ann.png"):
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes)
+		case strings.HasSuffix(r.URL.Path, "/people:listDirectoryPeople"):
+			_, _ = w.Write([]byte(`{"people":[{"emailAddresses":[{"value":"ann@sunbim.example"}],"photos":[{"url":"` + srv.URL + `/ann.png","metadata":{"primary":true}}]}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	prevBase := PeopleBaseURL
+	PeopleBaseURL = srv.URL
+	defer func() { PeopleBaseURL = prevBase }()
+	prevLookup := bimiLogoURL
+	bimiLogoURL = func(ctx context.Context, addr string) (string, bool) { return "", false }
+	defer func() { bimiLogoURL = prevLookup }()
+	prevHTTP := PhotoHTTPClient
+	PhotoHTTPClient = srv.Client()
+	defer func() { PhotoHTTPClient = prevHTTP }()
+	s := &Syncer{DB: db, Build: "test"}
+	c := &Client{HTTP: srv.Client(), accessToken: "t", tokenExpiry: time.Now().Add(time.Hour)}
+	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
+		t.Fatalf("trySenderPhotos: %v", err)
+	}
+	var n int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM sender_photos WHERE tenant_id=$1 AND account_id=$2 AND sender_address='ann@sunbim.example'`, tenant, account).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("stored directory photo for ann@sunbim.example = %d, want 1", n)
+	}
+}
+
+// TestTrySenderPhotosDirectory403KeepsPeople: a 403 from listDirectoryPeople
+// (scope not allowed by the Workspace admin) must not block the People photo
+// for another sender and must not return errPhotoAuthRequired.
+func TestTrySenderPhotosDirectory403KeepsPeople(t *testing.T) {
+	db, _ := testPool(t)
+	ctx := context.Background()
+	tenant, account, card := uuid.New(), uuid.New(), uuid.New()
+	pngBytes := photoPNG(t)
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	granted := "https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly " + testDirectoryScope
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token,granted_photo_scopes) VALUES($1,$2,'a@example.test',$3,$4)`,
+		tenant, account, []byte("rt"), granted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'t','subj','Pat <pat@example.test>')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,'m1','{}','','','\x00',now(),'Pat','pat@example.test')`, tenant, uuid.New(), card); err != nil {
+		t.Fatal(err)
+	}
+	var srv *httptest.Server
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pat.png"):
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes)
+		case strings.HasSuffix(r.URL.Path, "/people:listDirectoryPeople"):
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":403,"status":"PERMISSION_DENIED"}}`))
+		case strings.HasSuffix(r.URL.Path, "/people/me/connections"):
+			_, _ = w.Write([]byte(`{"connections":[{"emailAddresses":[{"value":"pat@example.test"}],"photos":[{"url":"` + srv.URL + `/pat.png","metadata":{"primary":true}}]}]}`))
+		case strings.HasSuffix(r.URL.Path, "/otherContacts"):
+			_, _ = w.Write([]byte(`{"otherContacts":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	prevBase := PeopleBaseURL
+	PeopleBaseURL = srv.URL
+	defer func() { PeopleBaseURL = prevBase }()
+	prevLookup := bimiLogoURL
+	bimiLogoURL = func(ctx context.Context, addr string) (string, bool) { return "", false }
+	defer func() { bimiLogoURL = prevLookup }()
+	prevHTTP := PhotoHTTPClient
+	PhotoHTTPClient = srv.Client()
+	defer func() { PhotoHTTPClient = prevHTTP }()
+	s := &Syncer{DB: db, Build: "test"}
+	c := &Client{HTTP: srv.Client(), accessToken: "t", tokenExpiry: time.Now().Add(time.Hour)}
+	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
+		t.Fatalf("trySenderPhotos returned %v; directory 403 must not abort", err)
+	}
+	var n int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM sender_photos WHERE tenant_id=$1 AND account_id=$2 AND sender_address='pat@example.test'`, tenant, account).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("stored People photo for pat@example.test = %d, want 1 despite directory 403", n)
+	}
+}

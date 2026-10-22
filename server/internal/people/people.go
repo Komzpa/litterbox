@@ -163,6 +163,28 @@ func (c *Client) ListOtherContacts(ctx context.Context, accessToken, pageToken s
 	return out.OtherContacts, out.NextPageToken, nil
 }
 
+// ListDirectoryPeople pages people.listDirectoryPeople with
+// readMask=emailAddresses,photos over the Workspace domain directory and
+// domain profiles. It needs directory.readonly; errors go to the caller.
+func (c *Client) ListDirectoryPeople(ctx context.Context, accessToken, pageToken string) ([]Person, string, error) {
+	q := url.Values{
+		"readMask": {"emailAddresses,photos"},
+		"pageSize": {fmt.Sprint(listPageSize)},
+		"sources":  {"DIRECTORY_SOURCE_TYPE_DOMAIN_CONTACT", "DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"},
+	}
+	if pageToken != "" {
+		q.Set("pageToken", pageToken)
+	}
+	var out struct {
+		People        []Person `json:"people"`
+		NextPageToken string   `json:"nextPageToken"`
+	}
+	if err := c.get(ctx, accessToken, "/people:listDirectoryPeople", q, &out); err != nil {
+		return nil, "", err
+	}
+	return out.People, out.NextPageToken, nil
+}
+
 // BuildIndex paginates both surfaces and builds an account-scoped
 // normalized-email -> non-default photo URL index. Exact mailbox match
 // only: keys are lowercased trimmed addr-specs; display names are never
@@ -174,6 +196,19 @@ func (c *Client) ListOtherContacts(ctx context.Context, accessToken, pageToken s
 // /otherContacts previously aborted after a completed connections list and
 // stored nothing. Empty index plus a surface error still returns that error.
 func (c *Client) BuildIndex(ctx context.Context, accessToken string) (map[string]string, error) {
+	return c.buildIndex(ctx, accessToken, c.ListConnections, c.ListOtherContacts)
+}
+
+// BuildDirectoryIndex pages people.listDirectoryPeople and applies the same
+// exact-match and default-rejection rules as BuildIndex. It needs
+// directory.readonly; callers treat any error as "no directory photos".
+func (c *Client) BuildDirectoryIndex(ctx context.Context, accessToken string) (map[string]string, error) {
+	return c.buildIndex(ctx, accessToken, c.ListDirectoryPeople)
+}
+
+type personLister func(context.Context, string, string) ([]Person, string, error)
+
+func (c *Client) buildIndex(ctx context.Context, accessToken string, surfaces ...personLister) (map[string]string, error) {
 	index := map[string]string{}
 	primaries := map[string]bool{}
 	absorb := func(persons []Person) {
@@ -187,17 +222,15 @@ func (c *Client) BuildIndex(ctx context.Context, accessToken string) (map[string
 				if key == "" {
 					continue
 				}
-				prev, ok := index[key]
-				if !ok || (primary && !primaries[key]) {
+				if _, ok := index[key]; !ok || (primary && !primaries[key]) {
 					index[key] = url
 					primaries[key] = primary
 				}
-				_ = prev
 			}
 		}
 	}
 	var firstErr error
-	page := func(list func(context.Context, string, string) ([]Person, string, error)) {
+	page := func(list personLister) {
 		token := ""
 		for range maxListPages {
 			persons, next, err := list(ctx, accessToken, token)
@@ -220,8 +253,9 @@ func (c *Client) BuildIndex(ctx context.Context, accessToken string) (map[string
 			}
 		}
 	}
-	page(c.ListConnections)
-	page(c.ListOtherContacts)
+	for _, list := range surfaces {
+		page(list)
+	}
 	if len(index) == 0 && firstErr != nil {
 		return nil, firstErr
 	}

@@ -130,6 +130,34 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			index = built
 		}
 	}
+	// Workspace colleagues need directory.readonly. This pass is best-effort:
+	// any error is logged by message only and never blocks People or BIMI, and
+	// never counts as a photo-auth error for the account.
+	directoryKeys := map[string]bool{}
+	if gmail.HasDirectoryScope(granted) {
+		token, tokErr := c.token(ctx)
+		if tokErr != nil {
+			log.Printf("sender-photos: build=%s account=%s: directory token: %v", s.Build, a.ID, tokErr)
+		} else {
+			base := PeopleBaseURL
+			if base == "" {
+				base = people.DefaultBaseURL
+			}
+			dctx, dcancel := context.WithTimeout(ctx, 90*time.Second)
+			dir, dErr := (&people.Client{HTTP: httpClient, BaseURL: base}).BuildDirectoryIndex(dctx, token)
+			dcancel()
+			if dErr != nil {
+				log.Printf("sender-photos: build=%s account=%s: directory index skipped: %v", s.Build, a.ID, dErr)
+			} else {
+				for k, v := range dir {
+					if _, ok := index[k]; !ok {
+						index[k] = v
+						directoryKeys[k] = true
+					}
+				}
+			}
+		}
+	}
 	indexCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	fetched, stored, bimiStored := 0, 0, 0
@@ -148,7 +176,11 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			if err != nil {
 				raw = nil
 			} else {
-				source = "people"
+				if directoryKeys[key] {
+					source = "directory"
+				} else {
+					source = "people"
+				}
 			}
 		}
 		if raw == nil {
