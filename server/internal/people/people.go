@@ -169,6 +169,10 @@ func (c *Client) ListOtherContacts(ctx context.Context, accessToken, pageToken s
 // matched and dots/plus-tags are never rewritten. When several eligible
 // photos exist for one address the primary one wins; default=true entries
 // are rejected. Later surfaces do not overwrite an earlier primary hit.
+//
+// A failure on one surface does not discard the other: production 503 on
+// /otherContacts previously aborted after a completed connections list and
+// stored nothing. Empty index plus a surface error still returns that error.
 func (c *Client) BuildIndex(ctx context.Context, accessToken string) (map[string]string, error) {
 	index := map[string]string{}
 	primaries := map[string]bool{}
@@ -192,35 +196,34 @@ func (c *Client) BuildIndex(ctx context.Context, accessToken string) (map[string
 			}
 		}
 	}
-	token := ""
-	for range maxListPages {
-		persons, next, err := c.ListConnections(ctx, accessToken, token)
-		if err != nil {
-			return nil, err
-		}
-		absorb(persons)
-		if next == "" {
-			break
-		}
-		token = next
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+	var firstErr error
+	page := func(list func(context.Context, string, string) ([]Person, string, error)) {
+		token := ""
+		for range maxListPages {
+			persons, next, err := list(ctx, accessToken, token)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				return
+			}
+			absorb(persons)
+			if next == "" {
+				return
+			}
+			token = next
+			if ctx.Err() != nil {
+				if firstErr == nil {
+					firstErr = ctx.Err()
+				}
+				return
+			}
 		}
 	}
-	token = ""
-	for range maxListPages {
-		persons, next, err := c.ListOtherContacts(ctx, accessToken, token)
-		if err != nil {
-			return nil, err
-		}
-		absorb(persons)
-		if next == "" {
-			break
-		}
-		token = next
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
+	page(c.ListConnections)
+	page(c.ListOtherContacts)
+	if len(index) == 0 && firstErr != nil {
+		return nil, firstErr
 	}
 	return index, nil
 }

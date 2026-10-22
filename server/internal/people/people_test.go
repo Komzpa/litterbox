@@ -47,6 +47,7 @@ type fakePeople struct {
 	unknownQueries []string
 	connectionsHit int
 	otherHit       int
+	otherStatus    int
 }
 
 // otherContactsQueryNames lists the documented otherContacts.list query
@@ -117,6 +118,12 @@ func (f *fakePeople) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.otherHit++
 		f.readMasks = append(f.readMasks, r.URL.Query().Get("readMask"))
 		f.sources = append(f.sources, r.URL.Query()["sources"]...)
+		if f.otherStatus == http.StatusServiceUnavailable {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":503,"message":"The service is currently unavailable.","status":"UNAVAILABLE"}}`))
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"otherContacts":[
 {"emailAddresses":[{"value":"eve@example.com"}],"photos":[
@@ -189,6 +196,29 @@ func TestBuildIndexExactMatchRejectsDefault(t *testing.T) {
 		t.Fatalf("pagination incomplete: connections=%d other=%d", fake.connectionsHit, fake.otherHit)
 	}
 }
+
+// Production 2026-10-22: otherContacts 503 aborted BuildIndex after
+// connections had already returned, so account 8ce5c0f7 stored 0 photos.
+func TestBuildIndexKeepsConnectionsWhenOtherContactsUnavailable(t *testing.T) {
+	fake := &fakePeople{t: t, png: tinyPNG(t), otherStatus: http.StatusServiceUnavailable}
+	server := httptest.NewTLSServer(fake)
+	defer server.Close()
+	client := &Client{HTTP: server.Client(), BaseURL: server.URL}
+	index, err := client.BuildIndex(context.Background(), "fake-token")
+	if err != nil {
+		t.Fatalf("partial connections index must succeed, got %v", err)
+	}
+	if _, ok := index["alice@example.com"]; !ok {
+		t.Fatal("connections photo discarded because otherContacts returned 503")
+	}
+	if _, ok := index["eve@example.com"]; ok {
+		t.Fatal("otherContacts 503 must not contribute eve")
+	}
+	if fake.connectionsHit < 1 || fake.otherHit < 1 {
+		t.Fatalf("both surfaces must be attempted: connections=%d other=%d", fake.connectionsHit, fake.otherHit)
+	}
+}
+
 
 func TestFetchPhotoDecodesRealImage(t *testing.T) {
 	fake := &fakePeople{t: t, png: tinyPNG(t)}

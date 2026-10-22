@@ -16,9 +16,8 @@ import (
 // documented default. PhotoHTTPClient overrides the HTTP client for People
 // and provider image fetches in tests; nil reuses the Gmail client's HTTP.
 var (
-	PeopleBaseURL    string
-	PhotoHTTPClient  *http.Client
-	photoFetchBudget = 20
+	PeopleBaseURL   string
+	PhotoHTTPClient *http.Client
 	senderListBudget = 200
 )
 
@@ -127,9 +126,6 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 	}
 	fetched, stored := 0, 0
 	for _, sender := range senders {
-		if fetched >= photoFetchBudget {
-			break
-		}
 		key := senderphoto.NormalizeAddress(sender)
 		if key == "" {
 			continue
@@ -156,22 +152,29 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 		}
 		stored++
 	}
-	_ = stored
+	log.Printf("sender-photos: build=%s account=%s: ok index=%d senders=%d fetched=%d stored=%d", s.Build, a.ID, len(index), len(senders), fetched, stored)
 	return nil
 }
 
-// recentSenders returns up to senderListBudget distinct non-empty sender
-// addr-specs for the account, newest first, from messages then cards.
+// recentSenders returns up to senderListBudget distinct effective senders
+// for the account: latest message addr-spec, else cards.sender_address.
+// That is the same key markSenderPhotos and GET /sender-photo use, so a
+// stored photo can flag a card. Older-in-thread addresses are not fetched.
 func recentSenders(ctx context.Context, s *Syncer, a Account) ([]string, error) {
 	tx, err := s.beginTenant(ctx, a.TenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT DISTINCT m.sender_address FROM messages m
-JOIN cards c ON c.tenant_id=m.tenant_id AND c.id=m.card_id
-WHERE m.tenant_id=$1 AND c.account_id=$2 AND m.sender_address<>''
-ORDER BY m.sender_address LIMIT $3`, a.TenantID, a.ID, senderListBudget)
+	rows, err := tx.Query(ctx, `SELECT addr FROM (
+SELECT DISTINCT LOWER(TRIM(COALESCE(
+  (SELECT m.sender_address FROM messages m
+   WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND m.sender_address<>''
+   ORDER BY m.received_at DESC LIMIT 1),
+  NULLIF(c.sender_address,'')))) AS addr
+FROM cards c
+WHERE c.tenant_id=$1 AND c.account_id=$2
+) s WHERE addr IS NOT NULL AND addr<>'' LIMIT $3`, a.TenantID, a.ID, senderListBudget)
 	if err != nil {
 		return nil, err
 	}
