@@ -119,3 +119,61 @@ func TestTrySenderPhotosStoresConnectionsWhenOtherContacts503(t *testing.T) {
 		t.Fatalf("stored photos for alice@example.com = %d, want 1 (connections index kept after otherContacts 503)", n)
 	}
 }
+
+// Old People-only path left brand senders uncovered when they were absent
+// from connections/otherContacts. BIMI DNS+logo must store a photo for the
+// effective sender key (same key markSenderPhotos uses).
+func TestTrySenderPhotosStoresBIMIWhenPeopleMiss(t *testing.T) {
+	db, _ := testPool(t)
+	ctx := context.Background()
+	tenant, account := uuid.New(), uuid.New()
+	card := uuid.New()
+	pngBytes := photoPNG(t)
+	if _, err := db.Exec(ctx, `INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	// No People scopes: BIMI must still run (public DNS, no OAuth).
+	if _, err := db.Exec(ctx, `INSERT INTO accounts(tenant_id,id,address,refresh_token,granted_photo_scopes) VALUES($1,$2,'a@example.test',$3,'')`,
+		tenant, account, []byte("rt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject,sender) VALUES($1,$2,$3,'t','subj','News <news@brand.example>')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,'m1','{}','','','\x00',now(),'News','news@brand.example')`, tenant, uuid.New(), card); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/logo.png") {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	logoURL := srv.URL + "/logo.png"
+	prevLookup := bimiLogoURL
+	bimiLogoURL = func(ctx context.Context, addr string) (string, bool) {
+		if strings.HasSuffix(strings.ToLower(addr), "@brand.example") {
+			return logoURL, true
+		}
+		return "", false
+	}
+	defer func() { bimiLogoURL = prevLookup }()
+	prevHTTP := PhotoHTTPClient
+	PhotoHTTPClient = srv.Client()
+	defer func() { PhotoHTTPClient = prevHTTP }()
+	s := &Syncer{DB: db, Build: "test"}
+	c := &Client{HTTP: srv.Client(), accessToken: "t", tokenExpiry: time.Now().Add(time.Hour)}
+	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
+		t.Fatalf("trySenderPhotos: %v", err)
+	}
+	var n int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM sender_photos WHERE tenant_id=$1 AND account_id=$2 AND sender_address='news@brand.example'`, tenant, account).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("stored BIMI photo for news@brand.example = %d, want 1 (old People-only path stored 0)", n)
+	}
+}

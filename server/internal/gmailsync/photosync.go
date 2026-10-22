@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/bimi"
 	"github.com/Komzpa/litterbox/server/internal/gmail"
 	"github.com/Komzpa/litterbox/server/internal/people"
 	"github.com/Komzpa/litterbox/server/internal/senderphoto"
@@ -16,9 +17,12 @@ import (
 // documented default. PhotoHTTPClient overrides the HTTP client for People
 // and provider image fetches in tests; nil reuses the Gmail client's HTTP.
 var (
-	PeopleBaseURL   string
-	PhotoHTTPClient *http.Client
+	PeopleBaseURL    string
+	PhotoHTTPClient  *http.Client
 	senderListBudget = 200
+	// bimiLogoURL resolves a sender addr-spec to a BIMI l= URL. Tests swap
+	// it; production uses bimi.LogoURLForEmail (public DNS).
+	bimiLogoURL = bimi.LogoURLForEmail
 )
 
 // syncSenderPhotos is a best-effort R67 pass at the end of SyncAccount. It
@@ -89,16 +93,6 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
-	// Incremental consent gate: without both photo scopes on record, make
-	// no People call at all. The status endpoint reports
-	// authorization_required; the consent route builds the grant URL.
-	if !gmail.HasPhotoScopes(granted) {
-		return nil
-	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
 	httpClient := c.HTTP
 	if PhotoHTTPClient != nil {
 		httpClient = PhotoHTTPClient
@@ -106,37 +100,80 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	peopleBase := PeopleBaseURL
-	if peopleBase == "" {
-		peopleBase = people.DefaultBaseURL
-	}
-	peopleClient := &people.Client{HTTP: httpClient, BaseURL: peopleBase}
-	indexCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
-	index, err := peopleClient.BuildIndex(indexCtx, token)
-	if err != nil {
-		if isPhotoAuthError(err) {
-			return errPhotoAuthRequired
-		}
-		return err
-	}
 	senders, err := recentSenders(ctx, s, a)
 	if err != nil {
 		return err
 	}
-	fetched, stored := 0, 0
+	index := map[string]string{}
+	// People contact surfaces need both photo scopes. BIMI brand logos are
+	// public DNS+HTTPS (no OAuth) and still run when People is gated off.
+	if gmail.HasPhotoScopes(granted) {
+		token, tokErr := c.token(ctx)
+		if tokErr != nil {
+			return tokErr
+		}
+		peopleBase := PeopleBaseURL
+		if peopleBase == "" {
+			peopleBase = people.DefaultBaseURL
+		}
+		peopleClient := &people.Client{HTTP: httpClient, BaseURL: peopleBase}
+		pctx, pcancel := context.WithTimeout(ctx, 90*time.Second)
+		built, buildErr := peopleClient.BuildIndex(pctx, token)
+		pcancel()
+		if buildErr != nil {
+			if isPhotoAuthError(buildErr) {
+				return errPhotoAuthRequired
+			}
+			// Keep an empty index and still try BIMI for brand senders.
+			log.Printf("sender-photos: build=%s account=%s: people index: %v", s.Build, a.ID, buildErr)
+		} else {
+			index = built
+		}
+	}
+	indexCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	fetched, stored, bimiStored := 0, 0, 0
+	domainLogo := map[string]string{}
 	for _, sender := range senders {
 		key := senderphoto.NormalizeAddress(sender)
 		if key == "" {
 			continue
 		}
-		photoURL, ok := index[key]
-		if !ok || strings.TrimSpace(photoURL) == "" {
-			continue // explicitly uncovered: absent from both datasets
+		var raw []byte
+		var contentType string
+		source := ""
+		if photoURL, ok := index[key]; ok && strings.TrimSpace(photoURL) != "" {
+			fetched++
+			raw, contentType, err = people.FetchPhoto(indexCtx, httpClient, photoURL)
+			if err != nil {
+				raw = nil
+			} else {
+				source = "people"
+			}
 		}
-		fetched++
-		raw, contentType, err := people.FetchPhoto(indexCtx, httpClient, photoURL)
-		if err != nil {
+		if raw == nil {
+			at := strings.LastIndexByte(key, '@')
+			if at > 0 && at < len(key)-1 {
+				dom := key[at+1:]
+				logoURL, ok := domainLogo[dom]
+				if !ok {
+					if u, found := bimiLogoURL(indexCtx, key); found {
+						logoURL = u
+					}
+					domainLogo[dom] = logoURL
+				}
+				if logoURL != "" {
+					fetched++
+					raw, contentType, err = bimi.FetchLogo(indexCtx, httpClient, logoURL)
+					if err != nil {
+						raw = nil
+					} else {
+						source = "bimi"
+					}
+				}
+			}
+		}
+		if raw == nil || source == "" {
 			continue
 		}
 		wtx, err := s.beginTenant(ctx, a.TenantID)
@@ -151,8 +188,11 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			continue
 		}
 		stored++
+		if source == "bimi" {
+			bimiStored++
+		}
 	}
-	log.Printf("sender-photos: build=%s account=%s: ok index=%d senders=%d fetched=%d stored=%d", s.Build, a.ID, len(index), len(senders), fetched, stored)
+	log.Printf("sender-photos: build=%s account=%s: ok index=%d senders=%d fetched=%d stored=%d bimi=%d", s.Build, a.ID, len(index), len(senders), fetched, stored, bimiStored)
 	return nil
 }
 
