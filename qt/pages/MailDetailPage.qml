@@ -100,7 +100,7 @@ Kirigami.Page {
         }
         if (!html && (root.card || {}).source !== "mail") html = fallbackHtml()
         sourceUrl = body.source_url || ""
-        errorText = hasDocument ? "" : qsTr("This message is not cached on this device yet.")
+        errorText = hasDocument ? "" : qsTr("This message is not saved on this device. Connect to the internet to download it.")
     }
     function reload() {
         readCache()
@@ -117,7 +117,7 @@ Kirigami.Page {
         function onMailBodyFailed(cardId) {
             if (cardId !== root.cardId) return
             root.loading = false
-            if (!root.hasDocument) root.errorText = qsTr("Message unavailable. Reconnect to cache it; opening it never archives it.")
+            if (!root.hasDocument) root.errorText = qsTr("This message is not saved on this device. Connect to the internet to download it.")
         }
     }
 

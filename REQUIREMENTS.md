@@ -109,8 +109,7 @@ Each requirement is **decided** or **open** and names its source.
   physical preset/OK tap must persist the displayed instant in the payload.
 ## Offline
 
-- **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
-  open card with its content, not only titles. Reading needs no network.
+- **R9 Full local copy** (decided, owner 2026-09-27; clarified 2026-10-25). The phone keeps every open card with its content, not only titles. Reading downloaded content needs no network, including after restarting the client. Background body downloads prioritize open inbox mail before other body types and newest actual arrival first, reordering pending work when new snapshots arrive; archived cards are not downloaded. Equal or unknown arrival times retain their queue order. Keep the one-request-per-3-seconds background cap that prevents the server's 60 requests/minute per-IP limit from blocking foreground reads or actions (680b5ce, R33-V). Truly unavailable content uses plain language explaining that connecting will download it. Oracle: `tst_cardstore::bodyPrefetchCachesNewestInboxBeforeOldBacklog` puts 50 old mails before 5 new inbox mails in the snapshot, requires the five newest bodies to download first, excludes a newer archived mail, and reopens the persisted bodies offline after restart.
 - **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12). Archive, bundle
   archive, spam, bundle spam, snooze, pin, done and writing journal notes work with no network.
   They apply locally at once and sync when the connection returns. Gmail

@@ -785,6 +785,45 @@ private slots:
         lock = QSqlDatabase();
         QSqlDatabase::removeDatabase(connection);
     }
+    void bodyPrefetchCachesNewestInboxBeforeOldBacklog() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("newest-inbox.sqlite");
+        QStringList newest;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVariantList cards;
+            for (int i = 0; i < 50; ++i)
+                cards.append(QVariantMap{{"id", QStringLiteral("old-%1").arg(i)}, {"source", "mail"},
+                    {"state", "open"}, {"received_at", "2026-09-01T09:00:00Z"}});
+            for (int i = 0; i < 5; ++i) {
+                const QString id = QStringLiteral("new-%1").arg(i);
+                newest.prepend(id);
+                cards.append(QVariantMap{{"id", id}, {"source", "mail"}, {"state", "open"},
+                    {"received_at", QStringLiteral("2026-10-25T10:0%1:00Z").arg(i)}});
+            }
+            cards.prepend(QVariantMap{{"id", "archived"}, {"source", "mail"}, {"state", "archived"},
+                {"received_at", "2026-10-25T11:00:00Z"}});
+            cards.prepend(QVariantMap{{"id", "agent-body"}, {"source", "agent"}, {"has_body", true},
+                {"received_at", "2026-10-25T12:00:00Z"}});
+            QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
+            store.setOnline(true);
+            for (int i = 0; i < newest.size(); ++i) {
+                QTRY_COMPARE_WITH_TIMEOUT(requested.size(), i + 1, 5000);
+                QCOMPARE(requested.at(i).at(0).toString(), newest.at(i));
+                store.applyRemoteMailBody(newest.at(i), {{"html", "<p>Available offline</p>"}});
+                QTRY_COMPARE(store.cachedMailBody(newest.at(i)).value("html").toString(),
+                    QStringLiteral("<p>Available offline</p>"));
+            }
+            store.setOnline(false);
+        }
+        CardStore offline;
+        QVERIFY(offline.open(path));
+        QVERIFY(!offline.online());
+        for (const QString &id : newest)
+            QCOMPARE(offline.cachedMailBody(id).value("html").toString(), QStringLiteral("<p>Available offline</p>"));
+    }
     void bodyPrefetchPacesLargeSnapshotsAndForegroundBypassesQueue() {
         QTemporaryDir directory;
         CardStore store;

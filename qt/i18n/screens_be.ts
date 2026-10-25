@@ -969,13 +969,9 @@
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="103"/>
-        <source>This message is not cached on this device yet.</source>
-        <translation>Гэта паведамленне яшчэ не захавана ў кэш на гэтай прыладзе.</translation>
-    </message>
-    <message>
         <location filename="../pages/MailDetailPage.qml" line="120"/>
-        <source>Message unavailable. Reconnect to cache it; opening it never archives it.</source>
-        <translation>Паведамленне недаступна. Перазлучыцеся, каб захаваць яго ў кэш; адкрыццё яго ніколі не архівуе.</translation>
+        <source>This message is not saved on this device. Connect to the internet to download it.</source>
+        <translation>Гэта паведамленне не захавана на гэтай прыладзе. Падключыцеся да інтэрнэту, каб спампаваць яго.</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="241"/>
