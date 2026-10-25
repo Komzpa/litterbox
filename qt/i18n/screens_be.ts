@@ -578,7 +578,7 @@
     </message>
     <message numerus="yes">
         <location filename="../qml/InboxView.qml" line="358"/>
-        <source>%n email</source>
+        <source>%n email(s)</source>
         <translation>
             <numerusform>%n ліст</numerusform>
             <numerusform>%n лісты</numerusform>

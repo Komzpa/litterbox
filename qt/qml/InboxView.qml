@@ -355,7 +355,7 @@ ApplicationWindow {
     function emailCountText(count) {
         const value = Number(count)
         // %n plural: Qt selects one/few/many for ru/be, singular/plural for en.
-        return qsTr("%n email", "", value)
+        return qsTr("%n email(s)", "", value)
     }
     function archiveBundle(bundleId) {
         const selectedBefore = selectedCardId
