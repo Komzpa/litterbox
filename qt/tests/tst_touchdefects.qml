@@ -99,6 +99,19 @@ TestCase {
         note.text = "Private journal entry. ".repeat(80)
         dialog.open()
         tryCompare(dialog, "opened", true)
+        // Overlay-mode IME: keep the full window, reserve the bottom 45%.
+        dialog.keyboardRectangle = Qt.rect(0, inbox.height * 0.55,
+                                          inbox.width, inbox.height * 0.45)
+        wait(250)
+        verify(dialog.y + dialog.height <= dialog.keyboardRectangle.y,
+               "Full dialog including footer must stay above the 45% keyboard")
+        for (const name of ["createSaveButton", "createCancelButton"]) {
+            const button = findChild(inbox, name)
+            const bottom = button.mapToItem(dialog.parent, 0, button.height).y
+            verify(bottom <= dialog.keyboardRectangle.y,
+                   name + " must remain above the simulated keyboard")
+        }
+        dialog.keyboardRectangle = Qt.rect(0, 0, 0, 0)
         // Android adjustResize leaves this much usable space above the IME.
         inbox.height = 420
         wait(250)

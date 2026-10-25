@@ -2399,9 +2399,10 @@ ApplicationWindow {
         implicitWidth: width
         // Some Android IMEs overlay the window; others resize it. Bound the
         // entire dialog, including its fixed footer, to either usable viewport.
-        readonly property real usableHeight: Qt.inputMethod.visible && Qt.inputMethod.keyboardRectangle.height > 0
-            ? Math.min(parent.height, Qt.inputMethod.keyboardRectangle.y)
-            : parent.height
+        property rect keyboardRectangle: Qt.inputMethod.visible
+            ? Qt.inputMethod.keyboardRectangle : Qt.rect(0, 0, 0, 0)
+        readonly property real usableHeight: keyboardRectangle.height > 0
+            ? Math.min(parent.height, keyboardRectangle.y) : parent.height
         height: Math.min(implicitHeight, Math.max(0, usableHeight - 32))
         x: (parent.width - width) / 2
         y: Math.max(16, (usableHeight - height) / 2)
