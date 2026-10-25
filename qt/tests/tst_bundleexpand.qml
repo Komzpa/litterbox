@@ -358,7 +358,7 @@ TestCase {
         const row = list.itemAtIndex(0)
         const count = findChild(row, "bundleMemberCount-" + leader.id)
         const disclosure = findChild(row, "importantDisclosure-" + leader.id)
-        verify(count && count.visible && /\b1\b/.test(count.text))
+        verify(count && !count.visible, "A single ordinary member must not show a count chip; important disclosure remains separate")
         verify(disclosure && disclosure.visible && disclosure.width > 0 && disclosure.height > 0,
                "The standalone important member must have a visible disclosure")
         const importantRow = list.itemAtIndex(1)
