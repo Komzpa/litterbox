@@ -239,6 +239,7 @@ TestCase {
         verify(text.indexOf("2") >= 0)
         const retry = findChild(offlineRow, "offlineRetry")
         verify(retry && retry.visible && retry.enabled)
+        verify(retry.height >= 48, "offline Retry is a >=48px touch target, got height " + retry.height)
         offline.inbox.close()
     }
     // R66: agent report boilerplate is not the preview; mail text is untouched.

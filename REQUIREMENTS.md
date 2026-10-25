@@ -333,14 +333,13 @@ the final acceptance; until he sees it each item is partial.
   15884 item «Online · changes sync across devices» line wastes a row). The
   inbox never shows a raw socket/errno string such as «Software caused
   connection abort». When online and synced nothing is shown. When the server
-  is unreachable, one slim line says what is unreachable, the last successful
-  sync time, the number of changes waiting on this device, and offers Retry;
-  the app keeps retrying on its own with backoff. Raw error text is only in an
-  expandable Details view and in diagnostics. Auth and data-save failures
-  stay actionable (R51, R52) and are never hidden behind this line. Oracle:
-  QML test drives offline with reason «Software caused connection abort» and
-  asserts the rendered text omits it, shows pending count and Retry; online
-  renders no status row.
+  sync time, the number of changes waiting on this device, and offers Retry with
+  a minimum 48px touch target; the app keeps retrying on its own with backoff.
+  Raw error text is only in an expandable Details view and in diagnostics. Auth
+  and data-save failures stay actionable (R51, R52) and are never hidden behind
+  this line. Oracle: QML test drives offline with reason «Software caused
+  connection abort» and asserts the rendered text omits it, shows pending count
+  and Retry with height >= 48; online renders no status row.
 - **R56 Touch scrolling never activates** (decided, Darafei 2026-10-14 msg
   15786 «Еще надо починить скролл: когда происходит скролл тачем, не должно
   быть изменений на экране, все так должно оставаться чтобы скриншот тул от

@@ -884,7 +884,7 @@ ApplicationWindow {
                 ToolButton {
                     objectName: "offlineRetry"
                     text: qsTr("Retry")
-                    implicitHeight: 40
+                    implicitHeight: 48
                     Material.foreground: window.accent
                     palette.buttonText: window.accent
                     onClicked: store.refresh()
