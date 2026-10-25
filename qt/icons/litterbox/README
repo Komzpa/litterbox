@@ -1,12 +1,14 @@
-Bundled Breeze subset for Litterbox named icons.
+Bundled icon theme for Litterbox, primarily a Breeze subset.
 
-Source: /usr/share/icons/breeze (Debian package breeze-icon-theme).
-License: see LICENSE.breeze (Debian copyright format; upstream LGPL-3.0-or-later).
+Source: /usr/share/icons/breeze (Debian package breeze-icon-theme), except
+mail-archive.svg, an original Litterbox archive-tray glyph under the repository MIT license.
+Breeze license: see LICENSE.breeze (Debian copyright format; upstream LGPL-3.0-or-later).
 
 Included named icons (the theme selects the nearest bundled size):
 actions: list-add, application-menu, dialog-ok, mail-mark-read-symbolic,
   overflow-menu, document-open, document-preview, document-edit,
   appointment-new, pin, list-remove, mail-receive, view-refresh,
-  transform-move, arrow-right, arrow-down
+  transform-move, arrow-right, arrow-down,
+  go-previous (Breeze), mail-archive (Litterbox archive tray)
 places: user-identity, folder
 status: system-software-update
