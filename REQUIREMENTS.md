@@ -414,8 +414,9 @@ the final acceptance; until he sees it each item is partial.
   downloads in the background to app-private storage, is verified against
   the manifest SHA-256, size, package and strictly newer versionCode, only one
   pending APK is kept and the same version is not downloaded twice. Then one
-  non-blocking «Update ready · Install» prompt appears; tapping it opens the
-  Android installer directly. This amends R39: the check and download are
+  non-blocking «Update ready · Install» prompt appears as an inline banner row
+  whose Install is a themed 48px command button like the other app buttons;
+  tapping it opens the Android installer directly. This amends R39: the check and download are
   automatic; installation is still the owner's tap plus Android's own
   confirmation, never silent. Oracle: tst_androidupdater covers the automatic
   trigger, predownload, hash mismatch rejection, offline backoff and no

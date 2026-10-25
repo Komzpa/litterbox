@@ -7,6 +7,6 @@ Included named icons (the theme selects the nearest bundled size):
 actions: list-add, application-menu, dialog-ok, mail-mark-read-symbolic,
   overflow-menu, document-open, document-preview, document-edit,
   appointment-new, pin, list-remove, mail-receive, view-refresh,
-  transform-move, arrow-right, arrow-down
+  transform-move, arrow-right, arrow-down, configure
 places: user-identity, folder
 status: system-software-update
