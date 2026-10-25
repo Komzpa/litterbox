@@ -1057,7 +1057,8 @@ private slots:
             QSignalSpy prefetch(&store, &CardStore::requestMailBodyGet);
             QVERIFY(store.applyRemoteCards(sections));
             QCOMPARE(prefetch.size(), 1);
-            store.requestMailBody(mailId);
+            QCOMPARE(prefetch.first().first().toString(), mailId); // Inbox mail prefetch has priority.
+            store.requestMailBody(agentId); // Foreground agent open bypasses the paced queue.
             QCOMPARE(prefetch.size(), 2);
             QSet<QString> ids;
             for (const QVariantList &args : prefetch) ids.insert(args.first().toString());
