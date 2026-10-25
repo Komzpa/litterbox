@@ -71,6 +71,50 @@ TestCase {
         console.info("HEADER ORDER: " + Object.values(inbox.dateStarts).join(" > "))
         inbox.close()
     }
+    function test_mixedBundleArrivals() {
+        fixture()
+        // Different valid RFC3339 offsets must compare as instants, not strings.
+        // The head's written calendar day is newer, but the child's instant is newer.
+        store.clear()
+        const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
+        const yesterday = new Date(midnight.getTime() - 86400000)
+        const earlier = new Date(midnight.getTime() - 3 * 86400000)
+        function add(id, at, bundle, leader, count) {
+            const card = {id: id, title: "Original subject " + id, source: "mail", section: "now",
+                received_at: at, bundle_id: bundle || "", pinned_rank: null, important: false,
+                timed: false, has_body: false, sender_name: "Review bot", account_name: "owner@example.test",
+                snippet: "Original message preview", summary: "", note: ""}
+            if (bundle) { card.bundle_leader = leader; card.bundle_member_count = count; card.bundle_title = "Grouped topic" }
+            store.append({cardId: id, title: card.title, section: "now", card: card})
+        }
+        // Represent local today 01:00 using a deliberately different offset.
+        function offsetStamp(instant, offsetHours) {
+            return new Date(instant + offsetHours * 3600000).toISOString().slice(0, 19)
+                + (offsetHours < 0 ? "-" : "+") + String(Math.abs(offsetHours)).padStart(2, "0") + ":00"
+        }
+        add("older", earlier.toISOString())
+        add("yesterday", new Date(yesterday.getTime() + 21 * 3600000).toISOString())
+        add("singleton", new Date(midnight.getTime() + 2 * 3600000).toISOString(), "one", true, 1)
+        add("head", offsetStamp(yesterday.getTime() + 20 * 3600000, 14), "mixed", true, 2)
+        add("child", offsetStamp(midnight.getTime() + 3 * 3600000, -12), "mixed", false, 2)
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
+            timeRules: timeRules, width: 412, height: 915})
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryCompare(list, "count", 5)
+        compare(Object.keys(inbox.dateStarts), ["head", "yesterday", "older"], "bundle's newest actual arrival owns Today")
+        compare(Object.values(inbox.dateStarts), ["Today", "Yesterday", "Earlier"])
+        compare(findChild(inbox, "bundlePresentation").rows.map(e => e.cardId),
+            ["head", "child", "singleton", "yesterday", "older"])
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(2) !== null })
+        const singleton = list.itemAtIndex(2)
+        verify(!singleton.bundleLeader && !singleton.bundled, "one-message bundle is a plain mail row")
+        verify(findChild(singleton, "mailTitle-singleton").visible)
+        verify(!findChild(singleton, "bundleToggle-singleton").visible)
+        grabImage(inbox.contentItem.parent).save("/tmp/lb-inbox-polish/mixed-412x915.png")
+        inbox.close()
+    }
     function test_capture(data) {
         fixture()
         const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
@@ -99,7 +143,7 @@ TestCase {
         for (const id of ["today-head", "yesterday-head", "yesterday-child", "yesterday", "older", "older-head"]) {
             const row = rowFor(id)
             const frame = findChild(row, "inboxCard")
-            const bundle = id.endsWith("head")
+            const bundle = row.bundleLeader
             const title = findChild(row, (bundle ? "bundleTitleLabel-" : "mailTitle-") + id)
             const date = findChild(row, (bundle ? "bundleDate-" : "mailDate-") + id)
             const archive = findChild(row, (bundle ? "archiveBundle-" : "doneButton-") + id)
@@ -121,15 +165,13 @@ TestCase {
                 verify(p.x >= 0 && p.y >= 0 && p.x + item.width <= frame.width + 1 && p.y + item.height <= frame.height + 1, item.objectName + " stays inside card")
             }
             verify(archive.width >= 48 && archive.height >= 48 && more.width >= 48 && more.height >= 48)
-            if (bundle && id !== "yesterday-head") {
+            if (id === "today-head") {
+                verify(!row.bundled && !findChild(row, "bundleToggle-" + id).visible, "singleton uses plain mail controls")
+                verify(Math.abs(frame.height - singleFrame.height) <= 2, "singleton and matched plain mail have equal height")
+            } else if (bundle && id !== "yesterday-head") {
                 const chip = findChild(row, "bundleMemberCount-" + id)
-                compare(chip.visible, id !== "today-head", "count chip appears only for two or more messages")
-                if (id === "today-head") {
-                    verify(Math.abs(frame.height - singleFrame.height) <= 2, "one-message thread and matched single bounding boxes have equal height within 2px")
-                    console.info("BBOX " + data.w + ": single=" + singleFrame.width + "x" + singleFrame.height + "; one-message thread=" + frame.width + "x" + frame.height)
-                } else {
-                    verify(frame.height <= singleFrame.height + chip.parent.height + 6, "multi-message thread adds only its count row and spacing")
-                }
+                verify(chip.visible, "multi-message group retains its count")
+                verify(frame.height <= singleFrame.height + chip.parent.height + 6, "multi-message thread adds only its count row and spacing")
             }
         }
         const child = rowFor("yesterday-child")
