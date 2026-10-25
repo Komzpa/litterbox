@@ -152,4 +152,39 @@ TestCase {
         image.save("/tmp/lb-inbox-polish/current-" + data.w + "x" + data.h + ".png")
         inbox.close()
     }
+    // D3-D6/D13: phone-width bundle head, scrollbar strip and whitespace-clean subjects.
+    function test_phone360() {
+        fixture()
+        store.append({cardId: "ws", title: "It\u2019s Shopping Time\n        Your Miles", section: "now",
+            card: {id: "ws", title: "It\u2019s Shopping Time\n        Your Miles", source: "mail", section: "now", timed: false,
+                account_name: "owner@example.test", sender_name: "Shop", received_at: new Date().toISOString(), snippet: "x", note: ""}})
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
+            timeRules: timeRules, width: 360, height: 800})
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        wait(200)
+        const bar = findChild(inbox, "inboxScrollBar")
+        verify(bar, "scrollbar is named")
+        verify(bar.implicitWidth > 0)
+        for (let i = 0; i < list.count; ++i) {
+            const row = list.itemAtIndex(i)
+            if (!row) continue
+            const frame = findChild(row, "inboxCard")
+            verify(row.mapToItem(list, frame.x + frame.width, 0).x <= list.width - bar.implicitWidth + 0.5, "card " + row.cardId + " fits the list width")
+            const queue = [row]
+            while (queue.length) {
+                const item = queue.pop()
+                if (item.visible && item.width > 0) {
+                    const p = item.mapToItem(list, 0, 0)
+                    verify(p.x + item.width <= list.width - bar.implicitWidth + 0.5, (item.objectName || "item") + " inside list width in " + row.cardId)
+                }
+                for (const c of item.children) queue.push(c)
+            }
+            const t = findChild(row, "mailTitle-" + row.cardId)
+            if (t) verify(!/\s{2,}|^\s|\n/.test(t.text), "subject has no whitespace runs: " + t.text)
+        }
+        inbox.close()
+    }
 }

@@ -1149,7 +1149,8 @@ ApplicationWindow {
                 objectName: "inboxList"
                 anchors.fill: parent
                 clip: true
-                ScrollBar.vertical: ScrollBar { }
+                // D6: delegates leave this strip free so the bar never covers cards.
+                ScrollBar.vertical: ScrollBar { id: inboxScrollBar; objectName: "inboxScrollBar" }
                 // Width changes reflow delegates; preserve the visible card and
                 // its offset rather than jumping to the selected (possibly offscreen) card.
                 onWidthChanged: {
@@ -1441,7 +1442,7 @@ ApplicationWindow {
                     readonly property var entry: bundleModel.rows[slot] || {card: {}, cardId: "", title: ""}
                     readonly property var card: entry.card
                     readonly property string cardId: entry.cardId
-                    readonly property string title: entry.title
+                    readonly property string title: String(entry.title || "").replace(/\s+/g, " ").trim()
                     // Photo completion explicitly rebuilds this cache-backed presentation value.
                     readonly property string senderPhoto: entry.senderPhoto || ""
                     id: cardRow
@@ -1488,7 +1489,7 @@ ApplicationWindow {
                         else event.accepted = false
                     }
                     visible: !bundled || card.bundle_leader !== false || bundleExpanded
-                    width: ListView.view.width
+                    width: ListView.view.width - inboxScrollBar.implicitWidth
                     height: (!bundled || card.bundle_leader !== false || bundleExpanded) ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.cardGap) : 0
                     z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
