@@ -333,14 +333,13 @@ the final acceptance; until he sees it each item is partial.
   15884 item «Online · changes sync across devices» line wastes a row). The
   inbox never shows a raw socket/errno string such as «Software caused
   connection abort». When online and synced nothing is shown. When the server
-  is unreachable, one slim line says what is unreachable, the last successful
-  sync time, the number of changes waiting on this device, and offers Retry;
-  the app keeps retrying on its own with backoff. Raw error text is only in an
-  expandable Details view and in diagnostics. Auth and data-save failures
-  stay actionable (R51, R52) and are never hidden behind this line. Oracle:
-  QML test drives offline with reason «Software caused connection abort» and
-  asserts the rendered text omits it, shows pending count and Retry; online
-  renders no status row.
+  sync time, the number of changes waiting on this device, and offers Retry with
+  a minimum 48px touch target; the app keeps retrying on its own with backoff.
+  Raw error text is only in an expandable Details view and in diagnostics. Auth
+  and data-save failures stay actionable (R51, R52) and are never hidden behind
+  this line. Oracle: QML test drives offline with reason «Software caused
+  connection abort» and asserts the rendered text omits it, shows pending count
+  and Retry with height >= 48; online renders no status row.
 - **R56 Touch scrolling never activates** (decided, Darafei 2026-10-14 msg
   15786 «Еще надо починить скролл: когда происходит скролл тачем, не должно
   быть изменений на экране, все так должно оставаться чтобы скриншот тул от
@@ -415,8 +414,9 @@ the final acceptance; until he sees it each item is partial.
   downloads in the background to app-private storage, is verified against
   the manifest SHA-256, size, package and strictly newer versionCode, only one
   pending APK is kept and the same version is not downloaded twice. Then one
-  non-blocking «Update ready · Install» prompt appears; tapping it opens the
-  Android installer directly. This amends R39: the check and download are
+  non-blocking «Update ready · Install» prompt appears as an inline banner row
+  whose Install is a themed 48px command button like the other app buttons;
+  tapping it opens the Android installer directly. This amends R39: the check and download are
   automatic; installation is still the owner's tap plus Android's own
   confirmation, never silent. Oracle: tst_androidupdater covers the automatic
   trigger, predownload, hash mismatch rejection, offline backoff and no

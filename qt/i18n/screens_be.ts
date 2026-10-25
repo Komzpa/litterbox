@@ -547,12 +547,12 @@
         <location filename="../qml/InboxView.qml" line="379"/>
         <location filename="../qml/InboxView.qml" line="389"/>
         <source>Archived</source>
-        <translation>Архіўная</translation>
+        <translation>Заархівавана</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="379"/>
         <source>Archived %1</source>
-        <translation>Архіў %1</translation>
+        <translation>Заархівавана: %1</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="389"/>

@@ -239,7 +239,24 @@ TestCase {
         verify(text.indexOf("2") >= 0)
         const retry = findChild(offlineRow, "offlineRetry")
         verify(retry && retry.visible && retry.enabled)
+        verify(retry.height >= 48, "offline Retry is a >=48px touch target, got height " + retry.height)
         offline.inbox.close()
+    }
+    function test_headerCommandsUseOverflowAndThemedInstall() {
+        const shown = openInbox(true)
+        const nav = findChild(shown.inbox, "openNavigation")
+        const commands = findChild(shown.inbox, "inboxCommands")
+        verify(nav && commands, "header has drawer and commands buttons")
+        verify(commands.icon.name !== nav.icon.name, "commands icon must differ from drawer icon, got " + commands.icon.name)
+        compare(commands.icon.name, "overflow-menu")
+        const settingsItem = findChild(shown.inbox, "headerMenuSettings")
+        verify(settingsItem, "header menu has Settings entry")
+        compare(settingsItem.icon.name, "configure", "Settings entry must not wear the hamburger glyph")
+        const install = findChild(shown.inbox, "updateInstall")
+        verify(install, "update bar has Install button")
+        const installBg = findChild(install, "updateInstallBackground")
+        verify(installBg, "Install uses the shared themed command-button background")
+        shown.inbox.close()
     }
     // R66: agent report boilerplate is not the preview; mail text is untouched.
     function test_agentPreviewBoilerplate() {

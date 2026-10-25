@@ -113,6 +113,9 @@ private slots:
         f.open(QIODevice::ReadOnly | QIODevice::Text);
         const QString body = QString::fromUtf8(f.readAll());
         QVERIFY(body.contains(QStringLiteral("Назад да ўваходных")));
+        // D12: archive toast uses the past-participle form, not the adjective.
+        QVERIFY2(body.contains(QStringLiteral("Заархівавана")),
+                 qPrintable(QStringLiteral("screens_be.ts archive toast must read Заархівавана")));
         QFile g(actions);
         g.open(QIODevice::ReadOnly | QIODevice::Text);
         const QString abody = QString::fromUtf8(g.readAll());
