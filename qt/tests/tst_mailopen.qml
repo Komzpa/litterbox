@@ -11,6 +11,9 @@ TestCase {
 
     ListModel {
         id: store
+        // Match CardStore's value-object card role: nested fixed-role ListModel
+        // wrappers otherwise change under the presentation's retained snapshot.
+        dynamicRoles: true
         property bool online: false
         property string offlineReason: ""
         property var cached: ({})
@@ -66,11 +69,14 @@ TestCase {
         store.clear()
         store.operations = []
         store.cached = ({[mailId(8)]: {html: "<p>Hello <b>reader</b></p>"}})
+        // Current presentation is newest-first; unique arrivals preserve the
+        // intended index order, including the filtered continuation control.
         for (let i = 0; i < 40; ++i) {
             const id = mailId(i)
             const title = i < 14 ? "Message " + i : "Additional mail"
             store.append({cardId: id, title: title, section: "now", card: {
                 id: id, title: title, source: source, section: "now", account_name: "fixture@example.test",
+                received_at: new Date(Date.UTC(2026, 9, 25, 12, 0, -i)).toISOString(),
                 summary: "Click this preview to read the message",
                 snippet: "Click this preview to read the message", has_body: true,
                 pinned_rank: null, bundle_id: "", important: false, timed: false,
@@ -403,6 +409,7 @@ TestCase {
         // invalidates the raw contentY that the old Back path restored.
         store.insert(0, {cardId: mailId(40), title: "Message reflow", section: "now", card: {
             id: mailId(40), title: "Message reflow", source: "mail", section: "now", account_name: "fixture@example.test",
+            received_at: new Date(Date.UTC(2026, 9, 25, 12, 1)).toISOString(),
             summary: "Arrived while reading", snippet: "Arrived while reading", has_body: true,
             pinned_rank: null, bundle_id: "", important: false, timed: false,
             note: "", source_url: ""
