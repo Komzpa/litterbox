@@ -127,7 +127,7 @@ ApplicationWindow {
         DestinationButton { objectName: "navInbox"; destination: ""; location: qsTr("Inbox"); icon.name: "mail-receive"; Layout.fillWidth: true }
         DestinationButton { objectName: "navAccounts"; destination: "GmailAccountsPage"; location: qsTr("Accounts"); icon.name: "mail-receive"; Layout.fillWidth: true }
         DestinationButton { objectName: "navAgents"; destination: "AgentThreadsPage"; location: qsTr("Agents"); icon.name: "user-identity"; Layout.fillWidth: true }
-        DestinationButton { objectName: "navSettings"; destination: "SettingsPage"; location: qsTr("Settings"); icon.name: "application-menu"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navSettings"; destination: "SettingsPage"; location: qsTr("Settings"); icon.name: "configure"; Layout.fillWidth: true }
     }
     readonly property real edgeSpacing: compactInbox ? 8 : Math.max(18, Kirigami.Units.largeSpacing)
     readonly property int actionIconSize: 20
