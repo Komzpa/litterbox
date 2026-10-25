@@ -2400,8 +2400,17 @@ ApplicationWindow {
         modal: true
         width: Math.min(392, window.width - 32)
         implicitWidth: width
+        // Some Android IMEs overlay the window; others resize it. Bound the
+        // entire dialog, including its fixed footer, to either usable viewport.
+        property rect keyboardRectangle: Qt.inputMethod.visible
+            ? Qt.inputMethod.keyboardRectangle : Qt.rect(0, 0, 0, 0)
+        readonly property real usableHeight: keyboardRectangle.height > 0
+            ? Math.min(parent.height, keyboardRectangle.y) : parent.height
+        height: Math.min(implicitHeight, Math.max(0, usableHeight - 32))
+        x: (parent.width - width) / 2
+        y: Math.max(16, (usableHeight - height) / 2)
         background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
-        anchors.centerIn: parent
+        parent: Overlay.overlay
         // Explicit English buttons (see noteDialog): no locale-dependent
         // StandardButton labels, explicit light background in any style.
         footer: DialogButtonBox {
@@ -2448,35 +2457,43 @@ ApplicationWindow {
             }
         }
         onOpened: (journal ? createJournal : createTitle).forceActiveFocus()
-        contentItem: ColumnLayout {
-            ComboBox {
-                id: createKind
-                objectName: "createKind"
-                model: [qsTr("Task"), qsTr("Private journal note")]
-                Layout.fillWidth: true
-                Accessible.name: qsTr("Card kind")
-                onActivated: (createDialog.journal ? createJournal : createTitle).forceActiveFocus()
-            }
-            TextField { id: createTitle; objectName: "createTitle"; visible: !createDialog.journal; placeholderText: qsTr("Title"); Layout.fillWidth: true }
-            TextField { id: createSummary; objectName: "createSummary"; visible: !createDialog.journal; placeholderText: qsTr("Details (optional)"); Layout.fillWidth: true }
-            ScrollView {
-                visible: createDialog.journal
-                Layout.fillWidth: true
-                Layout.preferredHeight: 180
-                TextArea {
-                    id: createJournal
-                    objectName: "createJournal"
-                    placeholderText: qsTr("Write a private note…")
-                    textFormat: TextEdit.PlainText
-                    wrapMode: TextEdit.Wrap
+        contentItem: ScrollView {
+            clip: true
+            contentWidth: availableWidth
+            contentHeight: createFields.implicitHeight
+            implicitHeight: createFields.implicitHeight
+            ColumnLayout {
+                id: createFields
+                width: parent.width
+                ComboBox {
+                    id: createKind
+                    objectName: "createKind"
+                    model: [qsTr("Task"), qsTr("Private journal note")]
+                    Layout.fillWidth: true
+                    Accessible.name: qsTr("Card kind")
+                    onActivated: (createDialog.journal ? createJournal : createTitle).forceActiveFocus()
                 }
-            }
-            Label {
-                visible: createDialog.journal
-                text: qsTr("Private · saved offline and synced to your inbox. Your assistant can read it, not write it.")
-                color: window.mutedInk
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
+                TextField { id: createTitle; objectName: "createTitle"; visible: !createDialog.journal; placeholderText: qsTr("Title"); Layout.fillWidth: true }
+                TextField { id: createSummary; objectName: "createSummary"; visible: !createDialog.journal; placeholderText: qsTr("Details (optional)"); Layout.fillWidth: true }
+                ScrollView {
+                    visible: createDialog.journal
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 180
+                    TextArea {
+                        id: createJournal
+                        objectName: "createJournal"
+                        placeholderText: qsTr("Write a private note…")
+                        textFormat: TextEdit.PlainText
+                        wrapMode: TextEdit.Wrap
+                    }
+                }
+                Label {
+                    visible: createDialog.journal
+                    text: qsTr("Private · saved offline and synced to your inbox. Your assistant can read it, not write it.")
+                    color: window.mutedInk
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
             }
         }
     }
