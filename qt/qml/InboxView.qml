@@ -1267,7 +1267,7 @@ ApplicationWindow {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
                                 }
-                                if (!summary.latestAt || (card.received_at && card.received_at > summary.latestAt)) {
+                                if (!summary.latestAt || (Date.parse(card.received_at) > Date.parse(summary.latestAt))) {
                                     summary.latestAt = card.received_at || ""
                                     summary.latestTitle = entry.title || ""
                                 }
@@ -1450,14 +1450,14 @@ ApplicationWindow {
                         ? (window.bundleSections[card.bundle_id] || card.section) : card.section
                     HoverHandler { id: rowHover }
                     readonly property bool lifted: window.dragCardId === cardId
-                    readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
+                    readonly property bool bundled: !!card.bundle_id && bundleSummary.unpinned > 1 && card.section !== "pinned" && card.pinned_rank == null && !card.important
                     readonly property bool bundleExpanded: window.searching ? !window.searchCollapsedBundles[card.bundle_id] : !!window.expandedBundles[card.bundle_id]
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
                     readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], senders: [], important: 0, unpinned: 0, lastId: cardId}
                     readonly property bool showMemberSender: !bundled || bundleSummary.senders.length !== 1 || bundleSummary.senders[0] !== window.mailSender(card)
                     readonly property bool showMemberAccount: !bundled || bundleSummary.accounts.length !== 1 || bundleSummary.accounts[0] !== card.account_name
                     readonly property bool lastMember: bundleSummary.lastId === cardId
-                    readonly property var latestCard: bundleSummary.latestAt && (!card.received_at || bundleSummary.latestAt > card.received_at) ? Object.assign({}, card, {received_at: bundleSummary.latestAt}) : card
+                    readonly property var latestCard: bundleSummary.latestAt && (!card.received_at || Date.parse(bundleSummary.latestAt) > Date.parse(card.received_at)) ? Object.assign({}, card, {received_at: bundleSummary.latestAt}) : card
                     readonly property real bundleTextInset: window.compactInbox ? 56 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
