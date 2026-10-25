@@ -961,13 +961,9 @@
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="103"/>
-        <source>This message is not cached on this device yet.</source>
-        <translation>This message is not cached on this device yet.</translation>
-    </message>
-    <message>
         <location filename="../pages/MailDetailPage.qml" line="120"/>
-        <source>Message unavailable. Reconnect to cache it; opening it never archives it.</source>
-        <translation>Message unavailable. Reconnect to cache it; opening it never archives it.</translation>
+        <source>This message is not saved on this device. Connect to the internet to download it.</source>
+        <translation>This message is not saved on this device. Connect to the internet to download it.</translation>
     </message>
     <message>
         <location filename="../pages/MailDetailPage.qml" line="241"/>

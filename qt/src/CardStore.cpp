@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 #include <QByteArray>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QHash>
@@ -1058,6 +1059,8 @@ void CardStore::queueMailBodyPrefetch() {
     }
     QSet<QString> eligible;
     for (const QVariantMap &card : m_cards) {
+        const QString state = card.value(QStringLiteral("state")).toString();
+        if (!state.isEmpty() && state != QStringLiteral("open")) continue;
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
@@ -1074,6 +1077,21 @@ void CardStore::queueMailBodyPrefetch() {
             queued.insert(id);
         }
     }
+    // A large backlog must not put newly arrived, immediately visible inbox
+    // mail behind hours of older content. Re-sort on every snapshot, keeping
+    // equal/unknown arrival times in their existing order and the 3s rate cap.
+    QHash<QString, QDateTime> arrivals;
+    QSet<QString> inboxMail;
+    for (const QVariantMap &card : m_cards) {
+        const QString id = card.value(QStringLiteral("id")).toString();
+        arrivals.insert(id, QDateTime::fromString(card.value(QStringLiteral("received_at")).toString(), Qt::ISODate));
+        if (card.value(QStringLiteral("source")).toString() == QStringLiteral("mail")) inboxMail.insert(id);
+    }
+    std::stable_sort(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end(),
+        [&](const QString &left, const QString &right) {
+            if (inboxMail.contains(left) != inboxMail.contains(right)) return inboxMail.contains(left);
+            return arrivals.value(left) > arrivals.value(right);
+        });
     if (m_bodyPrefetchTimer.isActive()) return;
     if (m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.isEmpty()) return;
     if (!m_nextBodyPrefetch.hasExpired()) {

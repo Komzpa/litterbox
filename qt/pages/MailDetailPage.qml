@@ -100,7 +100,7 @@ Kirigami.Page {
         }
         if (!html && (root.card || {}).source !== "mail") html = fallbackHtml()
         sourceUrl = body.source_url || ""
-        errorText = hasDocument ? "" : qsTr("This message is not cached on this device yet.")
+        errorText = hasDocument ? "" : qsTr("This message is not saved on this device. Connect to the internet to download it.")
     }
     function reload() {
         readCache()
@@ -117,7 +117,7 @@ Kirigami.Page {
         function onMailBodyFailed(cardId) {
             if (cardId !== root.cardId) return
             root.loading = false
-            if (!root.hasDocument) root.errorText = qsTr("Message unavailable. Reconnect to cache it; opening it never archives it.")
+            if (!root.hasDocument) root.errorText = qsTr("This message is not saved on this device. Connect to the internet to download it.")
         }
     }
 
@@ -195,7 +195,11 @@ Kirigami.Page {
         contentItem: RowLayout {
             spacing: Kirigami.Units.smallSpacing
             Kirigami.Icon {
-                source: barButton.icon.name
+                // These critical controls must not depend on a host icon theme:
+                // Android has none and desktop fallback loaders vary by style.
+                source: barButton.icon.name === "go-previous" || barButton.icon.name === "mail-archive"
+                    ? "qrc:/icons/litterbox/actions/24/" + barButton.icon.name + ".svg"
+                    : barButton.icon.name
                 isMask: true
                 color: root.ink
                 implicitWidth: 24
