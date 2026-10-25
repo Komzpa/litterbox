@@ -507,6 +507,14 @@ TestCase {
         const cards = Previews.cards()
         for (const card of cards)
             store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        // Singleton bundles now deliberately render plain mail controls. This
+        // oracle needs an actual multi-message bundle, not only a count hint.
+        for (let i = 1; i < 3; ++i) {
+            const member = Object.assign({}, cards[1], {
+                id: "odm-member-" + i, bundle_leader: false
+            })
+            store.append({cardId: member.id, title: member.title, section: member.section, card: member})
+        }
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,
             width: data.viewWidth, height: 1100
