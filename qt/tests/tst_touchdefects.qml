@@ -85,6 +85,37 @@ TestCase {
         tryCompare(dialogOpened, "count", 1)
     }
 
+    function test_createJournalFitsReducedPhoneViewport_data() {
+        return [{tag: "phone", width: 412}, {tag: "narrow", width: 360}]
+    }
+
+    function test_createJournalFitsReducedPhoneViewport(data) {
+        const inbox = createInbox()
+        inbox.width = data.width
+        inbox.height = 915
+        const dialog = findChild(inbox, "createDialog")
+        findChild(inbox, "createKind").currentIndex = 1
+        const note = findChild(inbox, "createJournal")
+        note.text = "Private journal entry. ".repeat(80)
+        dialog.open()
+        tryCompare(dialog, "opened", true)
+        // Android adjustResize leaves this much usable space above the IME.
+        inbox.height = 420
+        wait(250)
+        const top = dialog.y
+        verify(top >= 0, "Create dialog header must stay above the keyboard")
+        verify(top + dialog.height <= dialog.parent.height,
+               "Create dialog footer must fit the keyboard-reduced viewport")
+        const save = findChild(inbox, "createSaveButton")
+        const cancel = findChild(inbox, "createCancelButton")
+        verify(save.visible && cancel.visible)
+        verify(save.height >= 48 && cancel.height >= 48)
+        verify(note.text.length > 1000, "Resizing must preserve the draft")
+        mouseClick(cancel)
+        tryCompare(dialog, "visible", false)
+        inbox.close()
+    }
+
     function test_backPopsEnrollmentPageToInbox() {
         const inbox = createInbox()
         verify(inbox)
