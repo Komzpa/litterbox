@@ -195,7 +195,11 @@ Kirigami.Page {
         contentItem: RowLayout {
             spacing: Kirigami.Units.smallSpacing
             Kirigami.Icon {
-                source: barButton.icon.name
+                // These critical controls must not depend on a host icon theme:
+                // Android has none and desktop fallback loaders vary by style.
+                source: barButton.icon.name === "go-previous" || barButton.icon.name === "mail-archive"
+                    ? "qrc:/icons/litterbox/actions/24/" + barButton.icon.name + ".svg"
+                    : barButton.icon.name
                 isMask: true
                 color: root.ink
                 implicitWidth: 24
