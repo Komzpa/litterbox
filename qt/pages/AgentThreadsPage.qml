@@ -42,6 +42,7 @@ Kirigami.ScrollablePage {
     // Contract: { get(path, cb) }; GET /v1/a2a/threads answers
     // {threads: [{id, peer_id, display_name, kind, availability, last_text, last_at, last_seq}]}.
     property var api
+    required property var store
     // Where AgentChatPage is pushed; the inbox pageStack when shown there.
     property var stackView: QQC2.StackView.view
     property var threads: []
@@ -68,7 +69,7 @@ Kirigami.ScrollablePage {
     function openThread(thread) {
         if (!stackView)
             return
-        stackView.push(Qt.resolvedUrl("AgentChatPage.qml"), {api: api, thread: thread, threadId: thread.id})
+        stackView.push(Qt.resolvedUrl("AgentChatPage.qml"), {api: api, store: store, thread: thread, threadId: thread.id})
     }
 
     function availabilityLabel(value) {

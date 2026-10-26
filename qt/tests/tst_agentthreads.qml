@@ -25,7 +25,7 @@ TestCase {
     function make(api, props) {
         const pushed = []
         const stack = {pushed: pushed, push: function (url, p) { pushed.push({url: url.toString(), props: p}) }}
-        const values = Object.assign({api: api, width: 412, height: 915}, props || {})
+        const values = Object.assign({api: api, store: {}, width: 412, height: 915}, props || {})
         const page = createTemporaryObject(Qt.createComponent("../pages/AgentThreadsPage.qml"), tc, values)
         verify(page)
         page.stackView = stack
@@ -58,6 +58,7 @@ TestCase {
         compare(h.stack.pushed[0].props.threadId, "11111111-1111-1111-1111-111111111111")
         compare(h.stack.pushed[0].props.thread.peer_id, "agent:mau")
         verify(h.stack.pushed[0].props.api)
+        compare(h.stack.pushed[0].props.store, h.page.store)
     }
 
     function test_failedLoadShowsErrorNotEmpty() {

@@ -22,12 +22,13 @@ public:
 
 // Cache-first QML model. SQLite belongs to the storage worker; QML sees
 // optimistic row-level changes. Operations transmit only after durable commit.
-// Failures undo their changed rows without resetting unrelated cards.
+// Rejected actions roll back; owner-written content stays durable and retryable.
 class CardStore : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(bool online READ online WRITE setOnline NOTIFY onlineChanged)
     Q_PROPERTY(QString offlineReason READ offlineReason NOTIFY offlineReasonChanged)
     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
+    Q_PROPERTY(bool saveFailed READ saveFailed NOTIFY pendingOpsChanged)
 public:
     enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole, SenderPhotoRole };
     Q_ENUM(Role)
@@ -39,6 +40,8 @@ public:
     QString offlineReason() const { return m_offlineReason; }
     void reportOffline(const QString &reason);
     int pendingOps() const;
+    bool saveFailed() const { return !m_failedWrites.isEmpty(); }
+    Q_INVOKABLE bool retainedWriteFailed(const QString &opId) const { return m_failedWrites.contains(opId); }
     void setTransport(cardstore::OpTransport *transport);
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
@@ -53,6 +56,9 @@ public:
     }
     Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {},
                                 const QString &kind = QStringLiteral("manual"));
+    Q_INVOKABLE QString createReminder(const QString &title, const QString &dueAt, const QString &recurrence = {});
+    Q_INVOKABLE QString sendAgentMessage(const QString &threadId, const QString &text, const QString &clientMsgId = {});
+    Q_INVOKABLE QVariantList pendingAgentMessages(const QString &threadId) const;
     Q_INVOKABLE QStringList cardIds() const;
     Q_INVOKABLE bool moveCard(const QString &cardId, int delta);
     Q_INVOKABLE bool moveCardTo(const QString &cardId, int targetIndex);
@@ -129,6 +135,7 @@ signals:
     void senderPhotoChanged(const QString &cardId);
     void senderPhotoFailed(const QString &cardId);
     void operationFailed(const QString &opId, int status, const QVariantMap &response);
+    void operationAcknowledged(const QVariantMap &operation, const QVariantMap &response);
     void storageError(const QString &message);
     void flushFinished();
 private:
@@ -138,6 +145,12 @@ private:
                       const QList<QVariantMap> &ops = {}, const QStringList &cancelledOps = {});
     bool writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after);
     void undoOp(const QString &opId);
+    static bool ownerWrite(const QVariantMap &op);
+    void retainOwnerRows(QList<QVariantMap> &cards) const;
+    bool appendDraftRecord(const QVariantMap &record);
+    QString m_draftPath;
+    QHash<QString, QVariantMap> m_drafts;
+    QStringList m_draftOrder;
     void flushNext();
     void queueMailBodyPrefetch();
     void prefetchNextMailBody();
@@ -154,6 +167,8 @@ private:
     bool m_open = false;
     QList<QVariantMap> m_outbox;
     QSet<QString> m_durableOps;
+    QSet<QString> m_failedWrites;
+    QSet<QString> m_deferredWrites;
     struct Mutation {
         QList<QVariantMap> before, after;
         bool archiveRejected = false;

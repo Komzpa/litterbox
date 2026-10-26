@@ -393,6 +393,8 @@ ApplicationWindow {
             mailArchiveUndoOp = ""
             archiveUndoAvailable = false
         }
+        // Retained writes have one persistent, actionable status line, not a toast.
+        if (store.saveFailed && store.retainedWriteFailed(opId)) return
         // Reconnect state belongs exclusively to the current account list.
         if (response && response.code === "gmail_reconnect_required") {
             if (!archiveUndoAvailable) bundleArchiveStatus = ""
@@ -688,6 +690,7 @@ ApplicationWindow {
         } else {
             if (readerOpen) closeReader()
             const values = Object.assign({api: api}, properties || {})
+            if (name === "AgentThreadsPage") values.store = window.cardStore
             if (name === "GmailAccountsPage") values.accountsLoaded = function(accounts) { window.gmailAccounts = accounts }
             if (name === "SettingsPage") values.updater = window.updater
             stack.push(page, values)
@@ -868,12 +871,12 @@ ApplicationWindow {
             }
             RowLayout {
                 objectName: "connectionStatusRow"
-                visible: !store.online
+                visible: !store.online || store.saveFailed === true
                 Layout.fillWidth: true
                 spacing: 4
                 Label {
                     objectName: "connectionStatus"
-                    text: store.online ? "" : window.offlineSummary()
+                    text: store.saveFailed ? qsTr("Couldn't save to server · %n change waiting", "", store.pendingOps) : (store.online ? "" : window.offlineSummary())
                     color: window.mutedInk
                     font.family: window.themeFont.family
                     font.pointSize: window.themeFont.pointSize - 1
@@ -2335,7 +2338,7 @@ ApplicationWindow {
                     border.width: noteSaveButton.visualFocus ? 2 : 1
                     border.color: noteSaveButton.visualFocus ? window.ink : "#dce5e3"
                 }
-                onClicked: noteDialog.accept()
+                onClicked: { if (store.saveNote(noteDialog.cardId, noteField.text)) noteDialog.accept() }
             }
             Button {
                 id: noteCancelButton
@@ -2382,7 +2385,6 @@ ApplicationWindow {
                 }
             }
         }
-        onAccepted: store.saveNote(cardId, noteField.text)
     }
     Dialog {
         id: createDialog
