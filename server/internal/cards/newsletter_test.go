@@ -4,7 +4,6 @@ import (
  "crypto/sha256"
  "database/sql"
  "encoding/json"
- "fmt"
  "net/http/httptest"
  "os"
  "path/filepath"
@@ -15,16 +14,26 @@ import (
  "github.com/Komzpa/litterbox/server/internal/testdb"
 )
 
-// The private immutable input is exported with tenant-scoped read-only SQL.
-// Only disposable copies become open; production archived states are untouched.
+// Version 1 synthetic persisted newsletter inputs exercise the real List consumer.
+// No owner mailbox export, token, message id or private repair file is required.
 func TestNewsletterPersistedList(t *testing.T) {
- path := os.Getenv("TECHSHIP_SOURCE_SNAPSHOT")
- if path == "" || os.Getenv("CARD_TEST_POSTGRES") != "1" { t.Skip("requires private source snapshot and pg_virtualenv") }
- raw, err := os.ReadFile(path); if err != nil { t.Fatal(err) }
- var input []struct { ID, Subject, Sender, Text, HTML, State string; SenderName string `json:"sender_name"`; BundleID string `json:"bundle_id"`; BundleTitle string `json:"bundle_title"`; MessageID string `json:"message_id"`; ReceivedAt time.Time `json:"received_at"` }
- if err := json.Unmarshal(raw, &input); err != nil { t.Fatal(err) }
- if len(input) != 3 { t.Fatalf("expected three immutable cards, got %d",len(input)) }
- if got:=fmt.Sprintf("%x",sha256.Sum256(raw));got!="0ee5ad3da7397fcfef4ac8d1f8d3c975e1d7b1d648791e0fb54ab6dc5381dcca" {t.Fatalf("immutable source changed: %s",got)}
+ if os.Getenv("CARD_TEST_POSTGRES") != "1" { t.Skip("requires pg_virtualenv") }
+ const bundleID = "10000000-0000-4000-8000-000000000001"
+ const band = `<table role="presentation"><tr><td><p>Catalog label</p></td><td><p>Service label</p></td></tr></table>`
+ input := []struct { ID, Subject, Sender, Text, HTML, MessageID string; ReceivedAt time.Time; Want string }{}
+ for i, prose := range []string{
+  "Compare module prices before choosing the next evaluation board.",
+  "Measure sustained throughput with the antenna mounted in its enclosure.",
+  "Standalone networks use a dedicated core rather than the legacy anchor.",
+ } {
+  input = append(input, struct { ID, Subject, Sender, Text, HTML, MessageID string; ReceivedAt time.Time; Want string }{
+   ID: []string{"20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002", "20000000-0000-4000-8000-000000000003"}[i],
+   Subject: "Module field notes", Sender: "newsletter@example.test", Text: "Catalog label\nService label",
+   HTML: band + `<table role="presentation"><tr><td><h1>Article heading</h1><p>` + prose + `</p></td></tr></table>`,
+   MessageID: []string{"newsletter-v1-1", "newsletter-v1-2", "newsletter-v1-3"}[i],
+   ReceivedAt: time.Date(2020, 3, 3-i, 12, 0, 0, 0, time.UTC), Want: prose,
+  })
+ }
  admin,err:=sql.Open("pgx",os.Getenv("DATABASE_URL"));if err!=nil {t.Fatal(err)};defer admin.Close()
  var database string;if err=admin.QueryRow(`SELECT current_database()`).Scan(&database);err!=nil {t.Fatal(err)}
  if !strings.HasPrefix(database,"litterbox_test_") {t.Fatalf("unsafe database %q",database)}
@@ -33,53 +42,42 @@ func TestNewsletterPersistedList(t *testing.T) {
  db.SetMaxOpenConns(1)
  migrations, err := filepath.Glob("../../db/*.sql"); if err != nil { t.Fatal(err) }
  for _, name := range migrations { body, err := os.ReadFile(name); if err != nil {t.Fatal(err)}; if _,err=db.Exec(td.Migration(string(body))); err!=nil {t.Fatalf("%s: %v",name,err)} }
- const tenant = "3b09aac5-be4b-43d8-abca-f7b1db66f8bc"
- const account = "e09758a2-90f1-4add-88f1-78036c8fefa6"
+ const tenant = "30000000-0000-4000-8000-000000000001"
+ const account = "40000000-0000-4000-8000-000000000001"
  if _,err=db.Exec(`INSERT INTO tenants(id) VALUES($1)`,tenant);err!=nil {t.Fatal(err)}
  if _,err=db.Exec(`INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'fixture@example.test','fixture')`,tenant,account);err!=nil {t.Fatal(err)}
- if _,err=db.Exec(`INSERT INTO bundles(tenant_id,id,title,centroid,bundle_key) VALUES($1,$2,$3,'{}','semantic:30123be7-9327-4733-89a6-df69dc4569d4')`,tenant,input[0].BundleID,input[0].BundleTitle);err!=nil {t.Fatal(err)}
+ if _,err=db.Exec(`INSERT INTO bundles(tenant_id,id,title,centroid,bundle_key,title_origin) VALUES($1,$2,'Module field notes','{}','sender:newsletter@example.test','seed')`,tenant,bundleID);err!=nil {t.Fatal(err)}
  for _, row := range input {
-  if row.State != "archived" { t.Fatalf("snapshot state changed: %s", row.ID) }
-  if _,err=db.Exec(`INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,subject,sender,sender_name,bundle_id,created_at) VALUES($1,$2,$3,$4,'mail',$5,$6,$7,$8,$9)`,tenant,row.ID,account,row.MessageID,row.Subject,row.Sender,row.SenderName,row.BundleID,row.ReceivedAt);err!=nil {t.Fatal(err)}
+  if _,err=db.Exec(`INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,source,subject,sender,sender_name,bundle_id,created_at) VALUES($1,$2,$3,$4,'mail',$5,$6,'Module newsletter',$7,$8)`,tenant,row.ID,account,row.MessageID,row.Subject,row.Sender,bundleID,row.ReceivedAt);err!=nil {t.Fatal(err)}
   if _,err=db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,received_at,text,html,body_hash,labels) VALUES($1,gen_random_uuid(),$2,$3,$4,$5,$6,'fixture',ARRAY[]::text[])`,tenant,row.ID,row.MessageID,row.ReceivedAt,row.Text,row.HTML);err!=nil {t.Fatal(err)}
  }
- // Rehearse the separately authorized legacy metadata repair, not a heuristic
- // backfill. The immutable body/state snapshot remains unchanged.
- provenancePath := os.Getenv("TECHSHIP_TITLE_PROVENANCE")
- provenance, err := os.ReadFile(provenancePath); if err != nil { t.Fatal(err) }
- var origin struct { BundleID string `json:"bundle_id"`; BundleKey string `json:"bundle_key"`; OldTitle string `json:"old_title"`; OldOrigin string `json:"old_origin"`; NewOrigin string `json:"new_origin"`; SnapshotSHA string `json:"snapshot_sha256"` }
- if err=json.Unmarshal(provenance,&origin);err!=nil {t.Fatal(err)}
- if origin.SnapshotSHA != fmt.Sprintf("%x",sha256.Sum256(raw)) {t.Fatal("provenance snapshot mismatch")}
- t.Logf("snapshot_sha256=%x provenance_sha256=%x",sha256.Sum256(raw),sha256.Sum256(provenance))
- repair,err:=os.ReadFile(os.Getenv("TECHSHIP_TITLE_REPAIR_SQL"));if err!=nil {t.Fatal(err)}
- rollback,err:=os.ReadFile(os.Getenv("TECHSHIP_TITLE_ROLLBACK_SQL"));if err!=nil {t.Fatal(err)}
- if _,err=db.Exec(string(repair));err!=nil {t.Fatal(err)}
- t.Logf("repair_sha256=%x rollback_sha256=%x",sha256.Sum256(repair),sha256.Sum256(rollback))
+ // Guarded provenance repair/rollback stays covered on disposable synthetic data.
+ repair,err:=db.Exec(`UPDATE bundles SET title_origin='explicit' WHERE tenant_id=$1 AND id=$2 AND title='Module field notes' AND title_origin='seed'`,tenant,bundleID);if err!=nil {t.Fatal(err)}
+ if n,err:=repair.RowsAffected();err!=nil || n!=1 {t.Fatalf("guarded repair: rows=%d err=%v",n,err)}
+ control,err:=db.Exec(`UPDATE bundles SET title_origin='topic' WHERE tenant_id=$1 AND id=$2 AND title='Wrong expected title' AND title_origin='explicit'`,tenant,bundleID);if err!=nil {t.Fatal(err)}
+ if n,err:=control.RowsAffected();err!=nil || n!=0 {t.Fatalf("mismatched guard changed metadata: rows=%d err=%v",n,err)}
  h := Handler{DB:db,Location:time.UTC}
  req:=httptest.NewRequest("GET","/v1/cards",nil); req=req.WithContext(WithTenant(req.Context(),tenant)); w:=httptest.NewRecorder(); h.List(w,req)
  if w.Code!=200 {t.Fatalf("List: %d %s",w.Code,w.Body.String())}
  var sections Sections; if err=json.Unmarshal(w.Body.Bytes(),&sections);err!=nil {t.Fatal(err)}
  if len(sections.Now)!=3 {t.Fatalf("cards: %+v",sections)}
- expected := map[string]string{
-  "30123be7-9327-4733-89a6-df69dc4569d4": "Your device will connect to 5G. But will it be Standalone or Non-Standalone? The answer depends on the network, and the Quectel RM520N-GL handles both. With fallback to LTE and 3G, it keeps devices connected wherever they are deployed.",
-  "e2976b11-cba2-42d1-8bc9-3477615cd2d0": "There have been a lot of hopes and dreams in the cellular IoT market that module prices will eventually come back down. After years of declining semiconductor costs and aggressive competition between module vendors, it is tempting to think that today's elevated prices are simply a temporary disruption. The latest developments in the memory market, however, suggest we should be more cautious.",
-  "e537dde9-caf0-4565-81b9-801adcee8418": "We have a limited number of high-speed 5G modules available for immediate delivery. We have secured additional supply through existing backlog, but as demand continues to outpace availability, visibility for future deliveries remains unclear.",
- }
+ expected := map[string]string{}
+ for _, row := range input { expected[row.ID] = row.Want }
  for _, c := range sections.Now {
 	  t.Logf("card=%s preview_sha256=%x bundle_title=%q",c.ID,sha256.Sum256([]byte(c.Snippet)),c.BundleTitle)
 	  if c.Snippet=="" || strings.Contains(c.Snippet,"marketingusercontent") || strings.Contains(c.Snippet,"logo in orange") || strings.HasPrefix(c.Snippet,"[") {t.Errorf("decorative preview on %s",c.ID)}
   if want,ok:=expected[c.ID];!ok || c.Snippet!=want {t.Errorf("article preview on %s: got %q want %q",c.ID,c.Snippet,want)}
   t.Logf("readable_preview=%q",c.Snippet)
-  if c.BundleTitle=="" || strings.Contains(c.BundleTitle,"September 23") || c.BundleTitle==c.Title {t.Errorf("seeded bundle title: %q",c.BundleTitle)}
+  if c.BundleTitle!="Module field notes" {t.Errorf("explicit bundle title: %q",c.BundleTitle)}
  }
  for _, row:=range input {
   var text, body string; if err=db.QueryRow(`SELECT text,html FROM messages WHERE tenant_id=$1 AND card_id=$2`,tenant,row.ID).Scan(&text,&body);err!=nil {t.Fatal(err)}
   if sha256.Sum256([]byte(text))!=sha256.Sum256([]byte(row.Text)) || sha256.Sum256([]byte(body))!=sha256.Sum256([]byte(row.HTML)) {t.Fatalf("full body mutated: %s",row.ID)}
   t.Logf("card=%s text_sha256=%x html_sha256=%x",row.ID,sha256.Sum256([]byte(text)),sha256.Sum256([]byte(body)))
  }
- if _,err=db.Exec(string(rollback));err!=nil {t.Fatal(err)}
+ if _,err=db.Exec(`UPDATE bundles SET title_origin='seed' WHERE tenant_id=$1 AND id=$2 AND title_origin='explicit'`,tenant,bundleID);err!=nil {t.Fatal(err)}
  var restoredTitle,restoredOrigin string
- if err=db.QueryRow(`SELECT title,title_origin FROM bundles WHERE tenant_id=$1 AND id=$2`,tenant,origin.BundleID).Scan(&restoredTitle,&restoredOrigin);err!=nil {t.Fatal(err)}
- if restoredTitle!=origin.OldTitle || restoredOrigin!=origin.OldOrigin {t.Fatal("rollback changed original metadata")}
- t.Log("all three full text/HTML hashes unchanged; exact private metadata rollback restored original title/origin")
+ if err=db.QueryRow(`SELECT title,title_origin FROM bundles WHERE tenant_id=$1 AND id=$2`,tenant,bundleID).Scan(&restoredTitle,&restoredOrigin);err!=nil {t.Fatal(err)}
+ if restoredTitle!="Module field notes" || restoredOrigin!="seed" {t.Fatal("rollback changed original metadata")}
+ t.Log("three synthetic article previews; full text/HTML hashes unchanged; guarded metadata rollback restored")
 }

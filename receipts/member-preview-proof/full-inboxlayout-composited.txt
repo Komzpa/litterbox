@@ -1,0 +1,48 @@
+********* Start testing of maildetail *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.0), debian unknown
+PASS   : maildetail::InboxLayout::initTestCase()
+QWARN  : maildetail::InboxLayout::test_additionalScreenshot(1440) qt.qpa.services: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: App info not found for ''")
+PASS   : maildetail::InboxLayout::test_additionalScreenshot(1440)
+QWARN  : maildetail::InboxLayout::test_additionalScreenshot(1200) file:///home/kom/litterbox/qt/qml/InboxView.qml:1836:33: QML ColumnLayout: Qt Quick Layouts: Detected recursive rearrange. Aborting after two iterations.
+QWARN  : maildetail::InboxLayout::test_additionalScreenshot(1200) file:///home/kom/litterbox/qt/qml/InboxView.qml:1836:33: QML ColumnLayout: Qt Quick Layouts: Detected recursive rearrange. Aborting after two iterations.
+PASS   : maildetail::InboxLayout::test_additionalScreenshot(1200)
+QDEBUG : maildetail::InboxLayout::test_bundleMenuAnchorsToItsTrigger(split-1440x900-scrolled-bundle) qml: BUNDLE_POPUP_GEOMETRY {"tag":"split-1440x900-scrolled-bundle","viewport":[1440,900],"trigger":{"x":695,"y":647,"width":48,"height":48},"popup":{"x":423,"y":703,"width":320,"height":166}}
+QDEBUG : maildetail::InboxLayout::test_bundleMenuAnchorsToItsTrigger(split-1440x900-scrolled-bundle) qml: HEADER_MENU_GEOMETRY {"tag":"split-1440x900-scrolled-bundle","viewport":[1440,900],"trigger":{"x":1384,"y":2,"width":48,"height":48},"popup":{"x":1212,"y":58,"width":220,"height":352}}
+PASS   : maildetail::InboxLayout::test_bundleMenuAnchorsToItsTrigger(split-1440x900-scrolled-bundle)
+QDEBUG : maildetail::InboxLayout::test_bundleMenuAnchorsToItsTrigger(narrow-412x915-viewport-edge) qml: BUNDLE_POPUP_GEOMETRY {"tag":"narrow-412x915-viewport-edge","viewport":[412,915],"trigger":{"x":308,"y":545,"width":48,"height":48},"popup":{"x":36,"y":601,"width":320,"height":166}}
+QDEBUG : maildetail::InboxLayout::test_bundleMenuAnchorsToItsTrigger(narrow-412x915-viewport-edge) qml: HEADER_MENU_GEOMETRY {"tag":"narrow-412x915-viewport-edge","viewport":[412,915],"trigger":{"x":356,"y":2,"width":48,"height":48},"popup":{"x":184,"y":58,"width":220,"height":352}}
+PASS   : maildetail::InboxLayout::test_bundleMenuAnchorsToItsTrigger(narrow-412x915-viewport-edge)
+PASS   : maildetail::InboxLayout::test_cleanPreviewGrid(1440)
+PASS   : maildetail::InboxLayout::test_cleanPreviewGrid(1200)
+PASS   : maildetail::InboxLayout::test_collapsedMembersLeaveNoHolesAndExpandInPlace()
+PASS   : maildetail::InboxLayout::test_densityMenuIndicatorsDoNotCoverLabels()
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(narrow-negative-control)
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(phone)
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(desktop-negative-control)
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(desktop-rail-boundary)
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(before-split)
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(split-boundary)
+PASS   : maildetail::InboxLayout::test_desktopRailSearchAndSplitGeometry(wide-split)
+QDEBUG : maildetail::InboxLayout::test_emptyInboxMenuSettingsUsesPointerHitTest() qml: empty-menu-geometry {"settingsCenter":{"x":204.99019950344922,"y":93.98859578583185},"envelope":{"x":138,"y":81,"width":48,"height":48}}
+QWARN  : maildetail::InboxLayout::test_emptyInboxMenuSettingsUsesPointerHitTest() file:///home/kom/litterbox/qt/pages/SettingsPage.qml:43:5: QML Settings: Failed to initialize QSettings instance. Status code is: 1
+QWARN  : maildetail::InboxLayout::test_emptyInboxMenuSettingsUsesPointerHitTest() file:///home/kom/litterbox/qt/pages/SettingsPage.qml:43:5: QML Settings: The following application identifiers have not been set: QList("organizationName", "organizationDomain")
+PASS   : maildetail::InboxLayout::test_emptyInboxMenuSettingsUsesPointerHitTest()
+QDEBUG : maildetail::InboxLayout::test_expandedMemberContext(desktop) qml: CONTEXT_ORACLE {"width":1356,"shared":[{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false}],"headerHasAccount":true,"mixedAccount":true,"mixedSender":true}
+PASS   : maildetail::InboxLayout::test_expandedMemberContext(desktop)
+QDEBUG : maildetail::InboxLayout::test_expandedMemberContext(phone) qml: CONTEXT_ORACLE {"width":412,"shared":[{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false}],"headerHasAccount":true,"mixedAccount":true,"mixedSender":true}
+PASS   : maildetail::InboxLayout::test_expandedMemberContext(phone)
+QDEBUG : maildetail::InboxLayout::test_mixedPhoneDensity(phone) qml: Mixed inbox 412x915: 7 complete cards
+PASS   : maildetail::InboxLayout::test_mixedPhoneDensity(phone)
+QDEBUG : maildetail::InboxLayout::test_mixedPhoneDensity(neighbor) qml: Mixed inbox 480x915: 7 complete cards
+PASS   : maildetail::InboxLayout::test_mixedPhoneDensity(neighbor)
+QDEBUG : maildetail::InboxLayout::test_mixedPhoneDensity(desktop) qml: Mixed inbox 1280x800: 7 complete cards
+PASS   : maildetail::InboxLayout::test_mixedPhoneDensity(desktop)
+QWARN  : maildetail::InboxLayout::test_narrowNavigationUsesDrawerWithoutSidebar() file:///home/kom/litterbox/qt/pages/SettingsPage.qml:43:5: QML Settings: Failed to initialize QSettings instance. Status code is: 1
+QWARN  : maildetail::InboxLayout::test_narrowNavigationUsesDrawerWithoutSidebar() file:///home/kom/litterbox/qt/pages/SettingsPage.qml:43:5: QML Settings: The following application identifiers have not been set: QList("organizationName", "organizationDomain")
+PASS   : maildetail::InboxLayout::test_narrowNavigationUsesDrawerWithoutSidebar()
+QWARN  : maildetail::InboxLayout::test_navigationNeighbor480() file:///home/kom/litterbox/qt/pages/GmailAccountsPage.qml:112: TypeError: Property 'get' of object QObject_QML_193(0x55abf7f08120) is not a function
+PASS   : maildetail::InboxLayout::test_navigationNeighbor480()
+PASS   : maildetail::InboxLayout::test_singleMailShowsSenderDateAndSnippet()
+PASS   : maildetail::InboxLayout::cleanupTestCase()
+Totals: 26 passed, 0 failed, 0 skipped, 0 blacklisted, 8580ms
+********* Finished testing of maildetail *********

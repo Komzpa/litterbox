@@ -1,0 +1,28 @@
+{
+  "status": "PASS",
+  "accepted": true,
+  "source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+  "artifacts": {
+    "server": {
+      "sha256": "043d5ef422b36979291cacd67f48237ea654b0f4f09f661b2ba6020eb6d3024f",
+      "path": "/tmp/litterbox-release-467d559/litterbox-server_0.1-52_amd64.deb",
+      "binary_sha256": "08f6b8a1a9b9894cf104dbd26126d5bbbf12cc012ace2b8dd4064ef7f26a1bb6"
+    }
+  },
+  "tests": {
+    "command": "unset DATABASE_URL; pg_virtualenv go test ./internal/ops ./internal/journal ./internal/reminders",
+    "result": "PASS: all three packages; temporary PostgreSQL cluster created and dropped",
+    "build_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86"
+  },
+  "build": {
+    "command": "go build -ldflags=\"-X main.buildSHA=cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86\" -o /tmp/litterbox-release-467d559/litterbox ./cmd/litterbox; deploy/server/debian/build.sh /tmp/litterbox-release-467d559/litterbox 0.1-52 /tmp/litterbox-release-467d559",
+    "package": "litterbox-server 0.1-52 amd64",
+    "stamp": "main.buildSHA=cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86"
+  },
+  "deployment": "not performed",
+  "retro": [
+    "The server patch is accepted against the final source SHA by targeted ops, journal, and reminder Go tests under pg_virtualenv.",
+    "The producer stamp and Debian package hash are bound to the same source SHA; no live service or database was changed by this proof lane.",
+    "Keep SQL migrations/grants as operator-owned preconditions; package building and this temporary test database did not alter production privileges."
+  ]
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "path": "files",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o771",
+    "size": 0,
+    "type": "5"
+  },
+  {
+    "path": "files/cards.sqlite",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o600",
+    "size": 242016256,
+    "type": "0",
+    "sha256": "c065f19090933a33d0f3a38b9892a6fc112af7e2a03b3fc313d9684c93a55205"
+  },
+  {
+    "path": "files/profileInstalled",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o600",
+    "size": 24,
+    "type": "0",
+    "sha256": "ffa8e26efd780635aeeaf02b273c51258a6ebf75538bc8670c5e367771915a3f"
+  },
+  {
+    "path": "files/settings",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o700",
+    "size": 0,
+    "type": "5"
+  },
+  {
+    "path": "files/settings/Litterbox",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o700",
+    "size": 0,
+    "type": "5"
+  },
+  {
+    "path": "files/settings/Litterbox/Litterbox.conf",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o600",
+    "size": 252,
+    "type": "0",
+    "sha256": "b35ef4c194b34f4f63ca60d60d122afac4f5827fcd838b09fe618e95e6c8b55b"
+  },
+  {
+    "path": "files/cards.sqlite.drafts.jsonl",
+    "uid": 10192,
+    "gid": 10192,
+    "mode": "0o600",
+    "size": 2475,
+    "type": "0",
+    "sha256": "120dfcb16bc92c9954b86b7b969f370abb9160db5126634139ee677a82e6cfc0"
+  }
+]

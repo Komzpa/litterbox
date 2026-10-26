@@ -1,0 +1,92 @@
+{
+  "status": "PASS_NATIVE422_RETENTION_RESTART_AUTOMATIC_RETRY_AND_EXACT_PROFILE_RESTORE",
+  "source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+  "apk_sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+  "note": "native422-note-20261026-1702",
+  "card_id": "a4c08869-c7b5-43f3-ac67-c1c016fc1cb8",
+  "op_id": "9119ece7-f254-4beb-b990-5782497cf116",
+  "rejection_requests": 7,
+  "success_requests": 1,
+  "same_operation_and_body": true,
+  "all_fixture_bearer": true,
+  "negative_control_http": 401,
+  "pending_outbox": 1,
+  "recovered_outbox": 0,
+  "recovered_cards": 1,
+  "old_app_pid": 4375,
+  "restarted_app_pid": 4865,
+  "restoration": {
+    "entire_files_exact": true,
+    "manifest_entries": 7,
+    "no_wal_shm_at_stopped_backup": true,
+    "server_url": "https://komzpa.net:9443",
+    "original_card_counts": {
+      "cards": 1664,
+      "outbox": 0
+    },
+    "enrollment_ui": "Enrolled; device c45a9822-2f34-4295-bc8b-352daeaabbcb; tenant 3b09aac5-be4b-43d8-abca-f7b1db66f8bc; all three original connected accounts read back",
+    "apk_hash_rechecked": true
+  },
+  "artifacts": [
+    {
+      "path": "/tmp/litterbox-native422-proof/after422.png",
+      "bytes": 62676,
+      "sha256": "0f00379d968133e346d203a16e918975d7dbd61d6c4f033ba34ce83176dc2ac0"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/after422-restart.png",
+      "bytes": 62676,
+      "sha256": "ba32f1ab2785475271fe6078a28e8368328ae45d8650bb9fb20780ba4f9f7647"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/automatic-recovery.png",
+      "bytes": 46802,
+      "sha256": "8287df754a12f25dfdbe0fd98c50f8b51a25ecdd0312401f640de3f6223a9cf2"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/restored-settings.png",
+      "bytes": 169772,
+      "sha256": "1c2d268687d80192d8c0b22fa3d96ec05fcb3cbe4919b76e674065484a634200"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/restored-settled.png",
+      "bytes": 387223,
+      "sha256": "e0a7e1eee7540d80633448235d3b0e44c81461a88686d3ac1c65ede5d00e7409"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/requests.jsonl",
+      "bytes": 8013,
+      "sha256": "248552e09019efd5cad7296f57e56ac86270b90b5e513fb0a6f4e2e4f47d9d9f"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/evidence.json",
+      "bytes": 4924,
+      "sha256": "ce54d795a0564cdb21aff11b6de9dcdb309b65839d87019074857083c198dfb2"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/original-manifest.json",
+      "bytes": 1289,
+      "sha256": "aceffcfc5a563c8865f30e2c519d5b6cbf798d9e2bcf91aa42b239ff5bb369de"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/restored-manifest.json",
+      "bytes": 1289,
+      "sha256": "aceffcfc5a563c8865f30e2c519d5b6cbf798d9e2bcf91aa42b239ff5bb369de"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/original-files.tar",
+      "bytes": 242024448,
+      "sha256": "e687c050f92508f9d12a67534f4d453e28060556de293892352f9916f4ee01ca"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/restored-files.tar",
+      "bytes": 242024448,
+      "sha256": "e687c050f92508f9d12a67534f4d453e28060556de293892352f9916f4ee01ca"
+    },
+    {
+      "path": "/tmp/litterbox-native422-proof/clause-inventory.json",
+      "bytes": 7031,
+      "sha256": "b4ccbbff2377e5aeac6a5f75fb0f99be87fd49cc29b1272100bea82583b72bdd"
+    }
+  ]
+}

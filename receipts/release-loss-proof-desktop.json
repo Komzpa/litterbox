@@ -1,0 +1,38 @@
+{
+  "status": "PASS",
+  "accepted": true,
+  "source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+  "artifacts": {
+    "desktop": {
+      "sha256": "6a3e211f103d3abf4c0e179d19186dc0facc36bb029501bcb7680cbf7c73977b",
+      "path": "/home/kom/litterbox/litterbox-qt_0.1-52_amd64.deb",
+      "package": "litterbox-qt",
+      "version": "0.1-52",
+      "architecture": "amd64",
+      "binary_sha256": "537e9370fd958e3e51ba0600a6df46c541da119d57999bebe3e6b3441ddb466e"
+    }
+  },
+  "native_desktop_proof": {
+    "command": "QT_QPA_PLATFORM=offscreen ./obj-x86_64-linux-gnu/tests/tst_cardstore",
+    "result": "PASS: 111 passed, 0 failed, 0 skipped, 0 blacklisted",
+    "qt": "6.11.2",
+    "isolation": "tst_cardstore creates per-test QTemporaryDir SQLite profiles and exercises real CardStore/QML actions with loopback HTTP fixtures",
+    "journal_cases": [
+      "ownerSaveIsLocalBeforeReplyAndQuietOnFailure (422, 500, no reply)",
+      "journalCreateOfflineRestartSyncAndArchive",
+      "rejectedJournalRetainsTextAndRetries (backoff, retry, restart)",
+      "mainTransportRetainsRejectedNoteAndRetriesExactOperation"
+    ]
+  },
+  "build": {
+    "command": "dpkg-buildpackage -us -uc -b",
+    "source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+    "qt_android_version_metadata": "versionCode 34 / versionName 0.1-52"
+  },
+  "production_deployment": "not performed",
+  "retro": [
+    "The rejected-note regression and the journal create, retry, restart, and archive consumer paths all passed in the final-source Qt test binary.",
+    "The Debian package hash binds the exact package and inner executable; the test target was built from the same source in the package build tree.",
+    "This proof is the native desktop CardStore/QML gate, not evidence of installed desktop adoption or production server publication."
+  ]
+}

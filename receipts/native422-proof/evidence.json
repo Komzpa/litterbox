@@ -1,0 +1,111 @@
+{
+  "entire_files_restored_exact": true,
+  "original_file_count": 7,
+  "restored_file_count": 7,
+  "no_wal_shm_at_backup": true,
+  "pending.sqlite": {
+    "cards": [
+      [
+        "a4c08869-c7b5-43f3-ac67-c1c016fc1cb8",
+        0,
+        "{\"id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"section\":\"now\",\"sender_name\":\"\",\"source\":\"journal\",\"state\":\"open\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"}",
+        ""
+      ]
+    ],
+    "outbox": [
+      [
+        1,
+        "9119ece7-f254-4beb-b990-5782497cf116",
+        "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}",
+        1
+      ]
+    ],
+    "acknowledged_ops": []
+  },
+  "recovered.sqlite": {
+    "cards": [
+      [
+        "a4c08869-c7b5-43f3-ac67-c1c016fc1cb8",
+        0,
+        "{\"id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"section\":\"now\",\"sender_name\":\"\",\"source\":\"journal\",\"state\":\"open\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"}",
+        ""
+      ]
+    ],
+    "outbox": [],
+    "acknowledged_ops": []
+  },
+  "requests": [
+    {
+      "time": 1793019819.6348338,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019821.1534386,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019827.7120476,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019828.7269123,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019831.2354214,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019835.6095643,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019843.6358032,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 422,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019860.1456428,
+      "method": "POST",
+      "path": "/v1/ops",
+      "status": 200,
+      "fixture_authorized": true,
+      "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"
+    },
+    {
+      "time": 1793019872.4127986,
+      "method": "GET",
+      "path": "/v1/ops",
+      "status": 401,
+      "fixture_authorized": false,
+      "body": "[not recorded]"
+    }
+  ]
+}

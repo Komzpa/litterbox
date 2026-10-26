@@ -1,0 +1,301 @@
+{
+  "status": "PARTIAL",
+  "accepted": false,
+  "source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+  "artifacts": {
+    "server": {
+      "sha256": "043d5ef422b36979291cacd67f48237ea654b0f4f09f661b2ba6020eb6d3024f",
+      "path": "/tmp/litterbox-release-467d559/litterbox-server_0.1-52_amd64.deb",
+      "binary_sha256": "08f6b8a1a9b9894cf104dbd26126d5bbbf12cc012ace2b8dd4064ef7f26a1bb6",
+      "proof_receipt": "receipts/release-loss-proof-server.json"
+    },
+    "desktop": {
+      "sha256": "6a3e211f103d3abf4c0e179d19186dc0facc36bb029501bcb7680cbf7c73977b",
+      "path": "/home/kom/litterbox/litterbox-qt_0.1-52_amd64.deb",
+      "binary_sha256": "537e9370fd958e3e51ba0600a6df46c541da119d57999bebe3e6b3441ddb466e",
+      "proof_receipt": "receipts/release-loss-proof-desktop.json"
+    },
+    "android": {
+      "sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+      "path": "/tmp/litterbox-release-cd2c734/litterbox-qt-v34-cd2c734-signed.apk",
+      "package": "org.qtproject.example.litterbox_qt",
+      "version_code": 34,
+      "version_name": "0.1-52",
+      "min_sdk": 23,
+      "target_sdk": 34,
+      "signer_certificate_sha256": "a36ea8f6c4aa164adbbfb07ccbd4161ef2756b9bbdeef37123a7fe30d9e76a37"
+    }
+  },
+  "android_consumer": {
+    "status": "PASS_FOR_ENROLLMENT_JOURNAL_SYNC_AND_OFFLINE_RESTART_RECOVERY",
+    "avd": "litterbox-loss-proof-20261026",
+    "serial": "emulator-5590",
+    "emulator_pid": 2036936,
+    "installed_apk_sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+    "installed_apk_bytes": 21209240,
+    "normal_ui_enrollment": {
+      "status": "PASS",
+      "origin": "https://komzpa.net:9443",
+      "env_override_used": false,
+      "pre_enrolled_profile_used": false,
+      "invite_id": "01da1167-fd86-41c5-90c1-4a8954691923",
+      "invite_consumed_at": "2026-10-26 15:49:28.181869+04",
+      "tenant_id": "3b09aac5-be4b-43d8-abca-f7b1db66f8bc",
+      "device_id": "c45a9822-2f34-4295-bc8b-352daeaabbcb",
+      "platform": "android",
+      "ui_readback": [
+        "This device is enrolled. No invite code is needed.",
+        "Enrollment is saved on this device."
+      ],
+      "http_status_log": "not captured; consumed invite and created device row are server-side evidence"
+    },
+    "journal_note": {
+      "status": "PASS_SYNCED_AND_ARCHIVED",
+      "title_and_body": "litterbox-loss-proof-journal-20261026-1553",
+      "journal_entry_id": "28f4c67b-45b7-4268-96f9-e9372ee33bb7",
+      "created_at": "2026-10-26 15:54:08.184288+04",
+      "create_op_id": "e210b360-3852-4dc4-a334-02c901b939c3",
+      "archive_op_id": "2c246092-bf04-4e21-9d45-8cdf80328831",
+      "device_id": "c45a9822-2f34-4295-bc8b-352daeaabbcb",
+      "post_archive_card_state": "archived",
+      "evidence": "public.journal_entries row and matching public.ops payloads exist; card state is archived",
+      "http_status_log": "not captured; server-side persisted row and archived state confirm the operations applied",
+      "android_local_first_422_path": "Now independently passed on exact signed Android runtime; see offline_local_first_recovery.native_android_422 for actual HTTP422/restart/background retry and original-profile restoration."
+    },
+    "offline_local_first_recovery": {
+      "status": "PASS_OFFLINE_SAVE_RESTART_AND_AUTOMATIC_SYNC_AFTER_RECOVERY",
+      "candidate_source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+      "installed_apk_sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+      "avd": "litterbox-loss-proof-20261026",
+      "serial": "emulator-5590",
+      "production_wiring": [
+        "qt/src/main.cpp:361-367 constructs CardStore and opens cards.sqlite under QStandardPaths::AppDataLocation for the installed app.",
+        "qt/src/main.cpp:401-404 binds the production CardStoreTransport to Api.",
+        "qt/src/cardstoretransport.h:13-38 sends queued card operations to /v1/ops and routes response status to CardStore::reportPostResult.",
+        "qt/src/CardStore.cpp:749-759 creates journal writes; enqueueOp at 797-952 persists and queues the operation; reportPostResult at 1134-1166 retains owner writes and retries after 422 or transport failure.",
+        "qt/src/CardStore.cpp:525-532 flushes the durable queue when the store becomes online; this is the automatic retry path after connectivity recovery."
+      ],
+      "proof_note": {
+        "title_and_body": "litterbox-native-offline-proof-20261026-1637",
+        "journal_entry_id": "beaa6213-33e9-4a86-a65f-c28842e3443d",
+        "create_op_id": "0f64970c-e241-4b52-b315-2c2c1896584d",
+        "created_at": "2026-10-26 16:39:17.123895+04"
+      },
+      "offline_interval": {
+        "airplane_mode": "enabled",
+        "wifi": "disabled",
+        "active_default_network": "none",
+        "ui": "Created one unique non-sensitive journal note through the installed app; it appeared in the Inbox while the device had no active default network.",
+        "process_restart": "Force-stopped the exact app; confirmed its old PID 2996 was gone; relaunched the installed activity as PID 4678 while still offline. The note remained visible and pending after restart; no app data/profile reset or run-as access was used."
+      },
+      "network_recovery": {
+        "airplane_mode": "disabled",
+        "wifi": "enabled and connected to AndroidWifi",
+        "connectivity": "Active default network 103; device ping to komzpa.net resolved and returned 1/1 packets.",
+        "sync_behavior": "With the app left at Inbox and no retry tap, the pending indicator cleared after connectivity returned.",
+        "server_readback": "Read-only query to live litterbox DB found the exact journal row and matching create_card op; neither any unrelated row nor existing mail was changed."
+      },
+      "test_note_cleanup": {
+        "archive_op_id": "dbf87c52-61fb-4217-8ecb-6cd4a8450838",
+        "post_archive_card_state": "archived",
+        "verification": "Native UI removed only the new proof note; read-only server query confirmed its journal row remains archived. Existing owner notes and mail were untouched."
+      },
+      "evidence": [
+        "/tmp/litterbox-release-cd2c734/release-loss-proof-android/23-offline-after-restart-settled.png",
+        "/tmp/litterbox-release-cd2c734/release-loss-proof-android/24-after-network-restore.png",
+        "/tmp/litterbox-release-cd2c734/release-loss-proof-android/26-after-archiving-proof-note.png"
+      ],
+      "native_android_422": {
+        "status": "PASS_NATIVE422_RETENTION_RESTART_AUTOMATIC_RETRY_AND_EXACT_PROFILE_RESTORE",
+        "source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+        "installed_apk_sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+        "production_entry_and_wiring": "Actual installed QtActivity -> qt/src/main.cpp:361-367 CardStore/cards.sqlite -> qt/qml/InboxView.qml createDialog -> CardStore::createCard/enqueueOp durable journal and outbox -> main.cpp:401-404 CardStoreTransport -> Api POST /v1/ops -> CardStore::reportPostResult:1134-1166 -> retryTimer:74-76. Cards event consumer at main.cpp:453-460 sets Online; fixture emitted that real event shape.",
+        "runtime_recovery": {
+          "broker": "litterbox-loss-proof-render-hostgpu",
+          "pid": 2760733,
+          "serial": "emulator-5590",
+          "command": "ANDROID_HOME=/usr/lib/android-sdk ANDROID_SDK_ROOT=/usr/lib/android-sdk ANDROID_AVD_HOME=/home/kom/.local/share/litterbox/avd /home/kom/.local/share/litterbox/android-sdk-qt6/emulator/emulator -avd litterbox-loss-proof-20261026 -port 5590 -no-window -no-snapshot-load -no-snapshot-save -no-boot-anim -no-audio -no-metrics -gpu host -memory 2048",
+          "provenance": "Recovered exact successful broker command from raw ReleaseLossProofBuild.jsonl; replayed unchanged. Boot completed and exact installed APK hash read back. Failed leftover PID2727714 ignored TERM; only recorded failed PIDs2727714/2727732 were stopped. No AVD wipe, APK reinstall, rebuild or GPU matrix."
+        },
+        "isolated_endpoint": "http://10.0.2.2:18842 -> host127.0.0.1:18842; disposable fixture bearer only; never proxies production traffic. Harness /tmp/litterbox-native422-stub.py, final receiver PID2831259 stopped after proof.",
+        "isolation_and_restore": {
+          "finding": "Signed Qt Java rejects applicationArguments --test-profile: Not in debug mode! It is not allowed to use extra arguments in non-debug mode. Changing only Settings URL would retain production bearer/cache/queue and was not used.",
+          "method": "Root-capable owned emulator; force-stop app, archive entire coherent files directory privately, rename original files to files.native422-original unchanged, create a completely fresh files directory with only disposable URL/token. Original DB/drafts/settings never entered fixture profile. After proof force-stop, retain fixture as files.native422-fixture and rename original directory itself back; compare full pre/post manifests before normal launch.",
+          "backup": "/tmp/litterbox-native422-proof/original-files.tar",
+          "backup_bytes": 242024448,
+          "entire_files_manifest_equal": true,
+          "manifest_entries": 7,
+          "no_sqlite_wal_or_shm_after_stopped_backup": true,
+          "metadata": "Original files UID:GID10192:10192 mode0771; settings and settings/Litterbox mode0700. All directory/file UID/GID/mode/size/content hashes match pre/post manifests.",
+          "restored_hashes": {
+            "cards.sqlite": "c065f19090933a33d0f3a38b9892a6fc112af7e2a03b3fc313d9684c93a55205",
+            "cards.sqlite.drafts.jsonl": "120dfcb16bc92c9954b86b7b969f370abb9160db5126634139ee677a82e6cfc0",
+            "settings/Litterbox/Litterbox.conf": "b35ef4c194b34f4f63ca60d60d122afac4f5827fcd838b09fe618e95e6c8b55b"
+          },
+          "normal_consumer_readback": "After exact restoration native Inbox shows original real mail/cards; native Settings shows https://komzpa.net:9443, Enrolled, original device c45a9822-2f34-4295-bc8b-352daeaabbcb and tenant3b09aac5-be4b-43d8-abca-f7b1db66f8bc, all three original connected accounts. No owner note/mail action taken. ADB returned to non-root, native Inbox restored; emulator broker left live for lead.",
+          "evidence": ["receipts/native422-proof/original-manifest.json", "receipts/native422-proof/restored-manifest.json", "receipts/native422-proof/restored-settings.png", "receipts/native422-proof/restored-settled.png"]
+        },
+        "actual_consumer_behavior": {
+          "note": "native422-note-20261026-1702",
+          "card_id": "a4c08869-c7b5-43f3-ac67-c1c016fc1cb8",
+          "op_id": "9119ece7-f254-4beb-b990-5782497cf116",
+          "save_and_rejection": "Created Private journal note through actual native UI. Seven actual POST /v1/ops HTTP422 responses retained exactly the same journal body/card/op identity. Native UI displayed the original note and Couldn't save to server · 1 change waiting.",
+          "process_restart": "Force-stopped actual app PID4375, observed it absent, relaunched as PID4865. Original journal marker remained readable with1change waiting; captured after422-restart.png.",
+          "automatic_recovery": "Changed only isolated receiver accept switch, no app Retry/save/refresh tap. Next background POST received200 {ok:true}, same body/card/op. Native automatic-recovery.png retains original journal marker and removes pending/error banner. SQLite readback outbox1 before,0 after; recovered card remains1.",
+          "negative_control": "GET local fixture /v1/ops without fixture bearer returned401; no production credentials recorded.",
+          "lead_review": "Lead personally accepted after422-restart.png plus same-op422/200 request evidence and automatic-recovery.png pending-cleared consumer visual; full release remains unaccepted."
+        },
+        "durable_evidence": ["receipts/native422-proof/summary.json", "receipts/native422-proof/evidence.json", "receipts/native422-proof/requests.jsonl", "receipts/native422-proof/pending.sqlite", "receipts/native422-proof/recovered.sqlite", "receipts/native422-proof/after422.png", "receipts/native422-proof/after422-restart.png", "receipts/native422-proof/automatic-recovery.png", "receipts/native422-proof/restored-settled.png"],
+        "evidence_permissions": "All proof files0600, private original backup contains enrollment; do not publish its contents. summary.json binds screenshot/log/manifest/backup hashes.",
+        "commands_and_status": [
+          {"command": "Recovered exact named broker emulator command above", "result": "ready PID2760733; adb boot_completed=1; installed version34; exact installed SHA readback", "exit_status": 0},
+          {"command": "adb shell am start --es applicationArguments '--test-profile ...'", "result": "Activity started but Qt release loader refused extra arguments; no isolated profile DB created. Corrected shell quoting first; no repeat of rejected route.", "exit_status": 0},
+          {"command": "adb root; force-stop; tar entire files; pull private backup; rename original files; create fresh fixture files; start normal installed activity", "result": "Root access and complete fresh fixture storage succeeded; only disposable bearer at receiver", "exit_status": 0},
+          {"command": "Native Create card -> Private journal note -> Create; app force-stop/relaunch; receiver accept switch", "result": "Real consumer422/readable/pending/restart/automatic200/pending-cleared proof", "exit_status": 0},
+          {"command": "python3 /tmp/litterbox-native422-evidence.py", "result": "Entire original files restored exactly,7manifest entries; pending outbox1,recovered0,card1", "exit_status": 0},
+          {"command": "python3 /tmp/litterbox-native422-summary.py; native Settings readback; adb unroot", "result": "Original enrolled URL/device/tenant/accounts restored and exact APK hash unchanged; summary saved", "exit_status": 0},
+          {"command": "curl local fixture without bearer", "result": "HTTP401", "exit_status": 0}
+        ]
+      }
+    },
+    "test_task_cleanup": {
+      "status": "DONE_VIA_CANONICAL_TASK_ACTION",
+      "card_id": "4d10f4b4-eb64-472c-9e49-d639e323c50a",
+      "create_op_id": "3d9dd9f3-d33b-459d-905c-810f7d7f37b7",
+      "complete_op_id": "540160c1-7aa6-40e4-8e43-0bb52500e99d",
+      "post_action_state": "done",
+      "note": "This manual task's normal UI action is Complete task in Litterbox (store.dismiss/type done); the native UI has no archive action for manual tasks. No real owner card was changed."
+    },
+    "screenshots": [
+      {
+        "name": "inbox-online",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/01-inbox-online.png",
+        "sha256": "f77d12ef0bfb3fa0fa49e1d23da93bc188ba2bc2e6ce8e1da6158cf2f26bd386",
+        "bytes": 360189,
+        "permissions": "0600",
+        "observation": "Exact-candidate live inbox; at least four complete collapsed/standalone rows visible. Local-only because real mailbox content is on screen."
+      },
+      {
+        "name": "settings-enrolled-public-origin",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/02-settings-enrolled-public-origin-raw.png",
+        "sha256": "4c084954b4fe828d746f457f150a26dbc20437036f8bd8e1e60e128da0a58b1f",
+        "bytes": 351384,
+        "permissions": "0600",
+        "observation": "Shows https://komzpa.net:9443 and Enrolled. Settings is drawn over the inbox background; diagnostic only, not a visual acceptance claim. Local-only."
+      },
+      {
+        "name": "expanded-live-mail-bundle",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/03-expanded-live-mail-bundle.png",
+        "sha256": "6bcc9fd3694a1aaa7ef872a72588d3b74947cba2838613596b1a70b85b82dd36",
+        "bytes": 375941,
+        "permissions": "0600",
+        "observation": "Two real member previews rendered in a non-Techship bundle; not a substitute for the required Techship proof. Local-only."
+      },
+      {
+        "name": "real-mail-body",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/04-real-mail-body.png",
+        "sha256": "c5f942706049dba56b5ef1cbd87b9f4ea02bfb0d655ceeb0f320c3efc8be167d",
+        "bytes": 323966,
+        "permissions": "0600",
+        "observation": "Exact-candidate reader shows a real retained message body. Local-only."
+      },
+      {
+        "name": "techship-search-current-only",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/05-techship-search-current-only.png",
+        "sha256": "b6b18877bc0f27756471d4063a2146e7a2440bd7408c21e2103827643849aef9",
+        "bytes": 131125,
+        "permissions": "0600",
+        "observation": "Search returns one standalone Techship Newsletter October 21 card, not the required three-member bundle. Local-only."
+      },
+      {
+        "name": "host-gpu-settings-reviewed",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/12-host-gpu-settings.png",
+        "sha256": "af7b6cf2e568977568b699746a7bedbc6ba2a4bf5979f6cf7abe7c6d0dbe2302",
+        "bytes": 169468,
+        "permissions": "0600",
+        "observation": "Clean host-GPU Settings rendering; lead approved this surface only. Local-only."
+      },
+      {
+        "name": "host-gpu-inbox-settled-reviewed",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/13-host-gpu-inbox-settled.png",
+        "sha256": "3877651d57b55fc12c3c4879903410a8142b598212a217252d3e8cd92d051c1f",
+        "bytes": 371756,
+        "permissions": "0600",
+        "observation": "Clean host-GPU Inbox rendering; lead approved this surface only. Local-only because real mailbox content is visible."
+      },
+      {
+        "name": "offline-note-after-process-restart",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/23-offline-after-restart-settled.png",
+        "sha256": "aadd724079b92b8a5e8c9bab55c3c614ce6eb5d81b12c2bf6530f01af120db53",
+        "bytes": 353553,
+        "permissions": "0600",
+        "observation": "Exact installed app after force-stop/relaunch with airplane mode enabled, Wi-Fi disabled and no active default network; the new note remained visible and pending. Local-only."
+      },
+      {
+        "name": "note-visible-after-network-recovery",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/24-after-network-restore.png",
+        "sha256": "8d9aa7fb15184ce329845f3d221885b9578011d035f056114f1ecd821903c8a9",
+        "bytes": 354912,
+        "permissions": "0600",
+        "observation": "New note remains visible after Wi-Fi recovery and its pending indicator has cleared; live DB readback confirms sync. Local-only."
+      },
+      {
+        "name": "proof-note-archived",
+        "path": "/tmp/litterbox-release-cd2c734/release-loss-proof-android/26-after-archiving-proof-note.png",
+        "sha256": "11d3a95b75844ac7a5ab10831ae275de4f7feacb715389de8b42d02a6d5b5f7f",
+        "bytes": 371396,
+        "permissions": "0600",
+        "observation": "After the canonical Archive private note action on only the unique proof marker; it is absent from Inbox. Local-only."
+      }
+    ]
+  },
+  "release_acceptance": {
+    "status": "BLOCKED_NOT_ACCEPTED",
+    "native_visuals": {
+      "inbox_four_complete_cards": "PASS",
+      "real_mail_retained_body": "PASS",
+      "synthetic_three_member_previews_shared_identity_once": "See deterministic_member_preview_gate; independent of native proof and owner mailbox state.",
+      "fixture_review": "Owner correction 2026-10-26 supersedes the live Techship dependency. REQUIREMENTS R39/R36/R50 and DEPLOYMENT.md now require permanent synthetic three-member real-InboxView coverage without owner token/content. Historical native screenshots above remain observations, not the deterministic fixture oracle.",
+      "native_android_422": "PASS_NATIVE422_RETENTION_RESTART_AUTOMATIC_RETRY_AND_EXACT_PROFILE_RESTORE; see android_consumer.offline_local_first_recovery.native_android_422."
+    },
+    "lead_visual_review": {
+      "status": "ACCEPTED_FOR_TWO_SURFACES_ONLY",
+      "reviewed_surfaces": ["12-host-gpu-settings.png", "13-host-gpu-inbox-settled.png"],
+      "release_acceptance": "Not approved; deterministic member-preview evidence is separate from this two-surface native review and does not close the independent full-release gate."
+    },
+    "canonical_plan_apply": "Not run. DEPLOYMENT.md requires native and lead acceptance before deploy/release.py plan/apply.",
+    "owner_phone_install": "Not performed; publication and phone installation remain separate facts.",
+    "remaining_clause_inventory": {
+      "native422": "PROVED: actual signed app InboxView createDialog -> durable CardStore/CardStoreTransport -> real HTTP422 -> pending/readable -> process restart -> same-op automatic200 -> pending cleared. Lead accepted scoped visuals and HTTP evidence; original profile restored/read back.",
+      "member_previews": "Deterministic fixture coverage replaces the obsolete live Techship/SMTP proposal. See deterministic_member_preview_gate and receipts/member-preview-proof; no owner messages need reopening and no fixture permission is required. Native enrollment/Online/rendering/Settings proof remains separate.",
+      "cohort_identity": "OPEN_PREPARATION: same frozen source for server/desktop/Android, producer manifests/proofs/hash bindings; artifact source SHA separate from later CLI/docs commit. Read-only release-input receipt is /tmp/litterbox-release-inputs-20261026.json; source bindings reported matching cd2c734 by independent preparer, not inferred from directory names.",
+      "canonical_publication": "OPEN_AFTER_NATIVE_AND_LEAD_ACCEPTANCE: deploy/release.py plan/apply only, accepted source/binary server, both Debian packages, immutable startup-bound APK, explicit effective environment/drop-ins, hash-bound rollback packet and passive desktop UpdateWatcher adoption. No installer/apply/service/Git mutation by this worker.",
+      "authenticated_publication_readback": "OPEN_AFTER_APPLY: server /v1/android/update and /v1/android/update.apk, enrolled bearer at each configured origin, exact package/version34 and APK SHA a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c; anonymous access remains rejected. Fixture401 is not production protection proof.",
+      "older_android_consumer": "OPEN_AFTER_PUBLICATION: separate older normally enrolled isolated consumer SettingsPage.settingsCheckUpdates -> AndroidUpdater.checkForUpdates -> actual Update available for published candidate; preserve screenshot/download hash without approving installer/unknown-source safety prompts. Never downgrade/reinstall this preserved exact-candidate AVD. Physical-phone ADB is not normative normal-delivery prerequisite; owner-phone installation remains unperformed.",
+      "docs_and_git_handoff": "OPEN: final delivery docs reflect observed release/publication/adoption/phone facts separately. Authorized Git owner must establish ROOT Git common-dir/isolation and independently record fresh remote URL/full ref/old OID plus local branch before any mutation; no push or Git metadata changes here. Full clause/entry/wiring/evidence inventory frozen at receipts/native422-proof/clause-inventory.json (hash b4ccbbff2377e5aeac6a5f75fb0f99be87fd49cc29b1272100bea82583b72bdd, identical to /tmp source); its native422 executing state is superseded by this receipt's completed proof.",
+      "runtime_handoff": "Recovered named broker litterbox-loss-proof-render-hostgpu PID2760733, emulator-5590, original preserved AVD; restored original Inbox exact (1664 cards/zero outbox, manifests aceffcfc identical). At 17:10 check kill -0 2760733 failed and adb devices empty: broker/emulator no longer live; no relaunch/reinstall/root performed per no-new-launch rule. ADB last left non-root. Isolated stub final PID2831259 stopped via kill 2831259; earlier fixture PIDs 2775695/2797089 stopped likewise. Disposable fixture files retained as app files.native422-fixture; private 0600 backup/evidence remain in /tmp/litterbox-native422-proof (242MB tars NOT copied to receipts); durable frozen set in receipts/native422-proof (13 files). No source/rebuild/install/SMTP/production-mail action."
+    },
+    "full_suite": "Not rerun; accepted targeted server and desktop proofs are referenced above."
+  },
+  "deterministic_member_preview_gate": {
+    "status": "PASS_SCOPED_FIXTURE_GATE_NOT_AGGREGATE_RELEASE_ACCEPTANCE",
+    "fixture_version": 1,
+    "fixture": "qt/tests/techshipcontext.js",
+    "consumer": "qt/tests/tst_inboxlayout.qml -> qml-imports/litterbox/qmldir -> production qt/qml/InboxView.qml",
+    "evidence_directory": "receipts/member-preview-proof",
+    "full_qml_test": "receipts/member-preview-proof/full-inboxlayout-composited.txt: 26 passed, 0 failed, 0 skipped; unfiltered actual InboxView file, named broker litterbox-decoupled-composited-proof PID3018451 exited0.",
+    "isolated_consumer_smoke": "receipts/member-preview-proof/smoke-consumer.txt: 4 passed, 0 failed, 0 skipped; desktop1356x475 and phone412x915 plus differing identity/standalone controls; named broker litterbox-decoupled-consumer-smoke PID3023700 exited0.",
+    "negative_control": "receipts/member-preview-proof/negative-invisible-preview.txt: disposable test copy sets actual preview opacity=0 while retaining text/visible/bounds; both desktop and phone rejected by composited pixel assertion; named broker litterbox-decoupled-paint-negative PID3029815 exited2 as expected. Production source untouched.",
+    "persisted_producer": "server/internal/cards/newsletter_test.go -> production Handler.List with disposable pg_virtualenv, synthetic version1; complete internal/cards package unfiltered passed without private snapshot/provenance/repair environment. Full bodies hash-identical; mismatched provenance guard changes zero rows. receipts/member-preview-proof/full-cards.txt.",
+    "pinned_captures": "receipts/member-preview-proof/smoke/{collapsed,expanded,mixed-expanded,mixed-account-and-single-neighbor}-{1356,412}.png; hashes and commands in receipts/member-preview-proof/summary.json and SHA256SUMS.",
+    "artifact_source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+    "apk_sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+    "tooling_identity": "Test/docs/gate-only edits; authorized Git owner records tooling commit separately. No APK rebuild or production source change.",
+    "native_proof": "Accepted native enrollment/Online/offline/restart422/automatic-retry evidence above and receipts/native422-proof is preserved, not rerun. Its frozen clause inventory is historical; current normative fixture clauses are REQUIREMENTS R39/R36/R50. No aggregate release acceptance is implied."
+  },
+  "retro": [
+    "The LAN URL failed; fresh UIA bounds and confirmed keyboard focus switched the normal enrollment to the public HTTPS origin, and the consumed invite plus new device row proved enrollment.",
+    "The new native proof note was saved while fully offline, remained readable/pending after an exact-app process restart, synced automatically after connectivity returned, and only that note was then archived; live DB rows and op IDs confirm both operations.",
+    "The exact recovered hostGPU broker command restored the preserved runtime. Signed Qt refuses test-profile activity extras; full stopped files-directory isolation avoided leaking production credentials/queue. A source-shaped cards SSE event was required to set Online. Actual native422/restart/automatic retry now passes and the original files metadata/content plus enrollment were restored exactly; release publication/update-consumer gates remain open. The former live-Techship gate is superseded by the 2026-10-26 deterministic fixture requirement."
+  ]
+}

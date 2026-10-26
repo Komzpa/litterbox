@@ -1,0 +1,11 @@
+********* Start testing of maildetail *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.0), debian unknown
+PASS   : maildetail::InboxLayout::initTestCase()
+QWARN  : maildetail::InboxLayout::test_expandedMemberContext(desktop) qt.qpa.services: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: Connection already associated with an application ID")
+QDEBUG : maildetail::InboxLayout::test_expandedMemberContext(desktop) qml: CONTEXT_ORACLE {"width":1356,"shared":[{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false}],"headerHasAccount":true,"mixedAccount":true,"mixedSender":true}
+PASS   : maildetail::InboxLayout::test_expandedMemberContext(desktop)
+QDEBUG : maildetail::InboxLayout::test_expandedMemberContext(phone) qml: CONTEXT_ORACLE {"width":412,"shared":[{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false},{"sender":false,"account":false,"context":false}],"headerHasAccount":true,"mixedAccount":true,"mixedSender":true}
+PASS   : maildetail::InboxLayout::test_expandedMemberContext(phone)
+PASS   : maildetail::InboxLayout::cleanupTestCase()
+Totals: 4 passed, 0 failed, 0 skipped, 0 blacklisted, 1930ms
+********* Finished testing of maildetail *********

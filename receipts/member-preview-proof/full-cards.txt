@@ -1,0 +1,120 @@
+Creating new PostgreSQL cluster 18/regress ...
+=== RUN   TestSectionAt1500Tbilisi
+--- PASS: TestSectionAt1500Tbilisi (0.00s)
+=== RUN   TestSectionPinnedFirstWithinR30Sections
+--- PASS: TestSectionPinnedFirstWithinR30Sections (0.00s)
+=== RUN   TestSectionManualCardsUseManualOrder
+--- PASS: TestSectionManualCardsUseManualOrder (0.00s)
+=== RUN   TestSectionJournalSharesOwnerWrittenOrder
+--- PASS: TestSectionJournalSharesOwnerWrittenOrder (0.00s)
+=== RUN   TestPostgresNotePersistence
+--- PASS: TestPostgresNotePersistence (0.19s)
+=== RUN   TestImportantCardSurfacesImportance
+--- PASS: TestImportantCardSurfacesImportance (0.08s)
+=== RUN   TestCardArrivalAndSenderAddress
+--- PASS: TestCardArrivalAndSenderAddress (0.08s)
+=== RUN   TestNewsletterPersistedList
+    newsletter_test.go:67: card=20000000-0000-4000-8000-000000000001 preview_sha256=ca25a873a15e85b4c8ddc51f625251972d7dba902a99f78e19937274582131a4 bundle_title="Module field notes"
+    newsletter_test.go:70: readable_preview="Compare module prices before choosing the next evaluation board."
+    newsletter_test.go:67: card=20000000-0000-4000-8000-000000000002 preview_sha256=31d5a11c7f660a0b137b7ae8ef4df1d3f56768cdca2b487e453d18f8ed54c60a bundle_title="Module field notes"
+    newsletter_test.go:70: readable_preview="Measure sustained throughput with the antenna mounted in its enclosure."
+    newsletter_test.go:67: card=20000000-0000-4000-8000-000000000003 preview_sha256=523350f7c7ca6e7d95856f8cdb98c58a69f42efe2199909109efebea1523c39a bundle_title="Module field notes"
+    newsletter_test.go:70: readable_preview="Standalone networks use a dedicated core rather than the legacy anchor."
+    newsletter_test.go:76: card=20000000-0000-4000-8000-000000000001 text_sha256=f8c6705c2ebf00f3027ac0ff70250954ac9e0b1edb455d81f2823c2072196043 html_sha256=062656b74b0b0d11afff9eab390e827f26cbd3a2087de31d4186688aa34f361e
+    newsletter_test.go:76: card=20000000-0000-4000-8000-000000000002 text_sha256=f8c6705c2ebf00f3027ac0ff70250954ac9e0b1edb455d81f2823c2072196043 html_sha256=8ab9b8c8f672bf7b013dfc727226bb3c8a119121559b2c0c6015a983648d9a27
+    newsletter_test.go:76: card=20000000-0000-4000-8000-000000000003 text_sha256=f8c6705c2ebf00f3027ac0ff70250954ac9e0b1edb455d81f2823c2072196043 html_sha256=7c2f5c6f3a5d7e459fa3c985e69ca445404b7318caf0d267c6087917238e64ee
+    newsletter_test.go:82: three synthetic article previews; full text/HTML hashes unchanged; guarded metadata rollback restored
+--- PASS: TestNewsletterPersistedList (0.09s)
+=== RUN   TestPreviewConsumerPreservation
+=== RUN   TestPreviewConsumerPreservation/B1-cancellation
+    preview_consumer_test.go:77: preview="Do not ship. The order is cancelled." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=8d29d2b3765554e7ce5775fa5f1206c91503debbbfba384fc311b09cf089adfb
+=== RUN   TestPreviewConsumerPreservation/B1-repeated-subject
+    preview_consumer_test.go:77: preview="Approved." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=130250a6268e02c97d62a9a41aefda0cca77c2ebf48f63d1d676109f036663aa
+=== RUN   TestPreviewConsumerPreservation/B2-plain
+    preview_consumer_test.go:77: preview="Approved." text_sha256=7e0019a3769b3e37d8a83d04a70720b100041b63e8000b03eafc85071a7a67bf html_sha256=1675f4bd061fedd0e36920d94bd841a3f463c866eacdddde643f89e2113f0a02
+=== RUN   TestPreviewConsumerPreservation/B2-link
+    preview_consumer_test.go:77: preview="https://example.test/report" text_sha256=1e8f5cb3245d42438228141963853c5bc8a8b12ce6c42b13ae8d8d4974462152 html_sha256=1675f4bd061fedd0e36920d94bd841a3f463c866eacdddde643f89e2113f0a02
+=== RUN   TestPreviewConsumerPreservation/B2-rejected-html
+    preview_consumer_test.go:77: preview="Approved." text_sha256=7e0019a3769b3e37d8a83d04a70720b100041b63e8000b03eafc85071a7a67bf html_sha256=5aac29a2b9d4b26947c3c517c691efef5f7f54fd111d6d607a98f4984e7c924d
+=== RUN   TestPreviewConsumerPreservation/C1-article-after-layout-band
+    preview_consumer_test.go:77: preview="Do not ship." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=d921f735f9f07532a0e9f10b01f4d5312a5cbae14e3b45151d7504171108d014
+=== RUN   TestPreviewConsumerPreservation/C1-intro-before-article
+    preview_consumer_test.go:77: preview="Approved." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=25bec19ddb9e7376966b8fa871b757f22a3cddaf306a2cd335417cf97f705866
+=== RUN   TestPreviewConsumerPreservation/C1-intro-within-article-column
+    preview_consumer_test.go:77: preview="Approved." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=de121c73c6b70aa34b9edd3b81bb3eb8d23501fbbc13a091ab9aa34df20a30fc
+=== RUN   TestPreviewConsumerPreservation/C1-data-table-is-content
+    preview_consumer_test.go:77: preview="Worldwide partners and experienced engineers ready to assist your next project" text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=c89a36b9068323b8971ab3eb404ed06bcd8bb734629caf52d56dd06b6b05d1de
+=== RUN   TestPreviewConsumerPreservation/C1-unsectioned-layout-is-content
+    preview_consumer_test.go:77: preview="Worldwide partners and experienced engineers ready to assist your next project" text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=a19ff5f28180ff4a5d4fb587085d668ee91bdf07cbca8183ae1bfa77f66618f1
+=== RUN   TestPreviewConsumerPreservation/C1-heading-only-is-content
+    preview_consumer_test.go:77: preview="Do not ship." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=a3a53eaceac2424f376555a5919d91b46671b554b664467b3920048fe48ef500
+=== RUN   TestPreviewConsumerPreservation/C2-nested-introduction
+    preview_consumer_test.go:77: preview="Do not ship. The order is cancelled." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=944a6f037955fa54e809627e3a029ec34157b1dbd1d498a23e8683bd0552d182
+=== RUN   TestPreviewConsumerPreservation/C3-nested-data-table
+    preview_consumer_test.go:77: preview="Do not ship. The order is cancelled." text_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 html_sha256=d611f752d0c32a6a23b049f491df1487044a7c1bfc4f3274f32ebe262cabb0d1
+=== RUN   TestPreviewConsumerPreservation/B3-custom-equals-member
+=== RUN   TestPreviewConsumerPreservation/B3-custom-equals-archived-member
+=== RUN   TestPreviewConsumerPreservation/B4-custom-through-cluster
+--- PASS: TestPreviewConsumerPreservation (0.10s)
+    --- PASS: TestPreviewConsumerPreservation/B1-cancellation (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B1-repeated-subject (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B2-plain (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B2-link (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B2-rejected-html (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C1-article-after-layout-band (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C1-intro-before-article (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C1-intro-within-article-column (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C1-data-table-is-content (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C1-unsectioned-layout-is-content (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C1-heading-only-is-content (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C2-nested-introduction (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/C3-nested-data-table (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B3-custom-equals-member (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B3-custom-equals-archived-member (0.00s)
+    --- PASS: TestPreviewConsumerPreservation/B4-custom-through-cluster (0.01s)
+=== RUN   TestPersistedReminderSemanticContract
+--- PASS: TestPersistedReminderSemanticContract (0.08s)
+=== RUN   TestSenderPhotoFlagUsesLatestMessageSenderForLegacyCards
+--- PASS: TestSenderPhotoFlagUsesLatestMessageSenderForLegacyCards (0.08s)
+=== RUN   TestCardSnippetProductionBodies
+=== RUN   TestCardSnippetProductionBodies/PostGIS6144
+    snippet_test.go:45: message=2c1a71f3-8a4a-48a2-bf11-b78a011b558d preview="PostgreSQL and POSTGIS version:"
+=== RUN   TestCardSnippetProductionBodies/QGISNegativeControl
+    snippet_test.go:45: message=7a5df38c-755d-4dce-bd5e-5050c165c1d4 preview="Hi list"
+=== RUN   TestCardSnippetProductionBodies/PostGIS6143
+    snippet_test.go:45: message=60df7edd-402c-43e2-8b63-0940fb26c9c7 preview=""
+--- PASS: TestCardSnippetProductionBodies (0.00s)
+    --- PASS: TestCardSnippetProductionBodies/PostGIS6144 (0.00s)
+    --- PASS: TestCardSnippetProductionBodies/QGISNegativeControl (0.00s)
+    --- PASS: TestCardSnippetProductionBodies/PostGIS6143 (0.00s)
+=== RUN   TestMailSnippetRules
+=== RUN   TestMailSnippetRules/entities-and-dots
+=== RUN   TestMailSnippetRules/ascii-separators
+=== RUN   TestMailSnippetRules/box-drawing
+=== RUN   TestMailSnippetRules/symbol-fragment
+=== RUN   TestMailSnippetRules/sender-only
+=== RUN   TestMailSnippetRules/quoted-only
+=== RUN   TestMailSnippetRules/signature-only
+=== RUN   TestMailSnippetRules/short-English
+=== RUN   TestMailSnippetRules/short-Cyrillic
+=== RUN   TestMailSnippetRules/CJK
+=== RUN   TestMailSnippetRules/prose-pipe
+=== RUN   TestMailSnippetRules/invisible-filler
+--- PASS: TestMailSnippetRules (0.00s)
+    --- PASS: TestMailSnippetRules/entities-and-dots (0.00s)
+    --- PASS: TestMailSnippetRules/ascii-separators (0.00s)
+    --- PASS: TestMailSnippetRules/box-drawing (0.00s)
+    --- PASS: TestMailSnippetRules/symbol-fragment (0.00s)
+    --- PASS: TestMailSnippetRules/sender-only (0.00s)
+    --- PASS: TestMailSnippetRules/quoted-only (0.00s)
+    --- PASS: TestMailSnippetRules/signature-only (0.00s)
+    --- PASS: TestMailSnippetRules/short-English (0.00s)
+    --- PASS: TestMailSnippetRules/short-Cyrillic (0.00s)
+    --- PASS: TestMailSnippetRules/CJK (0.00s)
+    --- PASS: TestMailSnippetRules/prose-pipe (0.00s)
+    --- PASS: TestMailSnippetRules/invisible-filler (0.00s)
+=== RUN   TestCardSnippetNormalMailUnchanged
+--- PASS: TestCardSnippetNormalMailUnchanged (0.00s)
+PASS
+ok  	github.com/Komzpa/litterbox/server/internal/cards	0.697s
+Dropping cluster 18/regress ...

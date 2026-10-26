@@ -1,0 +1,47 @@
+{"time": 1793019464.7322443, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019464.9863205, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019465.0006676, "method": "GET", "path": "/v1/android/update", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019465.0012732, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019465.0034165, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019465.0053759, "method": "GET", "path": "/v1/cards", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019465.0056949, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019465.0270145, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019466.0770364, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019466.5801556, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019468.5812051, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019469.0809243, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019473.0825102, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019473.5856867, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019481.5843236, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019482.4900882, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019492.5878127, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019492.588446, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019503.5885732, "method": "GET", "path": "/v1/cards/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019503.5891743, "method": "GET", "path": "/v1/a2a/events", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019524.5847611, "method": "GET", "path": "/v1/a2a/events", "status": 200, "fixture_authorized": true}
+{"time": 1793019524.5847998, "method": "GET", "path": "/v1/cards/events", "status": 200, "fixture_authorized": true}
+{"time": 1793019816.581461, "method": "GET", "path": "/v1/a2a/events", "status": 200, "fixture_authorized": true}
+{"time": 1793019819.5803065, "method": "GET", "path": "/v1/cards/events", "status": 200, "fixture_authorized": true}
+{"time": 1793019819.6096597, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019819.6099067, "method": "GET", "path": "/v1/cards", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019819.6159565, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019819.6160343, "method": "GET", "path": "/v1/cards", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019819.6348338, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019821.1534386, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019827.1153774, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019827.470492, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019827.5939932, "method": "GET", "path": "/v1/android/update", "status": 404, "fixture_authorized": true, "body": ""}
+{"time": 1793019827.5964391, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019827.5980358, "method": "GET", "path": "/v1/cards", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019827.5996773, "method": "GET", "path": "/v1/cards/events", "status": 200, "fixture_authorized": true}
+{"time": 1793019827.6283648, "method": "GET", "path": "/v1/a2a/events", "status": 200, "fixture_authorized": true}
+{"time": 1793019827.7111788, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019827.7120476, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019827.7125828, "method": "GET", "path": "/v1/cards", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019828.7269123, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019831.2354214, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019835.6095643, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019843.6358032, "method": "POST", "path": "/v1/ops", "status": 422, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019860.1456428, "method": "POST", "path": "/v1/ops", "status": 200, "fixture_authorized": true, "body": "{\"args\":{\"body\":\"native422-note-20261026-1702\",\"kind\":\"journal\",\"summary\":\"\",\"title\":\"native422-note-20261026-1702\"},\"card_id\":\"a4c08869-c7b5-43f3-ac67-c1c016fc1cb8\",\"op_id\":\"9119ece7-f254-4beb-b990-5782497cf116\",\"type\":\"create_card\"}"}
+{"time": 1793019860.6201751, "method": "GET", "path": "/v1/gmail/accounts", "status": 200, "fixture_authorized": true, "body": ""}
+{"time": 1793019872.4127986, "method": "GET", "path": "/v1/ops", "status": 401, "fixture_authorized": false, "body": "[not recorded]"}

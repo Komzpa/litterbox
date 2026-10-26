@@ -3,7 +3,7 @@ import QtTest
 import litterbox 1.0 as App
 import org.kde.kirigami as Kirigami
 import "previewcards.js" as Previews
-import "techshipcontext.js" as Techship
+import "techshipcontext.js" as Newsletter
 
 TestCase {
     name: "InboxLayout"
@@ -398,7 +398,9 @@ TestCase {
     }
     function test_expandedMemberContext(data) {
         store.clear()
-        const cards = Techship.cards()
+        compare(Newsletter.version, 1)
+        const cards = Newsletter.cards()
+        const retained = JSON.stringify(cards)
         const single = Object.assign({}, cards[0], {id: "single-context", bundle_id: "", title: "Standalone mail neighbor"})
         delete single.bundle_leader
         function populate(records) {
@@ -434,12 +436,31 @@ TestCase {
         })
         const header = findChild(list.itemAtIndex(0), "bundleAccountLabel-" + cards[0].id)
         const headerHasAccount = header.text.indexOf(cards[0].account_name) >= 0
+        compare(header.text.split(cards[0].sender_name).length - 1, 1, "Shared sender appears once on summary")
+        compare(header.text.split(cards[0].account_name).length - 1, 1, "Shared account appears once on summary")
         for (let i = 0; i < cards.length; ++i) {
             const row = list.itemAtIndex(i)
+            compare(row.cardId, cards[i].id, "Expansion preserves source order")
+            compare(store.get(i).card.body, cards[i].body, "Expansion retains full body")
             compare(findChild(row, "mailTitle-" + cards[i].id).text, cards[i].title)
-            compare(findChild(row, "mailSnippet-" + cards[i].id).text, cards[i].snippet)
+            const preview = findChild(row, "mailSnippet-" + cards[i].id)
+            compare(preview.text, cards[i].snippet)
+            verify(preview.visible && preview.width > 0 && preview.height > 0)
+            const box = preview.mapToItem(inbox.contentItem.parent, 0, 0)
+            verify(box.x >= 0 && box.y >= 0 && box.x + preview.width <= data.viewWidth &&
+                   box.y + preview.height <= data.viewHeight, "Preview must be inside the rendered viewport")
+            // Scan the composited window, not an isolated label render target.
+            const painted = grabImage(inbox.contentItem.parent)
+            let inkPixels = 0
+            const left = Math.ceil(box.x), top = Math.ceil(box.y)
+            const background = painted.pixel(left, top)
+            for (let y = top; y < Math.floor(box.y + preview.height); ++y)
+                for (let x = left; x < Math.floor(box.x + preview.width); ++x)
+                    if (!Qt.colorEqual(painted.pixel(x, y), background)) inkPixels++
+            verify(inkPixels > 8, "Each original preview must paint visible text pixels: " + cards[i].id)
             verify(findChild(row, "mailDate-" + cards[i].id).visible)
         }
+        compare(JSON.stringify(cards), retained, "Consumer does not mutate retained fixture bodies/order")
         const singleRow = list.itemAtIndex(3)
         verify(findChild(singleRow, "mailSender-single-context").visible)
         compare(findChild(singleRow, "mailAccount-single-context").visible, !inbox.compactInbox)
