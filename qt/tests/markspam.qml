@@ -8,11 +8,13 @@ TestCase {
     property url pagesDir: Qt.resolvedUrl("../pages/")
     readonly property string mailId: "11111111-1111-4111-8111-111111111111"
     property var posted: []
+    property bool acceptJournal: false
     Connections {
         target: bundleStore
         function onRequestPost(opId, path, body) {
             posted = posted.concat([{opId: opId, path: path, body: body}])
-            bundleStore.reportPostResult(opId, 422, {error: "Fixture rejection"})
+            bundleStore.reportPostResult(opId, body.type === "create_card" && acceptJournal ? 200 : 422,
+                                         {ok: body.type === "create_card" && acceptJournal})
         }
     }
     QtObject { id: api; property string baseUrl: ""; property string token: "" }
@@ -27,6 +29,41 @@ TestCase {
     }
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
+    function test_rejectedJournalRetry() {
+        bundleStore.online = false
+        posted = []
+        acceptJournal = false
+        verify(bundleStore.applyRemoteCards({now: [], later: [], missed: []}))
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: bundleStore, api: api, updater: updater, timeRules: timeRules,
+            width: 412, height: 915
+        })
+        verify(inbox)
+        inbox.show()
+        verify(bundleStore.createCard("Retain this journal\nAll of this text", "", "journal"))
+        const journalId = bundleStore.cardIds()[0]
+        bundleStore.online = true
+        tryCompare(bundleStore, "saveFailed", true)
+        compare(bundleStore.pendingOps, 1)
+        const line = findChild(inbox, "connectionStatusRow")
+        tryCompare(line, "visible", true)
+        const status = findChild(inbox, "connectionStatus")
+        verify(status.text.indexOf("Couldn't save to server") >= 0)
+        compare(inbox.bundleArchiveStatus, "", "No raw HTTP error toast for a retained write")
+        tryVerify(function() { return inbox.captureActions[journalId] !== undefined })
+        verify(inbox.captureActions[journalId].visible, "Journal remains rendered in the inbox")
+        acceptJournal = true
+        const retry = findChild(inbox, "offlineRetry")
+        verify(retry.visible && retry.enabled)
+        mouseClick(retry)
+        tryCompare(bundleStore, "pendingOps", 0)
+        compare(bundleStore.saveFailed, false)
+        tryCompare(line, "visible", false)
+        compare(posted.length, 2)
+        compare(posted[1].body.op_id, posted[0].body.op_id)
+        compare(bundleStore.cardIds()[0], journalId)
+        inbox.close()
+    }
     function test_menu_data() {
         return [{tag: "desktop", width: 1440, height: 900},
                 {tag: "phone", width: 412, height: 915}]

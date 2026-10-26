@@ -111,12 +111,22 @@ Each requirement is **decided** or **open** and names its source.
 
 - **R9 Full local copy** (decided, owner 2026-09-27). The phone keeps every
   open card with its content, not only titles. Reading needs no network.
-- **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12). Archive, bundle
-  archive, spam, bundle spam, snooze, pin, done and writing journal notes work with no network.
-  They apply locally at once and sync when the connection returns. Gmail
-  changes for archive, spam and snooze (R7, R47, R20), and star changes for pin (R21),
-  run then; other source actions run on sync through R12.
-  A rejected action never holds back later queued actions; it is shown as failed on its card.
+- **R10 Offline actions** (decided, owner 2026-09-27; spam added 2026-10-12;
+  rejected-write retention clarified 2026-10-26). Archive, bundle archive, spam,
+  bundle spam, snooze, pin, done and writing journal notes apply locally at once
+  without a network and sync when connectivity returns. Gmail changes for
+  archive, spam and snooze (R7, R47, R20), and star changes for pin (R21), run
+  then; other source actions run on sync through R12. A server rejection never
+  deletes a locally written note: its complete text remains in the SQLite cache
+  and visible inbox across snapshots and app restart, and its original operation
+  stays queued with the same id/payload until acknowledged. Rejected owner writes
+  show one actionable save-failure line with Retry (R55), retry automatically
+  with backoff and on the next sync/Retry, and do not block unrelated actions.
+  Reversible rejected actions roll back and leave the queue; owner-written
+  content is always retained. Oracle: Qt `rejectedJournalRetainsTextAndRetries`
+  returns HTTP 422 for a journal create, checks inbox/cache text and pending op,
+  then HTTP 200 applies it exactly once via backoff, Retry and restart;
+  `archiveFailureRestoresRowWithoutReset` is the permanent-rejection control.
 - **R11 Network loss is not an error** (decided, owner 2026-09-27: "must not
   break in the elevator"). Losing the network mid-use never blocks the
   interface or shows an error screen.

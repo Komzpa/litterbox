@@ -713,6 +713,93 @@ private slots:
         const QVariantList expectedOrder{createdId, second, first};
         QCOMPARE(server.received[1].value("args").toMap().value("cards").toList(), expectedOrder);
     }
+    void rejectedWriteDoesNotBlockUnrelatedActionsOrSendDependentEdits() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("ordered.sqlite")));
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Other"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QVERIFY(store.createCard("Retained journal", "", "journal"));
+        const QString journal = store.cardIds().first();
+        const QString dependent = store.saveNote(journal, "Later edit also retained");
+        const QString unrelated = store.enqueueOp(cardId, "archive");
+        ScriptedTransport transport({422, 422, 200, 200});
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QTRY_COMPARE(failed.size(), 2);
+        QTRY_COMPARE(store.pendingOps(), 2);
+        QCOMPARE(transport.posted.size(), 2);
+        QCOMPARE(transport.posted.last().value("op_id").toString(), unrelated);
+        QVERIFY(store.cardIds().contains(journal));
+        QVERIFY(store.cardIds().contains(cardId));
+        QVERIFY(store.retainedWriteFailed(transport.posted.first().value("op_id").toString()));
+        QVERIFY(!store.retainedWriteFailed(unrelated));
+        store.refresh();
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(transport.posted.size(), 4);
+        QCOMPARE(transport.posted[2], transport.posted[0]);
+        QCOMPARE(transport.posted[3].value("op_id").toString(), dependent);
+        QVERIFY(!store.saveFailed());
+    }
+    void rejectedJournalRetainsTextAndRetries_data() {
+        QTest::addColumn<QString>("retryVia");
+        QTest::newRow("backoff") << QStringLiteral("backoff");
+        QTest::newRow("retry") << QStringLiteral("retry");
+        QTest::newRow("restart") << QStringLiteral("restart");
+    }
+    void rejectedJournalRetainsTextAndRetries() {
+        QFETCH(QString, retryVia);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("rejected-journal.sqlite");
+        const QString body = QStringLiteral("Owner's private note\nText must survive rejection.");
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.statusSequence = {422};
+        HttpTransport transport(server.serverPort());
+        QString journalId;
+        QVariantMap originalOp;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QSignalSpy failed(&store, &CardStore::operationFailed);
+            store.setTransport(&transport);
+            store.setOnline(true);
+            QVERIFY(store.createCard(body, "", "journal"));
+            journalId = store.cardIds().first();
+            QTRY_COMPARE(failed.size(), 1);
+            QCOMPARE(failed.first().at(1).toInt(), 422);
+            QCOMPARE(store.cardIds(), QStringList{journalId});
+            QCOMPARE(store.pendingOps(), 1);
+            originalOp = server.received.first();
+            QCOMPARE(originalOp.value("args").toMap().value("body").toString(), body);
+            QVERIFY(store.applyRemoteCards({{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            QCOMPARE(store.cardIds(), QStringList{journalId});
+            const auto card = store.data(store.index(0), CardStore::CardRole).toMap();
+            QCOMPARE(card.value("title").toString() + "\n" + card.value("summary").toString(), body);
+            if (retryVia == "retry") store.refresh(); // Production Retry entrypoint.
+            if (retryVia != "restart") QTRY_COMPARE(store.pendingOps(), 0);
+            else store.setOnline(false);
+        }
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.cardIds(), QStringList{journalId});
+        const auto cached = reopened.data(reopened.index(0), CardStore::CardRole).toMap();
+        QCOMPARE(cached.value("title").toString() + "\n" + cached.value("summary").toString(), body);
+        if (retryVia == "restart") {
+            QCOMPARE(reopened.pendingOps(), 1);
+            reopened.setTransport(&transport);
+            reopened.setOnline(true);
+            QTRY_COMPARE(reopened.pendingOps(), 0);
+        }
+        QCOMPARE(reopened.pendingOps(), 0);
+        QCOMPARE(server.received.size(), 2);
+        QCOMPARE(server.received.last(), originalOp);
+        QCOMPARE(server.applied, 1);
+        reopened.flush();
+        QTest::qWait(50);
+        QCOMPARE(server.received.size(), 2);
+    }
     void journalCreateOfflineRestartSyncAndArchive() {
         QTemporaryDir directory;
         const QString path = directory.filePath("cache.sqlite");

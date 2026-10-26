@@ -393,6 +393,8 @@ ApplicationWindow {
             mailArchiveUndoOp = ""
             archiveUndoAvailable = false
         }
+        // Retained writes have one persistent, actionable status line, not a toast.
+        if (store.saveFailed && store.retainedWriteFailed(opId)) return
         // Reconnect state belongs exclusively to the current account list.
         if (response && response.code === "gmail_reconnect_required") {
             if (!archiveUndoAvailable) bundleArchiveStatus = ""
@@ -868,12 +870,12 @@ ApplicationWindow {
             }
             RowLayout {
                 objectName: "connectionStatusRow"
-                visible: !store.online
+                visible: !store.online || store.saveFailed === true
                 Layout.fillWidth: true
                 spacing: 4
                 Label {
                     objectName: "connectionStatus"
-                    text: store.online ? "" : window.offlineSummary()
+                    text: store.saveFailed ? qsTr("Couldn't save to server · %n change waiting", "", store.pendingOps) : (store.online ? "" : window.offlineSummary())
                     color: window.mutedInk
                     font.family: window.themeFont.family
                     font.pointSize: window.themeFont.pointSize - 1

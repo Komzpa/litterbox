@@ -22,12 +22,13 @@ public:
 
 // Cache-first QML model. SQLite belongs to the storage worker; QML sees
 // optimistic row-level changes. Operations transmit only after durable commit.
-// Failures undo their changed rows without resetting unrelated cards.
+// Rejected actions roll back; owner-written content stays durable and retryable.
 class CardStore : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(bool online READ online WRITE setOnline NOTIFY onlineChanged)
     Q_PROPERTY(QString offlineReason READ offlineReason NOTIFY offlineReasonChanged)
     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
+    Q_PROPERTY(bool saveFailed READ saveFailed NOTIFY pendingOpsChanged)
 public:
     enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole, SenderPhotoRole };
     Q_ENUM(Role)
@@ -39,6 +40,8 @@ public:
     QString offlineReason() const { return m_offlineReason; }
     void reportOffline(const QString &reason);
     int pendingOps() const;
+    bool saveFailed() const { return !m_failedWrites.isEmpty(); }
+    Q_INVOKABLE bool retainedWriteFailed(const QString &opId) const { return m_failedWrites.contains(opId); }
     void setTransport(cardstore::OpTransport *transport);
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
@@ -154,6 +157,8 @@ private:
     bool m_open = false;
     QList<QVariantMap> m_outbox;
     QSet<QString> m_durableOps;
+    QSet<QString> m_failedWrites;
+    QSet<QString> m_deferredWrites;
     struct Mutation {
         QList<QVariantMap> before, after;
         bool archiveRejected = false;
