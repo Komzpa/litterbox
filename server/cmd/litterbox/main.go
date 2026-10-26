@@ -15,6 +15,7 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/auth"
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/Komzpa/litterbox/server/internal/diagnostics"
 	"github.com/Komzpa/litterbox/server/internal/gmail"
 	"github.com/Komzpa/litterbox/server/internal/gmailsync"
 	"github.com/Komzpa/litterbox/server/internal/httpapi"
@@ -77,6 +78,7 @@ func main() {
 		authHandler := auth.NewHandler(auth.NewPostgresStore(pg), devTenantID)
 		authHandler.Register(mux)
 		protected = authHandler.Middleware(mux)
+		diagnostics.Register(mux, diagnostics.PostgresStore{DB: pg})
         androidManifest, androidDownload := httpapi.AndroidUpdateHandlers(androidAPKPath, androidVersion, androidPackage)
         mux.Handle("GET "+httpapi.AndroidUpdateManifestPath, androidManifest)
         mux.Handle("GET "+httpapi.AndroidUpdateAPKPath, androidDownload)

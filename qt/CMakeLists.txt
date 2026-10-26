@@ -23,6 +23,8 @@ qt_add_executable(litterbox-qt
     src/main.cpp
     src/api.h
     src/api.cpp
+    src/crashuploader.h
+    src/crashuploader.cpp
     src/cardstoretransport.h
     src/a2astream.h
     src/a2astream.cpp
@@ -166,6 +168,20 @@ qt_add_executable(tst_api tests/tst_api.cpp src/api.h src/api.cpp)
 target_include_directories(tst_api PRIVATE src)
 target_link_libraries(tst_api PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
 add_test(NAME api COMMAND tst_api)
+
+qt_add_executable(tst_crashuploader tests/tst_crashuploader.cpp src/crashuploader.h src/crashuploader.cpp src/api.h src/api.cpp)
+target_include_directories(tst_crashuploader PRIVATE src)
+target_link_libraries(tst_crashuploader PRIVATE Qt6::Core Qt6::Qml Qt6::Network Qt6::Test)
+add_test(NAME crashuploader COMMAND tst_crashuploader)
+if(NOT ANDROID)
+    find_package(Java COMPONENTS Development QUIET)
+    if(Java_FOUND)
+        add_test(NAME crashstore COMMAND ${CMAKE_COMMAND}
+            -DJAVAC=${Java_JAVAC_EXECUTABLE} -DJAVA=${Java_JAVA_EXECUTABLE}
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/crashstore-oracle
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/crashstore_oracle.cmake)
+    endif()
+endif()
 
 qt_add_executable(tst_a2astream tests/tst_a2astream.cpp src/a2astream.h src/a2astream.cpp src/api.h src/api.cpp)
 target_include_directories(tst_a2astream PRIVATE src)

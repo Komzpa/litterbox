@@ -39,6 +39,15 @@ TestCase {
             }
             return "fixture-created-card"
         }
+        property var savedNote: ({})
+        function saveNote(cardId, text) {
+            if (failLocalSave) {
+                storageError("fixture durable storage unavailable")
+                return false
+            }
+            savedNote = {cardId: cardId, text: text}
+            return true
+        }
         property var cached: ({})
         property var operations: []
         function enqueueOp(cardId, operation, args) {
@@ -97,6 +106,7 @@ TestCase {
         store.mailSyncComplete = true
         store.refreshCalls = 0
         store.failLocalSave = true
+        store.savedNote = ({})
         const rows = []
         rows.push(mail("polis-1", "Polis.ge", "Туристическая страховка: скидка 20% до конца октября", testCase.polisPreheader, "2026-10-15T10:20:00Z"))
         // PostGIS bot-review bundle of 4 (leader first, members hidden until expanded).
@@ -416,6 +426,72 @@ TestCase {
         compare(inbox.lastSyncAt, completedAt, "offline queue transitions must not claim a fresh sync")
         inbox.close()
     }
+    // A background SQLite failure must not acquire ownership of an editor.
+    function test_backgroundStorageFailureRecoversWithoutForegroundSave() {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        const row = findChild(inbox, "connectionStatusRow")
+        inbox.lastSyncAt = 0
+        store.mailSyncComplete = false
+        store.mailSyncPending = 1
+        store.storageError("fixture background body write failed")
+        compare(inbox.localStorageError, "")
+        verify(inbox.offlineSummary().indexOf("draft") < 0)
+        verify(row.visible)
+        store.online = false
+        store.online = true
+        store.mailSyncPending = 0
+        store.mailSyncStateChanged()
+        compare(inbox.lastSyncAt, 0, "reconnect and optimistic cache are not durable recovery")
+        verify(row.visible)
+        tryCompare(inbox, "operationError", "", 8500)
+        compare(inbox.lastSyncAt, 0, "notice expiry is not durable recovery")
+        verify(row.visible)
+        store.mailSyncComplete = true
+        store.mailSyncStateChanged()
+        verify(inbox.lastSyncAt > 0)
+        compare(inbox.localStorageError, "")
+        tryCompare(row, "visible", false)
+        inbox.close()
+    }
+
+    function test_failedNoteSurvivesBackgroundRecoveryUntilOwnSave() {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        const dialog = findChild(inbox, "noteDialog")
+        const field = findChild(dialog, "noteField")
+        dialog.cardId = "agent-mvt"
+        dialog.open()
+        tryCompare(dialog, "visible", true)
+        const exactText = "Owner note\n  preserve spacing and punctuation!  "
+        field.text = exactText
+        mouseClick(findChild(dialog, "noteSaveButton"))
+        verify(dialog.visible)
+        verify(dialog.saveError.length > 0)
+        compare(field.text, exactText)
+        compare(JSON.stringify(store.savedNote), "{}")
+        store.mailSyncComplete = false
+        store.mailSyncPending = 1
+        store.online = false
+        store.online = true
+        store.mailSyncPending = 0
+        store.mailSyncStateChanged()
+        verify(dialog.saveError.length > 0, "incomplete sync cannot clear a draft failure")
+        store.failLocalSave = false
+        store.mailSyncComplete = true
+        store.mailSyncStateChanged()
+        verify(dialog.visible, "successful unrelated body retry cannot accept a note")
+        verify(dialog.saveError.length > 0)
+        compare(field.text, exactText)
+        compare(JSON.stringify(store.savedNote), "{}")
+        mouseClick(findChild(dialog, "noteSaveButton"))
+        tryCompare(dialog, "visible", false)
+        compare(dialog.saveError, "")
+        compare(inbox.localStorageError, "")
+        compare(store.savedNote.cardId, "agent-mvt")
+        compare(store.savedNote.text, exactText)
+        inbox.close()
+    }
     function test_authAndLocalStorageRemainActionableAfterErrorExpiry() {
         const shown = openInbox(true)
         const inbox = shown.inbox
@@ -435,15 +511,31 @@ TestCase {
         compare(summary.text, "Exact details survive a local storage failure")
         compare(store.cardIds(), before)
         verify(reconnect.visible)
-        compare(inbox.localStorageError, "fixture durable storage unavailable")
+        compare(inbox.localStorageError, dialog.saveError)
+        verify(dialog.saveError.indexOf("keep your draft open") >= 0)
         const row = findChild(inbox, "connectionStatusRow")
         verify(row.visible)
         store.operationFailed("archive", 422, {})
         tryCompare(inbox, "operationError", "", 8500)
         verify(reconnect.visible, "reauth is not transient")
         verify(row.visible, "local storage failure is not transient")
-        compare(inbox.localStorageError, "fixture durable storage unavailable")
+        compare(inbox.localStorageError, dialog.saveError)
+        verify(dialog.saveError.length > 0)
         verify(dialog.visible)
+        compare(title.text, "Unsaved owner draft")
+        compare(summary.text, "Exact details survive a local storage failure")
+        store.mailSyncComplete = false
+        store.mailSyncPending = 1
+        store.online = false
+        store.online = true
+        store.mailSyncPending = 0
+        store.mailSyncStateChanged()
+        verify(dialog.saveError.length > 0, "reconnect/incomplete persistence cannot clear the draft")
+        store.failLocalSave = false
+        store.mailSyncComplete = true
+        store.mailSyncStateChanged()
+        verify(dialog.visible, "background durable retry cannot accept an unsaved create")
+        verify(dialog.saveError.length > 0)
         compare(title.text, "Unsaved owner draft")
         compare(summary.text, "Exact details survive a local storage failure")
         verify(findChild(row, "offlineRetry").enabled)

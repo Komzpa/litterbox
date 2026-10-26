@@ -477,7 +477,9 @@ ApplicationWindow {
     property bool archiveUndoAvailable: false
     // Error expiry changes presentation only; outbox and Undo remain store-owned.
     property string operationError: ""
-    property string localStorageError: ""
+    // Only a failed foreground return owns a persistent draft warning.
+    // Background cache errors have bounded presentation, not draft ownership.
+    readonly property string localStorageError: noteDialog.saveError || createDialog.saveError
     Timer {
         id: operationErrorTimer
         objectName: "operationErrorTimer"
@@ -496,7 +498,10 @@ ApplicationWindow {
             undoExpiredNoticeTimer.restart()
         }
         function onOperationFailed(opId, status, response) { window.showOperationFailure(opId, status, response) }
-        function onStorageError(message) { window.localStorageError = message }
+        function onStorageError(message) {
+            window.operationError = qsTr("Couldn't save on this device.")
+            operationErrorTimer.restart()
+        }
         function onRequestCards(path) { window.reloadGmailAccounts() }
         function onFlushFinished() { window.reloadGmailAccounts() }
     }
@@ -510,6 +515,8 @@ ApplicationWindow {
 
     // Drop the dragged card at the row the reorder handle was released over.
     function commitCardDrag(cardId, targetIndex) {
+        const entry = bundleModel.sourceEntries.find(entry => entry.cardId === cardId)
+        if (!entry || entry.card.source === "mail") return false
         const sourceIndex = store.cardIds().indexOf(cardIdAt(targetIndex))
         return sourceIndex >= 0 && store.moveCardTo(cardId, sourceIndex)
     }
@@ -774,7 +781,7 @@ ApplicationWindow {
     }
     function offlineSummary() {
         const parts = []
-        if (localStorageError) parts.push(qsTr("Couldn't save on this device · keep your draft open"))
+        if (localStorageError) parts.push(localStorageError)
         if (!store.online) parts.push(qsTr("Can't reach the server"))
         else if (store.saveFailed) parts.push(qsTr("Couldn't save to server"))
         if (store.pendingOps > 0) parts.push(qsTr("%n change waiting", "", store.pendingOps))
@@ -1889,8 +1896,8 @@ ApplicationWindow {
                                     objectName: "reorderHandle-" + cardId
                                     Layout.row: 0
                                     Layout.column: 0
-                                    // R63: on phones the sender avatar is the reorder handle;
-                                    // a touch reorder starts only after a long press (R56).
+                                    // R63: only eligible nonmail avatars are reorder handles;
+                                    // mail avatars remain visible and pass travel to scrolling.
                                     Layout.alignment: Qt.AlignTop
                                     Layout.minimumWidth: window.compactInbox ? 48 : -1
                                     Layout.preferredWidth: window.compactInbox ? 48 : -1
@@ -1901,8 +1908,8 @@ ApplicationWindow {
                                     // Loaded only where shown: collapsed bundle members stay cheap (scrollresilience).
                                     // R67: the sender avatar leads the row on phones and desktop alike;
                                     // bundled members stay gated so the shared identity is shown once on
-                                    // the bundle head (R36). Desktop shares the handle with R38's named
-                                    // move icon at the right (drag action discoverability preserved).
+                                    // the bundle head (R36). Only eligible nonmail rows show
+                                    // R38's named move icon at the right.
                                     Loader {
                                         anchors.verticalCenter: parent.verticalCenter
                                         x: window.compactInbox ? (parent.width - width) / 2 : 0
@@ -1916,25 +1923,25 @@ ApplicationWindow {
                                         }
                                     }
                                     readonly property bool pinned: card.pinned_rank != null || card.section === "pinned"
-                                    readonly property bool reorderable: pinned || !card.timed
-                                    // Timed rows stay visible but cannot be dragged;
-                                    // their position is fixed by R30, not manual order.
+                                    readonly property bool mail: card.source === "mail"
+                                    readonly property bool reorderable: !mail && (pinned || !card.timed)
+                                    // Mail is arrival-ordered; nonmail timed rows retain R30 anchoring.
                                     opacity: 1.0
 
                                     // The list-level surface keeps the pointer throughout
                                     // the drag, beyond this handle's hit target.
-                                    // Desktop shares the handle between R67's avatar (left) and R38's
-                                    // named move icon (right); phones keep the avatar-only handle (R63).
+                                    // Eligible nonmail rows share the avatar and desktop move icon;
+                                    // mail retains only its sender identity, never a move affordance.
                                     leftPadding: window.compactInbox ? Kirigami.Units.smallSpacing : 30
                                     rightPadding: window.compactInbox ? Kirigami.Units.smallSpacing : 2
                                     display: AbstractButton.IconOnly
-                                    icon.name: window.compactInbox ? "" : "transform-move"
+                                    icon.name: window.compactInbox || mail ? "" : "transform-move"
                                     icon.width: Kirigami.Units.iconSizes.smallMedium
                                     icon.height: Kirigami.Units.iconSizes.smallMedium
                                     icon.color: window.ink
 
-                                    Accessible.name: qsTr("Drag to reorder")
-                                    Accessible.description: reorderable ? qsTr("Hold and drag to a new position") : qsTr("Position is fixed by pin or time")
+                                    Accessible.name: mail ? qsTr("Sender") : qsTr("Drag to reorder")
+                                    Accessible.description: mail ? qsTr("Mail follows arrival order") : reorderable ? qsTr("Hold and drag to a new position") : qsTr("Position is fixed by pin or time")
                                     Accessible.role: Accessible.Button
                                     // A popup tooltip would cancel the pressed drag surface;
                                     // the named icon and cursor carry the affordance instead.
@@ -1955,8 +1962,22 @@ ApplicationWindow {
                                     Accessible.name: qsTr("Open %1").arg(title)
                                     Keys.onReturnPressed: openCard()
                                     Keys.onSpacePressed: openCard()
-                                    // R63: long press opens the card's action sheet on touch.
-                                    TapHandler { onTapped: cardText.openCard(); onLongPressed: cardActions.clicked() }
+                                    // R63: stationary mail holds open actions on release;
+                                    // held travel must remain a scroll, not open a sheet first.
+                                    TapHandler {
+                                        property bool heldMail: false
+                                        onPressedChanged: {
+                                            if (pressed) heldMail = false
+                                            else if (heldMail && Math.abs(point.position.x - point.pressPosition.x) < 8
+                                                     && Math.abs(point.position.y - point.pressPosition.y) < 8)
+                                                cardActions.clicked()
+                                        }
+                                        onTapped: if (!heldMail) cardText.openCard()
+                                        onLongPressed: {
+                                            if (card.source === "mail") heldMail = true
+                                            else cardActions.clicked()
+                                        }
+                                    }
                                     HoverHandler { cursorShape: cardText.activeFocusOnTab ? Qt.PointingHandCursor : Qt.ArrowCursor }
                                     Keys.onPressed: function(event) {
                                         if (event.key === Qt.Key_Delete) {
@@ -2267,7 +2288,7 @@ ApplicationWindow {
                         if (mouse.x >= p.x && mouse.x <= p.x + handle.width
                                 && mouse.y >= p.y && mouse.y <= p.y + handle.height) {
                             if (!handle.reorderable) {
-                                window.dragFeedback = qsTr("This card is fixed to its scheduled time")
+                                if (!handle.mail) window.dragFeedback = qsTr("This card is fixed to its scheduled time")
                                 mouse.accepted = false
                                 return
                             }
@@ -2414,6 +2435,8 @@ ApplicationWindow {
     }
     Dialog {
         id: noteDialog
+        objectName: "noteDialog"
+        property string saveError: ""
         Material.theme: Material.Light
         Material.background: window.surface
         Material.foreground: window.ink
@@ -2447,9 +2470,10 @@ ApplicationWindow {
                 }
                 onClicked: {
                     if (store.saveNote(noteDialog.cardId, noteField.text)) {
-                        window.localStorageError = ""
+                        noteDialog.saveError = ""
                         noteDialog.accept()
                     }
+                    else noteDialog.saveError = qsTr("Couldn't save on this device · keep your draft open")
                 }
             }
             Button {
@@ -2486,6 +2510,7 @@ ApplicationWindow {
                 boundsBehavior: Flickable.StopAtBounds
                 TextEdit {
                     id: noteField
+                    objectName: "noteField"
                     width: noteScroll.width
                     height: Math.max(noteScroll.height, contentHeight)
                     wrapMode: TextEdit.Wrap
@@ -2501,6 +2526,7 @@ ApplicationWindow {
     Dialog {
         id: createDialog
         objectName: "createDialog"
+        property string saveError: ""
         readonly property bool journal: createKind.currentIndex === 1
         Material.theme: Material.Light
         Material.background: window.surface
@@ -2535,12 +2561,13 @@ ApplicationWindow {
                     if (store.createCard(createDialog.journal ? createJournal.text : createTitle.text,
                                          createDialog.journal ? "" : createSummary.text,
                                          createDialog.journal ? "journal" : "manual")) {
-                        window.localStorageError = ""
+                        createDialog.saveError = ""
                         createTitle.clear()
                         createSummary.clear()
                         createJournal.clear()
                         createDialog.accept()
                     }
+                    else createDialog.saveError = qsTr("Couldn't save on this device · keep your draft open")
                 }
             }
             Button {

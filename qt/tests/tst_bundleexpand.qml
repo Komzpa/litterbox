@@ -665,6 +665,166 @@ TestCase {
         inbox.close()
     }
 
+    // R38/R63: exercise the rendered input path and real offline outbox, not a
+    // spy on commitCardDrag (an ordinary function, not a Qt signal).
+    property int dragFixtureSequence: 0
+    function dragFixtureId(index) {
+        return "49111111-1111-4111-8111-" + String(index).padStart(12, "0")
+    }
+    function dragInput(list, start, end, touch, held) {
+        if (touch) {
+            const finger = touchEvent(list)
+            finger.press(0, list, start.x, start.y).commit()
+            if (held) wait(1000)
+            for (let step = 1; step <= 8; ++step) {
+                finger.move(0, list, start.x + (end.x - start.x) * step / 8,
+                            start.y + (end.y - start.y) * step / 8).commit()
+                wait(20)
+            }
+            finger.release(0, list, end.x, end.y).commit()
+        } else {
+            mousePress(list, start.x, start.y)
+            if (held) wait(1000)
+            for (let step = 1; step <= 8; ++step) {
+                mouseMove(list, start.x + (end.x - start.x) * step / 8,
+                          start.y + (end.y - start.y) * step / 8, 20)
+            }
+            mouseRelease(list, end.x, end.y)
+        }
+    }
+    function test_mailDragScrollsWithoutMutation_data() {
+        const rows = []
+        for (const width of [412, 520, 1356])
+            for (const surface of ["avatar", "pinned", "summary", "member"])
+                for (const touch of [false, true])
+                    for (const held of [false, true])
+                        rows.push({tag: width + "-" + surface + "-" + touch + "-" + held,
+                                   width: width, surface: surface, touch: touch, held: held})
+        return rows
+    }
+    function test_mailDragScrollsWithoutMutation(data) {
+        store.online = false
+        const cards = []
+        const bundle = "drag-scroll-bundle"
+        const fixtureBase = ++dragFixtureSequence * 100
+        if (data.surface === "pinned") cards.push(card(dragFixtureId(fixtureBase), "", "pinned", {pinned_rank: 1}))
+        for (let i = 0; i < 24; ++i) {
+            const grouped = (data.surface === "summary" || data.surface === "member") && (i === 4 || i === 5)
+            cards.push(card(dragFixtureId(fixtureBase + i + 1), grouped ? bundle : "", "now", {has_body: true}))
+        }
+        verify(store.applyRemoteCards({now: cards, later: [], missed: []}))
+        const before = store.cardIds()
+        const pending = store.pendingOps
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 915
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        list.cacheBuffer = 30000
+        if (data.surface === "member") inbox.toggleBundle(bundle)
+        const index = data.surface === "pinned" ? 0 : data.surface === "member" ? 5 : 4
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(index) !== null })
+        list.positionViewAtIndex(index, ListView.Beginning)
+        verify(waitForPolish(inbox))
+        wait(100)
+        const row = list.itemAtIndex(index)
+        const target = data.surface === "summary" ? findChild(row, "bundleToggle-" + row.cardId)
+                     : data.surface === "member" ? findChild(row, "openCard-" + row.cardId)
+                     : findChild(row, "reorderHandle-" + row.cardId)
+        verify(target && target.visible)
+        const sheet = findChild(row, "inboxActions").actionSheetItem()
+        verify(sheet && !sheet.visible)
+        const start = target.mapToItem(list, Math.min(20, target.width / 2), target.height / 2)
+        verify(start.y > 20 && start.y < list.height, "Gesture starts on the visible mail surface")
+        const end = Qt.point(start.x, Math.max(4, start.y - 160))
+        const contentY = list.contentY
+        const expanded = !!inbox.expandedBundles[bundle]
+        dragInput(list, start, end, data.touch, data.held)
+        tryVerify(function() { return list.contentY > contentY + 8 }, 2000, "Mail input travel must scroll")
+        list.cancelFlick()
+        compare(store.cardIds(), before, "Mail drag must preserve every ID and source order")
+        compare(store.pendingOps, pending, "Mail input must not enqueue reorder or archive")
+        compare(inbox.selectedCardId, "")
+        compare(inbox.readerOpen, false)
+        compare(!!inbox.expandedBundles[bundle], expanded, "Drag must not activate the bundle toggle")
+        verify(!sheet.visible, "Held travel and flicks must not open secondary actions")
+        compare(inbox.dragCardId, "")
+        compare(inbox.commitCardDrag(row.cardId, index + 1), false, "Direct dispatch also refuses mail")
+        compare(store.cardIds(), before)
+        compare(store.pendingOps, pending)
+        capture(inbox, "mail-drag-scroll-" + data.tag)
+        inbox.close()
+    }
+    function test_nonmailDragStillReordersOnce_data() {
+        const rows = []
+        for (const width of [412, 520, 1356])
+            for (const touch of [false, true])
+                for (const kind of ["manual", "journal"])
+                    rows.push({tag: width + "-" + touch + "-" + kind, width: width, touch: touch, kind: kind})
+        return rows
+    }
+    function test_nonmailDragStillReordersOnce(data) {
+        store.online = false
+        const fixtureBase = ++dragFixtureSequence * 100
+        const ids = [1, 2, 3].map(index => dragFixtureId(fixtureBase + index))
+        verify(store.applyRemoteCards({now: ids.map(id => card(id, "", "now", {source: data.kind})), later: [], missed: []}))
+        const pending = store.pendingOps
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: data.width, height: 915
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(2) !== null })
+        verify(waitForPolish(inbox))
+        const from = findChild(list.itemAtIndex(0), "reorderHandle-" + ids[0])
+        const to = findChild(list.itemAtIndex(2), "reorderHandle-" + ids[2])
+        verify(from && to && from.reorderable)
+        const start = from.mapToItem(list, from.width / 2, from.height / 2)
+        const end = to.mapToItem(list, to.width / 2, to.height / 2)
+        dragInput(list, start, start, data.touch, true)
+        compare(store.cardIds(), ids, "A held press without motion must not reorder")
+        compare(store.pendingOps, pending)
+        dragInput(list, start, end, data.touch, true)
+        tryCompare(store, "pendingOps", pending + 1)
+        compare(store.cardIds(), [ids[1], ids[2], ids[0]], "Eligible nonmail input must reorder, not merely refuse everything")
+        wait(100)
+        compare(store.pendingOps, pending + 1, "Exactly one reorder is queued per completed drag")
+        compare(inbox.readerOpen, false)
+        capture(inbox, "nonmail-drag-" + data.tag)
+        inbox.close()
+    }
+    function test_stationaryMailHoldKeepsSecondaryActions_data() {
+        return [{tag: "touch", touch: true}, {tag: "mouse", touch: false}]
+    }
+    function test_stationaryMailHoldKeepsSecondaryActions(data) {
+        store.online = false
+        const id = dragFixtureId(++dragFixtureSequence * 100)
+        verify(store.applyRemoteCards({now: [card(id, "", "now", {has_body: true})], later: [], missed: []}))
+        const pending = store.pendingOps
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915
+        })
+        verify(inbox)
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        verify(waitForPolish(inbox))
+        const row = list.itemAtIndex(0)
+        const target = findChild(row, "openCard-" + id)
+        const point = target.mapToItem(list, 20, target.height / 2)
+        const sheet = findChild(row, "inboxActions").actionSheetItem()
+        verify(sheet && !sheet.visible)
+        dragInput(list, point, point, data.touch, true)
+        tryCompare(sheet, "visible", true)
+        compare(store.cardIds(), [id])
+        compare(store.pendingOps, pending)
+        compare(inbox.readerOpen, false)
+        compare(inbox.selectedCardId, "")
+        capture(inbox, "stationary-mail-secondary-" + data.tag)
+        sheet.close()
+        inbox.close()
+    }
+
+
     function test_gmailReconnectMessage() {
         const ids = ["expired-first", "expired-second"]
         const bundle = "expired-bundle"

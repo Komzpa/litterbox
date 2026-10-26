@@ -1,5 +1,6 @@
 #include "androidupdater.h"
 #include "api.h"
+#include "crashuploader.h"
 #include "a2astream.h"
 #include "CardStore.h"
 #include "cardstoretransport.h"
@@ -371,6 +372,23 @@ int main(int argc, char *argv[])
     QObject::connect(&api, &Api::tokenChanged, &app, [&] {
         if (!api.token().isEmpty()) { store.setOnline(true); store.refresh(); }
     });
+    CrashUploader crashUploader(api);
+    if (!captureMode && !profileMode) {
+        crashUploader.setDirectory(CrashUploader::androidSpoolDirectory());
+        crashUploader.setUploaderBuild(updater.installedVersionCode() > 0
+            ? QString::number(updater.installedVersionCode()) : QStringLiteral("unknown"));
+        QObject::connect(&store, &CardStore::onlineChanged, &crashUploader, [&] {
+            crashUploader.setOnline(store.online());
+        });
+        QObject::connect(&app, &QGuiApplication::applicationStateChanged, &crashUploader, [&](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive) crashUploader.start();
+        });
+        // Recovery runs off the startup path; periodic retry also picks up its late commits.
+        auto *crashRetry = new QTimer(&crashUploader);
+        QObject::connect(crashRetry, &QTimer::timeout, &crashUploader, &CrashUploader::start);
+        crashRetry->start(60000);
+        QTimer::singleShot(2000, &crashUploader, [&] { crashUploader.setOnline(store.online()); });
+    }
 #ifdef Q_OS_ANDROID
     // R64: check and predownload by itself on start, on resume, when the
     // connection comes back and hourly while running; AndroidUpdater rate
@@ -438,6 +456,7 @@ int main(int argc, char *argv[])
         });
     QObject::connect(&api, &Api::requestFailed, &app,
         [&](int id, int status, const QString &error, const QJsonValue &data) {
+            if (crashUploader.ownsRequest(id)) return; // Diagnostics never change card sync state.
             cardsRequests.remove(id);
             if (status == 0) store.reportOffline(error);
             if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id), status);

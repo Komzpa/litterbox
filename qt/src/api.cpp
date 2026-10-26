@@ -202,6 +202,7 @@ int Api::post(const QString &path, const QJsonObject &body, const QJSValue &call
 {
     QNetworkRequest request = buildRequest(path);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    if (path == QStringLiteral("/v1/diagnostics/crashes")) request.setTransferTimeout(15000);
     const int id = m_nextId++;
     if (callback.isCallable()) m_callbacks.insert(id, callback);
     trackJsonReply(id, m_nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact)));
