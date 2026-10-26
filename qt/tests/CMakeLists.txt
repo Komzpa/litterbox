@@ -6,7 +6,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Sql Qml Quick QuickControls2 Network T
 find_package(KF6Kirigami CONFIG REQUIRED)
 enable_testing()
 set(LB_TEST_PLATFORM "offscreen" CACHE STRING "Qt platform used by CTest")
-add_executable(tst_cardstore tst_cardstore.cpp ../src/CardStore.cpp ../src/CardStore.h ../src/api.cpp ../src/api.h ../src/cardstoretransport.h)
+add_executable(tst_cardstore tst_cardstore.cpp ../src/CardStore.cpp ../src/CardStore.h ../src/api.cpp ../src/api.h ../src/cardstoretransport.h ../src/crashuploader.cpp ../src/crashuploader.h)
 target_include_directories(tst_cardstore PRIVATE ../src)
 target_link_libraries(tst_cardstore PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::Test KF6::Kirigami)
 target_compile_definitions(tst_cardstore PRIVATE LB_SOURCE_ACTIONS_QML="${CMAKE_CURRENT_SOURCE_DIR}/../src/qml/CardActions.qml")

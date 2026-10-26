@@ -2,6 +2,8 @@
 #include "CardStore.h"
 #include "cardstoretransport.h"
 #include "api.h"
+#include "crashuploader.h"
+#include <QPointer>
 #include <QtTest>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -128,6 +130,144 @@ public:
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void diagnosticSpoolPreservesMailOutboxAndUndo_data() {
+        QTest::addColumn<int>("diagnosticStatus");
+        for (int status : {200, 422, 503})
+            QTest::newRow(qPrintable(QString::number(status))) << status;
+    }
+    void diagnosticSpoolPreservesMailOutboxAndUndo() {
+        QFETCH(int, diagnosticStatus);
+        QTemporaryDir directory;
+        QTemporaryDir spool;
+        QVERIFY(directory.isValid());
+        QVERIFY(spool.isValid());
+        const QByteArray report = "schema=1\nkind=exit\nstack=unavailable\n";
+        for (int i = 0; i < 64; ++i) {
+            QFile file(spool.filePath(QStringLiteral("exit-%1.txt").arg(i)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QCOMPARE(file.write(report), report.size());
+        }
+        const QString bodyCard = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QVariantMap sections{{"now", QVariantList{
+            QVariantMap{{"id", cardId}, {"source", "mail"}, {"state", "open"}},
+            QVariantMap{{"id", bodyCard}, {"source", "mail"}, {"state", "open"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap originalBody{{"html", "<p>Exact original mail</p>"}, {"messages", QVariantList{}}};
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QList<QVariantMap> operations;
+        QPointer<QTcpSocket> heldOperation;
+        int diagnosticRequests = 0;
+        const auto respond = [](QTcpSocket *socket, int status, const QVariantMap &body) {
+            const QByteArray bytes = QJsonDocument(QJsonObject::fromVariantMap(body)).toJson(QJsonDocument::Compact);
+            socket->write("HTTP/1.1 " + QByteArray::number(status) + " Result\r\nContent-Type: application/json\r\nContent-Length: "
+                + QByteArray::number(bytes.size()) + "\r\nConnection: close\r\n\r\n" + bytes);
+            socket->disconnectFromHost();
+        };
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto bytes = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, bytes] {
+                    bytes->append(socket->readAll());
+                    const int boundary = bytes->indexOf("\r\n\r\n");
+                    if (boundary < 0) return;
+                    int length = 0;
+                    for (const auto &header : bytes->left(boundary).split('\n'))
+                        if (header.toLower().startsWith("content-length:")) length = header.mid(15).trimmed().toInt();
+                    if (bytes->size() < boundary + 4 + length) return;
+                    QVERIFY(bytes->contains("Authorization: Bearer test-device"));
+                    const QByteArray route = bytes->left(bytes->indexOf("\r\n")).split(' ').value(1);
+                    const QVariantMap payload = QJsonDocument::fromJson(bytes->mid(boundary + 4)).object().toVariantMap();
+                    if (route == "/v1/diagnostics/crashes") {
+                        ++diagnosticRequests;
+                        QCOMPARE(payload.value("body").toString().toUtf8(), report);
+                        respond(socket, diagnosticStatus, {{"ack", payload.value("report_id")}});
+                    } else if (route == "/v1/ops") {
+                        operations.append(payload);
+                        if (operations.size() == 1) heldOperation = socket;
+                        else respond(socket, 200, {{"ok", true}});
+                    } else if (route.endsWith("/body")) respond(socket, 200, originalBody);
+                    else if (route == "/v1/cards") respond(socket, 200, sections);
+                    else QFAIL("Unexpected consumer route");
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        api.setToken("test-device");
+        CrashUploader uploader(api);
+        uploader.setDirectory(spool.path());
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("diagnostics-consumer.sqlite")));
+        QVERIFY(store.applyRemoteCards(sections));
+        CardStoreTransport transport(store, api); // Production operation binding.
+        QHash<int, QString> downloads;
+        QHash<int, quint64> snapshots;
+        connect(&store, &CardStore::requestMailBodyGet, &api, [&](const QString &id, const QString &route) {
+            downloads.insert(api.get(route), id);
+        });
+        connect(&store, &CardStore::requestCards, &api, [&](const QString &route, quint64 id) {
+            snapshots.insert(api.get(route), id);
+        });
+        connect(&api, &Api::requestFinished, &store, [&](int id, const QJsonValue &body, int) {
+            if (downloads.contains(id)) store.applyRemoteMailBody(downloads.take(id), body.toObject().toVariantMap());
+            else if (snapshots.contains(id)) store.applyRemoteCards(body.toObject().toVariantMap(), snapshots.take(id));
+        });
+        // Same request ownership/failure routing as main.cpp, not helper calls.
+        connect(&api, &Api::requestFailed, &store, [&](int id, int status, const QString &error, const QJsonValue &) {
+            if (uploader.ownsRequest(id)) return;
+            snapshots.remove(id);
+            if (status == 0) store.reportOffline(error);
+            if (downloads.contains(id)) store.reportMailBodyFailed(downloads.take(id), status);
+        });
+        QSignalSpy completed(&uploader, &CrashUploader::finished);
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        QSignalSpy operationFailed(&store, &CardStore::operationFailed);
+        QSignalSpy bodyFailed(&store, &CardStore::mailBodyFailed);
+        const QString archive = store.enqueueOp(cardId, "archive");
+        QVERIFY(!archive.isEmpty());
+        uploader.setOnline(true);
+        store.setOnline(true);
+        QTRY_COMPARE_WITH_TIMEOUT(completed.size(), 1, 15000);
+        QTRY_COMPARE(operations.size(), 1);
+        QTRY_COMPARE(store.cachedMailBody(bodyCard).value("html"), originalBody.value("html"));
+        QCOMPARE(diagnosticRequests, diagnosticStatus == 200 ? 64 : 1);
+        QCOMPARE(posted.size(), 1);
+        const QVariantMap exactOperation = posted.first().at(2).toMap();
+        QCOMPARE(exactOperation.value("op_id").toString(), archive);
+        QCOMPARE(operations.first(), exactOperation);
+        QCOMPARE(store.pendingOps(), 1);
+        QVERIFY(store.online());
+        QVERIFY(!store.saveFailed());
+        QCOMPARE(operationFailed.size(), 0);
+        QCOMPARE(bodyFailed.size(), 0);
+        QVERIFY(!store.cardIds().contains(cardId));
+        QVERIFY(store.undoBundleArchive(archive));
+        QCOMPARE(store.cardIds(), QStringList({cardId, bodyCard}));
+        QVERIFY(heldOperation);
+        respond(heldOperation, 200, {{"ok", true}});
+        QTRY_COMPARE(operations.size(), 2);
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(operations.first(), exactOperation);
+        QCOMPARE(operations.last().value("type").toString(), QString("gmail.label_add"));
+        QCOMPARE(operations.last().value("card_id").toString(), cardId);
+        QCOMPARE(operations.last().value("args").toMap().value("label").toString(), QString("INBOX"));
+        QCOMPARE(store.cardIds(), QStringList({cardId, bodyCard}));
+        QCOMPARE(operationFailed.size(), 0);
+        QCOMPARE(bodyFailed.size(), 0);
+        for (int i = 0; i < 64; ++i) {
+            QFile file(spool.filePath(QStringLiteral("exit-%1.txt").arg(i)));
+            const bool sent = QFile::exists(spool.filePath(QStringLiteral("exit-%1.sent").arg(i)));
+            if (diagnosticStatus == 200) { QVERIFY(!file.exists()); QVERIFY(sent); }
+            else {
+                QVERIFY(file.open(QIODevice::ReadOnly));
+                QCOMPARE(file.readAll(), report);
+                QVERIFY(!sent);
+            }
+        }
+    }
     void spamUndoRepeatAndRejection() {
         QTemporaryDir directory;
         CardStore store;

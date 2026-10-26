@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls as QQC2
 import QtTest
 import QtWebEngine
@@ -200,14 +201,18 @@ TestCase {
     function verifyPaintedBarIcon(button, name) {
         const icon = findChild(button, "mailBarIcon")
         verify(icon && icon.visible, name + " has no visible icon item")
-        verify(waitForRendering(icon), name + " icon did not render")
-        const image = grabImage(icon)
+        // A static icon need not schedule another frame after its neighbours
+        // were captured. Assert its actual pixels, not a future frame signal.
         let inkPixels = 0
-        for (let y = 0; y < image.height; ++y)
-            for (let x = 0; x < image.width; ++x)
-                if (image.alpha(x, y) > 128 && image.red(x, y) < 128 &&
-                    image.green(x, y) < 128 && image.blue(x, y) < 128) ++inkPixels
-        verify(inkPixels >= 12, name + " declares " + button.icon.name + " but paints no ink")
+        tryVerify(function() {
+            const image = grabImage(icon)
+            inkPixels = 0
+            for (let y = 0; y < image.height; ++y)
+                for (let x = 0; x < image.width; ++x)
+                    if (image.alpha(x, y) > 128 && image.red(x, y) < 128 &&
+                        image.green(x, y) < 128 && image.blue(x, y) < 128) ++inkPixels
+            return inkPixels >= 12
+        }, 5000, name + " declares " + button.icon.name + " but paints no ink")
     }
 
     function test_compactHeaderPaintAndDisjointTargets_data() {
@@ -223,6 +228,8 @@ TestCase {
         const subject = "Your meeting recap - MapLibre Immersive 3D Maps Workgroup Kickoff"
         testCase.width = row.viewWidth
         testCase.height = 915
+        testCase.Window.window.width = row.viewWidth
+        testCase.Window.window.height = 915
         storeStub.cached = {"header": {html: "<p>Original <b>formatted</b> message</p>",
             source_url: "https://mail.synthetic.test/header"}}
         let closed = 0
@@ -251,6 +258,10 @@ TestCase {
         const title = findChild(page, "mailBarTitle")
         verify(title.width > 0 && title.truncated, "long toolbar title must elide, not steal action targets")
         verify(page.headerHtml.indexOf(subject) >= 0, "full subject must remain in the scrolling document")
+        const body = findChild(page, "body")
+        tryVerify(function() { return body && !body.loading && body.loadProgress === 100 }, 15000)
+        compare(testCase.Window.window.width, row.viewWidth)
+        compare(testCase.Window.window.height, 915)
         const shot = grabImage(page)
         shot.save(mailFixtures.screenshotPath("reader-header-" + row.tag + ".png"))
         mouseClick(findChild(page, "backToInbox"))
@@ -492,15 +503,20 @@ TestCase {
             return {x: box.x + box.width / 2, y: box.y + box.height / 2}; })()`,
             WebEngineScript.ApplicationWorld, value => summaryBox = value)
         tryVerify(function() { return summaryBox !== null })
+        body.forceActiveFocus()
+        grabImage(page).save(mailFixtures.screenshotPath("reader-thread-collapsed.png"))
         mouseClick(body, summaryBox.x, summaryBox.y)
         let opened = null
-        body.runJavaScript(`(() => { const details = document.querySelector('details');
-            const original = details.querySelector('.lb-original');
-            return {open: details.open, text: original.innerText, height: original.getBoundingClientRect().height,
-                nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
-            WebEngineScript.ApplicationWorld, value => opened = value)
-        tryVerify(function() { return opened !== null })
-        verify(opened.open && opened.height > 0)
+        // WebEngine consumes Qt pointer events asynchronously. Re-query the
+        // native disclosure until the real click has reached the renderer.
+        tryVerify(function() {
+            body.runJavaScript(`(() => { const details = document.querySelector('details');
+                const original = details.querySelector('.lb-original');
+                return {open: details.open, text: original.innerText, height: original.getBoundingClientRect().height,
+                    nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
+                WebEngineScript.ApplicationWorld, value => opened = value)
+            return opened !== null && opened.open && opened.height > 0
+        }, 5000, "Physical summary click must expand the original")
         compare(opened.text.trim(), "First field note", "Clicking the native summary renders the original")
         compare(opened.nestedScrolls, 0)
         summaryBox = null
@@ -511,17 +527,19 @@ TestCase {
         tryVerify(function() { return summaryBox !== null })
         mouseClick(body, summaryBox.x, summaryBox.y)
         let scroll = null
-        body.runJavaScript(`(() => { const details = document.querySelectorAll('details')[1];
-            const documentScroll = document.scrollingElement;
-            documentScroll.scrollTop = documentScroll.scrollHeight;
-            return {open: details.open, top: documentScroll.scrollTop,
-                height: documentScroll.scrollHeight, viewport: documentScroll.clientHeight,
-                nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
-            WebEngineScript.ApplicationWorld, value => scroll = value)
-        tryVerify(function() { return scroll !== null })
-        verify(scroll.open && scroll.height > scroll.viewport && scroll.top > 0,
+        tryVerify(function() {
+            body.runJavaScript(`(() => { const details = document.querySelectorAll('details')[1];
+                const documentScroll = document.scrollingElement;
+                documentScroll.scrollTop = documentScroll.scrollHeight;
+                return {open: details.open, top: documentScroll.scrollTop,
+                    height: documentScroll.scrollHeight, viewport: documentScroll.clientHeight,
+                    nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
+                WebEngineScript.ApplicationWorld, value => scroll = value)
+            return scroll !== null && scroll.open && scroll.height > scroll.viewport && scroll.top > 0
+        }, 5000,
                "Expanded long history scrolls in the original document")
         compare(scroll.nestedScrolls, 0)
+        grabImage(page).save(mailFixtures.screenshotPath("reader-thread-expanded.png"))
     }
 
     // Newsletter colors/layout criterion: readable colors while the author's

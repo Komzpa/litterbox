@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/auth"
 	"github.com/Komzpa/litterbox/server/internal/testdb"
@@ -160,4 +163,160 @@ func TestPostgresAuthenticatedReceiptIsolationAndRestart(t *testing.T) {
 	if err := admin.QueryRow(ctx, `SELECT count(*) FROM crash_reports`).Scan(&count); err != nil || count != 3 {
 		t.Fatalf("negative controls wrote data: %d %v", count, err)
 	}
+	for _, lockFirst := range []bool{false, true} {
+		name := "revoke-after-auth-before-store"
+		if lockFirst {
+			name = "persistence-lock-before-revoke"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			id, token := uuid.NewString(), uuid.NewString()
+			hash := sha256.Sum256([]byte(token))
+			if _, err := admin.Exec(ctx, `INSERT INTO devices(tenant_id,id,token_hash) VALUES($1::uuid,$2::uuid,$3)`, tenant, id, hash[:]); err != nil {
+				t.Fatal(err)
+			}
+			gate := &receiptGateDB{db: app, afterLock: lockFirst, entered: make(chan int, 1), release: make(chan struct{})}
+			mux := http.NewServeMux()
+			Register(mux, PostgresStore{DB: gate})
+			a := auth.NewHandler(auth.NewPostgresStore(app), "")
+			a.Register(mux)
+			consumer := a.Middleware(mux)
+			call := func(method, path, bearer, body string) <-chan *httptest.ResponseRecorder {
+				done := make(chan *httptest.ResponseRecorder, 1)
+				go func() {
+					r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(ctx)
+					r.Header.Set("Authorization", "Bearer "+bearer)
+					w := httptest.NewRecorder()
+					consumer.ServeHTTP(w, r)
+					done <- w
+				}()
+				return done
+			}
+			await := func(done <-chan *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+				t.Helper()
+				select {
+				case w := <-done:
+					return w
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+					return nil
+				}
+			}
+			upload := call("POST", Path, token, wire(sample()))
+			var savePID int
+			select {
+			case savePID = <-gate.entered:
+			case <-ctx.Done():
+				t.Fatal("upload never reached persistence gate: ", ctx.Err())
+			}
+			// Revoke via the registered real auth route using an active sibling.
+			revoke := call("DELETE", "/v1/devices/"+id, "sibling", "")
+			if lockFirst {
+				// Observe a database lock dependency, not a scheduling delay.
+				ticker := time.NewTicker(time.Millisecond)
+				defer ticker.Stop()
+				for {
+					var blocked bool
+					if err := admin.QueryRow(ctx, `SELECT EXISTS (SELECT FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid)))`, savePID).Scan(&blocked); err != nil {
+						t.Fatal(err)
+					}
+					if blocked {
+						break
+					}
+					select {
+					case w := <-revoke:
+						t.Fatalf("revoke completed before locked save committed: %d", w.Code)
+					case <-ticker.C:
+					case <-ctx.Done():
+						t.Fatal("revoke did not block on persistence row lock: ", ctx.Err())
+					}
+				}
+			} else if w := await(revoke); w.Code != 204 {
+				t.Fatalf("revoke before store: %d %s", w.Code, w.Body.String())
+			}
+			close(gate.release)
+			w := await(upload)
+			want, wantRows := 503, 0
+			if lockFirst {
+				want, wantRows = 200, 1
+				if rw := await(revoke); rw.Code != 204 {
+					t.Fatalf("revoke after save: %d %s", rw.Code, rw.Body.String())
+				}
+			}
+			if w.Code != want || (want == 503 && strings.Contains(w.Body.String(), "ack")) || (want == 200 && w.Body.String() != "{\"ack\":\"java-123\"}\n") {
+				t.Fatalf("ordered upload: %d %s", w.Code, w.Body.String())
+			}
+			var rows int
+			if err := admin.QueryRow(ctx, `SELECT count(*) FROM crash_reports WHERE tenant_id=$1::uuid AND device_id=$2::uuid`, tenant, id).Scan(&rows); err != nil || rows != wantRows {
+				t.Fatalf("committed rows=%d want %d: %v", rows, wantRows, err)
+			}
+			if w := await(call("POST", Path, token, wire(sample()))); w.Code != 401 {
+				t.Fatalf("completed revoke did not reject new request: %d", w.Code)
+			}
+		})
+	}
+}
+
+// Test-only pgx decorators gate real transactions; production has no hooks.
+// Before Begin is after middleware auth; after Scan is after the device check
+// and row-lock acquisition, before INSERT/COMMIT. All SQL runs on real Postgres.
+type receiptGateDB struct {
+	db        *pgxpool.Pool
+	afterLock bool
+	entered   chan int
+	release   chan struct{}
+}
+
+func (g *receiptGateDB) wait(ctx context.Context, pid int) error {
+	g.entered <- pid
+	select {
+	case <-g.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (g *receiptGateDB) Begin(ctx context.Context) (pgx.Tx, error) {
+	if !g.afterLock {
+		if err := g.wait(ctx, 0); err != nil {
+			return nil, err
+		}
+	}
+	tx, err := g.db.Begin(ctx)
+	if err != nil || !g.afterLock {
+		return tx, err
+	}
+	return &receiptGateTx{Tx: tx, gate: g}, nil
+}
+
+type receiptGateTx struct {
+	pgx.Tx
+	gate *receiptGateDB
+}
+
+func (tx *receiptGateTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	row := tx.Tx.QueryRow(ctx, sql, args...)
+	if strings.Contains(sql, "FROM devices") {
+		return receiptGateRow{Row: row, ctx: ctx, tx: tx}
+	}
+	return row
+}
+
+type receiptGateRow struct {
+	pgx.Row
+	ctx context.Context
+	tx  *receiptGateTx
+}
+
+func (r receiptGateRow) Scan(dest ...any) error {
+	if err := r.Row.Scan(dest...); err != nil {
+		return err
+	}
+	var pid int
+	if err := r.tx.Tx.QueryRow(r.ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+		return err
+	}
+	return r.tx.gate.wait(r.ctx, pid)
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/Komzpa/litterbox/server/internal/gmail"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-	"github.com/Komzpa/litterbox/server/internal/cards"
-	"github.com/Komzpa/litterbox/server/internal/gmail"
 )
 
 type fakeStore struct {
@@ -46,7 +46,14 @@ func TestEveryProtectedRouteRejectsMissingAuthorization(t *testing.T) {
 	h := NewHandler(store, "")
 	mux := http.NewServeMux()
 	h.Register(mux)
-	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) { tenant, ok := cards.TenantFrom(r.Context()); if !ok || tenant != "tenant" { w.WriteHeader(500); return }; w.WriteHeader(200) })
+	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) {
+		tenant, ok := cards.TenantFrom(r.Context())
+		if !ok || tenant != "tenant" {
+			w.WriteHeader(500)
+			return
+		}
+		w.WriteHeader(200)
+	})
 	protected := h.Middleware(mux)
 	for _, tc := range []struct{ method, path string }{{"POST", "/v1/invites"}, {"DELETE", "/v1/devices/a"}, {"GET", "/v1/cards"}, {"GET", "/v1/unknown"}} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
@@ -311,4 +318,43 @@ func TestRateLimitIsPerDeviceNotPerSharedAddress(t *testing.T) {
 	if code := request("desktop-token"); code != http.StatusOK {
 		t.Fatalf("desktop status=%d want 200 while phone is over its limit", code)
 	}
+}
+
+func TestDiagnosticQuotaIsDeviceScopedAndExactRouteOnly(t *testing.T) {
+	store := twoDeviceStore{devices: map[string]Device{
+		tokenHash("phone"):   {TenantID: "tenant", DeviceID: "phone"},
+		tokenHash("desktop"): {TenantID: "tenant", DeviceID: "desktop"},
+	}}
+	h := NewHandler(store, "").Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := DeviceFromContext(r.Context()); !ok {
+			t.Error("diagnostics bypassed device authentication")
+		}
+		w.WriteHeader(204)
+	}))
+	call := func(method, path, token string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(method, path, nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("%s %s token %s: %d want %d", method, path, token, w.Code, want)
+		}
+	}
+	const path = "/v1/diagnostics/crashes"
+	call("POST", path, "invalid", 401)
+	for range 64 {
+		call("POST", path, "phone", 204)
+	}
+	call("POST", path, "phone", 429)
+	call("POST", path, "desktop", 204)
+	// Neither another method nor a suffix receives the diagnostic budget.
+	for range 30 {
+		call("GET", path, "phone", 204)
+		call("POST", path+"/other", "phone", 204)
+	}
+	call("GET", "/v1/cards", "phone", 429)
+	// Even an exhausted diagnostic budget must still authenticate every token.
+	delete(store.devices, tokenHash("phone"))
+	call("POST", path, "phone", 401)
 }

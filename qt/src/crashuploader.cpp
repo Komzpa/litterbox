@@ -105,5 +105,8 @@ void CrashUploader::complete(int id, int status, const QString &ack)
             for (int index = 0; index < sent.size() - 256; ++index) directory.remove(sent.at(index));
         } else ++m_failed;
     } else ++m_failed; // Includes 422, wrong ACK, auth rotation and all transport failures.
+    // Retain the batch after any rejected receipt; retry via the existing
+    // startup/reconnect/periodic entry points, not an immediate failure burst.
+    if (m_failed > 0) m_queue.clear();
     QTimer::singleShot(0, this, &CrashUploader::next);
 }

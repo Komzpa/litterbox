@@ -163,13 +163,11 @@ func (s PostgresStore) Save(ctx context.Context, d auth.Device, r Report, kind, 
 	if _, err = tx.Exec(ctx, `SELECT set_config('litterbox.tenant_id',$1,true), set_config('litterbox.device_id',$2,true)`, d.TenantID, d.DeviceID); err != nil {
 		return err
 	}
-	// Recheck ownership and revocation at persistence time as well as in auth.
+	// Hold the device row through commit, serializing with RevokeDevice's UPDATE.
+	// A completed revoke wins the check; a save holding the lock commits first.
 	var active bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM devices WHERE tenant_id=$1::uuid AND id=$2::uuid AND revoked_at IS NULL)`, d.TenantID, d.DeviceID).Scan(&active); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT true FROM devices WHERE tenant_id=$1::uuid AND id=$2::uuid AND revoked_at IS NULL FOR UPDATE`, d.TenantID, d.DeviceID).Scan(&active); err != nil {
 		return err
-	}
-	if !active {
-		return errors.New("inactive device")
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO crash_reports (tenant_id,device_id,report_id,kind,app_version,uploader_build,body)
 		VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7)

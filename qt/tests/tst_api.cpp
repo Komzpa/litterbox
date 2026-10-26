@@ -12,6 +12,49 @@
 class ApiTest : public QObject {
     Q_OBJECT
 private slots:
+    void completeJsonWithBrokenFraming_data() {
+        QTest::addColumn<bool>("truncated");
+        QTest::newRow("clean-200") << false;
+        QTest::newRow("truncated-200") << true;
+    }
+    void completeJsonWithBrokenFraming() {
+        QFETCH(bool, truncated);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            auto buffer = std::make_shared<QByteArray>();
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                buffer->append(socket->readAll());
+                if (!buffer->contains("\r\n\r\n")) return;
+                const QByteArray body = "{\"ack\":\"exit-123-45\"}";
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                    + QByteArray::number(body.size() + (truncated ? 100 : 0))
+                    + "\r\nConnection: close\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        });
+        Api api;
+        QJSEngine engine;
+        api.setEngine(&engine);
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        engine.evaluate("var called = false; var errorSeen = false; var responseSeen = false;");
+        QSignalSpy finished(&api, &Api::requestFinished);
+        QSignalSpy failed(&api, &Api::requestFailed);
+        const int id = api.get("/ack", engine.evaluate(
+            "(function(error, response) { called = true; errorSeen = !!error; responseSeen = !!response; })"));
+        QTRY_VERIFY(engine.globalObject().property("called").toBool());
+        QCOMPARE(engine.globalObject().property("errorSeen").toBool(), truncated);
+        QCOMPARE(engine.globalObject().property("responseSeen").toBool(), !truncated);
+        QCOMPARE(failed.size(), truncated ? 1 : 0);
+        QCOMPARE(finished.size(), truncated ? 0 : 1);
+        const auto result = truncated ? failed.first() : finished.first();
+        QCOMPARE(result.at(0).toInt(), id);
+        QCOMPARE(result.at(truncated ? 1 : 2).toInt(), 200);
+        if (truncated) QVERIFY(!result.at(2).toString().isEmpty());
+        else QCOMPARE(qvariant_cast<QJsonValue>(result.at(1)).toObject().value("ack").toString(), QString("exit-123-45"));
+    }
     void stalledBodyAbortsActualReplyWithoutTimingOutMetadata() {
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));

@@ -105,6 +105,8 @@ void Api::trackJsonReply(int id, QNetworkReply *reply)
                 error = status != 0 ? QStringLiteral("HTTP %1: %2").arg(status).arg(QString::fromUtf8(body.left(200))) : transportError;
                 const QJsonDocument doc = QJsonDocument::fromJson(body);
                 if (doc.isObject()) data = doc.object();
+            } else if (!transportError.isEmpty()) {
+                error = transportError;
             } else if (!body.trimmed().isEmpty()) {
                 QJsonParseError parseError{};
                 const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);

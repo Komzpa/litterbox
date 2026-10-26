@@ -92,8 +92,14 @@ The client may remove pending evidence only after that exact authenticated ACK.
 A retry after ACK loss receives the same ACK without modifying the original row
 or its first `received_at`. All other responses, including validation rejection,
 leave evidence pending: `400` malformed JSON, `401` missing/invalid/revoked device,
-`422` invalid sanitized format, `503` failed persistence. Authentication can also
-return its existing `429` rate limit; this is not an acknowledgement.
+`422` invalid sanitized format, `503` failed persistence (including a device
+revoked after middleware authentication). Authenticated `POST` requests to this
+exact diagnostics route have an independent per-device budget of 64 requests
+per rolling minute, including rejected reports. They never debit the ordinary
+60 requests/device/minute budget used by mail and owner operations. Both budgets
+return `429` on exhaustion, never an acknowledgement. Token/revocation checks
+still precede the diagnostic limiter; unauthenticated traffic retains the
+existing IP limit.
 
 ## Storage and operator readback
 
@@ -103,9 +109,15 @@ usable: the current migration 019 owns card embeddings. No migration or release
 is implied by adding these sources. Missing storage makes uploads fail rather
 than ACKing undurable evidence.
 
-The PostgreSQL store rechecks the enrolled device/tenant pair and revocation,
-sets transaction-local `litterbox.tenant_id` and `litterbox.device_id`, inserts,
-and commits. The primary key is `(tenant_id, device_id, report_id)`; another
+The PostgreSQL store rechecks the enrolled device/tenant pair and revocation
+under a device-row `FOR UPDATE` lock held through insertion and commit. This
+serializes persistence with the existing revocation `UPDATE`: if revocation
+commits before the store obtains the row lock, the store rejects without ACK;
+if persistence obtains the lock first, its commit precedes completed revocation.
+An ACK for that earlier commit may still arrive over the network after revocation
+completes; this is not a network-delivery cutoff guarantee. The store sets
+transaction-local `litterbox.tenant_id` and `litterbox.device_id`, inserts, and
+commits before ACK. The primary key is `(tenant_id, device_id, report_id)`; another
 device's colliding ID cannot overwrite or suppress this device's report. A
 composite device foreign key prevents cross-tenant attribution. Forced RLS
 restricts SELECT/INSERT to both transaction-local identities. The runtime role
@@ -131,14 +143,21 @@ readback bypasses RLS and must remain an operator privilege.
 
 No test/build/deployment result is claimed here. Owning server behavioral tests:
 
+- `server/internal/auth/auth_test.go`: exact-route quota selection, per-device
+  independence, unchanged ordinary 60/minute limit and continued token checks.
 - `server/internal/diagnostics/diagnostics_test.go`: real auth middleware plus
   registered route, exact ACK, failed-save no-ACK, method/path negative controls,
-  malformed JSON, sensitive-body rejection and honest historical metadata.
+  malformed JSON, sensitive-body rejection and honest historical metadata;
+  complete 64-request valid/422/503 batches interleaved with authenticated mail
+  and the registered invite owner operation, diagnostic request 65 rejected,
+  ordinary requests 1–60 accepted and 61 rejected. The mail handler here is a
+  test consumer of auth context, not proof of mail storage or Qt CardStore state.
 - `server/internal/diagnostics/postgres_test.go`: disposable database migrations,
   real token lookup and HTTP consumer, non-owner/no-BYPASSRLS persistence,
   immutable duplicate ACK across reconstructed consumers, exact operator row
   readback, same-ID device/tenant isolation, unscoped/scoped RLS, forged device
-  rejection, revocation and privacy negative controls.
+  rejection, revocation and privacy negative controls; deterministic revocation
+  after middleware/before store and locked persistence versus blocked revocation.
 
 Client-owned frozen-gate inventory (authored, not execution evidence):
 
@@ -153,10 +172,12 @@ Client-owned frozen-gate inventory (authored, not execution evidence):
   `qt/tests/tst_api.cpp`, `qt/tests/tst_serverurl.cpp` and
   `qt/tests/tst_androidupdater.cpp`.
 
-At the single frozen verification phase, run `go test ./internal/diagnostics`
-from `server`, then the same package with `CARD_TEST_POSTGRES=1` and a disposable
-PostgreSQL `DATABASE_URL` (the repository `testdb` harness isolates schemas and
-roles). These tests must never target a product database. Client lifecycle and
+At the single frozen verification phase, run `go test ./...` from `server`,
+then `CARD_TEST_POSTGRES=1 go test ./...` with a disposable PostgreSQL
+`DATABASE_URL` (the repository `testdb` harness isolates schemas and roles).
+For focused diagnosis use `go test ./internal/auth ./internal/diagnostics` and
+`CARD_TEST_POSTGRES=1 go test ./internal/auth ./internal/diagnostics` with the same
+disposable URL. These tests must never target a product database. Client lifecycle and
 Android runtime proof belong to their owning tests; passing server tests does
 not prove installed phone behavior, an existing incident's cause, or deployed
 route existence.

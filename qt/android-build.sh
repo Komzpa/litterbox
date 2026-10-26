@@ -18,44 +18,192 @@ ADB=${ADB:-adb}
 check_qml_apk_imports() {
     local build_dir=$1 apk=$2
     python3 - "$build_dir" "$apk" <<'PY'
-import glob
+from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
 
-build_dir, apk = sys.argv[1:]
-records = []
-for path in glob.glob(f"{build_dir}/.qt/qml_imports/*_conf.cmake"):
-    if re.search(r"/tst_[^/]*_conf\.cmake$", path):
-        continue  # Test-only imports are not packaged into the application APK.
-    text = open(path, encoding="utf-8").read()
-    records.extend((path, fields) for fields in re.findall(r'qml_import_scanner_import_\d+ "([^"]+)"', text))
-if not records:
-    raise SystemExit(f"QML import check failed: no *_conf.cmake import records under {build_dir}/.qt/qml_imports")
+build_dir, apk = map(Path, sys.argv[1:])
+build_dir = build_dir.resolve()
+target = "litterbox-qt"
 
-allowed_unresolved = {"QML", "QtQuick.Controls.Windows", "QtQuick.Controls.macOS", "QtQuick.Controls.iOS", "org.kde.breeze"}
-apk_paths = subprocess.check_output(["unzip", "-Z1", apk], text=True).splitlines()
-errors = []
-for path, record in records:
-    get = lambda key: re.search(rf"(?:^|;){key};([^;]*);", record)
-    value = lambda key: (match.group(1) if (match := get(key)) else "")
-    if value("TYPE") != "module":
-        continue
-    name = value("NAME") or "<unnamed>"
-    plugin = value("PLUGIN")
-    if not value("PATH") or not plugin:
-        if name not in allowed_unresolved:
-            errors.append(f"{name}: module record has no PATH or PLUGIN ({path})")
-        continue
-    plugin_stem = plugin.removeprefix("qml_")
-    expected = re.compile(rf"^lib/[^/]+/libqml_.*{re.escape(plugin_stem)}.*\.so$")
-    if not any(expected.match(member) for member in apk_paths):
-        errors.append(f"{name}: PLUGIN {plugin} has no matching lib/<abi>/libqml_*{plugin_stem}*.so in {apk}")
-if errors:
-    print("QML import check failed:", file=sys.stderr)
-    print("\n".join(f"  {error}" for error in errors), file=sys.stderr)
-    raise SystemExit(1)
-print(f"QML import check passed: {len(records)} import records checked in {apk}")
+def fail(message):
+    raise SystemExit(f"QML import check failed: {message}")
+
+def run(*args):
+    return subprocess.check_output(args, text=True)
+
+# Qt 6.7's configure scanner unconditionally adds TARGET SOURCE_DIR as
+# -rootPath (Qt6QmlMacros.cmake). That recursively includes tests, desktop
+# branches and foreign build trees. Re-scan the *same target's* generated
+# resource manifests instead; do not filter failed records by module name.
+rsp = build_dir / f".qt/qml_imports/{target}_conf.rsp"
+if not rsp.is_file():
+    fail(f"missing production scanner response file: {rsp}")
+args = rsp.read_text().splitlines()
+if "-qrcFiles" not in args:
+    fail("production target has no resource manifest inputs")
+qrcs = [Path(p) for p in args[args.index("-qrcFiles") + 1:]]
+imports = [args[i + 1] for i, arg in enumerate(args) if arg == "-importPath"]
+cache = (build_dir / "CMakeCache.txt").read_text()
+host = re.search(r"^QT_HOST_PATH:[^=]*=(.+)$", cache, re.M)
+if not host:
+    fail("QT_HOST_PATH missing from Android build cache")
+scanner = Path(host[1]) / "libexec/qmlimportscanner"
+
+# Use CMake's production link command, not source-tree guesses or test
+# targets. Fail closed for build generators without this evidence.
+link_file = build_dir / f"CMakeFiles/{target}.dir/link.txt"
+if not link_file.is_file():
+    fail(f"missing production link evidence: {link_file} (use Unix Makefiles)")
+link = shlex.split(link_file.read_text())
+library = build_dir / link[link.index("-o") + 1]
+objects = [build_dir / word for word in link if word.endswith(".o")]
+tool_dir = Path(link[0]).parent
+nm = tool_dir / "llvm-nm"
+readelf = tool_dir / "llvm-readelf"
+
+def build_id(path):
+    match = re.search(r"Build ID: (\w+)", run(str(readelf), "-n", str(path)))
+    if not match:
+        fail(f"no ELF build ID: {path}")
+    return match[1]
+
+with zipfile.ZipFile(apk) as archive, tempfile.TemporaryDirectory(prefix="lb-qml-apk-") as temp:
+    temp = Path(temp)
+    members = archive.namelist()
+    app_members = [p for p in members if p.startswith("lib/") and Path(p).name == library.name]
+    if len(app_members) != 1:
+        fail(f"expected one packaged {library.name}, found {app_members}")
+    packaged = temp / library.name
+    packaged.write_bytes(archive.read(app_members[0]))
+    if build_id(packaged) != build_id(library):
+        fail("APK and production link output have different ELF build IDs")
+    symbols = run(str(nm), "--demangle", "--defined-only", str(library))
+
+    resources = {}
+    for qrc in qrcs:
+        # A manifest alone is not a provider: its compiled resource must be
+        # part of this target and retained in the packaged ELF's build.
+        generated = qrc.with_name("qrc_" + qrc.stem + ".cpp")
+        resource_objects = [obj for obj in objects if obj.name == generated.name + ".o"]
+        if not resource_objects or f"qInitResources_{qrc.stem.replace('-', '_')}(" not in symbols:
+            fail(f"resource manifest is not linked into production: {qrc}")
+        for group in ET.parse(qrc).getroot().findall("qresource"):
+            for entry in group.findall("file"):
+                source = Path(entry.text)
+                if not source.is_absolute():
+                    source = qrc.parent / source
+                alias = group.get("prefix", "").rstrip("/") + "/" + entry.get("alias", source.name)
+                resources[alias] = source
+
+    # Recover only registrations compiled into production objects. Require
+    # the initializer to survive linking, a call from another linked object,
+    # and the URI/type strings in the provider object. Never inspect stripped
+    # APK symbols, nor registrations in desktop/test source files.
+    providers = set()
+    object_symbols = {obj: run(str(nm), "--demangle", str(obj)) for obj in objects}
+    for obj in objects:
+        dependency = Path(str(obj) + ".d")
+        if not dependency.is_file():
+            continue
+        dependency_text = dependency.read_text().replace("\\\n", " ")
+        sources = re.findall(r"(?:^|\s)(/[^\s]+\.cpp)(?=\s|$)", dependency_text)
+        for source in sources:
+            text = Path(source).read_text()
+            for match in re.finditer(r'void\s+(\w+::\w+)\s*\(\s*\)\s*\{', text):
+                initializer = match[1]
+                depth, end = 1, match.end()
+                while depth and end < len(text):
+                    depth += (text[end] == "{") - (text[end] == "}")
+                    end += 1
+                body = text[match.end():end - 1]
+                for registration in re.finditer(r'qmlRegisterType<\s*(\w+)\s*>\(\s*"([^"]+)"\s*,\s*\d+\s*,\s*\d+\s*,\s*"([^"]+)"', body):
+                    cpp_type, uri, qml_type = registration.groups()
+                    defined = re.search(rf"\bT {re.escape(initializer)}\(\)", symbols)
+                    called = any(re.search(rf"\bU {re.escape(initializer)}\(\)", syms) for other, syms in object_symbols.items() if other != obj)
+                    data = obj.read_bytes()
+                    if defined and called and uri.encode() + b"\0" in data and qml_type.encode() + b"\0" in data and cpp_type in object_symbols[obj]:
+                        providers.add(uri)
+
+    output = temp / "production.cmake"
+    command = [str(scanner), "-rootPath", str(temp), "-cmake-output", "-output-file", str(output)]
+    for path in imports:
+        command += ["-importPath", path]
+    command += ["-qrcFiles", *map(str, qrcs)]
+    subprocess.run(command, check=True)
+    records = re.findall(r'qml_import_scanner_import_\d+ "([^"]+)"', output.read_text())
+    if not records:
+        fail("no production resource import records")
+
+    # Validate the executable's pluginless local QML module even if no QML
+    # file imports its URI (the entry point may load a resource URL directly).
+    local_modules = set()
+    for alias, source in resources.items():
+        if source.name != "qmldir":
+            continue
+        text = source.read_text()
+        module = re.search(r"^module (\S+)$", text, re.M)
+        if not module or re.search(r"^(?:optional )?plugin ", text, re.M):
+            continue
+        entries = re.findall(r"^(?:\w+\s+)?(?:\d+\.\d+\s+)?(\S+\.(?:qml|js))$", text, re.M)
+        prefix = alias.rsplit("/", 1)[0]
+        if not entries or any(prefix + "/" + entry not in resources for entry in entries):
+            fail(f"pluginless module lacks linked QML/script resources: {module[1]}")
+        local_modules.add(module[1])
+
+    allowed_unresolved = {"QML", "QtQuick.Controls.Windows", "QtQuick.Controls.macOS", "QtQuick.Controls.iOS", "org.kde.breeze"}
+    # Android's ABI suffix is part of the deployed plugin filename.
+    abi = app_members[0].split("/")[1]
+    needed_members = set(app_members)
+    errors = []
+    for record in records:
+        def value(key):
+            match = re.search(rf"(?:^|;){key};([^;]*);", record)
+            return match[1] if match else ""
+        if value("TYPE") != "module":
+            continue
+        name, plugin = value("NAME"), value("PLUGIN")
+        if not plugin:
+            if name not in providers | local_modules | allowed_unresolved:
+                errors.append(f"{name}: no linked runtime provider or resource-backed QML module")
+            continue
+        if not value("PATH"):
+            errors.append(f"{name}: plugin has no resolved import PATH")
+            continue
+        # Match the exact plugin in the application's ABI, not a substring
+        # of another plugin's filename.
+        stem = plugin if plugin.startswith("qml_") else "qml_" + value("RELATIVEPATH").replace("/", "_") + "_" + plugin
+        expected = f"lib/{abi}/lib{stem}_{abi}.so"
+        if expected not in members:
+            errors.append(f"{name}: required plugin {expected} missing from APK")
+        else:
+            needed_members.add(expected)
+    # A plugin without its DT_NEEDED provider is not a packaged provider.
+    # NDK API stubs, not an ad-hoc soname allowlist, identify system libs.
+    sysroot_arg = next((arg.split("=", 1)[1] for arg in link if arg.startswith("--sysroot=")), "")
+    android_api = re.search(r"--target=\S*android(\d+)", " ".join(link))
+    if not sysroot_arg or not android_api:
+        fail("missing Android sysroot/API link evidence")
+    checked = set()
+    while needed_members - checked:
+        member = sorted(needed_members - checked)[0]
+        checked.add(member)
+        extracted = temp / Path(member).name
+        extracted.write_bytes(archive.read(member))
+        for soname in re.findall(r"\(NEEDED\).*?\[([^]]+)\]", run(str(readelf), "-d", str(extracted))):
+            packaged_dependency = f"lib/{abi}/{soname}"
+            if packaged_dependency in members:
+                needed_members.add(packaged_dependency)
+            elif not list(Path(sysroot_arg).glob(f"usr/lib/*/{android_api[1]}/{soname}")):
+                errors.append(f"{member}: required ELF provider {soname} missing from APK")
+    if errors:
+        fail("\n  " + "\n  ".join(errors))
+    print(f"QML production import check passed: {len(records)} records; linked C++ providers={sorted(providers)}; resource modules={sorted(local_modules)}; APK build ID={build_id(packaged)}. Runtime paint not checked.")
 PY
 }
 

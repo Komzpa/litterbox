@@ -154,3 +154,54 @@ func TestHistoricalExitAndAvailabilityGrammar(t *testing.T) {
 		}
 	}
 }
+
+func TestFullSpoolDoesNotConsumeOrdinaryQuota(t *testing.T) {
+	for _, status := range []int{200, 422, 503} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			s := &memoryStore{fail: status == 503}
+			mux := http.NewServeMux()
+			Register(mux, s)
+			a := auth.NewHandler(tokenStore{}, "")
+			a.Register(mux) // /v1/invites is a real authenticated owner operation.
+			mux.HandleFunc("GET /v1/mail/body", func(w http.ResponseWriter, r *http.Request) {
+				if _, ok := auth.DeviceFromContext(r.Context()); !ok {
+					t.Error("mail request lost device identity")
+				}
+				w.WriteHeader(200)
+			})
+			h := a.Middleware(mux)
+			r := sample()
+			if status == 422 {
+				r.Body = "private message"
+			}
+			ordinary := 0
+			for i := range 64 {
+				if w := request(h, "POST", Path, "valid-token", wire(r)); w.Code != status {
+					t.Fatalf("diagnostic %d: %d want %d", i+1, w.Code, status)
+				}
+				if i%4 == 0 {
+					if w := request(h, "GET", "/v1/mail/body", "valid-token", ""); w.Code != 200 {
+						t.Fatalf("interleaved mail: %d", w.Code)
+					}
+					if w := request(h, "POST", "/v1/invites", "valid-token", "{}"); w.Code != 201 {
+						t.Fatalf("interleaved owner operation: %d", w.Code)
+					}
+					ordinary += 2
+				}
+			}
+			if w := request(h, "POST", Path, "valid-token", wire(r)); w.Code != 429 {
+				t.Fatalf("diagnostic 65: %d want 429", w.Code)
+			}
+			for ; ordinary < 60; ordinary++ {
+				if w := request(h, "GET", "/v1/mail/body", "valid-token", ""); w.Code != 200 {
+					t.Fatalf("ordinary %d: %d", ordinary+1, w.Code)
+				}
+			}
+			if w := request(h, "GET", "/v1/mail/body", "valid-token", ""); w.Code != 429 {
+				t.Fatalf("ordinary 61: %d want 429", w.Code)
+			}
+		})
+	}
+}
+
+func (tokenStore) CreateInvite(context.Context, string, string) error { return nil }

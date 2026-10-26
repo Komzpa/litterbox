@@ -1140,7 +1140,7 @@ ApplicationWindow {
             ColumnLayout {
                 width: navigationDrawer.availableWidth
                 spacing: 4
-                Label { text: qsTr("Litterbox"); font: window.themeFont; font.bold: true; color: window.ink; padding: 24; Layout.fillWidth: true }
+                Label { text: qsTr("Litterbox"); font: Qt.font({family: window.themeFont.family, pointSize: window.themeFont.pointSize, bold: true}); color: window.ink; padding: 24; Layout.fillWidth: true }
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.margins: 8

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/jackc/pgx/v5"
-"github.com/Komzpa/litterbox/server/internal/cards"
 )
 
 type Device struct {
@@ -28,13 +28,14 @@ type Store interface {
 	RevokeDevice(context.Context, string, string) error
 }
 type Handler struct {
-	store     Store
-	limiter   *IPLimiter
-	devTenant string
+	store              Store
+	limiter            *IPLimiter
+	diagnosticsLimiter *IPLimiter
+	devTenant          string
 }
 
 func NewHandler(store Store, devTenant string) *Handler {
-	return &Handler{store: store, limiter: NewIPLimiter(60, time.Minute), devTenant: devTenant}
+	return &Handler{store: store, limiter: NewIPLimiter(60, time.Minute), diagnosticsLimiter: NewIPLimiter(64, time.Minute), devTenant: devTenant}
 }
 
 type contextKey struct{}
@@ -106,7 +107,11 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			}
 			return
 		}
-		if !h.limiter.Allow("device:" + d.TenantID + "/" + d.DeviceID) {
+		limiter := h.limiter
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/diagnostics/crashes" {
+			limiter = h.diagnosticsLimiter
+		}
+		if !limiter.Allow("device:" + d.TenantID + "/" + d.DeviceID) {
 			writeError(w, 429, "rate limit exceeded")
 			return
 		}
