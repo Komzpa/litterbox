@@ -118,6 +118,8 @@ bool CardStore::open(const QString &path) {
     m_photoPrefetchQueue.clear();
     m_photoRequests.clear();
     m_photoUnavailable.clear();
+    m_drafts.clear();
+    m_draftOrder.clear();
     m_draftPath = path + QStringLiteral(".drafts.jsonl");
     QFile journal(m_draftPath);
     if (journal.exists()) {
@@ -756,10 +758,46 @@ bool CardStore::createCard(const QString &title, const QString &summary, const Q
     }
     return !enqueueOp(QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("create_card"), args).isEmpty();
 }
+QString CardStore::createReminder(const QString &title, const QString &dueAt, const QString &recurrence) {
+    if (title.trimmed().isEmpty() || !QDateTime::fromString(dueAt, Qt::ISODate).isValid() ||
+        (!recurrence.isEmpty() && recurrence != QStringLiteral("daily") && recurrence != QStringLiteral("weekly"))) return {};
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    return enqueueOp(id, QStringLiteral("create_reminder"), {{QStringLiteral("id"), id},
+        {QStringLiteral("title"), title.trimmed()}, {QStringLiteral("due_at"), dueAt}, {QStringLiteral("recurrence"), recurrence}}).isEmpty() ? QString() : id;
+}
+QString CardStore::sendAgentMessage(const QString &threadId, const QString &text, const QString &clientMsgId) {
+    if (QUuid(threadId).isNull() || text.trimmed().isEmpty() || text.toUtf8().size() > 4096) return {};
+    const QString id = clientMsgId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : clientMsgId;
+    if (QUuid(id).isNull()) return {};
+    for (const auto &op : m_outbox) {
+        if (op.value(QStringLiteral("op_id")).toString() != id) continue;
+        const auto args = op.value(QStringLiteral("args")).toMap();
+        if (op.value(QStringLiteral("type")) != QStringLiteral("agent_message") ||
+            args.value(QStringLiteral("thread_id")) != threadId || args.value(QStringLiteral("text")) != text) return {};
+        refresh();
+        return id;
+    }
+    return enqueueOp(id, QStringLiteral("agent_message"), {{QStringLiteral("thread_id"), threadId},
+        {QStringLiteral("client_msg_id"), id}, {QStringLiteral("text"), text}}).isEmpty() ? QString() : id;
+}
+QVariantList CardStore::pendingAgentMessages(const QString &threadId) const {
+    QVariantList messages;
+    for (const auto &op : m_outbox) {
+        const auto args = op.value(QStringLiteral("args")).toMap();
+        if (op.value(QStringLiteral("type")) != QStringLiteral("agent_message") || args.value(QStringLiteral("thread_id")) != threadId) continue;
+        QVariantMap message = args;
+        message.insert(QStringLiteral("id"), args.value(QStringLiteral("client_msg_id")));
+        message.insert(QStringLiteral("direction"), QStringLiteral("out"));
+        message.insert(QStringLiteral("seq"), 0);
+        message.insert(QStringLiteral("delivery_state"), m_failedWrites.contains(op.value(QStringLiteral("op_id")).toString()) ? QStringLiteral("indeterminate") : QStringLiteral("pending"));
+        messages.append(message);
+    }
+    return messages;
+}
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_open || QUuid(cardId).isNull()) return {};
     static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
-        QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_spam"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
+        QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("create_reminder"), QStringLiteral("agent_message"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_spam"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
     if (type == QStringLiteral("spam") || type == QStringLiteral("bundle_spam")) {
         for (const QVariantMap &op : m_outbox)
@@ -768,7 +806,7 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
                 op.value(QStringLiteral("args")).toMap() == args)
                 return op.value(QStringLiteral("op_id")).toString();
     }
-    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString id = type == QStringLiteral("agent_message") ? cardId : QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QVariantMap payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
         {QStringLiteral("type"), type}, {QStringLiteral("args"), args}};
 
@@ -853,6 +891,12 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
             }
         }
         cards = std::move(reordered);
+        changed = true;
+    } else if (type == QStringLiteral("create_reminder")) {
+        cards.prepend({{QStringLiteral("id"), cardId}, {QStringLiteral("title"), args.value(QStringLiteral("title"))},
+            {QStringLiteral("source"), QStringLiteral("reminder")}, {QStringLiteral("source_kind"), QStringLiteral("reminder")},
+            {QStringLiteral("state"), QStringLiteral("open")}, {QStringLiteral("section"), QStringLiteral("later")},
+            {QStringLiteral("at"), args.value(QStringLiteral("due_at"))}, {QStringLiteral("recurrence"), args.value(QStringLiteral("recurrence"))}});
         changed = true;
     } else if (type == QStringLiteral("create_card")) {
         const QString kind = args.value(QStringLiteral("kind"), QStringLiteral("manual")).toString();
@@ -1193,7 +1237,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         return; // Replay the same op; never prune on a failed durable ACK record.
     }
     m_drafts.remove(opId);
-    QMetaObject::invokeMethod(m_storage, [this, opId] {
+    QMetaObject::invokeMethod(m_storage, [this, opId, response, operation] {
         bool ok = m_db.transaction();
         QSqlQuery q(m_db);
         q.prepare(QStringLiteral("INSERT OR IGNORE INTO acknowledged_ops(op_id) VALUES(?)"));
@@ -1206,7 +1250,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
         const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, opId, ok, error] {
+        QMetaObject::invokeMethod(this, [this, opId, ok, error, response, operation] {
             m_inFlight.clear();
             if (!ok) {
                 emit storageError(error);
@@ -1240,6 +1284,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             m_deferredWrites.remove(opId);
             m_durableOps.remove(opId);
             if (!restored) m_mutations.remove(opId);
+            emit operationAcknowledged(operation, response);
             emit pendingOpsChanged();
             if (restored) refresh();
             flush();

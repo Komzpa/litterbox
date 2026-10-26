@@ -9,6 +9,7 @@ Kirigami.Page {
     id: root
     objectName: "agentChatPage"
     property var api
+    required property var store
     property var thread: ({})
     property string threadId: thread.id || ""
     property var messages: []
@@ -87,11 +88,8 @@ Kirigami.Page {
         })
     }
 
-    function newClientId() {
-        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
-            var value = Math.floor(Math.random() * 16)
-            return (c === "x" ? value : (value & 3) | 8).toString(16)
-        })
+    function restorePending() {
+        mergeMessages(store.pendingAgentMessages(threadId))
     }
 
     function sendMessage() {
@@ -101,31 +99,28 @@ Kirigami.Page {
             errorText = qsTr("Message is too long (maximum 4096 bytes).")
             return
         }
-        var clientId = newClientId()
-        var message = {id: clientId, client_msg_id: clientId, thread_id: threadId,
-            direction: "out", text: text, delivery_state: "pending", seq: 0}
+        if (!store.sendAgentMessage(threadId, text)) return
+        restorePending()
         composer.text = ""
-        postMessage(message)
         messageList.positionViewAtEnd()
     }
 
     function postMessage(message) {
-        var pending = Object.assign({}, message, {delivery_state: "pending", reason_code: null})
-        errorText = ""
-        mergeMessages([pending])
-        api.post(messagePath(), {client_msg_id: message.client_msg_id, text: message.text}, function(error, response) {
-            if (error || !response || !response.body || !response.body.message) {
-                mergeMessages([Object.assign({}, pending, {delivery_state: "indeterminate"})])
-                errorText = qsTr("Send not confirmed. Retry uses the same message ID.")
-                return
-            }
-            var saved = response.body.message
-            saved.client_msg_id = message.client_msg_id
-            mergeMessages([saved])
-        })
+        if (store.sendAgentMessage(threadId, message.text, message.client_msg_id)) restorePending()
     }
 
-    Component.onCompleted: reload()
+    Component.onCompleted: { restorePending(); reload() }
+    Connections {
+        target: root.store
+        function onPendingOpsChanged() { root.restorePending() }
+        function onOperationAcknowledged(operation, response) {
+            if (operation.type !== "agent_message" || operation.args.thread_id !== root.threadId) return
+            if (response.message) {
+                var saved = Object.assign({}, response.message, {client_msg_id: operation.args.client_msg_id})
+                root.mergeMessages([saved])
+            } else root.reload()
+        }
+    }
     Connections {
         target: root.stream
         function onChanged(seq) { root.reload() }

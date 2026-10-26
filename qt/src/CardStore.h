@@ -56,6 +56,9 @@ public:
     }
     Q_INVOKABLE bool createCard(const QString &title, const QString &summary = {},
                                 const QString &kind = QStringLiteral("manual"));
+    Q_INVOKABLE QString createReminder(const QString &title, const QString &dueAt, const QString &recurrence = {});
+    Q_INVOKABLE QString sendAgentMessage(const QString &threadId, const QString &text, const QString &clientMsgId = {});
+    Q_INVOKABLE QVariantList pendingAgentMessages(const QString &threadId) const;
     Q_INVOKABLE QStringList cardIds() const;
     Q_INVOKABLE bool moveCard(const QString &cardId, int delta);
     Q_INVOKABLE bool moveCardTo(const QString &cardId, int targetIndex);
@@ -132,6 +135,7 @@ signals:
     void senderPhotoChanged(const QString &cardId);
     void senderPhotoFailed(const QString &cardId);
     void operationFailed(const QString &opId, int status, const QVariantMap &response);
+    void operationAcknowledged(const QVariantMap &operation, const QVariantMap &response);
     void storageError(const QString &message);
     void flushFinished();
 private:

@@ -21,6 +21,7 @@
 #include <QSqlQuery>
 #include <QProcess>
 #include <QFile>
+#include <QQmlExpression>
 #include <csignal>
 
 static const QString cardId = QStringLiteral("11111111-1111-4111-8111-111111111111");
@@ -54,7 +55,7 @@ public:
                     const QVariantMap op = QJsonDocument::fromJson(body).object().toVariantMap();
                     received.append(op);
                     paths.append(bytes->left(bytes->indexOf("\r\n")).split(' ').value(1));
-                    const QString id = op.value("op_id").toString();
+                    const QString id = op.value("op_id", op.value("client_msg_id")).toString();
                     int status = statusSequence.isEmpty() ? reject : statusSequence.takeFirst();
                     if (!status) {
                         if (ledger.contains(id) && ledger[id] != body) status = 409;
@@ -62,7 +63,12 @@ public:
                     }
                     if (loseNextAck) { loseNextAck = false; socket->disconnectFromHost(); return; }
                     if (!status) status = 200;
-                    const QByteArray response = status == 200 ? QByteArray("{\"ok\":true}") : QByteArray("{\"ok\":false}");
+                    QByteArray response = status == 200 ? QByteArray("{\"ok\":true}") : QByteArray("{\"ok\":false}");
+                    if (status == 200 && op.contains("client_msg_id")) {
+                        const QVariantMap message{{"id", "server-message"}, {"client_msg_id", id}, {"text", op.value("text")},
+                            {"direction", "out"}, {"seq", 1}, {"delivery_state", "delivered"}};
+                        response = QJsonDocument(QJsonObject{{"message", QJsonObject::fromVariantMap(message)}}).toJson(QJsonDocument::Compact);
+                    }
                     socket->write("HTTP/1.1 " + QByteArray::number(status) + " Result\r\nContent-Type: application/json\r\nContent-Length: " + QByteArray::number(response.size()) + "\r\nConnection: close\r\n\r\n" + response);
                     socket->disconnectFromHost();
                 });
@@ -752,7 +758,7 @@ private slots:
         QTest::addColumn<int>("status");
         QTest::addColumn<QString>("kind");
         for (int status : {400, 401, 403, 409, 422, 429, 500, 503, 0})
-            for (const QString &kind : {QStringLiteral("manual"), QStringLiteral("journal"), QStringLiteral("note")})
+            for (const QString &kind : {QStringLiteral("manual"), QStringLiteral("journal"), QStringLiteral("note"), QStringLiteral("reminder"), QStringLiteral("chat")})
                 QTest::newRow(qPrintable(QString::number(status) + "-" + kind)) << status << kind;
     }
     void ownerWriteSurvivesFailureRestartAndMissingSnapshot() {
@@ -766,38 +772,46 @@ private slots:
         QVERIFY(server.listen(QHostAddress::LocalHost));
         server.reject = status;
         server.loseNextAck = status == 0;
-        HttpTransport transport(server.serverPort());
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
         QVariantMap original;
         QString id;
         {
             CardStore store;
             QVERIFY(store.open(path));
+            CardStoreTransport transport(store, api);
             if (kind == "note") {
                 QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Mail"}, {"note", "old"}}}},
                     {"later", QVariantList{}}, {"missed", QVariantList{}}}));
                 QVERIFY(!store.saveNote(cardId, text).isEmpty());
-            } else QVERIFY(store.createCard(text, kind == "manual" ? text : QString(), kind));
-            id = store.cardIds().first();
-            store.setTransport(&transport);
+            } else if (kind == "reminder") QVERIFY(!store.createReminder(text, "2030-01-01T12:00:00Z", "weekly").isEmpty());
+            else if (kind == "chat") QVERIFY(!store.sendAgentMessage(cardId, text).isEmpty());
+            else QVERIFY(store.createCard(text, kind == "manual" ? text : QString(), kind));
+            id = kind == "chat" ? store.pendingAgentMessages(cardId).first().toMap().value("client_msg_id").toString() : store.cardIds().first();
             store.setOnline(true);
             QTRY_COMPARE(server.received.size(), 1);
             store.setOnline(false);
             original = server.received.first();
             // Undo is not a text-discard API, even before the operation is sent.
-            store.undoQueuedOp(original.value("op_id").toString());
+            store.undoQueuedOp(original.value("op_id", original.value("client_msg_id")).toString());
             QCOMPARE(store.pendingOps(), 1);
         }
         CardStore restored;
         QVERIFY(restored.open(path));
         QCOMPARE(restored.pendingOps(), 1);
         QVERIFY(restored.applyRemoteCards(empty));
-        QCOMPARE(restored.cardIds(), QStringList{id});
-        const auto card = restored.data(restored.index(0), CardStore::CardRole).toMap();
-        if (kind == "note") QCOMPARE(card.value("note").toString(), text);
-        else if (kind == "journal") QCOMPARE(card.value("title").toString() + "\n" + card.value("summary").toString(), text);
-        else QCOMPARE(card.value("summary").toString(), text);
+        if (kind == "chat") {
+            QCOMPARE(restored.pendingAgentMessages(cardId).first().toMap().value("text").toString(), text);
+        } else {
+            QCOMPARE(restored.cardIds(), QStringList{id});
+            const auto card = restored.data(restored.index(0), CardStore::CardRole).toMap();
+            if (kind == "note") QCOMPARE(card.value("note").toString(), text);
+            else if (kind == "journal") QCOMPARE(card.value("title").toString() + "\n" + card.value("summary").toString(), text);
+            else if (kind == "reminder") QCOMPARE(card.value("title").toString(), text);
+            else QCOMPARE(card.value("summary").toString(), text);
+        }
         server.reject = 0;
-        restored.setTransport(&transport);
+        CardStoreTransport transport(restored, api);
         restored.setOnline(true);
         QTRY_COMPARE(restored.pendingOps(), 0);
         QCOMPARE(server.received.size(), 2);
@@ -930,6 +944,89 @@ private slots:
         db.close();
         db = QSqlDatabase();
         QSqlDatabase::removeDatabase(connection);
+    }
+    void reminderAndChatConsumersPersistBeforeReply_data() {
+        QTest::addColumn<QString>("kind");
+        QTest::newRow("reminder") << QStringLiteral("reminder");
+        QTest::newRow("chat") << QStringLiteral("chat");
+    }
+    void reminderAndChatConsumersPersistBeforeReply() {
+        QFETCH(QString, kind);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("consumer.sqlite");
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.reject = 422;
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        QVariantMap original;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            CardStoreTransport transport(store, api);
+            QQmlEngine engine;
+            QQmlComponent component(&engine, QUrl::fromLocalFile(QStringLiteral(LB_PAGES_DIR) +
+                (kind == "chat" ? "/AgentChatPage.qml" : "/ReminderDialog.qml")));
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            QVariantMap properties{{"store", QVariant::fromValue(static_cast<QObject *>(&store))}};
+            if (kind == "chat") {
+                properties.insert("api", QVariant::fromValue(static_cast<QObject *>(&api)));
+                properties.insert("threadId", cardId);
+                properties.insert("stream", QVariant::fromValue(static_cast<QObject *>(nullptr)));
+            }
+            std::unique_ptr<QObject> page(component.createWithInitialProperties(properties));
+            QVERIFY2(page, qPrintable(component.errorString()));
+            if (kind == "chat") {
+                auto composer = page->findChild<QObject *>("messageComposer");
+                QVERIFY(composer);
+                composer->setProperty("text", "Durable chat text");
+                QVERIFY(QMetaObject::invokeMethod(page.get(), "sendMessage"));
+                QCOMPARE(composer->property("text").toString(), QString());
+                QCOMPARE(store.pendingAgentMessages(cardId).size(), 1);
+                QCOMPARE(store.pendingAgentMessages(cardId).first().toMap().value("text").toString(), QStringLiteral("Durable chat text"));
+            } else {
+                auto title = page->findChild<QObject *>("titleField");
+                auto when = page->findChild<QObject *>("whenField");
+                QVERIFY(title && when);
+                title->setProperty("text", "Durable reminder text");
+                QQmlExpression expression(QQmlEngine::contextForObject(page.get()), page.get(),
+                    "new Date(2030,0,1,12,0).toLocaleString(Qt.locale(), localeDateTimeFormat)");
+                when->setProperty("text", expression.evaluate());
+                QVERIFY(QMetaObject::invokeMethod(page.get(), "submit"));
+                QCOMPARE(store.rowCount(), 1);
+            }
+            QCOMPARE(store.pendingOps(), 1);
+            QFile journal(path + ".drafts.jsonl");
+            QVERIFY(journal.open(QIODevice::ReadOnly));
+            QVERIFY(journal.readAll().contains(kind == "chat" ? "Durable chat text" : "Durable reminder text"));
+            store.setOnline(true);
+            QTRY_VERIFY(store.saveFailed());
+            QCOMPARE(store.pendingOps(), 1);
+            QCOMPARE(server.received.size(), 1);
+            original = server.received.first();
+            if (kind == "chat") {
+                QCOMPARE(server.paths.first(), QByteArray("/v1/a2a/threads/") + cardId.toUtf8() + "/messages");
+                QCOMPARE(original.size(), 2);
+                QCOMPARE(original.value("text").toString(), QStringLiteral("Durable chat text"));
+            } else {
+                QCOMPARE(server.paths.first(), QByteArray("/v1/ops"));
+                QCOMPARE(original.value("type").toString(), QStringLiteral("create_reminder"));
+                QCOMPARE(original.value("args").toMap().value("id"), original.value("card_id"));
+            }
+            store.setOnline(false);
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.pendingOps(), 1);
+        if (kind == "chat") QCOMPARE(restored.pendingAgentMessages(cardId).size(), 1);
+        else QCOMPARE(restored.rowCount(), 1);
+        CardStoreTransport transport(restored, api);
+        server.reject = 0;
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.received.size(), 2);
+        QCOMPARE(server.received.last(), original);
+        QCOMPARE(server.applied, 1);
     }
     void mainTransportRetainsRejectedNoteAndRetriesExactOperation() {
         QTemporaryDir directory;

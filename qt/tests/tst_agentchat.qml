@@ -15,6 +15,34 @@ TestCase {
         signal changed(int seq)
         signal reconnected()
     }
+    QtObject {
+        id: storeFixture
+        property var api
+        property var pending: []
+        signal pendingOpsChanged()
+        signal operationAcknowledged(var operation, var response)
+        function pendingAgentMessages(threadId) { return pending }
+        function sendAgentMessage(threadId, text, retryId) {
+            var id = retryId || "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+                var n = Math.floor(Math.random() * 16)
+                return (c === "x" ? n : (n & 3) | 8).toString(16)
+            })
+            var message = {id: id, client_msg_id: id, thread_id: threadId, text: text,
+                direction: "out", delivery_state: "pending", seq: 0}
+            pending = [message]
+            pendingOpsChanged()
+            api.post("/v1/a2a/threads/" + threadId + "/messages", {client_msg_id: id, text: text}, function(error, response) {
+                if (error) {
+                    pending = [Object.assign({}, message, {delivery_state: "indeterminate"})]
+                    pendingOpsChanged()
+                } else {
+                    pending = []
+                    operationAcknowledged({type: "agent_message", args: {thread_id: threadId, client_msg_id: id}}, response.body)
+                }
+            })
+            return id
+        }
+    }
 
     function row(id, seq, direction, text, state, reason) {
         return {id: id, thread_id: "thread-fixture", seq: seq, direction: direction,
@@ -31,8 +59,10 @@ TestCase {
     }
     function pageFor(api, viewWidth) {
         testCase.width = viewWidth || 412
+        storeFixture.api = api
+        storeFixture.pending = []
         return createTemporaryObject(pageComponent, testCase, {
-            api: api, thread: {id: "thread-fixture", peer_id: "agent:mau", display_name: "Mau", availability: "busy"},
+            api: api, store: storeFixture, thread: {id: "thread-fixture", peer_id: "agent:mau", display_name: "Mau", availability: "busy"},
             width: testCase.width, height: 915, stream: eventStream
         })
     }

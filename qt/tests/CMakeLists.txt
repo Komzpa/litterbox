@@ -10,6 +10,7 @@ add_executable(tst_cardstore tst_cardstore.cpp ../src/CardStore.cpp ../src/CardS
 target_include_directories(tst_cardstore PRIVATE ../src)
 target_link_libraries(tst_cardstore PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::Test KF6::Kirigami)
 target_compile_definitions(tst_cardstore PRIVATE LB_SOURCE_ACTIONS_QML="${CMAKE_CURRENT_SOURCE_DIR}/../src/qml/CardActions.qml")
+target_compile_definitions(tst_cardstore PRIVATE LB_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pages")
 add_test(NAME cardstore COMMAND tst_cardstore)
 set_tests_properties(cardstore PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM}")
 

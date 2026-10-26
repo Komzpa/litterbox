@@ -33,8 +33,7 @@ QQC2.Dialog {
     palette.highlight: accent
     palette.highlightedText: surface
 
-    // api.post(path, body, cb) calls cb(error, {status, body}).
-    property var api
+    required property var store
 
     property string errorText: ""
     property string reminderId: ""
@@ -64,19 +63,14 @@ QQC2.Dialog {
             errorText = qsTr("Enter the date and time in your locale format (%1).").arg(Qt.locale().name)
             return false
         }
-        api.post("/v1/reminders", {
-            title: title,
-            due_at: when.toISOString(),
-            recurrence: recurrenceValues[recurrenceBox.currentIndex]
-        }, function (error, response) {
-            if (error || !response || !response.body || !response.body.id) {
-                errorText = qsTr("Could not save the reminder.")
-                return
-            }
-            reminderId = response.body.id
-            lastDueAt = when.toISOString()
-            root.close()
-        })
+        const id = store.createReminder(title, when.toISOString(), recurrenceValues[recurrenceBox.currentIndex])
+        if (!id) {
+            errorText = qsTr("Could not save the reminder.")
+            return false
+        }
+        reminderId = id
+        lastDueAt = when.toISOString()
+        root.close()
         return true
     }
 

@@ -398,8 +398,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("store"), &store);
     engine.rootContext()->setContextProperty(QStringLiteral("timeRules"), &timeRules);
 
-    // Preserve the existing v1 note/done routes. Other queued actions use
-    // the server operation API, which acknowledges durable outbox entries.
+    // All card writes retain their original operation identity through /v1/ops.
+    // Agent chat uses the same durable queue with its client_msg_id endpoint.
     QHash<int, quint64> cardsRequests;
     CardStoreTransport operationTransport(store, api);
     QHash<int, QString> mailBodyRequests;

@@ -690,6 +690,7 @@ ApplicationWindow {
         } else {
             if (readerOpen) closeReader()
             const values = Object.assign({api: api}, properties || {})
+            if (name === "AgentThreadsPage") values.store = window.cardStore
             if (name === "GmailAccountsPage") values.accountsLoaded = function(accounts) { window.gmailAccounts = accounts }
             if (name === "SettingsPage") values.updater = window.updater
             stack.push(page, values)
@@ -2337,7 +2338,7 @@ ApplicationWindow {
                     border.width: noteSaveButton.visualFocus ? 2 : 1
                     border.color: noteSaveButton.visualFocus ? window.ink : "#dce5e3"
                 }
-                onClicked: noteDialog.accept()
+                onClicked: { if (store.saveNote(noteDialog.cardId, noteField.text)) noteDialog.accept() }
             }
             Button {
                 id: noteCancelButton
@@ -2384,7 +2385,6 @@ ApplicationWindow {
                 }
             }
         }
-        onAccepted: store.saveNote(cardId, noteField.text)
     }
     Dialog {
         id: createDialog

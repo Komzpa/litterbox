@@ -121,7 +121,11 @@ Each requirement is **decided** or **open** and names its source.
   bundle spam, snooze, pin and done also apply locally and sync in the background;
   Gmail/source effects follow R7, R47, R20, R21 and R12. One conservative owner-write
   policy protects every non-reversible operation, including all create kinds,
-  journal bodies, R32 note edits and ordering edits. Owner-authored content and
+  journal bodies, R32 note edits, reminder creation, agent-chat sends and ordering
+  edits. Reminders use client-generated ids in the `create_reminder` /v1/ops
+  envelope. Chat uses the same durable queue with op_id equal to client_msg_id
+  and the existing idempotent thread-message endpoint; composer text clears only
+  after the local durable append, never before. Owner-authored content and
   its outbox operation may be pruned only after a 2xx acknowledgement of that
   exact op_id. HTTP status, network loss, process death, restart, missing/stale
   snapshots, enrollment, profile switching and app updates never authorize
@@ -135,8 +139,9 @@ Each requirement is **decided** or **open** and names its source.
   append reports a local storage error and must not accept/clear the draft;
   physical storage loss/corruption cannot be guaranteed against by the client.
   Oracle: Qt `ownerWriteSurvivesFailureRestartAndMissingSnapshot` covers 4xx/5xx,
-  dropped ACK, manual/journal creates and R32 edits across restart and an absent
-  snapshot, retaining identical op_id/payload and draining exactly once on 200;
+  dropped ACK, manual/journal/reminder creates, chat sends and R32 edits across
+  restart and an absent snapshot, retaining identical op_id/payload and draining
+  exactly once on 200;
   `ownerWriteRestartMidFlight` covers exit awaiting a reply;
   `ownerDraftSurvivesKillBeforeDatabaseCommit` SIGKILLs a child after Save while
   SQLite is locked, then replays the journal and drains exactly once;
@@ -145,6 +150,11 @@ Each requirement is **decided** or **open** and names its source.
   exercises the defensive guards. `mainTransportRetainsRejectedNoteAndRetriesExactOperation`
   exercises the production Api binding constructed by main.cpp: /v1/ops routing,
   unchanged operation identity and quiet rejection followed by one application.
+  `reminderAndChatConsumersPersistBeforeReply` drives the actual QML composers
+  through CardStore and the production Api binding, checks the fsynced raw text
+  before any reply, survives rejection/restart and drains each identical request
+  once. The neighboring QML reminder/chat/navigation tests retain their validation,
+  explicit Retry and store-injection controls.
   `rejectedJournalRetainsTextAndRetries` covers backoff/Retry/restart, and
   `archiveFailureRestoresRowWithoutReset` is the reversible rejection control.
   The unshipped legacy Flutter client is not the
