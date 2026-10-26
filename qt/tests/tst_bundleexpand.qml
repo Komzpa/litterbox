@@ -7,7 +7,11 @@ TestCase {
     name: "BundleExpand"
     when: windowShown
     property url pagesDir: Qt.resolvedUrl("../pages/")
-    property var store: bundleStore
+    property var store: null
+    function init() {
+        store = bundleFixture.freshStore()
+        api.accounts = []
+    }
     QtObject {
         id: api
         property string baseUrl: ""
@@ -225,7 +229,8 @@ TestCase {
             const row = list.itemAtIndex(0)
             const frame = findChild(row, "inboxCard")
             const title = findChild(row, "bundleTitleLabel-receipt-leader")
-            const badge = findChild(row, "bundleMemberCount-receipt-leader").parent
+            const badge = findChild(row, "bundleMemberCount-receipt-leader")
+            verify(badge && badge.visible && badge.width > 0 && badge.height > 0)
             // The avatar and shared 96px date/action column leave the same
             // subject width as single mail, rather than a separate action row.
             verify(title.width >= frame.width - 176, "Subject must fill the space between avatar and actions")
@@ -358,7 +363,7 @@ TestCase {
         const row = list.itemAtIndex(0)
         const count = findChild(row, "bundleMemberCount-" + leader.id)
         const disclosure = findChild(row, "importantDisclosure-" + leader.id)
-        verify(count && count.visible && /\b1\b/.test(count.text))
+        verify(count && !count.visible, "A one-message summary must suppress the count chip (R36)")
         verify(disclosure && disclosure.visible && disclosure.width > 0 && disclosure.height > 0,
                "The standalone important member must have a visible disclosure")
         const importantRow = list.itemAtIndex(1)
@@ -561,9 +566,18 @@ TestCase {
         tryCompare(store, "bundleArchiveUndoActive", true)
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         verify(bar && bar.visible)
+        const pending = store.pendingOps
+        const remaining = store.cardIds()
         tryCompare(store, "bundleArchiveUndoActive", false, 3000)
-        tryVerify(function() { return inbox.bundleArchiveStatus.length > 0 })
+        // R13: passive expiry silently removes Undo; it is not a new toast.
+        tryVerify(function() { return !bar.visible && inbox.bundleArchiveStatus === "" })
+        compare(store.pendingOps, pending, "Passive expiry must not alter queued operations")
+        compare(store.cardIds(), remaining, "Passive expiry must not restore archived rows")
         compare(inbox.undoBundleArchive(), false, "Undo must reject the expired CardStore token")
+        verify(inbox.bundleArchiveStatus.length > 0, "An explicit expired Undo attempt must explain its rejection")
+        tryVerify(function() { return bar.visible })
+        compare(store.pendingOps, pending, "Rejected expired Undo must not alter queued operations")
+        compare(store.cardIds(), remaining, "Rejected expired Undo must not restore archived rows")
         compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.bundleArchiveStatus)
         store.setBundleArchiveUndoDurationForTest(8000)
         inbox.close()
@@ -601,10 +615,6 @@ TestCase {
         inbox.close()
     }
     function test_nonMailArchiveHasNoFalseUndoAndNeighborRemains() {
-        // A previous mail action may still have a legitimate Undo window in
-        // this shared CardStore. Let it expire before testing a non-mail action.
-        tryCompare(store, "bundleArchiveUndoActive", false,
-                   Math.max(1000, store.bundleArchiveUndoRemainingMs + 1000))
         const id = "41111111-1111-4111-8111-111111111111"
         const neighbor = "41111111-1111-4111-8111-111111111112"
         verify(store.applyRemoteCards({now: [
@@ -653,10 +663,10 @@ TestCase {
         verify(archive && archive.visible)
         mouseClick(archive, archive.width / 2, archive.height / 2)
         tryVerify(function() { return rejectedCards.indexOf(ids[0]) >= 0 && rejectedCards.indexOf(ids[1]) >= 0 }, 5000, "Stub server must reject both archive POSTs with 422")
-        tryVerify(function() { return inbox.bundleArchiveStatus.indexOf("422") >= 0 }, 5000)
         const bar = findChild(inbox, "bundleArchiveUndoBar")
-        verify(bar && bar.visible, "Rejected archive must keep the error status visible")
-        compare(findChild(bar, "bundleArchiveUndoMessage").text, inbox.bundleArchiveStatus)
+        tryVerify(function() { return bar && bar.visible && findChild(bar, "bundleArchiveUndoMessage").text.length > 0 })
+        tryCompare(inbox, "operationError", "", 8500)
+        compare(store.pendingOps, 0, "Notice expiry cannot invent a pending operation")
         tryVerify(function() { return store.cardIds().indexOf(ids[0]) >= 0 && store.cardIds().indexOf(ids[1]) >= 0 }, 5000, "Rejected ops must restore both bundle members")
         store.requestPost.disconnect(stub)
         store.online = false
@@ -722,7 +732,12 @@ TestCase {
         const list = findChild(inbox, "inboxList")
         list.cacheBuffer = 30000
         if (data.surface === "member") inbox.toggleBundle(bundle)
-        const index = data.surface === "pinned" ? 0 : data.surface === "member" ? 5 : 4
+        const targetId = data.surface === "pinned" ? cards[0].id
+                       : dragFixtureId(fixtureBase + (data.surface === "member" ? 6 : 5))
+        let index = -1
+        for (let i = 0; i < list.count; ++i)
+            if (inbox.cardIdAt(i) === targetId) { index = i; break }
+        verify(index >= 0, "Gesture fixture must target its actual presented card")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(index) !== null })
         list.positionViewAtIndex(index, ListView.Beginning)
         verify(waitForPolish(inbox))
@@ -740,6 +755,8 @@ TestCase {
         const contentY = list.contentY
         const expanded = !!inbox.expandedBundles[bundle]
         dragInput(list, start, end, data.touch, data.held)
+        console.log("MAIL_GESTURE", JSON.stringify({tag: data.tag, id: row.cardId, index: index,
+            start: start, end: end, beforeY: contentY, afterY: list.contentY, sheetVisible: sheet.visible}))
         tryVerify(function() { return list.contentY > contentY + 8 }, 2000, "Mail input travel must scroll")
         list.cancelFlick()
         compare(store.cardIds(), before, "Mail drag must preserve every ID and source order")
@@ -858,7 +875,10 @@ TestCase {
         inbox.showOperationFailure("single", 422, {code: "gmail_reconnect_required", account_address: "other@example.test"})
         compare(inbox.reconnectStatus, reconnectStatus, "another failure must not replace the persisted failed-account identity")
         inbox.showOperationFailure("generic", 422, {})
-        verify(inbox.bundleArchiveStatus.indexOf("422") >= 0)
+        const notice = findChild(inbox, "bundleArchiveUndoBar")
+        verify(notice.visible && findChild(notice, "bundleArchiveUndoMessage").text.length > 0)
+        tryCompare(inbox, "operationError", "", 8500)
+        compare(inbox.reconnectStatus, reconnectStatus, "Transient notice expiry must retain account reconnect state")
         store.requestPost.disconnect(stub)
         store.operationFailed.disconnect(failed)
         store.online = false

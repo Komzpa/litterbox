@@ -19,7 +19,9 @@ TestCase {
         property string baseUrl: "https://inbox.example.test"
         property string token: ""
         property var accounts: [{id: "account", address: "owner@example.test", status: "reauth_required"}, {id: "other", address: "other@example.test", status: "active"}]
-        function get(path, callback) { callback(null, {body: accounts}) }
+        function get(path, callback) {
+            callback(null, {body: path === "/v1/gmail/sender-photos/status" ? {accounts: []} : accounts})
+        }
         function post(path, body, callback) { callback(null, {body: {authorization_url: "https://accounts.example.test/connect"}}) }
     }
     QtObject {
@@ -181,7 +183,8 @@ TestCase {
         shot(inbox, "banner", "accounts-expired", data.width)
         page.connectAccount()
         api.accounts = [{id: "account", address: "owner@example.test", status: "active"}]
-        // The connect-flow timer obtains the callback's new account state.
+        // Returning from browser consent reloads the real account consumer.
+        page.reload()
         tryCompare(bar, "visible", false, 5000)
         tryVerify(function() { list.forceLayout(); return !findChild(list.itemAtIndex(0), "reconnectButton").visible })
         shot(inbox, "banner", "accounts-active", data.width)

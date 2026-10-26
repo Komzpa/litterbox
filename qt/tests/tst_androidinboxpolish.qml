@@ -149,7 +149,7 @@ TestCase {
         const image = grabImage(inbox.contentItem.parent)
         compare(image.width, data.w)
         compare(image.height, data.h)
-        image.save("/tmp/lb-inbox-polish/current-" + data.w + "x" + data.h + ".png")
+        image.save(mailFixtures.screenshotPath("current-" + data.w + "x" + data.h + ".png"))
         inbox.close()
     }
 }

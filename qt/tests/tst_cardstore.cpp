@@ -633,6 +633,118 @@ private slots:
         QCOMPARE(server.received[1].value("op_id").toString(), id);
         QCOMPARE(server.applied, 1);
     }
+    void pendingRemovalSurvivesOwnerRetention_data() {
+        QTest::addColumn<QString>("type");
+        for (const auto &type : {"done", "bundle_done", "snooze", "archive", "spam"})
+            QTest::newRow(type) << QString::fromLatin1(type);
+    }
+    void pendingRemovalSurvivesOwnerRetention() {
+        QFETCH(QString, type);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("pending-removal.sqlite");
+        const QString neighbor = QStringLiteral("22222222-2222-4222-8222-222222222222");
+        const QVariantMap original{{"id", cardId}, {"title", "Original"}, {"source", "mail"},
+            {"state", "open"}, {"bundle_id", "bundle"}, {"note", "server old"}};
+        const QVariantMap untouched{{"id", neighbor}, {"title", "Neighbor"}, {"source", "manual"}, {"state", "open"}};
+        const auto snapshot = [&](QVariantMap card) {
+            return QVariantMap{{"now", QVariantList{card, untouched}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        };
+        QVariantMap updated = original;
+        updated.insert("title", "New remote title");
+        const QVariantMap empty{{"now", QVariantList{untouched}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVariantMap args;
+        if (type == "snooze") args.insert("until", "2030-03-04T05:06:00.000Z");
+        if (type == "bundle_done") args.insert("bundle_id", "bundle");
+        QString firstEdit, latestEdit, removal;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(snapshot(original)));
+            firstEdit = store.saveNote(cardId, "First edit");
+            latestEdit = store.saveNote(cardId, "Latest owner edit");
+            removal = store.enqueueOp(cardId, type, args);
+            QVERIFY(!removal.isEmpty());
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QVERIFY(store.applyRemoteCards(snapshot(original)));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QVERIFY(store.applyRemoteCards(empty));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QVERIFY(store.applyRemoteCards(snapshot(updated)));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QCOMPARE(store.pendingOps(), 3);
+        }
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QVERIFY(store.applyRemoteCards(snapshot(updated)));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QSignalSpy posted(&store, &CardStore::requestPost);
+            store.setOnline(true);
+            for (const auto &id : {firstEdit, latestEdit}) {
+                QTRY_VERIFY(!posted.isEmpty());
+                QCOMPARE(posted.last().at(0).toString(), id);
+                store.reportPostResult(id, 200, {{"ok", true}});
+                const int expected = id == firstEdit ? 2 : 3;
+                QTRY_COMPARE(posted.size(), expected);
+            }
+            const QVariantMap expected{{"op_id", removal}, {"card_id", cardId}, {"type", type}, {"args", args}};
+            QCOMPARE(posted.last().at(2).toMap(), expected);
+            store.reportPostResult(QUuid::createUuid().toString(QUuid::WithoutBraces), 200, {{"ok", true}});
+            QCOMPARE(store.pendingOps(), 1); // An unrelated ACK cannot clear the tombstone.
+            QVERIFY(store.applyRemoteCards(snapshot(updated)));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            store.reportPostResult(removal, 200, {{"ok", true}});
+            QTRY_COMPARE(store.pendingOps(), 0);
+            QVERIFY(store.applyRemoteCards(snapshot(updated)));
+            QCOMPARE(store.cardIds(), QStringList{neighbor});
+            QVERIFY(store.applyRemoteCards(empty));
+        }
+        CardStore cold;
+        QVERIFY(cold.open(path));
+        QCOMPARE(cold.pendingOps(), 0);
+        QCOMPARE(cold.cardIds(), QStringList{neighbor});
+    }
+    void snoozeRejectAndUndoPreserveLatestOwnerEdit() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("snooze-rejection.sqlite");
+        const QVariantMap card{{"id", cardId}, {"title", "Mail"}, {"source", "mail"}, {"state", "open"}};
+        const QVariantMap full{{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        const QVariantMap args{{"until", "2030-03-04T05:06:00.000Z"}};
+        QString note, snooze;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(full));
+            note = store.saveNote(cardId, "Latest owner edit");
+            const QString cancelled = store.enqueueOp(cardId, "snooze", args);
+            QCOMPARE(store.rowCount(), 0);
+            store.undoQueuedOp(cancelled);
+            QCOMPARE(store.cardIds(), QStringList{cardId});
+            QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("note").toString(), QString("Latest owner edit"));
+            snooze = store.enqueueOp(cardId, "snooze", args);
+            QCOMPARE(store.rowCount(), 0);
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        QCOMPARE(store.rowCount(), 0);
+        QVERIFY(store.applyRemoteCards(full));
+        QCOMPARE(store.rowCount(), 0);
+        QSignalSpy posted(&store, &CardStore::requestPost);
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        QTRY_COMPARE(posted.size(), 1);
+        QCOMPARE(posted.last().at(0).toString(), note);
+        store.reportPostResult(note, 200, {{"ok", true}});
+        QTRY_COMPARE(posted.size(), 2);
+        const QVariantMap expected{{"op_id", snooze}, {"card_id", cardId}, {"type", "snooze"}, {"args", args}};
+        QCOMPARE(posted.last().at(2).toMap(), expected);
+        store.reportPostResult(snooze, 422, {{"ok", false}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(store.cardIds(), QStringList{cardId});
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("note").toString(), QString("Latest owner edit"));
+    }
     void snoozeAndPinOrderSurviveColdRestartAndAcknowledgement() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

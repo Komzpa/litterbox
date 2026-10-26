@@ -71,6 +71,7 @@ TestCase {
             const title = i < 14 ? "Message " + i : "Additional mail"
             store.append({cardId: id, title: title, section: "now", card: {
                 id: id, title: title, source: source, section: "now", account_name: "fixture@example.test",
+                received_at: new Date(Date.UTC(2026, 9, 20, 12, 0, 0) - i * 60000).toISOString(),
                 summary: "Click this preview to read the message",
                 snippet: "Click this preview to read the message", has_body: true,
                 pinned_rank: null, bundle_id: "", important: false, timed: false,

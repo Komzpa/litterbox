@@ -29,8 +29,12 @@ printf '%s\n' '{"server_url":"http://127.0.0.1:9","token":"restart-survival-fixt
 export HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/home/.config" XDG_DATA_HOME="$WORK/home/.local/share" XDG_CACHE_HOME="$WORK/home/.cache"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 cleanup() {
-    systemctl --user stop "$UNIT" >/dev/null 2>&1 || true
-    if [[ -n "$RESTART_UNIT" ]]; then systemctl --user stop "$RESTART_UNIT" >/dev/null 2>&1 || true; fi
+    for pid in "${OLD_PID:-}" "${NEW_PID:-}"; do
+        if [[ "$pid" =~ ^[1-9][0-9]*$ && "$(readlink "/proc/$pid/exe" 2>/dev/null || true)" == "$PREFIX/bin/litterbox-qt"* ]]; then
+            echo "cleanup: kill $pid"
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
     rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -68,9 +72,8 @@ RESTART_UNIT="litterbox-qt-restart-${OLD_PID}-${EXPECTED_GENERATION}.service"
 
 NEW_PID=''
 for _ in $(seq 1 30); do
-    for pid in $(pgrep -x litterbox-qt || true); do
-        [[ "$pid" != "$OLD_PID" ]] && NEW_PID=$pid
-    done
+    candidate=$(systemctl --user show "$RESTART_UNIT" -p MainPID --value 2>/dev/null || true)
+    if [[ "$candidate" =~ ^[1-9][0-9]*$ && "$candidate" != "$OLD_PID" ]]; then NEW_PID=$candidate; fi
     if [[ -n "$NEW_PID" && ! -e "/proc/$OLD_PID/exe" ]]; then break; fi
     sleep 1
 done

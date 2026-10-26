@@ -364,6 +364,33 @@ Controls.ToolButton {
             }
         }
     }
+    component SnoozeRow: Controls.MenuItem {
+        id: presetRow
+        implicitWidth: presetLabel.implicitWidth + 20 + 12 + leftPadding + rightPadding
+        implicitHeight: visible ? Math.max(48, presetLabel.implicitHeight + topPadding + bottomPadding) : 0
+        height: implicitHeight
+        contentItem: RowLayout {
+            spacing: 12
+            Kirigami.Icon {
+                source: presetRow.icon.name
+                isMask: true
+                color: root.actionInk
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
+            }
+            Controls.Label {
+                id: presetLabel
+                objectName: "snoozePresetLabel"
+                text: presetRow.text
+                textFormat: Text.PlainText
+                font: presetRow.font
+                color: root.actionInk
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+            }
+        }
+    }
 
     // Created on first use: popups per card made every new inbox row cost
     // ~8 ms to instantiate (R63 density regression, scroll collapse).
@@ -412,7 +439,7 @@ Controls.ToolButton {
                 // Fixed rows bound to the refreshed preset list: only the
                 // conditional evening row toggles visibility, so no dynamic
                 // menu-item machinery is needed.
-                Controls.MenuItem {
+                SnoozeRow {
                     id: hourPresetItem
                     objectName: "snoozePreset-hour"
                     text: root.snoozePresetLabel("hour")
@@ -421,11 +448,10 @@ Controls.ToolButton {
                     icon.width: 20
                     icon.height: 20
                     icon.color: root.actionInk
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: text
                     onClicked: root.pickSnooze("hour")
                 }
-                Controls.MenuItem {
+                SnoozeRow {
                     id: eveningPresetItem
                     objectName: "snoozePreset-evening"
                     text: root.snoozePresetLabel("evening")
@@ -434,11 +460,10 @@ Controls.ToolButton {
                     icon.width: 20
                     icon.height: 20
                     icon.color: root.actionInk
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: text
                     onClicked: root.pickSnooze("evening")
                 }
-                Controls.MenuItem {
+                SnoozeRow {
                     id: tomorrowPresetItem
                     objectName: "snoozePreset-tomorrow"
                     text: root.snoozePresetLabel("tomorrow")
@@ -447,11 +472,10 @@ Controls.ToolButton {
                     icon.width: 20
                     icon.height: 20
                     icon.color: root.actionInk
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: text
                     onClicked: root.pickSnooze("tomorrow")
                 }
-                Controls.MenuItem {
+                SnoozeRow {
                     id: mondayPresetItem
                     objectName: "snoozePreset-monday"
                     text: root.snoozePresetLabel("monday")
@@ -460,12 +484,11 @@ Controls.ToolButton {
                     icon.width: 20
                     icon.height: 20
                     icon.color: root.actionInk
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: text
                     onClicked: root.pickSnooze("monday")
                 }
                 Controls.MenuSeparator { }
-                Controls.MenuItem {
+                SnoozeRow {
                     id: customSnoozeItem
                     objectName: "snoozeCustom"
                     text: qsTr("Custom date and time…")
@@ -473,7 +496,6 @@ Controls.ToolButton {
                     icon.width: 20
                     icon.height: 20
                     icon.color: root.actionInk
-                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
                     Accessible.name: text
                     onClicked: root.openCustomSnooze()
                 }

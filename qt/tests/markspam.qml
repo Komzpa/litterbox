@@ -6,6 +6,8 @@ TestCase {
     name: "MarkSpam"
     when: windowShown
     property url pagesDir: Qt.resolvedUrl("../pages/")
+    property var bundleStore: null
+    function init() { bundleStore = bundleFixture.freshStore() }
     readonly property string mailId: "11111111-1111-4111-8111-111111111111"
     property var posted: []
     property bool acceptJournal: false
@@ -61,6 +63,8 @@ TestCase {
         tryCompare(line, "visible", false)
         compare(posted.length, 2)
         compare(posted[1].body.op_id, posted[0].body.op_id)
+        compare(JSON.stringify(posted[1].body), JSON.stringify(posted[0].body),
+                "Retry must preserve the complete immutable owner payload")
         compare(bundleStore.cardIds()[0], journalId)
         inbox.close()
     }
@@ -116,7 +120,11 @@ TestCase {
         compare(posted[0].path, "/v1/ops")
         compare(posted[0].body.type, "spam")
         compare(bundleStore.cardIds().length, 1)
-        compare(inbox.bundleArchiveStatus, "Action failed (HTTP 422).")
+        const notice = findChild(inbox, "bundleArchiveUndoBar")
+        verify(notice.visible && findChild(notice, "bundleArchiveUndoMessage").text.length > 0)
+        tryCompare(inbox, "operationError", "", 8500)
+        compare(bundleStore.pendingOps, 0)
+        compare(bundleStore.cardIds(), [mailId], "Notice expiry must retain the restored rejected mail")
         verify(!inbox.archiveUndoAvailable)
         inbox.close()
     }

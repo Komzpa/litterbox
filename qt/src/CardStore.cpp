@@ -275,10 +275,44 @@ void CardStore::retainOwnerRows(QList<QVariantMap> &cards) const {
         }
     }
 }
+// Pending operations are the tombstone source of truth, including after restart.
+// Keep durable owner rows intact; removal is a projection, not lost owner data.
+void CardStore::projectPendingRemovals(QList<QVariantMap> &cards) const {
+    for (const auto &op : m_outbox) {
+        const QString type = op.value(QStringLiteral("type")).toString();
+        const QString id = op.value(QStringLiteral("card_id")).toString();
+        const bool single = type == QStringLiteral("done") || type == QStringLiteral("archive") ||
+            type == QStringLiteral("spam") || type == QStringLiteral("snooze");
+        const bool bundle = type == QStringLiteral("bundle_done") || type == QStringLiteral("bundle_archive") ||
+            type == QStringLiteral("bundle_spam");
+        if (!single && !bundle) continue;
+        const bool undone = type == QStringLiteral("archive") && std::any_of(m_outbox.cbegin(), m_outbox.cend(), [&](const auto &pending) {
+            return pending.value(QStringLiteral("card_id")).toString() == id &&
+                pending.value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
+                pending.value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX");
+        });
+        if (undone) continue;
+        const QString bundleId = op.value(QStringLiteral("args")).toMap().value(QStringLiteral("bundle_id")).toString();
+        const auto removed = m_drafts.value(op.value(QStringLiteral("op_id")).toString()).value(QStringLiteral("removed_cards")).toList();
+        cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const auto &card) {
+            if (single) return card.value(QStringLiteral("id")).toString() == id;
+            if (!removed.isEmpty()) return std::any_of(removed.cbegin(), removed.cend(), [&](const auto &value) {
+                return value.toMap().value(QStringLiteral("id")) == card.value(QStringLiteral("id"));
+            });
+            const auto rank = card.value(QStringLiteral("pinned_rank"));
+            return !bundleId.isEmpty() && card.value(QStringLiteral("bundle_id")).toString() == bundleId &&
+                card.value(QStringLiteral("state")).toString() == QStringLiteral("open") && (!rank.isValid() || rank.isNull());
+        }), cards.end());
+    }
+    cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const auto &card) {
+        return m_archivedAwaitingSnapshot.contains(card.value(QStringLiteral("id")).toString());
+    }), cards.end());
+}
 void CardStore::replaceCards(QList<QVariantMap> cards) {
     const int pendingBefore = mailSyncPending();
     const bool completeBefore = mailSyncComplete();
     retainOwnerRows(cards);
+    projectPendingRemovals(cards);
     deriveBundles(cards);
     // A live refresh can move or touch hundreds of rows at once; one model
     // notification per row stalls the GUI thread (each wakes the QML view).
@@ -440,8 +474,8 @@ void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVari
                 for (const QVariantMap &op : ops) {
                     if (ownerWrite(op)) continue; // Fsynced journal remains the recovery source.
                     const QString id = op.value(QStringLiteral("op_id")).toString();
-                    undoOp(id);
                     m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const auto &entry) { return entry.value(QStringLiteral("op_id")).toString() == id; }), m_outbox.end());
+                    undoOp(id);
                 }
                 if (!ops.isEmpty()) emit pendingOpsChanged();
                 emit storageError(error);
@@ -658,15 +692,6 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections, quint64 requestId)
             if (std::any_of(cards.begin(), cards.end(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; })) continue;
             const auto local = std::find_if(m_cards.begin(), m_cards.end(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; });
             if (local != m_cards.end()) cards.insert(qMin(qsizetype(std::distance(m_cards.begin(), local)), cards.size()), *local);
-        } else if (type == QStringLiteral("archive") || type == QStringLiteral("done") || type == QStringLiteral("snooze")) {
-            // A transmitted archive may still be awaiting ACK after Undo has
-            // restored its card and durably queued the inverse behind it.
-            const bool undone = type == QStringLiteral("archive") && std::any_of(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &pending) {
-                return pending.value(QStringLiteral("card_id")).toString() == id &&
-                    pending.value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
-                    pending.value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX");
-            });
-            if (!undone) cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; }), cards.end());
         }
     }
     const auto before = m_cards;
@@ -941,7 +966,12 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
                 if (old == before.cend() || old->value(it.key()) != it.value()) patch.insert(it.key(), it.value());
             patches.insert(card.value(QStringLiteral("id")).toString(), patch);
         }
-        const QVariantMap draft{{QStringLiteral("op_id"), id}, {QStringLiteral("op"), payload}, {QStringLiteral("cards"), authored}, {QStringLiteral("patches"), patches}};
+        QVariantList removed;
+        for (const auto &card : before)
+            if (std::none_of(cards.cbegin(), cards.cend(), [&](const auto &row) { return row.value(QStringLiteral("id")) == card.value(QStringLiteral("id")); }))
+                removed.append(card);
+        const QVariantMap draft{{QStringLiteral("op_id"), id}, {QStringLiteral("op"), payload}, {QStringLiteral("cards"), authored},
+            {QStringLiteral("patches"), patches}, {QStringLiteral("removed_cards"), removed}};
         if (!appendDraftRecord(draft)) return {};
         m_drafts.insert(id, draft);
     }
@@ -1027,8 +1057,8 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
         m_mutations.insert(opId, {before, withoutCard});
         entry.ops.append({cardId, opId});
     }
-    replaceCards(after);
     m_outbox.append(ops);
+    replaceCards(after);
     persistCards(before, after, ops);
     emit pendingOpsChanged();
     m_bundleArchives.insert(token, std::move(entry));
@@ -1101,8 +1131,8 @@ bool CardStore::undoBundleArchive(const QString &token) {
         m_mutations.insert(op.value(QStringLiteral("op_id")).toString(), {without, cards});
     }
     const QList<QVariantMap> current = m_cards;
-    replaceCards(cards);
     m_outbox.append(reverseOps);
+    replaceCards(cards);
     persistCards(current, cards, reverseOps, cancelled);
     emit pendingOpsChanged();
     return true;
@@ -1188,14 +1218,17 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             }
             m_retryAttempt = 0;
             const bool canUndoLocally = m_mutations.contains(opId) && !m_mutations.value(opId).archiveRejected;
-            undoOp(opId);
-            if (notifyFailure) emit operationFailed(opId, status, response);
-            QMetaObject::invokeMethod(m_storage, [this, opId, canUndoLocally] {
+            QMetaObject::invokeMethod(m_storage, [this, opId, canUndoLocally, operation, notifyFailure, status, response] {
                 QSqlQuery q(m_db);
                 q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);
                 const bool ok = q.exec();
                 const QString error = q.lastError().text();
-                QMetaObject::invokeMethod(this, [this, opId, canUndoLocally, ok, error] {
+                QList<QVariantMap> retained;
+                const QString type = operation.value(QStringLiteral("type")).toString();
+                const bool removal = type == QStringLiteral("snooze") || type == QStringLiteral("archive") || type == QStringLiteral("spam");
+                if (ok && removal && q.exec(QStringLiteral("SELECT payload FROM cards ORDER BY position")))
+                    while (q.next()) retained.append(QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap());
+                QMetaObject::invokeMethod(this, [this, opId, canUndoLocally, ok, error, retained, operation, notifyFailure, status, response] {
                     if (!ok) {
                         m_inFlight.clear();
                         emit storageError(error);
@@ -1208,8 +1241,17 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
                     m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const QVariantMap &op) {
                         return op.value(QStringLiteral("op_id")).toString() == opId;
                     }), m_outbox.end());
+                    undoOp(opId);
+                    // A restart has no Mutation; the retained durable row still
+                    // carries the latest snapshot plus unacknowledged owner edits.
+                    auto cards = m_cards;
+                    const QString id = operation.value(QStringLiteral("card_id")).toString();
+                    if (std::none_of(cards.cbegin(), cards.cend(), [&](const auto &row) { return row.value(QStringLiteral("id")).toString() == id; }))
+                        restoreCardOrder(cards, retained, {id});
+                    replaceCards(cards);
                     m_durableOps.remove(opId);
                     m_mutations.remove(opId);
+                    if (notifyFailure) emit operationFailed(opId, status, response);
                     emit pendingOpsChanged();
                     if (!canUndoLocally) refresh();
                     flush();
@@ -1245,8 +1287,16 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         m_inFlight.clear();
         return; // Replay the same op; never prune on a failed durable ACK record.
     }
+    QStringList removedIds;
+    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze"))
+        removedIds.append(operation.value(QStringLiteral("card_id")).toString());
+    for (const auto &value : m_drafts.value(opId).value(QStringLiteral("removed_cards")).toList())
+        removedIds.append(value.toMap().value(QStringLiteral("id")).toString());
+    removedIds.erase(std::remove_if(removedIds.begin(), removedIds.end(), [&](const auto &id) {
+        return std::any_of(m_cards.cbegin(), m_cards.cend(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; });
+    }), removedIds.end());
     m_drafts.remove(opId);
-    QMetaObject::invokeMethod(m_storage, [this, opId, response, operation] {
+    QMetaObject::invokeMethod(m_storage, [this, opId, response, operation, removedIds] {
         bool ok = m_db.transaction();
         QSqlQuery q(m_db);
         q.prepare(QStringLiteral("INSERT OR IGNORE INTO acknowledged_ops(op_id) VALUES(?)"));
@@ -1256,10 +1306,18 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         if (ok) ok = q.exec();
         q.prepare(QStringLiteral("DELETE FROM acknowledged_ops WHERE op_id=?")); q.addBindValue(opId);
         if (ok) ok = q.exec();
+        // Delete only acknowledged removals, through the normal owner guard.
+        // In particular a pending note/create must never lose its durable row.
+        for (const auto &id : removedIds) {
+            q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?)"));
+            q.addBindValue(id);
+            q.addBindValue(id);
+            if (ok) ok = q.exec();
+        }
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
         const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, opId, ok, error, response, operation] {
+        QMetaObject::invokeMethod(this, [this, opId, ok, error, response, operation, removedIds] {
             m_inFlight.clear();
             if (!ok) {
                 emit storageError(error);
@@ -1272,11 +1330,10 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
                 return op.value(QStringLiteral("op_id")).toString() == opId;
             });
-            if (acknowledgedOp != m_outbox.cend() && acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("archive")) {
-                const QString cardId = acknowledgedOp->value(QStringLiteral("card_id")).toString();
-                // Undo may already own this card while the archive ACK was pending.
-                if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == cardId; }))
-                    m_archivedAwaitingSnapshot.insert(cardId);
+            for (const auto &id : removedIds) {
+                // Undo may already own this card while the removal ACK was pending.
+                if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == id; }))
+                    m_archivedAwaitingSnapshot.insert(id);
             }
             const bool restored = acknowledgedOp != m_outbox.cend() &&
                 acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&

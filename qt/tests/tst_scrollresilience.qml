@@ -6,6 +6,12 @@ TestCase {
     id: testCase
     name: "ScrollResilience"
     when: windowShown
+    property var bundleStore: null
+    property int fixtureArrivalSequence: 0
+    function init() {
+        bundleStore = bundleFixture.freshStore()
+        fixtureArrivalSequence = 0
+    }
     QtObject { id: api; property string baseUrl: ""; property string token: "" }
     QtObject {
         id: updater
@@ -25,6 +31,9 @@ TestCase {
         return Object.assign({id: id, title: id, source: "mail", section: "now",
             state: "open", bundle_id: bundle, bundle_title: "GitHub", pinned_rank: null,
             important: false, timed: false, has_body: false, summary: "", note: "",
+            // Real mailbox rows have arrival metadata. Give each input row a
+            // distinct descending arrival so newest-first has an explicit oracle.
+            received_at: new Date(Date.UTC(2026, 9, 26, 12) - fixtureArrivalSequence++ * 1000).toISOString(),
             account_name: "test@example.test"}, extra || {})
     }
     // R68: archiving or a fresh server snapshot must keep the visual anchor:
@@ -160,8 +169,13 @@ TestCase {
         console.log("SCROLL_COLLAPSE", collapsedMs, "ms", "moves", sourceMoves.count)
         list.positionViewAtBeginning()
         list.forceLayout()
-        const member = list.itemAtIndex(2)
-        verify(member && member.cardId === "github-1")
+        let memberIndex = -1
+        for (let i = 0; i < list.count; ++i)
+            if (inbox.cardIdAt(i) === "github-1") { memberIndex = i; break }
+        verify(memberIndex >= 0, "Collapse must retain the actual bundle member in the presentation")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(memberIndex) !== null })
+        const member = list.itemAtIndex(memberIndex)
+        compare(member.cardId, "github-1")
         compare(member.visible, false)
         compare(member.height, 0, "Collapsed members contribute no height")
         compare(bundleStore.cardIds(), sourceIds)

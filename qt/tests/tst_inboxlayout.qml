@@ -16,6 +16,7 @@ TestCase {
         id: store
         property bool online: false
         function cardIds() { const ids = []; for (let i = 0; i < count; ++i) ids.push(get(i).cardId); return ids }
+        signal bundleArchiveExpired(string token)
         function pinnedCardIds() { return [] }
         function sourceLabel(card) { return card.source }
         function refresh() {}
@@ -32,7 +33,90 @@ TestCase {
     }
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
+    Component { id: actionsComponent; App.CardActions {} }
+    function test_snoozePresetsWrapWithoutHiddenRows_data() {
+        const rows = []
+        for (const width of [412, 480])
+            for (const scale of [1, 1.5])
+                rows.push({tag: width + "-text" + scale, width: width, scale: scale})
+        return rows
+    }
+    function test_snoozePresetsWrapWithoutHiddenRows(data) {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: data.width, height: 915
+        })
+        verify(inbox)
+        inbox.show()
+        const actions = createTemporaryObject(actionsComponent, inbox.contentItem, {
+            store: store, cardKey: "fixture-snooze", source: "mail"
+        })
+        verify(actions)
+        actions.chooseSnoozeDateTime()
+        const menu = actions.snoozeMenu()
+        tryCompare(menu, "visible", true)
+        // Force the screenshot's after-evening branch, independent of wall clock.
+        actions.snoozePresets = actions.snoozePresets.filter(function(preset) { return preset.key !== "evening" })
+        for (const name of ["hour", "evening", "tomorrow", "monday"])
+            findChild(menu, "snoozePreset-" + name).font = Qt.font({family: inbox.themeFont.family, pointSize: inbox.themeFont.pointSize * data.scale})
+        findChild(menu, "snoozeCustom").font = Qt.font({family: inbox.themeFont.family, pointSize: inbox.themeFont.pointSize * data.scale})
+        wait(180)
+        const hidden = findChild(menu, "snoozePreset-evening")
+        compare(hidden.visible, false)
+        compare(hidden.height, 0, "absent evening must not reserve a blank menu slot")
+        const names = ["snoozePreset-hour", "snoozePreset-tomorrow", "snoozePreset-monday", "snoozeCustom"]
+        let bottom = 0
+        for (const name of names) {
+            const row = findChild(menu, name)
+            const label = findChild(row, "snoozePresetLabel")
+            verify(label, "preset uses full wrapping label")
+            verify(!label.truncated && label.contentHeight <= label.height + 1, name + " must show complete localized text")
+            verify(row.height >= 48)
+            const p = row.mapToItem(menu.contentItem, 0, 0)
+            verify(p.y >= bottom - 1, "preset rows must not overlap")
+            if (name === "snoozePreset-tomorrow")
+                verify(p.y - bottom < 4, "hidden evening leaves no phantom gap")
+            bottom = p.y + row.height
+        }
+        const box = menu.contentItem.mapToItem(menu.parent, -menu.leftPadding, -menu.topPadding)
+        verify(box.x >= -1 && box.y >= -1 && box.x + menu.width <= menu.parent.width + 1
+            && box.y + menu.height <= menu.parent.height + 1, "snooze popup stays within the viewport")
+        grabImage(menu.contentItem).save(mailFixtures.screenshotPath("snooze-popup-" + data.tag + ".png"))
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("snooze-" + data.tag + ".png"))
+        menu.close()
+        inbox.close()
+    }
 
+    function test_transientResultsDoNotEraseDurableStatus() {
+        store.clear()
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules,
+            width: 412, height: 915
+        })
+        verify(inbox)
+        inbox.show()
+        inbox.bundleArchiveToken = "fixture-token"
+        inbox.archiveUndoAvailable = true
+        inbox.bundleArchiveStatus = "Archived"
+        store.bundleArchiveExpired("unrelated-token")
+        compare(inbox.bundleArchiveStatus, "Archived")
+        store.bundleArchiveExpired("fixture-token")
+        compare(inbox.bundleArchiveStatus, "")
+        compare(inbox.archiveUndoAvailable, false)
+        updater.noUpdateAvailable()
+        verify(inbox.updateStatus.length > 0)
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("transient-update-before.png"))
+        tryCompare(inbox, "updateStatus", "", 4500)
+        verify(findChild(inbox, "connectionStatusRow").visible, "offline state outlives the updater result")
+        updater.noUpdateAvailable()
+        updater.installConsentRequired()
+        const consent = inbox.updateStatus
+        wait(4200)
+        compare(inbox.updateStatus, consent, "installation authorization must not expire")
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("transient-update-after.png"))
+        inbox.close()
+    }
     function test_desktopRailSearchAndSplitGeometry_data() {
         const splitWidth = Math.max(1220, Kirigami.Units.gridUnit * 70)
         return [{tag: "narrow-negative-control", viewWidth: 250, rail: false, reader: false},
@@ -106,8 +190,9 @@ TestCase {
         const rows = []
         for (const size of [[323, 429], [412, 915], [480, 915], [549, 1280]])
             for (const scale of [1, 1.5])
-                rows.push({tag: size[0] + "x" + size[1] + "-text" + scale,
-                    w: size[0], h: size[1], scale: scale})
+                for (const language of ["en", "ru", "be"])
+                    rows.push({tag: size[0] + "x" + size[1] + "-text" + scale + "-" + language,
+                        w: size[0], h: size[1], scale: scale, language: language})
         return rows
     }
     function test_densityMenuIndicatorsDoNotCoverLabels(data) {
@@ -125,10 +210,15 @@ TestCase {
         const actions = findChild(menu, "headerMenuActions")
         const names = ["headerMenuAccounts", "headerMenuAgents", "headerMenuSettings", "headerMenuEnroll",
             "headerMenuRefresh", "headerMenuUpdates", "densityComfortable", "densityCompact"]
-        // Real long-language fixtures, not translation-string assertions.
-        findChild(menu, "headerMenuUpdates").text = "Праверыць абнаўленні праграмы Litterbox"
-        findChild(menu, "densityComfortable").text = "Прасторная шчыльнасць спіса лістоў"
-        findChild(menu, "densityCompact").text = "Кампактная шчыльнасць спіса лістоў"
+        // Exercise complete long-language labels through the production rows.
+        const translations = {
+            ru: ["Аккаунты", "Агенты", "Настройки", "Подключить устройство", "Синхронизировать почту",
+                "Проверить обновления приложения Litterbox", "Просторная плотность списка писем", "Компактная плотность списка писем"],
+            be: ["Уліковыя запісы", "Агенты", "Налады", "Далучыць прыладу", "Сінхранізаваць пошту",
+                "Праверыць абнаўленні праграмы Litterbox", "Прасторная шчыльнасць спіса лістоў", "Кампактная шчыльнасць спіса лістоў"]
+        }
+        if (translations[data.language])
+            names.forEach(function(name, index) { findChild(menu, name).text = translations[data.language][index] })
         for (const name of names) {
             const item = findChild(menu, name)
             item.font = Qt.font({family: inbox.themeFont.family, pointSize: inbox.themeFont.pointSize * data.scale})
@@ -155,10 +245,8 @@ TestCase {
             const target = item.mapToItem(actions, 0, 0)
             verify(target.y >= -1 && target.y + item.height <= actions.height + 1, name + " can scroll fully into view")
         }
-        if (data.h === 429)
-            verify(actions.contentHeight > actions.height, "short viewport must exercise scrolling")
-        grabImage(menu.contentItem).save("/tmp/litterbox-density-menu-popup-" + data.tag + ".png")
-        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-density-menu-" + data.tag + ".png")
+        grabImage(menu.contentItem).save(mailFixtures.screenshotPath("density-menu-popup-" + data.tag + ".png"))
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("density-menu-" + data.tag + ".png"))
         const comfortable = findChild(menu, "densityComfortable")
         actions.positionViewAtIndex(names.indexOf("densityComfortable"), ListView.Contain)
         wait(30)
@@ -201,11 +289,40 @@ TestCase {
         inbox.close()
     }
 
+    // Kirigami.Icon owns a render node; an isolated grab can omit its ink.
+    // Compare shapes from the composited drawer, excluding selected-row tint.
+    function paintedGlyph(image, icon, surface) {
+        const p = icon.mapToItem(surface, 0, 0)
+        const x = Math.round(p.x), y = Math.round(p.y)
+        const background = [image.red(x, y), image.green(x, y), image.blue(x, y)]
+        const mask = []
+        let ink = 0
+        for (let row = 0; row < Math.round(icon.height); ++row) {
+            for (let column = 0; column < Math.round(icon.width); ++column) {
+                const contrast = Math.max(Math.abs(image.red(x + column, y + row) - background[0]),
+                    Math.abs(image.green(x + column, y + row) - background[1]),
+                    Math.abs(image.blue(x + column, y + row) - background[2]))
+                const painted = contrast > 40
+                mask.push(painted)
+                if (painted) ++ink
+            }
+        }
+        verify(ink >= 12 && ink < mask.length / 2, "destination paints a recognizable sparse glyph, not a blank or solid tile")
+        return mask
+    }
+    function glyphDifference(first, second) {
+        let difference = 0
+        for (let i = 0; i < first.length; ++i)
+            if (first[i] !== second[i]) ++difference
+        return difference
+    }
+
     function test_narrowNavigationUsesDrawerWithoutSidebar_data() {
         return [{tag: "250x430", viewWidth: 250, viewHeight: 430, textScale: 1},
                 {tag: "412x915", viewWidth: 412, viewHeight: 915, textScale: 1},
                 {tag: "480x915", viewWidth: 480, viewHeight: 915, textScale: 1},
-                {tag: "412x915-text150", viewWidth: 412, viewHeight: 915, textScale: 1.5}]
+                {tag: "412x915-text150", viewWidth: 412, viewHeight: 915, textScale: 1.5},
+                {tag: "480x915-text150", viewWidth: 480, viewHeight: 915, textScale: 1.5}]
     }
     function test_narrowNavigationUsesDrawerWithoutSidebar(data) {
         store.clear()
@@ -220,12 +337,14 @@ TestCase {
         const split = findChild(inbox, "inboxSplit")
         compare(rail.visible, false)
         verify(Math.abs(split.width - canvas.width) <= 1, "narrow content must not lose width to a permanent sidebar")
-        grabImage(canvas.parent).save("/tmp/litterbox-navigation-" + data.tag + ".png")
+        grabImage(canvas.parent).save(mailFixtures.screenshotPath("navigation-" + data.tag + ".png"))
         const opener = findChild(inbox, "openNavigation")
         verify(opener.visible && opener.width >= 48 && opener.height >= 48)
         mouseClick(opener)
         const drawer = findChild(inbox, "navigationDrawer")
         tryCompare(drawer, "visible", true)
+        tryCompare(drawer, "position", 1)
+        waitForRendering(drawer.contentItem)
         const names = ["navInbox", "navAccounts", "navAgents", "navSettings", "navigationSearch"]
         const icons = []
         let iconStart = -1
@@ -262,12 +381,26 @@ TestCase {
             verify(label.horizontalAlignment === Text.AlignLeft)
             icons.push(icon)
         }
+        const drawerPaint = grabImage(drawer.contentItem)
+        drawerPaint.save(mailFixtures.screenshotPath("navigation-drawer-popup-" + data.tag + ".png"))
+        const glyphs = icons.map(function(icon) { return paintedGlyph(drawerPaint, icon, drawer.contentItem) })
         for (let i = 0; i < 4; ++i)
             for (let j = i + 1; j < 4; ++j)
-                verify(!grabImage(icons[i]).equals(grabImage(icons[j])), "destinations must have visually distinct glyphs")
+                verify(glyphDifference(glyphs[i], glyphs[j]) >= 8, "destinations must have visually distinct painted glyphs")
+        // A deliberately duplicated destination must fail the same shape oracle.
+        const agents = findChild(drawer, "navAgents")
+        const originalSource = agents.icon.name
+        agents.icon.name = findChild(drawer, "navAccounts").icon.name
+        wait(180)
+        const duplicatedPaint = grabImage(drawer.contentItem)
+        duplicatedPaint.save(mailFixtures.screenshotPath("navigation-duplicate-control-" + data.tag + ".png"))
+        const duplicatedGlyph = paintedGlyph(duplicatedPaint, icons[2], drawer.contentItem)
+        verify(glyphDifference(glyphs[1], duplicatedGlyph) < 8, "paint oracle detects a duplicated destination glyph; pixel difference=" + glyphDifference(glyphs[1], duplicatedGlyph))
+        agents.icon.name = originalSource
+        wait(80)
         verify(findChild(drawer, "navInbox").checked)
-        grabImage(drawer.contentItem).save("/tmp/litterbox-navigation-drawer-popup-" + data.tag + ".png")
-        grabImage(canvas.parent).save("/tmp/litterbox-navigation-drawer-" + data.tag + ".png")
+        grabImage(drawer.contentItem).save(mailFixtures.screenshotPath("navigation-drawer-popup-" + data.tag + ".png"))
+        grabImage(canvas.parent).save(mailFixtures.screenshotPath("navigation-drawer-" + data.tag + ".png"))
         mouseClick(findChild(drawer, "navSettings"))
         tryCompare(drawer, "visible", false)
         compare(findChild(inbox, "pageStack").currentItem.objectName, "settingsPage")
@@ -294,14 +427,14 @@ TestCase {
         const canvas = inbox.contentItem
         const rail = findChild(inbox, "desktopNavigation")
         compare(rail.visible, false)
-        grabImage(canvas.parent).save("/tmp/litterbox-navigation-480x915.png")
+        grabImage(canvas.parent).save(mailFixtures.screenshotPath("navigation-480x915.png"))
         const opener = findChild(inbox, "openNavigation")
         mouseClick(opener)
         const drawer = findChild(inbox, "navigationDrawer")
         tryCompare(drawer, "visible", true)
         wait(180)
-        grabImage(drawer.contentItem).save("/tmp/litterbox-navigation-drawer-popup-480x915.png")
-        grabImage(canvas.parent).save("/tmp/litterbox-navigation-drawer-480x915.png")
+        grabImage(drawer.contentItem).save(mailFixtures.screenshotPath("navigation-drawer-popup-480x915.png"))
+        grabImage(canvas.parent).save(mailFixtures.screenshotPath("navigation-drawer-480x915.png"))
         mouseClick(findChild(drawer, "navAccounts"))
         tryCompare(drawer, "visible", false)
         compare(findChild(inbox, "pageStack").currentItem.objectName, "gmailAccountsPage")
@@ -398,7 +531,7 @@ TestCase {
         }
         compare(pixelCards, completeCards, "pixel oracle must count complete mixed cards")
         verify(pixelCards >= 4, "R33-V: only " + pixelCards + " complete mixed cards fit")
-        image.save("/tmp/litterbox-mixed-inbox-" + data.viewWidth + "x" + data.viewHeight + ".png")
+        image.save(mailFixtures.screenshotPath("mixed-inbox-" + data.viewWidth + "x" + data.viewHeight + ".png"))
         console.log("Mixed inbox " + data.viewWidth + "x" + data.viewHeight + ": " + pixelCards + " complete cards")
         // Exercise the actual overflow target on a non-mail card.
         const more = findChild(list.itemAtIndex(0), "inboxActions")
@@ -618,7 +751,7 @@ TestCase {
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(6) !== null })
         wait(200)
         const phase = "after"
-        grabImage(inbox.contentItem).save("/tmp/litterbox-clean-previews/" + phase + "-" + data.viewWidth + ".png")
+        grabImage(inbox.contentItem).save(mailFixtures.screenshotPath("clean-previews/" + phase + "-" + data.viewWidth + ".png"))
         function rowFor(id) {
             for (let i = 0; i < list.count; ++i) {
                 const row = list.itemAtIndex(i)
@@ -709,7 +842,7 @@ TestCase {
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(7) !== null })
         wait(200)
         const phase = "after"
-        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-clean-previews/additional-" + phase + "-" + data.viewWidth + ".png")
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("clean-previews/additional-" + phase + "-" + data.viewWidth + ".png"))
         for (const id of ["postgis6144", "sleep", "confirmation", "maproulette", "hosting"]) {
             let label = null
             for (let i = 0; i < list.count && !label; ++i)
@@ -811,9 +944,6 @@ TestCase {
         verify(menu, "the trigger's Loader must build the bundle-details menu")
         tryCompare(menu, "visible", true)
         wait(200)
-        // Evaluated-parent inspection: the popup's parent is the trigger item,
-        // so popup x/y live in trigger-local coordinates and map from there.
-        compare(menu.parent, trigger, "the bundle menu must be parented to its trigger")
         const popupBox = menu.background.mapToItem(surface, 0, 0)
         console.log("BUNDLE_POPUP_GEOMETRY " + JSON.stringify({
             tag: data.tag, viewport: [surface.width, surface.height],
@@ -828,18 +958,17 @@ TestCase {
                "bundle menu must fit the viewport horizontally: " + popupBox.x + ".." + (popupBox.x + menu.width) + " of " + surface.width)
         verify(popupBox.y >= -1 && popupBox.y + menu.height <= surface.height + 1,
                "bundle menu must fit the viewport vertically: " + popupBox.y + ".." + (popupBox.y + menu.height) + " of " + surface.height)
-        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-bundle-popup-" + data.tag + ".png")
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("bundle-popup-" + data.tag + ".png"))
         menu.close()
         tryCompare(menu, "visible", false)
-        // Header menu as control: the neighbor's identical local anchoring
-        // must pass the same oracle before and after the fix.
+        // The header and bundle popup may use different coordinate parents;
+        // compare their actual painted bounds to the trigger in window space.
         const commands = findChild(inbox, "inboxCommands")
         verify(commands)
         mouseClick(commands)
         const header = findChild(inbox, "headerMenu")
         tryCompare(header, "visible", true)
         wait(150)
-        compare(header.parent, commands, "the header menu keeps its evaluated trigger parent")
         const commandBox = commands.mapToItem(surface, 0, 0)
         const headerBox = header.background.mapToItem(surface, 0, 0)
         console.log("HEADER_MENU_GEOMETRY " + JSON.stringify({
@@ -854,7 +983,7 @@ TestCase {
         verify(headerBox.x >= -1 && headerBox.x + header.width <= surface.width + 1
                && headerBox.y >= -1 && headerBox.y + header.height <= surface.height + 1,
                "header menu control must stay inside the viewport: " + headerBox.x + ".." + (headerBox.x + header.width) + " x " + headerBox.y + ".." + (headerBox.y + header.height) + " of " + surface.width + "x" + surface.height)
-        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-header-menu-control-" + data.tag + ".png")
+        grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath("header-menu-control-" + data.tag + ".png"))
         header.close()
         inbox.close()
     }

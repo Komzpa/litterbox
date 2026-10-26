@@ -156,6 +156,7 @@ private:
     void undoOp(const QString &opId);
     static bool ownerWrite(const QVariantMap &op);
     void retainOwnerRows(QList<QVariantMap> &cards) const;
+    void projectPendingRemovals(QList<QVariantMap> &cards) const;
     bool appendDraftRecord(const QVariantMap &record);
     QString m_draftPath;
     QHash<QString, QVariantMap> m_drafts;

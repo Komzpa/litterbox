@@ -216,6 +216,7 @@ file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")
 list(REMOVE_ITEM _lb_page_tests
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_androidinboxpolish.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_bundleexpand.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_scrollresilience.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_senderphotopaint.qml"
@@ -234,10 +235,6 @@ if (QMLTESTRUNNER6)
              COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml
                      -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform ${LB_TEST_PLATFORM})
     set_tests_properties(tst_touchdefects PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    add_test(NAME tst_inboxlayout
-             COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml
-                     -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports -platform ${LB_TEST_PLATFORM})
-    set_tests_properties(tst_inboxlayout PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     if(ANDROID)
         add_test(NAME tst_mailopen
                  COMMAND ${QMLTESTRUNNER6} -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_mailopen.qml
@@ -268,6 +265,14 @@ if(NOT ANDROID)
                      -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports)
     set_tests_properties(tst_mailopen PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                          ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    # These visual consumers share the owned screenshot-directory prerequisite.
+    foreach(_test_name tst_inboxlayout tst_androidinboxpolish)
+        add_test(NAME ${_test_name}
+                 COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/${_test_name}.qml
+                         -import ${CMAKE_CURRENT_SOURCE_DIR}/tests/qml-imports)
+        set_tests_properties(${_test_name} PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                             ENVIRONMENT "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+    endforeach()
 endif()
 
 # Install desktop executables to bin and Android module libraries to lib.

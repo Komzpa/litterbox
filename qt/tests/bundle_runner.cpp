@@ -1,6 +1,7 @@
 #include "CardStore.h"
 #include <QFile>
 #include <QIcon>
+#include <QPointer>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTemporaryDir>
@@ -10,8 +11,25 @@ class BundleTestSetup : public QObject
 {
     Q_OBJECT
 public slots:
+    // Each QML test/data row owns a separate real database and draft journal.
+    // Never clear pending owner writes to make the next fixture fit.
+    Q_INVOKABLE QObject *freshStore()
+    {
+        if (m_previous) m_previous->deleteLater();
+        auto *store = new CardStore(m_engine);
+        const QString database = m_directory.filePath(QStringLiteral("cards-%1.sqlite").arg(++m_sequence));
+        const QString cache = qEnvironmentVariable("LB_BUNDLE_CACHE");
+        if (!cache.isEmpty() && (!QFile::copy(cache, database)
+                || !QFile::setPermissions(database, QFileDevice::ReadOwner | QFileDevice::WriteOwner)))
+            qFatal("Cannot copy writable disposable bundle cache");
+        if (!store->open(database)) qFatal("Cannot open isolated bundle cache");
+        m_previous = store;
+        return store;
+    }
     void qmlEngineAvailable(QQmlEngine *engine)
     {
+        m_engine = engine;
+        engine->rootContext()->setContextProperty(QStringLiteral("bundleFixture"), this);
         auto *store = new CardStore(engine);
         const QString database = m_directory.filePath(QStringLiteral("cards.sqlite"));
         const QString cache = qEnvironmentVariable("LB_BUNDLE_CACHE");
@@ -45,6 +63,9 @@ public slots:
     }
 private:
     QTemporaryDir m_directory;
+    QQmlEngine *m_engine = nullptr;
+    int m_sequence = 0;
+    QPointer<CardStore> m_previous;
 };
 
 int main(int argc, char **argv)

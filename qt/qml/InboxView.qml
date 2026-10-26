@@ -348,6 +348,7 @@ ApplicationWindow {
     property real dragOffset: 0
     property string dragFeedback: ""
     property var expandedBundles: ({})
+    property string layingOutBundle: ""
     property var bundleSections: ({})
     property var sectionStarts: ({})
     property var bundleSummaries: ({})
@@ -382,11 +383,15 @@ ApplicationWindow {
     function toggleBundle(bundleId) {
         const opener = bundleOpeners[bundleId]
         const headerY = opener ? opener.mapToItem(inboxList, 0, 0).y : 0
+        // First lay out cheap slots at their estimated member heights; their
+        // collapsed y positions all coincide and must not incubate every row.
+        layingOutBundle = bundleId
         const next = Object.assign({}, searching ? searchCollapsedBundles : expandedBundles)
         next[bundleId] = !next[bundleId]
         if (searching) searchCollapsedBundles = next
         else expandedBundles = next
-        bundleModel.rebuildPresentation(false)
+        inboxList.forceLayout()
+        layingOutBundle = ""
         // Layouts polish after callLater; anchor against their rendered geometry.
         window.frameSwapped.connect(function restoreHeader() {
             window.frameSwapped.disconnect(restoreHeader)
@@ -494,8 +499,7 @@ ApplicationWindow {
             if (token !== window.bundleArchiveToken) return
             window.bundleArchiveToken = ""
             window.archiveUndoAvailable = false
-            window.bundleArchiveStatus = qsTr("Undo has expired.")
-            undoExpiredNoticeTimer.restart()
+            window.bundleArchiveStatus = ""
         }
         function onOperationFailed(opId, status, response) { window.showOperationFailure(opId, status, response) }
         function onStorageError(message) {
@@ -510,6 +514,13 @@ ApplicationWindow {
         interval: 2200
         repeat: false
         onTriggered: if (window.bundleArchiveStatus === qsTr("Undo has expired.")) window.bundleArchiveStatus = ""
+    }
+    Timer {
+        id: updateResultTimer
+        objectName: "updateResultTimer"
+        interval: 4000
+        repeat: false
+        onTriggered: window.updateStatus = ""
     }
 
 
@@ -880,7 +891,10 @@ ApplicationWindow {
                         objectName: "headerMenu"
                         // Overlay coordinates follow the usable Qt viewport, not screen pixels.
                         parent: Overlay.overlay
-                        readonly property point anchorPoint: inboxCommandsButton.mapToItem(parent, inboxCommandsButton.width, inboxCommandsButton.height + 8)
+                        property point anchorPoint: Qt.point(0, 0)
+                        // mapToItem() does not track ancestor layout changes.
+                        // Resolve the laid-out trigger each time the popup opens.
+                        onAboutToShow: anchorPoint = inboxCommandsButton.mapToItem(parent, inboxCommandsButton.width, inboxCommandsButton.height + 8)
                         width: Math.min(360, Math.max(0, parent.width - 16))
                         height: Math.min(implicitHeight, Math.max(0, parent.height - 16))
                         x: Math.max(8, Math.min(anchorPoint.x - width, parent.width - width - 8))
@@ -1110,18 +1124,29 @@ ApplicationWindow {
     Connections {
         target: updater
         // R64: automatic checks are silent; only a manual check shows progress.
-        function onBusyChanged() { window.updateStatus = updater.busy && !updater.automatic ? qsTr("Checking for updates…") : "" }
-        function onNoUpdateAvailable() { window.updateStatus = qsTr("No update available") }
+        function onBusyChanged() {
+            updateResultTimer.stop()
+            window.updateStatus = updater.busy && !updater.automatic ? qsTr("Checking for updates…") : ""
+        }
+        function onNoUpdateAvailable() {
+            window.updateStatus = qsTr("No update available")
+            updateResultTimer.restart()
+        }
         // R64: a verified predownload shows one non-blocking Install line;
         // tapping it opens Android's installer directly.
         function onUpdateReady(version, sha256) {
+            updateResultTimer.stop()
             window.updateVersion = version
             window.updateStatus = ""
         }
         function onInstallConsentRequired() {
+            updateResultTimer.stop()
             window.updateStatus = qsTr("Allow installs from Litterbox in Android settings, then tap Install again")
         }
-        function onErrorOccurred(message) { window.updateStatus = message }
+        function onErrorOccurred(message) {
+            updateResultTimer.stop()
+            window.updateStatus = message
+        }
     }
     Drawer {
         id: navigationDrawer
@@ -1362,8 +1387,8 @@ ApplicationWindow {
                     property var rows: []
                     property var sourceEntries: []
                     // Read source roles without ever mutating DelegateModel's groups.
-                    // Publish one linear presentation snapshot; only source signals
-                    // and explicit expansion can rebuild it, never its own reset.
+                    // Source/search changes publish the canonical order. Expansion
+                    // changes visibility only, never row identity or source order.
                     function rebuildPresentation(refreshSource) {
                         const refresh = refreshSource !== false
                         const members = {}
@@ -1394,12 +1419,10 @@ ApplicationWindow {
                             if (card.bundle_leader === true) {
                                 sections[card.bundle_id] = card.section
                                 groups.push([entry])
-                                if (window.expandedBundles[card.bundle_id] || window.searching) {
-                                    const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
-                                    groups.push(bucket)
-                                }
+                                const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
+                                groups.push(bucket)
                             }
-                            else if (card.bundle_leader === false && (window.expandedBundles[card.bundle_id] || window.searching)) {
+                            else if (card.bundle_leader === false) {
                                 const bucket = members[card.bundle_id] || (members[card.bundle_id] = [])
                                 bucket.push(entry)
                             } else groups.push([entry])
@@ -1576,6 +1599,39 @@ ApplicationWindow {
                     readonly property bool lastMember: bundleSummary.lastId === cardId
                     readonly property var latestCard: bundleSummary.latestAt && (!card.received_at || bundleSummary.latestAt > card.received_at) ? Object.assign({}, card, {received_at: bundleSummary.latestAt}) : card
                     readonly property real bundleTextInset: window.compactInbox ? 56 : Math.max(48, Kirigami.Units.gridUnit * 3) + Kirigami.Units.smallSpacing
+                    Keys.onLeftPressed: function(event) {
+                        if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
+                        else event.accepted = false
+                    }
+                    Keys.onEscapePressed: function(event) {
+                        if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
+                        else event.accepted = false
+                    }
+                    visible: !bundled || card.bundle_leader !== false || bundleExpanded
+                    width: ListView.view.width
+                    // A hidden slot has no content. On expansion give offscreen
+                    // members the touch-row estimate until their real layout is
+                    // needed, just as ListView estimates uninstantiated rows.
+                    property real measuredHeight: 48 + 8
+                    readonly property var heightInputs: [entry, width, window.themeFont, window.compactDensity,
+                        window.cardGap, window.largeText, showMemberSender, showMemberAccount, bundleExpanded]
+                    onHeightInputsChanged: measuredHeight = 48 + 8
+                    height: !visible ? 0 : rowContent.item ? rowContent.item.implicitHeight : measuredHeight
+                    z: lifted ? 10 : 0
+                    // Retain cheap zero-height member slots, not hundreds of
+                    // invisible controls/layouts when ListView scans a bundle.
+                    Loader {
+                        id: rowContent
+                        width: parent.width
+                        active: cardRow.visible && (!cardRow.bundled || cardRow.bundleLeader
+                            || (window.layingOutBundle !== card.bundle_id
+                                && cardRow.y < inboxList.contentY + inboxList.height + inboxList.cacheBuffer
+                                && cardRow.y + 48 + 8 > inboxList.contentY - inboxList.cacheBuffer))
+                        sourceComponent: Item {
+                            id: rowVisual
+                            width: rowContent.width
+                            implicitHeight: sectionHeader.height + cardFrame.implicitHeight + (cardRow.bundled && cardRow.bundleExpanded && !cardRow.lastMember ? 0 : window.cardGap)
+                            onImplicitHeightChanged: if (implicitHeight > 0) cardRow.measuredHeight = implicitHeight
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
                     function unregisterControls() {
@@ -1592,22 +1648,13 @@ ApplicationWindow {
                         window.captureActions[cardId] = cardActions
                         if (bundleLeader) window.bundleOpeners[card.bundle_id] = bundleToggle
                     }
-                    onCardIdChanged: if (dragHandle && cardActions && bundleToggle) registerControls()
-                    onBundleLeaderChanged: if (dragHandle && cardActions && bundleToggle) registerControls()
+                    Connections {
+                        target: cardRow
+                        function onCardIdChanged() { rowVisual.registerControls() }
+                        function onBundleLeaderChanged() { rowVisual.registerControls() }
+                    }
                     Component.onCompleted: registerControls()
                     Component.onDestruction: unregisterControls()
-                    Keys.onLeftPressed: function(event) {
-                        if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
-                        else event.accepted = false
-                    }
-                    Keys.onEscapePressed: function(event) {
-                        if (bundled && bundleExpanded) window.toggleBundle(card.bundle_id)
-                        else event.accepted = false
-                    }
-                    visible: !bundled || card.bundle_leader !== false || bundleExpanded
-                    width: ListView.view.width
-                    height: (!bundled || card.bundle_leader !== false || bundleExpanded) ? sectionHeader.height + cardFrame.implicitHeight + (bundled && bundleExpanded && !lastMember ? 0 : window.cardGap) : 0
-                    z: lifted ? 10 : 0
                     Rectangle { anchors.fill: parent; color: "#eef3f2"; visible: cardRow.lifted; radius: 8 }
                     Item {
                         id: sectionHeader
@@ -1966,11 +2013,21 @@ ApplicationWindow {
                                     // held travel must remain a scroll, not open a sheet first.
                                     TapHandler {
                                         property bool heldMail: false
-                                        onPressedChanged: {
-                                            if (pressed) heldMail = false
-                                            else if (heldMail && Math.abs(point.position.x - point.pressPosition.x) < 8
-                                                     && Math.abs(point.position.y - point.pressPosition.y) < 8)
+                                        property point pressScenePosition
+                                        onPressedChanged: if (pressed) {
+                                            heldMail = false
+                                            pressScenePosition = point.scenePosition
+                                        }
+                                        onGrabChanged: function(transition, eventPoint) {
+                                            // Flickable cancellation is not a stationary release.
+                                            if ((transition === PointerDevice.UngrabPassive
+                                                 || transition === PointerDevice.UngrabExclusive)
+                                                    && heldMail
+                                                    && Math.abs(eventPoint.scenePosition.x - pressScenePosition.x) < 8
+                                                    && Math.abs(eventPoint.scenePosition.y - pressScenePosition.y) < 8) {
+                                                heldMail = false
                                                 cardActions.clicked()
+                                            }
                                         }
                                         onTapped: if (!heldMail) cardText.openCard()
                                         onLongPressed: {
@@ -2170,6 +2227,8 @@ ApplicationWindow {
                         height: 2
                         color: window.themeHighlight
                         z: 1
+                    }
+                        }
                     }
                 }
             }

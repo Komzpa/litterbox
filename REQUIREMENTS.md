@@ -107,6 +107,18 @@ Each requirement is **decided** or **open** and names its source.
   and weekend-rollover cases. A visible/open accessibility node is not render
   proof: the menu must paint with nonzero width inside the viewport, and a
   physical preset/OK tap must persist the displayed instant in the payload.
+  Following the owner's 2026-10-27 Inbox-stays-visible report, pending snooze
+  removal must win over retained owner edits on every snapshot and cold restart.
+  A matching operation ACK drains the unchanged op_id/until payload; a different
+  ACK cannot clear it. Rejection and queued Undo restore the latest owner edit,
+  never an older note. Oracle: `pendingRemovalSurvivesOwnerRetention:snooze`,
+  `snoozeRejectAndUndoPreserveLatestOwnerEdit`, and the real CardActions consumer
+  `qmlActionsReachDurableOutboxAndHttpAck`. This is a client projection contract,
+  not evidence of the cause on an owner phone. Preset labels and timestamps must
+  remain complete at default/150% Belarusian/Russian text scale, without phantom
+  rows for hidden presets; the popup stays inside the viewport and scrolls when
+  needed. Oracle: `InboxLayout::test_snoozePresetsWrapWithoutHiddenRows` plus the
+  translated popup captures, retaining the physical tap/payload oracle above.
 ## Offline
 
 - **R9 Full local copy** (decided, owner 2026-09-27; clarified 2026-10-26 after the owner reported mail loading only when opened). The phone keeps every open card with its content, not only titles. Synchronization downloads and persists mail originals, available earlier-message originals and the images required by R19 on the device without requiring the owner to open each card first. A completed synchronization must not mean only titles and previews are available. Reading synchronized mail needs no network, including its first opening after synchronization and after process restart. Opening a locally complete mail renders that persisted content without waiting for a body request; a background refresh must not blank it or replace it with a spinner or error. Interrupted synchronization retains every already-cached original and does not claim missing content is available offline. Oracle: synchronize an isolated fixture containing a never-opened HTML mail with an image, a multi-message thread and a plain-text mail through the production client; terminate and restart with transport unavailable, open each for the first time, and verify the retained complete bodies, image and earlier-message disclosure without a network-dependent loading state. Include an interrupted-download negative control and a previously cached mail that remains readable. R10's pending owner writes and R19's tracker-removal/image guarantees remain unchanged.
@@ -132,6 +144,16 @@ Each requirement is **decided** or **open** and names its source.
   triage may roll back. SQLite guards refuse unacknowledged owner-row/outbox
   deletion and immutable-payload overwrite; model reconciliation retains pending
   owner rows and fields. Startup replays fsynced drafts missing from SQLite.
+  Retention preserves the durable owner bytes, not visibility of a card already
+  removed by pending Done, bundle Done, Archive, Spam or Snooze. Canonical pending
+  operations project removal after owner-row reconciliation on snapshots and
+  restart; no second journal or bypass of the owner-row/outbox guards is allowed.
+  The existing draft record retains exact removed bundle members. Oracle:
+  `pendingRemovalSurvivesOwnerRetention` covers each removal with two note edits,
+  stale/missing/new snapshots, restart, unrelated/matching ACK, unchanged payload,
+  neighbor preservation and cold restart after draining. The actual transition
+  consumer `BundleExpand::test_nonMailArchiveHasNoFalseUndoAndNeighborRemains`
+  must pass without filtering or weakening its removed-ID assertion.
   Background failures only update the quiet pending/Retry line (R55), retry with
   backoff or next sync/Retry, and never produce an “action not done” toast or block
   unrelated cards. Storage failure is the explicit boundary: a failed durable
@@ -372,6 +394,13 @@ the final acceptance; until he sees it each item is partial.
   `img_bd2367fd722c.jpg` sha256
   `bc8fdfb680153a7a41551c3e90cc1ec9b4aa92fa76d96e455ec8caa8c4b5d134`; msg
   15884 item «Online · changes sync across devices» line wastes a row). The inbox never shows a raw socket/errno string such as «Software caused connection abort». Following the owner's 2026-10-26 report «ошибка висит вечно», transient operation-error overlays dismiss automatically after a bounded interval no longer than the existing approximately eight-second Undo presentation; dismissal changes presentation only, never operation acknowledgement, pending counts or retained data. Repeated background attempts for the same pending owner write do not recreate an “action not done” toast. When online, synchronized and no changes are pending, nothing is shown. When the server is unreachable or durable changes remain unacknowledged, one slim status line truthfully shows the connection/pending state, last successful sync time when known, number of changes waiting on this device and Retry; automatic backoff remains active. Online connectivity alone must not hide pending or rejected owner writes. Raw transport details remain in Details and diagnostics. Account-derived reconnect/auth status stays actionable under R51/R52 and is not dismissed as a transient error; local storage failure remains explicit and must not clear an unsaved draft under R10. Oracle: drive offline socket failure, online HTTP 422 rejection of an owner write, reversible archive rejection and successful recovery through production bindings. Assert raw socket text is absent, any permitted transient error disappears within the bound, pending count/Retry remain after its disappearance and restart, and the identical owner text/op_id/payload survive until acknowledgement. Only online with zero pending changes hides the status row. A genuine reauth-required account and failed local save remain actionable negative controls.
+  A transient “no new updates” result clears after a bounded interval (four
+  seconds in the client); its timer must not erase durable pending/offline,
+  auth/reconnect, storage-failure or install-consent state. Those remain until
+  resolved by their owning lifecycle. Oracle:
+  `InboxLayout::test_transientResultsDoNotEraseDurableStatus`, including offline
+  and install-consent negative controls; existing pending/auth/storage controls
+  remain required rather than being replaced by timer-only assertions.
 - **R56 Touch scrolling never activates** (decided, Darafei 2026-10-14 msg
   15786 «Еще надо починить скролл: когда происходит скролл тачем, не должно
   быть изменений на экране, все так должно оставаться чтобы скриншот тул от
@@ -381,6 +410,11 @@ the final acceptance; until he sees it each item is partial.
   selection, open, action or pressed residue. Taps and long presses still
   work. Oracle: QML test flicks across a card and its controls and asserts no
   open, action or selection.
+  In particular a held drag on a mail bundle member must not open its action or
+  snooze sheet after scrolling moves the delegate; use scene-coordinate travel,
+  not delegate-relative travel. Oracle: `BundleExpand::test_mailDragScrollsWithoutMutation`
+  with `test_stationaryMailHoldKeepsSecondaryActions` as the intentional-hold
+  negative control, preserving real mouse/touch input and unchanged IDs/outbox.
 - **R57 Compact bottom Undo** (decided, Darafei 2026-10-14 msg 15790 «Вот эта
   штука про ю кен анду тоже очень плохо смотрится, надо целиком переработать
   ее юикс», screenshot `img_86c78dcd3196.jpg` sha256
@@ -395,6 +429,11 @@ the final acceptance; until he sees it each item is partial.
   (resolves the 2026-10-14 draft's conflict with R51 and R52). Oracle:
   tst_bundleexpand and markspam Undo cases pass with the bar outside the list
   layout; list y of the first card is unchanged while the bar is shown.
+  Expiry silently removes only the matching expired Undo affordance; it never
+  creates an unrelated toast while browsing or clears a newer action's token.
+  Oracle: `InboxLayout::test_transientResultsDoNotEraseDurableStatus` checks the
+  matching expiry and unrelated-token negative control without changing pending
+  operations or emitting an operation result.
 - **R58 Agent results open in full** (decided, Darafei 2026-10-14 msg 15792
   «Сообщения от агентов нельзя раскрыть и что-то с ними сделать, очень плохо»,
   screenshot `img_919e62b26e8b.jpg` sha256
