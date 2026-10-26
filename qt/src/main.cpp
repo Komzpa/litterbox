@@ -2,6 +2,7 @@
 #include "api.h"
 #include "a2astream.h"
 #include "CardStore.h"
+#include "cardstoretransport.h"
 #include "timerules.h"
 #ifdef Q_OS_ANDROID
 #include "androidmailview.h"
@@ -400,7 +401,7 @@ int main(int argc, char *argv[])
     // Preserve the existing v1 note/done routes. Other queued actions use
     // the server operation API, which acknowledges durable outbox entries.
     QHash<int, quint64> cardsRequests;
-    QHash<int, QString> operationRequests;
+    CardStoreTransport operationTransport(store, api);
     QHash<int, QString> mailBodyRequests;
     QHash<int, QString> senderPhotoRequests;
     QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
@@ -417,28 +418,6 @@ int main(int argc, char *argv[])
     QObject::connect(&store, &CardStore::requestCards, &app, [&](const QString &path, quint64 requestId) {
         cardsRequests.insert(api.get(path), requestId);
     });
-    QObject::connect(&store, &CardStore::requestPost, &app,
-        [&](const QString &opId, const QString &requestPath, const QVariantMap &payload) {
-            const QString cardId = payload.value(QStringLiteral("card_id")).toString();
-            const QString type = payload.value(QStringLiteral("type")).toString();
-            const QVariantMap args = payload.value(QStringLiteral("args")).toMap();
-            QString path = QStringLiteral("/v1/cards/") + cardId;
-            QJsonObject body;
-            if (type == QStringLiteral("done")) {
-                path += QStringLiteral("/dismiss");
-                if (args.contains(QStringLiteral("note"))) body.insert(QStringLiteral("note"), args.value(QStringLiteral("note")).toString());
-            } else if (type == QStringLiteral("note")) {
-                path += QStringLiteral("/note");
-                body.insert(QStringLiteral("text"), args.value(QStringLiteral("note")).toString());
-            } else if (requestPath == QStringLiteral("/v1/ops")) {
-                operationRequests.insert(api.post(requestPath, QJsonObject::fromVariantMap(payload)), opId);
-                return;
-            } else {
-                store.reportPostResult(opId, 0, {});
-                return;
-            }
-            operationRequests.insert(api.post(path, body), opId);
-        });
     QObject::connect(&api, &Api::requestFinished, &app,
         [&](int id, const QJsonValue &data, int status) {
             if (mailBodyRequests.contains(id)) {
@@ -448,11 +427,6 @@ int main(int argc, char *argv[])
             if (cardsRequests.contains(id)) {
                 store.applyRemoteCards(data.toObject().toVariantMap(), cardsRequests.take(id));
                 return;
-            }
-            if (operationRequests.contains(id)) {
-                QVariantMap response = data.toObject().toVariantMap();
-                if (status == 204) response.insert(QStringLiteral("ok"), true);
-                store.reportPostResult(operationRequests.take(id), status, response);
             }
         });
     QObject::connect(&api, &Api::requestFinishedBytes, &app,
@@ -467,10 +441,6 @@ int main(int argc, char *argv[])
             cardsRequests.remove(id);
             if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id));
             if (senderPhotoRequests.contains(id)) store.reportSenderPhotoFailed(senderPhotoRequests.take(id), status);
-            if (operationRequests.contains(id)) {
-                qWarning().noquote() << "Operation request failed:" << status << error;
-                store.reportPostResult(operationRequests.take(id), status, data.toObject().toVariantMap());
-            }
             if (status == 0) store.reportOffline(error);
         });
 

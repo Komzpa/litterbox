@@ -141,6 +141,12 @@ private:
                       const QList<QVariantMap> &ops = {}, const QStringList &cancelledOps = {});
     bool writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after);
     void undoOp(const QString &opId);
+    static bool ownerWrite(const QVariantMap &op);
+    void retainOwnerRows(QList<QVariantMap> &cards) const;
+    bool appendDraftRecord(const QVariantMap &record);
+    QString m_draftPath;
+    QHash<QString, QVariantMap> m_drafts;
+    QStringList m_draftOrder;
     void flushNext();
     void queueMailBodyPrefetch();
     void prefetchNextMailBody();

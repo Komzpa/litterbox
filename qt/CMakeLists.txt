@@ -23,6 +23,7 @@ qt_add_executable(litterbox-qt
     src/main.cpp
     src/api.h
     src/api.cpp
+    src/cardstoretransport.h
     src/a2astream.h
     src/a2astream.cpp
     src/androidupdater.h

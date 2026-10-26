@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "CardStore.h"
+#include "cardstoretransport.h"
 #include <QtTest>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -18,6 +19,9 @@
 #include <QUrl>
 #include <QUuid>
 #include <QSqlQuery>
+#include <QProcess>
+#include <QFile>
+#include <csignal>
 
 static const QString cardId = QStringLiteral("11111111-1111-4111-8111-111111111111");
 
@@ -27,6 +31,7 @@ static const QString cardId = QStringLiteral("11111111-1111-4111-8111-1111111111
 class OpsServer : public QTcpServer {
 public:
     QList<QVariantMap> received;
+    QList<QByteArray> paths;
     QHash<QString,QByteArray> ledger;
     int applied = 0;
     bool loseNextAck = false;
@@ -48,6 +53,7 @@ public:
                     const QByteArray body = bytes->mid(split + 4, length);
                     const QVariantMap op = QJsonDocument::fromJson(body).object().toVariantMap();
                     received.append(op);
+                    paths.append(bytes->left(bytes->indexOf("\r\n")).split(' ').value(1));
                     const QString id = op.value("op_id").toString();
                     int status = statusSequence.isEmpty() ? reject : statusSequence.takeFirst();
                     if (!status) {
@@ -727,7 +733,7 @@ private slots:
         QSignalSpy failed(&store, &CardStore::operationFailed);
         store.setTransport(&transport);
         store.setOnline(true);
-        QTRY_COMPARE(failed.size(), 2);
+        QTRY_COMPARE(failed.size(), 1); // Only the reversible archive reports failure.
         QTRY_COMPARE(store.pendingOps(), 2);
         QCOMPARE(transport.posted.size(), 2);
         QCOMPARE(transport.posted.last().value("op_id").toString(), unrelated);
@@ -741,6 +747,251 @@ private slots:
         QCOMPARE(transport.posted[2], transport.posted[0]);
         QCOMPARE(transport.posted[3].value("op_id").toString(), dependent);
         QVERIFY(!store.saveFailed());
+    }
+    void ownerWriteSurvivesFailureRestartAndMissingSnapshot_data() {
+        QTest::addColumn<int>("status");
+        QTest::addColumn<QString>("kind");
+        for (int status : {400, 401, 403, 409, 422, 429, 500, 503, 0})
+            for (const QString &kind : {QStringLiteral("manual"), QStringLiteral("journal"), QStringLiteral("note")})
+                QTest::newRow(qPrintable(QString::number(status) + "-" + kind)) << status << kind;
+    }
+    void ownerWriteSurvivesFailureRestartAndMissingSnapshot() {
+        QFETCH(int, status);
+        QFETCH(QString, kind);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("owner.sqlite");
+        const QString text = QStringLiteral("Owner text\nNever discard this edit");
+        const QVariantMap empty{{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.reject = status;
+        server.loseNextAck = status == 0;
+        HttpTransport transport(server.serverPort());
+        QVariantMap original;
+        QString id;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            if (kind == "note") {
+                QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Mail"}, {"note", "old"}}}},
+                    {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+                QVERIFY(!store.saveNote(cardId, text).isEmpty());
+            } else QVERIFY(store.createCard(text, kind == "manual" ? text : QString(), kind));
+            id = store.cardIds().first();
+            store.setTransport(&transport);
+            store.setOnline(true);
+            QTRY_COMPARE(server.received.size(), 1);
+            store.setOnline(false);
+            original = server.received.first();
+            // Undo is not a text-discard API, even before the operation is sent.
+            store.undoQueuedOp(original.value("op_id").toString());
+            QCOMPARE(store.pendingOps(), 1);
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.pendingOps(), 1);
+        QVERIFY(restored.applyRemoteCards(empty));
+        QCOMPARE(restored.cardIds(), QStringList{id});
+        const auto card = restored.data(restored.index(0), CardStore::CardRole).toMap();
+        if (kind == "note") QCOMPARE(card.value("note").toString(), text);
+        else if (kind == "journal") QCOMPARE(card.value("title").toString() + "\n" + card.value("summary").toString(), text);
+        else QCOMPARE(card.value("summary").toString(), text);
+        server.reject = 0;
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.received.size(), 2);
+        QCOMPARE(server.received.last(), original);
+        QCOMPARE(server.applied, 1);
+        restored.flush();
+        QTest::qWait(20);
+        QCOMPARE(server.received.size(), 2);
+    }
+    void ownerWriteRestartMidFlight() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("inflight.sqlite");
+        QVariantMap original;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QSignalSpy requests(&store, &CardStore::requestPost);
+            store.setOnline(true);
+            QVERIFY(store.createCard("Unacknowledged text", "", "journal"));
+            QTRY_COMPARE(requests.size(), 1);
+            original = requests.first().at(2).toMap();
+            // The transport never supplies a completion before process exit.
+        }
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.pendingOps(), 1);
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.received, QList<QVariantMap>{original});
+        QCOMPARE(server.applied, 1);
+    }
+    void ownerSaveIsLocalBeforeReplyAndQuietOnFailure_data() {
+        QTest::addColumn<int>("status");
+        for (int status : {422, 500, 0}) QTest::newRow(qPrintable(QString::number(status))) << status;
+    }
+    void ownerSaveIsLocalBeforeReplyAndQuietOnFailure() {
+        QFETCH(int, status);
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("local-first.sqlite")));
+        QSignalSpy requests(&store, &CardStore::requestPost);
+        QSignalSpy toasts(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        QVERIFY(store.createCard("Saved locally", "", "journal"));
+        QCOMPARE(store.rowCount(), 1); // Save has returned, no transport reply exists.
+        QCOMPARE(store.pendingOps(), 1);
+        QTRY_COMPARE(requests.size(), 1);
+        const QString id = requests.first().at(0).toString();
+        store.reportPostResult(id, status, {{"ok", false}});
+        QCOMPARE(toasts.size(), 0);
+        QVERIFY(store.saveFailed());
+        QCOMPARE(store.rowCount(), 1);
+        store.refresh();
+        QTRY_COMPARE(requests.size(), 2);
+        QCOMPARE(requests.last().at(2), requests.first().at(2));
+        store.reportPostResult(id, 200, {{"ok", true}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+    }
+    void ownerDraftSurvivesKillBeforeDatabaseCommit() {
+        const QString childPath = qEnvironmentVariable("LB_DRAFT_CRASH_CHILD");
+        if (!childPath.isEmpty()) {
+            CardStore store;
+            QVERIFY(store.open(childPath));
+            auto lock = QSqlDatabase::addDatabase("QSQLITE", "crash-lock");
+            lock.setDatabaseName(childPath);
+            QVERIFY(lock.open());
+            QSqlQuery query(lock);
+            QVERIFY(query.exec("BEGIN EXCLUSIVE"));
+            QVERIFY(store.createCard("Survive SIGKILL", "raw owner text", "journal"));
+            QFile ready(childPath + ".ready");
+            QVERIFY(ready.open(QIODevice::WriteOnly));
+            ready.write("saved");
+            ready.close();
+            QTest::qWait(60000); // Parent kills this exact PID while SQLite is locked.
+            QFAIL("Parent did not kill the child");
+        }
+        QTemporaryDir directory;
+        const QString path = directory.filePath("killed.sqlite");
+        QProcess child;
+        auto environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("LB_DRAFT_CRASH_CHILD", path);
+        child.setProcessEnvironment(environment);
+        child.start(QCoreApplication::applicationFilePath(), {"ownerDraftSurvivesKillBeforeDatabaseCommit"});
+        QVERIFY(child.waitForStarted());
+        const qint64 pid = child.processId();
+        qInfo() << "Crash-test child PID:" << pid;
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(path + ".ready"), 10000);
+        QCOMPARE(::kill(pid, SIGKILL), 0);
+        QVERIFY(child.waitForFinished());
+        QCOMPARE(child.exitStatus(), QProcess::CrashExit);
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.rowCount(), 1);
+        QCOMPARE(restored.data(restored.index(0), CardStore::TitleRole).toString(), QStringLiteral("Survive SIGKILL"));
+        QCOMPARE(restored.pendingOps(), 1);
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.applied, 1);
+        QCOMPARE(server.received.size(), 1);
+    }
+    void ownerRowsAndOutboxRejectDestructiveSql() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("guard.sqlite");
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.createCard("Do not delete", "", "journal"));
+        }
+        const QString connection = QUuid::createUuid().toString();
+        auto db = QSqlDatabase::addDatabase("QSQLITE", connection);
+        db.setDatabaseName(path);
+        QVERIFY(db.open());
+        {
+            QSqlQuery query(db);
+            QVERIFY(!query.exec("DELETE FROM cards"));
+            QVERIFY(!query.exec("DELETE FROM outbox"));
+            QVERIFY(!query.exec("UPDATE outbox SET payload='{}'"));
+            QVERIFY(query.exec("SELECT count(*) FROM cards"));
+            QVERIFY(query.next());
+            QCOMPARE(query.value(0).toInt(), 1);
+        }
+        db.close();
+        db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(connection);
+    }
+    void mainTransportRetainsRejectedNoteAndRetriesExactOperation() {
+        QTemporaryDir directory;
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.reject = 422;
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        api.setToken("isolated-test-token");
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("main-transport.sqlite")));
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Mail"}, {"note", "old"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        // This is the exact production binding constructed by main.cpp, not OpTransport.
+        CardStoreTransport transport(store, api);
+        QSignalSpy toasts(&store, &CardStore::operationFailed);
+        store.setOnline(true);
+        const QString op = store.saveNote(cardId, "Owner's revised note");
+        QVERIFY(!op.isEmpty());
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Owner's revised note"));
+        QTRY_VERIFY(store.saveFailed());
+        QCOMPARE(store.pendingOps(), 1);
+        QCOMPARE(toasts.size(), 0);
+        QCOMPARE(server.paths, QList<QByteArray>{"/v1/ops"});
+        const QVariantMap original = server.received.first();
+        QCOMPARE(original.value("op_id").toString(), op);
+        QCOMPARE(original.value("type").toString(), QStringLiteral("note"));
+        server.reject = 0;
+        store.refresh();
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QCOMPARE(server.paths, (QList<QByteArray>{"/v1/ops", "/v1/ops"}));
+        QCOMPARE(server.received.last(), original);
+        QCOMPARE(server.applied, 1);
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Owner's revised note"));
+    }
+    void latestNoteEditSurvivesStaleSnapshotAndRestart() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("edits.sqlite");
+        const QVariantMap stale{{"now", QVariantList{QVariantMap{{"id", cardId}, {"title", "Mail"}, {"note", "server old"}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(stale));
+            QVERIFY(!store.saveNote(cardId, "First edit").isEmpty());
+            QVERIFY(!store.saveNote(cardId, "Latest edit").isEmpty());
+            QVERIFY(store.applyRemoteCards(stale));
+            QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Latest edit"));
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QVERIFY(restored.applyRemoteCards(stale));
+        QCOMPARE(restored.data(restored.index(0), CardStore::CardRole).toMap().value("note").toString(), QStringLiteral("Latest edit"));
+        OpsServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        HttpTransport transport(server.serverPort());
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(server.applied, 2);
+        QCOMPARE(server.received[0].value("args").toMap().value("note").toString(), QStringLiteral("First edit"));
+        QCOMPARE(server.received[1].value("args").toMap().value("note").toString(), QStringLiteral("Latest edit"));
     }
     void rejectedJournalRetainsTextAndRetries_data() {
         QTest::addColumn<QString>("retryVia");
@@ -767,8 +1018,8 @@ private slots:
             store.setOnline(true);
             QVERIFY(store.createCard(body, "", "journal"));
             journalId = store.cardIds().first();
-            QTRY_COMPARE(failed.size(), 1);
-            QCOMPARE(failed.first().at(1).toInt(), 422);
+            QTRY_VERIFY(store.saveFailed());
+            QCOMPARE(failed.size(), 0); // Background sync never reports Save as undone.
             QCOMPARE(store.cardIds(), QStringList{journalId});
             QCOMPARE(store.pendingOps(), 1);
             originalOp = server.received.first();
