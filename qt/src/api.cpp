@@ -187,6 +187,11 @@ int Api::get(const QString &path, const QJSValue &callback)
     const int id = m_nextId++;
     if (callback.isCallable()) m_callbacks.insert(id, callback);
     QNetworkRequest request = buildRequest(path);
+    // The store retains a body request's identity until this reply actually
+    // finishes, including across reconnects. Abort stalled transfers here so
+    // retry can release its slot without overlapping the old HTTP request.
+    if (path.startsWith(QStringLiteral("/v1/cards/")) && path.endsWith(QStringLiteral("/body")))
+        request.setTransferTimeout(60000);
     // Keep callback-driven UI loads ahead of signal-only cache prefetches.
     request.setPriority(callback.isCallable() ? QNetworkRequest::HighPriority : QNetworkRequest::LowPriority);
     trackJsonReply(id, m_nam->get(request));

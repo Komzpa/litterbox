@@ -7,6 +7,15 @@ Included named icons (the theme selects the nearest bundled size):
 actions: list-add, application-menu, dialog-ok, mail-mark-read-symbolic,
   overflow-menu, document-open, document-preview, document-edit,
   appointment-new, pin, list-remove, mail-receive, view-refresh,
-  transform-move, arrow-right, arrow-down
+  transform-move, arrow-right, arrow-down, go-previous, mail-archive,
+  dialog-messages, configure, edit-find
 places: user-identity, folder
 status: system-software-update
+
+Reader/navigation additions use the unmodified Breeze actions/24 SVGs. The
+application's mail-archive name maps to Breeze archive-insert-directory.svg
+(also shipped upstream as project_archive.svg); Breeze has no mail-archive.svg.
+The single 24px source scales for the theme's other requested sizes. Keeping
+these names in the bundled theme makes reader, menu and drawer glyphs available
+on Android without a system icon theme. The reader pixel-proof target embeds
+this same theme and selects it explicitly, so host icons cannot mask omissions.

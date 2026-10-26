@@ -439,9 +439,9 @@ int main(int argc, char *argv[])
     QObject::connect(&api, &Api::requestFailed, &app,
         [&](int id, int status, const QString &error, const QJsonValue &data) {
             cardsRequests.remove(id);
-            if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id));
-            if (senderPhotoRequests.contains(id)) store.reportSenderPhotoFailed(senderPhotoRequests.take(id), status);
             if (status == 0) store.reportOffline(error);
+            if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id), status);
+            if (senderPhotoRequests.contains(id)) store.reportSenderPhotoFailed(senderPhotoRequests.take(id), status);
         });
 
     QTimer reconnect;

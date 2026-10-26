@@ -29,6 +29,8 @@ class CardStore : public QAbstractListModel {
     Q_PROPERTY(QString offlineReason READ offlineReason NOTIFY offlineReasonChanged)
     Q_PROPERTY(int pendingOps READ pendingOps NOTIFY pendingOpsChanged)
     Q_PROPERTY(bool saveFailed READ saveFailed NOTIFY pendingOpsChanged)
+    Q_PROPERTY(int mailSyncPending READ mailSyncPending NOTIFY mailSyncStateChanged)
+    Q_PROPERTY(bool mailSyncComplete READ mailSyncComplete NOTIFY mailSyncStateChanged)
 public:
     enum Role { CardRole = Qt::UserRole + 1, CardIdRole, TitleRole, SectionRole, SenderNameRole, SenderPhotoRole };
     Q_ENUM(Role)
@@ -93,13 +95,18 @@ public:
     // cachedMailBody returns {html, source_url, messages} or an empty map on a miss.
     // messages is a JSON array retained verbatim for offline thread reading.
     Q_INVOKABLE QVariantMap cachedMailBody(const QString &cardId) const;
+    // Pending counts fetchable open cards missing a durable original. Completion
+    // additionally requires the current metadata snapshot's SQLite commit;
+    // connectivity alone is never evidence of completed synchronization.
+    int mailSyncPending() const;
+    bool mailSyncComplete() const;
     // Fetch a mail or has_body agent card's body through the authenticated
     // API while online. Plain cards without has_body have no fetchable body.
     Q_INVOKABLE void requestMailBody(const QString &cardId);
     // Remote body entrypoints: applyRemoteMailBody persists before signalling;
     // reportMailBodyFailed never deletes already-cached content.
     Q_INVOKABLE void applyRemoteMailBody(const QString &cardId, const QVariantMap &body);
-    Q_INVOKABLE void reportMailBodyFailed(const QString &cardId);
+    Q_INVOKABLE void reportMailBodyFailed(const QString &cardId, int status = 0);
     // Open a file embedded as a data: link in the cached body. Accepts only a
     // data: URL present byte-for-byte in that card's cached HTML, decodes its
     // base64 payload, writes it under CacheLocation/card-files/<cardId>/<name>
@@ -132,6 +139,7 @@ signals:
     void requestSenderPhotoGet(const QString &cardId, const QString &path);
     void mailBodyChanged(const QString &cardId);
     void mailBodyFailed(const QString &cardId);
+    void mailSyncStateChanged();
     void senderPhotoChanged(const QString &cardId);
     void senderPhotoFailed(const QString &cardId);
     void operationFailed(const QString &opId, int status, const QVariantMap &response);
@@ -142,7 +150,8 @@ private:
     void replaceCards(QList<QVariantMap> cards);
     // Commits card rows, inserted ops and cancelled op ids in one transaction.
     void persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after,
-                      const QList<QVariantMap> &ops = {}, const QStringList &cancelledOps = {});
+                      const QList<QVariantMap> &ops = {}, const QStringList &cancelledOps = {},
+                      quint64 bodySnapshot = 0);
     bool writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after);
     void undoOp(const QString &opId);
     static bool ownerWrite(const QVariantMap &op);
@@ -197,9 +206,13 @@ private:
     QTimer *m_bundleUndoTimer = nullptr;
     QHash<QString, QVariantMap> m_mailBodies;
     QStringList m_bodyPrefetchQueue;
-    QHash<QString, QDeadlineTimer> m_bodyRequests;
+    QSet<QString> m_bodyRequests;
     QTimer m_bodyPrefetchTimer;
-    QDeadlineTimer m_nextBodyPrefetch{0, Qt::PreciseTimer};
+    QDeadlineTimer m_bodyBackoff{0, Qt::PreciseTimer};
+    QHash<QString, QDeadlineTimer> m_bodyRetryAfter;
+    QHash<QString, int> m_bodyRetryAttempts;
+    QSet<QString> m_bodyPersisting;
+    quint64 m_durableBodySnapshot = 0;
     // R67: device-cached sender-photo file URLs by card id (local file://,
     // never provider URLs). Persisted in sender_photo_files; injected into
     // card maps as sender_photo so delegates render without extra lookups.

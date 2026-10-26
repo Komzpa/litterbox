@@ -210,9 +210,9 @@ Controls.ToolButton {
                 objectName: "cardActionSheet-" + root.cardKey
                 title: root.cardTitle
                 modal: true
-                width: Math.min(360, root.Window.window ? root.Window.window.width - 2 * Kirigami.Units.largeSpacing : 360)
+                width: Math.min(360, parent ? Math.max(0, parent.width - 2 * Kirigami.Units.largeSpacing) : 360)
                 implicitWidth: width
-                height: Math.min(implicitHeight, root.Window.window ? root.Window.window.height - 32 : 640)
+                height: Math.min(implicitHeight, parent ? Math.max(0, parent.height - 32) : 640)
                 // Explicit title: the style-provided header label follows the host
                 // theme (invisible white on our white surface under Breeze and
                 // dark-Material), so pin ink directly.
@@ -581,9 +581,9 @@ Controls.ToolButton {
                 palette.buttonText: root.actionInk
                 palette.highlight: root.actionAccent
                 palette.highlightedText: root.actionSurface
-                width: Math.min(392, root.Window.window ? root.Window.window.width - 32 : 392)
+                width: Math.min(392, parent ? Math.max(0, parent.width - 32) : 392)
                 implicitWidth: width
-                height: Math.min(implicitHeight, root.Window.window ? root.Window.window.height - 32 : 640)
+                height: Math.min(implicitHeight, parent ? Math.max(0, parent.height - 32) : 640)
                 background: Rectangle { color: root.actionSurface; radius: 8; border.color: "#dce5e3" }
                 onOpened: snoozeDay.forceActiveFocus()
                 contentItem: Controls.ScrollView {

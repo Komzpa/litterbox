@@ -102,34 +102,71 @@ TestCase {
         inbox.close()
     }
 
-    function test_densityMenuIndicatorsDoNotCoverLabels() {
+    function test_densityMenuIndicatorsDoNotCoverLabels_data() {
+        const rows = []
+        for (const size of [[323, 429], [412, 915], [480, 915], [549, 1280]])
+            for (const scale of [1, 1.5])
+                rows.push({tag: size[0] + "x" + size[1] + "-text" + scale,
+                    w: size[0], h: size[1], scale: scale})
+        return rows
+    }
+    function test_densityMenuIndicatorsDoNotCoverLabels(data) {
         store.clear()
+        updater.supported = true
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,
-            width: 323, height: 429
+            width: data.w, height: data.h
         })
         verify(inbox)
         inbox.show()
         mouseClick(findChild(inbox, "inboxCommands"))
         const menu = findChild(inbox, "headerMenu")
         tryCompare(menu, "visible", true)
-        for (const name of ["densityComfortable", "densityCompact"]) {
+        const actions = findChild(menu, "headerMenuActions")
+        const names = ["headerMenuAccounts", "headerMenuAgents", "headerMenuSettings", "headerMenuEnroll",
+            "headerMenuRefresh", "headerMenuUpdates", "densityComfortable", "densityCompact"]
+        // Real long-language fixtures, not translation-string assertions.
+        findChild(menu, "headerMenuUpdates").text = "Праверыць абнаўленні праграмы Litterbox"
+        findChild(menu, "densityComfortable").text = "Прасторная шчыльнасць спіса лістоў"
+        findChild(menu, "densityCompact").text = "Кампактная шчыльнасць спіса лістоў"
+        for (const name of names) {
+            const item = findChild(menu, name)
+            item.font = Qt.font({family: inbox.themeFont.family, pointSize: inbox.themeFont.pointSize * data.scale})
+        }
+        wait(180)
+        const box = menu.contentItem.mapToItem(menu.parent, -menu.leftPadding, -menu.topPadding)
+        verify(box.x >= 0 && box.y >= 0 && box.x + menu.width <= menu.parent.width + 1
+            && box.y + menu.height <= menu.parent.height + 1, "popup fits the usable overlay")
+        for (const name of names) {
             const item = findChild(menu, name)
             const label = findChild(item, "menuItemLabel")
-            const check = findChild(item, "densityMenuCheck")
-            verify(item && label && check && check.visible)
+            verify(item.width >= 48 && item.height >= 48)
+            verify(!label.truncated && label.contentHeight <= label.height + 1, name + " renders its complete label")
             const labelBox = label.mapToItem(item, 0, 0)
-            const checkBox = check.mapToItem(item, 0, 0)
-            verify(labelBox.x + label.width <= checkBox.x, "density label must end before its check indicator")
-            verify(labelBox.y >= 0 && labelBox.y + label.height <= item.height)
+            verify(labelBox.x >= 0 && labelBox.x + label.width <= item.width + 1)
+            verify(labelBox.y >= 0 && labelBox.y + label.height <= item.height + 1)
+            if (item.checkable) {
+                const check = findChild(item, "densityMenuCheck")
+                verify(check.visible)
+                verify(labelBox.x + label.width <= check.mapToItem(item, 0, 0).x, "check has separate trailing space")
+            }
+            actions.positionViewAtIndex(names.indexOf(name), ListView.Contain)
+            wait(30)
+            const target = item.mapToItem(actions, 0, 0)
+            verify(target.y >= -1 && target.y + item.height <= actions.height + 1, name + " can scroll fully into view")
         }
+        if (data.h === 429)
+            verify(actions.contentHeight > actions.height, "short viewport must exercise scrolling")
+        grabImage(menu.contentItem).save("/tmp/litterbox-density-menu-popup-" + data.tag + ".png")
+        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-density-menu-" + data.tag + ".png")
         const comfortable = findChild(menu, "densityComfortable")
-        wait(180)
-        grabImage(menu.contentItem).save("/tmp/litterbox-density-menu-popup-323x429.png")
-        grabImage(inbox.contentItem.parent).save("/tmp/litterbox-density-menu-323x429.png")
-        mouseClick(comfortable)
+        actions.positionViewAtIndex(names.indexOf("densityComfortable"), ListView.Contain)
+        wait(30)
+        const hit = comfortable.mapToItem(inbox.contentItem, comfortable.width / 2, comfortable.height / 2)
+        mouseClick(inbox.contentItem, hit.x, hit.y)
         tryCompare(inbox, "compactDensity", false)
         tryCompare(menu, "visible", false)
+        updater.supported = false
         inbox.close()
     }
 
@@ -164,11 +201,17 @@ TestCase {
         inbox.close()
     }
 
-    function test_narrowNavigationUsesDrawerWithoutSidebar() {
+    function test_narrowNavigationUsesDrawerWithoutSidebar_data() {
+        return [{tag: "250x430", viewWidth: 250, viewHeight: 430, textScale: 1},
+                {tag: "412x915", viewWidth: 412, viewHeight: 915, textScale: 1},
+                {tag: "480x915", viewWidth: 480, viewHeight: 915, textScale: 1},
+                {tag: "412x915-text150", viewWidth: 412, viewHeight: 915, textScale: 1.5}]
+    }
+    function test_narrowNavigationUsesDrawerWithoutSidebar(data) {
         store.clear()
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,
-            width: 250, height: 430
+            width: data.viewWidth, height: data.viewHeight
         })
         verify(inbox)
         inbox.show()
@@ -177,17 +220,54 @@ TestCase {
         const split = findChild(inbox, "inboxSplit")
         compare(rail.visible, false)
         verify(Math.abs(split.width - canvas.width) <= 1, "narrow content must not lose width to a permanent sidebar")
-        grabImage(canvas.parent).save("/tmp/litterbox-navigation-250x430.png")
+        grabImage(canvas.parent).save("/tmp/litterbox-navigation-" + data.tag + ".png")
         const opener = findChild(inbox, "openNavigation")
         verify(opener.visible && opener.width >= 48 && opener.height >= 48)
         mouseClick(opener)
         const drawer = findChild(inbox, "navigationDrawer")
         tryCompare(drawer, "visible", true)
-        for (const name of ["navInbox", "navAccounts", "navAgents", "navSettings"])
-            verify(findChild(drawer, name).visible, name + " remains reachable")
+        const names = ["navInbox", "navAccounts", "navAgents", "navSettings", "navigationSearch"]
+        const icons = []
+        let iconStart = -1
+        let labelStart = -1
+        let rowBottom = 0
+        for (const name of names) {
+            const nav = findChild(drawer, name)
+            verify(nav && nav.visible && nav.width >= 48 && nav.height >= 48, name + " remains reachable")
+            if (data.textScale > 1)
+                nav.font = Qt.font({family: inbox.themeFont.family, pointSize: inbox.themeFont.pointSize * data.textScale})
+        }
         wait(180)
-        grabImage(drawer.contentItem).save("/tmp/litterbox-navigation-drawer-popup-250x430.png")
-        grabImage(canvas.parent).save("/tmp/litterbox-navigation-drawer-250x430.png")
+        for (const name of names) {
+            const nav = findChild(drawer, name)
+            const icon = findChild(nav, "navigationIcon")
+            const label = findChild(nav, "navigationLabel")
+            verify(icon && label && icon.valid, name + " must paint an available glyph")
+            const rowBox = nav.mapToItem(drawer.contentItem, 0, 0)
+            const iconBox = icon.mapToItem(drawer.contentItem, 0, 0)
+            const labelBox = label.mapToItem(drawer.contentItem, 0, 0)
+            verify(rowBox.x >= 0 && rowBox.x + nav.width <= drawer.availableWidth + 1)
+            verify(rowBox.y >= rowBottom - 1, "navigation targets must not overlap")
+            rowBottom = rowBox.y + nav.height
+            if (iconStart < 0) {
+                iconStart = iconBox.x
+                labelStart = labelBox.x
+            }
+            fuzzyCompare(iconBox.x, iconStart, 1)
+            fuzzyCompare(labelBox.x, labelStart, 1)
+            verify(iconBox.x + icon.width < labelBox.x, "icon column must not cover text")
+            verify(labelBox.x + label.width <= rowBox.x + nav.width - nav.rightPadding + 1)
+            verify(labelBox.y >= rowBox.y && labelBox.y + label.height <= rowBottom + 1)
+            verify(label.contentHeight <= label.height + 1, "scaled labels must wrap without vertical clipping")
+            verify(label.horizontalAlignment === Text.AlignLeft)
+            icons.push(icon)
+        }
+        for (let i = 0; i < 4; ++i)
+            for (let j = i + 1; j < 4; ++j)
+                verify(!grabImage(icons[i]).equals(grabImage(icons[j])), "destinations must have visually distinct glyphs")
+        verify(findChild(drawer, "navInbox").checked)
+        grabImage(drawer.contentItem).save("/tmp/litterbox-navigation-drawer-popup-" + data.tag + ".png")
+        grabImage(canvas.parent).save("/tmp/litterbox-navigation-drawer-" + data.tag + ".png")
         mouseClick(findChild(drawer, "navSettings"))
         tryCompare(drawer, "visible", false)
         compare(findChild(inbox, "pageStack").currentItem.objectName, "settingsPage")

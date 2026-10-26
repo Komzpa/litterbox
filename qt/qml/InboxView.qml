@@ -129,6 +129,46 @@ ApplicationWindow {
         DestinationButton { objectName: "navAgents"; destination: "AgentThreadsPage"; location: qsTr("Agents"); icon.name: "user-identity"; Layout.fillWidth: true }
         DestinationButton { objectName: "navSettings"; destination: "SettingsPage"; location: qsTr("Settings"); icon.name: "application-menu"; Layout.fillWidth: true }
     }
+    component DrawerAction: ToolButton {
+        id: action
+        font: window.themeFont
+        leftPadding: 16
+        rightPadding: 16
+        topPadding: 12
+        bottomPadding: 12
+        implicitHeight: Math.max(48, implicitContentHeight + topPadding + bottomPadding)
+        Layout.fillWidth: true
+        Accessible.name: text
+        contentItem: RowLayout {
+            spacing: 16
+            Kirigami.Icon {
+                objectName: "navigationIcon"
+                source: action.icon.name
+                color: action.checked ? window.accent : window.ink
+                isMask: true
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
+                Layout.alignment: Qt.AlignTop
+            }
+            Label {
+                objectName: "navigationLabel"
+                text: action.text
+                font: action.font
+                color: action.checked ? window.accent : window.ink
+                horizontalAlignment: Text.AlignLeft
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.alignment: Qt.AlignVCenter
+            }
+        }
+        background: Rectangle {
+            radius: 8
+            color: action.checked ? "#dcece7" : action.down || action.hovered ? "#eaf2ef" : "transparent"
+            border.width: action.visualFocus ? 2 : 0
+            border.color: window.accent
+        }
+    }
     readonly property real edgeSpacing: compactInbox ? 8 : Math.max(18, Kirigami.Units.largeSpacing)
     readonly property int actionIconSize: 20
     // R65: Android "remove animations" / tests can switch motion off.
@@ -205,8 +245,10 @@ ApplicationWindow {
     }
     component InboxMenuItem: MenuItem {
         id: entry
-        implicitWidth: Math.max(200, contentItem.implicitWidth + leftPadding + rightPadding)
-        implicitHeight: visible ? Math.max(48, contentItem.implicitHeight + 16) : 0
+        font: window.themeFont
+        implicitWidth: 280
+        width: headerMenu.availableWidth
+        implicitHeight: visible ? Math.max(48, contentItem.implicitHeight + topPadding + bottomPadding) : 0
         height: implicitHeight
         leftPadding: 12
         rightPadding: 12
@@ -228,9 +270,12 @@ ApplicationWindow {
                 objectName: "menuItemLabel"
                 text: entry.text
                 color: entry.enabled ? window.ink : window.mutedInk
-                font: window.themeFont
-                elide: Text.ElideRight
+                font: entry.font
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 verticalAlignment: Text.AlignVCenter
             }
             Kirigami.Icon {
@@ -294,7 +339,7 @@ ApplicationWindow {
             if (!error && response && Array.isArray(response.body)) gmailAccounts = response.body
         })
     }
-    Component.onCompleted: { inboxReady = true; reloadGmailAccounts() }
+    Component.onCompleted: { inboxReady = true; reloadGmailAccounts(); recordCompletedSync() }
     onActiveChanged: if (active) reloadGmailAccounts()
     property var captureActions: ({})
     property var cardHandles: ({})
@@ -400,7 +445,8 @@ ApplicationWindow {
             if (!archiveUndoAvailable) bundleArchiveStatus = ""
             reloadGmailAccounts()
         } else {
-            bundleArchiveStatus = qsTr("Action failed (HTTP %1).").arg(status)
+            operationError = qsTr("Action failed (HTTP %1).").arg(status)
+            operationErrorTimer.restart()
         }
     }
     function undoBundleArchive() {
@@ -429,6 +475,16 @@ ApplicationWindow {
     property string mailArchiveUndoOp: ""
     property string bundleArchiveStatus: ""
     property bool archiveUndoAvailable: false
+    // Error expiry changes presentation only; outbox and Undo remain store-owned.
+    property string operationError: ""
+    property string localStorageError: ""
+    Timer {
+        id: operationErrorTimer
+        objectName: "operationErrorTimer"
+        interval: 8000
+        repeat: false
+        onTriggered: window.operationError = ""
+    }
     Connections {
         target: store
         ignoreUnknownSignals: true
@@ -440,6 +496,7 @@ ApplicationWindow {
             undoExpiredNoticeTimer.restart()
         }
         function onOperationFailed(opId, status, response) { window.showOperationFailure(opId, status, response) }
+        function onStorageError(message) { window.localStorageError = message }
         function onRequestCards(path) { window.reloadGmailAccounts() }
         function onFlushFinished() { window.reloadGmailAccounts() }
     }
@@ -698,23 +755,34 @@ ApplicationWindow {
     }
     function clock(card) { return card.timed ? timeRules.display(card.at || "") : "" }
 
-    // R55: online is silent; offline is one actionable line.
-    property double lastSyncAt: store.online ? Date.now() : 0
+    // R55/R9: connectivity is not proof of durable offline body availability.
+    property double lastSyncAt: 0
     property bool offlineDetailsShown: false
+    readonly property bool contentSyncIncomplete: store.mailSyncComplete === false
+    readonly property bool syncStatusVisible: !store.online || store.pendingOps > 0
+        || store.saveFailed === true || contentSyncIncomplete || localStorageError.length > 0
+    function recordCompletedSync() {
+        if (store.online && store.mailSyncComplete === true && store.pendingOps === 0 && !store.saveFailed && !localStorageError)
+            lastSyncAt = Date.now()
+    }
     Connections {
         target: store
         ignoreUnknownSignals: true
-        function onOnlineChanged() {
-            if (store.online) { window.lastSyncAt = Date.now(); window.offlineDetailsShown = false }
-        }
+        function onMailSyncStateChanged() { window.recordCompletedSync() }
+        function onPendingOpsChanged() { window.recordCompletedSync() }
+        function onOnlineChanged() { if (store.online) window.offlineDetailsShown = false }
     }
     function offlineSummary() {
-        let text = qsTr("Can't reach the server")
-        if (store.pendingOps > 0)
-            text += " · " + qsTr("%n change waiting", "", store.pendingOps)
-        if (window.lastSyncAt > 0)
-            text += " · " + qsTr("synced %1").arg(Qt.formatTime(new Date(window.lastSyncAt), "HH:mm"))
-        return text
+        const parts = []
+        if (localStorageError) parts.push(qsTr("Couldn't save on this device · keep your draft open"))
+        if (!store.online) parts.push(qsTr("Can't reach the server"))
+        else if (store.saveFailed) parts.push(qsTr("Couldn't save to server"))
+        if (store.pendingOps > 0) parts.push(qsTr("%n change waiting", "", store.pendingOps))
+        if (contentSyncIncomplete) parts.push(store.mailSyncPending > 0
+            ? qsTr("%n email waiting for offline storage", "", store.mailSyncPending)
+            : qsTr("Offline content sync incomplete"))
+        if (lastSyncAt > 0) parts.push(qsTr("synced %1").arg(Qt.formatTime(new Date(lastSyncAt), "HH:mm")))
+        return parts.join(" · ")
     }
 
     // R63: one slim app bar; the reader (R59) brings its own bar instead.
@@ -788,6 +856,7 @@ ApplicationWindow {
                     TapHandler { onTapped: createDialog.open() }
                 }
                 ToolButton {
+                    id: inboxCommandsButton
                     objectName: "inboxCommands"
                     icon.name: "overflow-menu"
                     icon.width: 24
@@ -802,9 +871,25 @@ ApplicationWindow {
                     Menu {
                         id: headerMenu
                         objectName: "headerMenu"
-                        x: parent.width - width
-                        y: parent.height + 8
+                        // Overlay coordinates follow the usable Qt viewport, not screen pixels.
+                        parent: Overlay.overlay
+                        readonly property point anchorPoint: inboxCommandsButton.mapToItem(parent, inboxCommandsButton.width, inboxCommandsButton.height + 8)
+                        width: Math.min(360, Math.max(0, parent.width - 16))
+                        height: Math.min(implicitHeight, Math.max(0, parent.height - 16))
+                        x: Math.max(8, Math.min(anchorPoint.x - width, parent.width - width - 8))
+                        y: Math.max(8, Math.min(anchorPoint.y, parent.height - height - 8))
+                        margins: 8
                         padding: 6
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                        contentItem: ListView {
+                            objectName: "headerMenuActions"
+                            implicitHeight: contentHeight
+                            model: headerMenu.contentModel
+                            currentIndex: headerMenu.currentIndex
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollIndicator.vertical: ScrollIndicator {}
+                        }
                         Material.theme: Material.Light
                         palette.window: window.surface
                         palette.text: window.ink
@@ -819,8 +904,8 @@ ApplicationWindow {
                         InboxMenuItem { objectName: "headerMenuAgents"; text: qsTr("Agents"); icon.name: "user-identity"; onTriggered: openPage("AgentThreadsPage") }
                         InboxMenuItem { objectName: "headerMenuSettings"; text: qsTr("Settings"); icon.name: "application-menu"; onTriggered: openPage("SettingsPage") }
                         InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; visible: !api.token; onTriggered: openPage("EnrollmentPage") }
-                        InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Refresh"); icon.name: "view-refresh"; onTriggered: store.refresh() }
-                        InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
+                        InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Sync mail"); icon.name: "view-refresh"; onTriggered: store.refresh() }
+                        InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check for app updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                         InboxMenuItem { objectName: "densityComfortable"; text: qsTr("Comfortable density"); checkable: true; checked: !window.compactDensity; onTriggered: window.compactDensity = false }
                         InboxMenuItem { objectName: "densityCompact"; text: qsTr("Compact density"); checkable: true; checked: window.compactDensity; onTriggered: window.compactDensity = true }
                     }
@@ -871,12 +956,12 @@ ApplicationWindow {
             }
             RowLayout {
                 objectName: "connectionStatusRow"
-                visible: !store.online || store.saveFailed === true
+                visible: window.syncStatusVisible
                 Layout.fillWidth: true
                 spacing: 4
                 Label {
                     objectName: "connectionStatus"
-                    text: store.saveFailed ? qsTr("Couldn't save to server · %n change waiting", "", store.pendingOps) : (store.online ? "" : window.offlineSummary())
+                    text: window.offlineSummary()
                     color: window.mutedInk
                     font.family: window.themeFont.family
                     font.pointSize: window.themeFont.pointSize - 1
@@ -895,8 +980,8 @@ ApplicationWindow {
             }
             Label {
                 objectName: "offlineDetails"
-                visible: !store.online && window.offlineDetailsShown && store.offlineReason.length > 0
-                text: qsTr("Details: %1").arg(store.offlineReason)
+                visible: window.offlineDetailsShown && (window.localStorageError.length > 0 || (!store.online && store.offlineReason.length > 0))
+                text: qsTr("Details: %1").arg(window.localStorageError || store.offlineReason)
                 color: window.mutedInk
                 font.pointSize: window.themeFont.pointSize - 2
                 wrapMode: Text.Wrap
@@ -968,7 +1053,7 @@ ApplicationWindow {
         objectName: "bundleArchiveUndoBar"
         parent: window.contentItem
         z: 50
-        visible: (window.archiveUndoAvailable || window.bundleArchiveStatus.length > 0)
+        visible: (window.archiveUndoAvailable || window.bundleArchiveStatus.length > 0 || window.operationError.length > 0)
             && (stack.depth === 1 || (window.readerOpen && stack.currentItem === window.mailDetailPage))
         opacity: visible ? 1 : 0
         Behavior on opacity { enabled: !window.reduceMotion; NumberAnimation { duration: 180 } }
@@ -989,7 +1074,7 @@ ApplicationWindow {
             spacing: 8
             Label {
                 objectName: "bundleArchiveUndoMessage"
-                text: window.bundleArchiveStatus
+                text: window.operationError || window.bundleArchiveStatus
                 color: "#ffffff"
                 font: window.themeFont
                 elide: Text.ElideRight
@@ -1047,22 +1132,44 @@ ApplicationWindow {
             clip: true
             ColumnLayout {
                 width: navigationDrawer.availableWidth
-                spacing: 12
-                Label { text: qsTr("Litterbox"); font.family: window.themeFont.family; font.pointSize: window.themeFont.pointSize; font.bold: true; color: window.ink; padding: 16; Layout.fillWidth: true }
-                Destinations { Layout.fillWidth: true; Layout.margins: 8 }
-                ToolButton {
-                    objectName: "navigationSearch"
-                    text: qsTr("Search inbox")
-                    icon.name: "edit-find"
-                    implicitHeight: 48
+                spacing: 4
+                Label { text: qsTr("Litterbox"); font: window.themeFont; font.bold: true; color: window.ink; padding: 24; Layout.fillWidth: true }
+                ColumnLayout {
                     Layout.fillWidth: true
-                    onClicked: {
-                        window.searchShown = true
-                        window.focusSearchAfterDrawerClose = true
-                        window.navigateTo("")
+                    Layout.margins: 8
+                    spacing: 4
+                    DrawerAction { objectName: "navInbox"; text: qsTr("Inbox"); icon.name: "mail-receive"; checkable: true; autoExclusive: true; checked: window.activeLocation === text; onClicked: window.navigateTo("") }
+                    DrawerAction { objectName: "navAccounts"; text: qsTr("Accounts"); icon.name: "user-identity"; checkable: true; autoExclusive: true; checked: window.activeLocation === text; onClicked: window.navigateTo("GmailAccountsPage") }
+                    DrawerAction {
+                        objectName: "navAgents"
+                        text: qsTr("Agents")
+                        icon.name: "dialog-messages"
+                        checkable: true
+                        autoExclusive: true
+                        checked: window.activeLocation === text
+                        onClicked: window.navigateTo("AgentThreadsPage")
+                    }
+                    DrawerAction {
+                        objectName: "navSettings"
+                        text: qsTr("Settings")
+                        icon.name: "configure"
+                        checkable: true
+                        autoExclusive: true
+                        checked: window.activeLocation === text
+                        onClicked: window.navigateTo("SettingsPage")
+                    }
+                    DrawerAction {
+                        objectName: "navigationSearch"
+                        text: qsTr("Search inbox")
+                        icon.name: "edit-find"
+                        Layout.topMargin: 8
+                        onClicked: {
+                            window.searchShown = true
+                            window.focusSearchAfterDrawerClose = true
+                            window.navigateTo("")
+                        }
                     }
                 }
-                ToolButton { text: qsTr("Close navigation"); icon.name: "go-previous"; implicitHeight: 48; Layout.fillWidth: true; onClicked: navigationDrawer.close() }
             }
         }
     }
@@ -2338,7 +2445,12 @@ ApplicationWindow {
                     border.width: noteSaveButton.visualFocus ? 2 : 1
                     border.color: noteSaveButton.visualFocus ? window.ink : "#dce5e3"
                 }
-                onClicked: { if (store.saveNote(noteDialog.cardId, noteField.text)) noteDialog.accept() }
+                onClicked: {
+                    if (store.saveNote(noteDialog.cardId, noteField.text)) {
+                        window.localStorageError = ""
+                        noteDialog.accept()
+                    }
+                }
             }
             Button {
                 id: noteCancelButton
@@ -2423,6 +2535,7 @@ ApplicationWindow {
                     if (store.createCard(createDialog.journal ? createJournal.text : createTitle.text,
                                          createDialog.journal ? "" : createSummary.text,
                                          createDialog.journal ? "journal" : "manual")) {
+                        window.localStorageError = ""
                         createTitle.clear()
                         createSummary.clear()
                         createJournal.clear()

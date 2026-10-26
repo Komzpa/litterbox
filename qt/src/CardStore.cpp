@@ -276,6 +276,8 @@ void CardStore::retainOwnerRows(QList<QVariantMap> &cards) const {
     }
 }
 void CardStore::replaceCards(QList<QVariantMap> cards) {
+    const int pendingBefore = mailSyncPending();
+    const bool completeBefore = mailSyncComplete();
     retainOwnerRows(cards);
     deriveBundles(cards);
     // A live refresh can move or touch hundreds of rows at once; one model
@@ -310,6 +312,7 @@ void CardStore::replaceCards(QList<QVariantMap> cards) {
         beginResetModel();
         m_cards = std::move(cards);
         endResetModel();
+        if (pendingBefore != mailSyncPending() || completeBefore != mailSyncComplete()) emit mailSyncStateChanged();
         return;
     }
     for (int row = m_cards.size() - 1; row >= 0; --row) {
@@ -352,6 +355,7 @@ void CardStore::replaceCards(QList<QVariantMap> cards) {
         emit dataChanged(index(row), index(end));
         row = end + 1;
     }
+    if (pendingBefore != mailSyncPending() || completeBefore != mailSyncComplete()) emit mailSyncStateChanged();
 }
 bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after) {
     // Derived bundle flags are presentation state, not durable card changes.
@@ -404,10 +408,10 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
 }
 
 void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVariantMap> &after,
-                             const QList<QVariantMap> &ops, const QStringList &cancelledOps) {
+                             const QList<QVariantMap> &ops, const QStringList &cancelledOps, quint64 bodySnapshot) {
     auto retained = after;
     retainOwnerRows(retained);
-    QMetaObject::invokeMethod(m_storage, [this, before, after = std::move(retained), ops, cancelledOps] {
+    QMetaObject::invokeMethod(m_storage, [this, before, after = std::move(retained), ops, cancelledOps, bodySnapshot] {
         bool ok = m_db.transaction();
         for (const QVariantMap &op : ops) {
             if (!ok) break;
@@ -429,7 +433,7 @@ void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVari
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
         const QString error = m_db.lastError().text();
-        QMetaObject::invokeMethod(this, [this, ops, ok, error] {
+        QMetaObject::invokeMethod(this, [this, ops, ok, error, bodySnapshot] {
             if (!ok) {
                 // Cancelled ops stay durable after a failed commit; the next
                 // open() reloads that outbox as the source of truth.
@@ -444,6 +448,10 @@ void CardStore::persistCards(const QList<QVariantMap> &before, const QList<QVari
                 return;
             }
             for (const QVariantMap &op : ops) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
+            if (bodySnapshot) {
+                m_durableBodySnapshot = bodySnapshot;
+                emit mailSyncStateChanged();
+            }
             flush();
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
@@ -533,7 +541,8 @@ void CardStore::setOnline(bool online) {
     else {
         m_bodyPrefetchTimer.stop();
         m_bodyPrefetchQueue.clear();
-        m_bodyRequests.clear();
+        // HTTP requests are still alive; retain their identities until completion
+        // so reconnecting cannot issue a duplicate for the same card.
         m_photoPrefetchTimer.stop();
         m_photoPrefetchQueue.clear();
         m_photoRequests.clear();
@@ -663,9 +672,9 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections, quint64 requestId)
     const auto before = m_cards;
     injectSenderPhotos(cards);
     replaceCards(cards);
-    persistCards(before, cards);
-    // Keep every fetchable body available offline without exhausting the shared
-    // API limit. The queue survives snapshots; foreground reads bypass its pace.
+    persistCards(before, cards, {}, {}, requestId);
+    // Download originals during synchronization, advancing on durable completion.
+    emit mailSyncStateChanged();
     queueMailBodyPrefetch();
     // R67: same pacing for sender photos; only sender_has_photo cards without
     // a cached file fetch, and 404/403 parks until eligibility re-marks.
@@ -1297,19 +1306,27 @@ QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
         body.insert(QStringLiteral("messages"), QVariantList{});
     return body;
 }
+int CardStore::mailSyncPending() const {
+    int pending = 0;
+    for (const QVariantMap &card : m_cards) {
+        if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
+            !card.value(QStringLiteral("has_body")).toBool()) continue;
+        const QString id = card.value(QStringLiteral("id")).toString();
+        if (m_mailBodies.value(id).isEmpty() || m_bodyPersisting.contains(id)) ++pending;
+    }
+    return pending;
+}
+bool CardStore::mailSyncComplete() const {
+    return m_latestCardsResponse != 0 && m_durableBodySnapshot == m_latestCardsResponse && mailSyncPending() == 0;
+}
 void CardStore::queueMailBodyPrefetch() {
     if (!m_online || !m_open) return;
-    // A lost response must not strand a card (or the rest of the queue).
-    for (auto it = m_bodyRequests.begin(); it != m_bodyRequests.end();) {
-        if (it.value().hasExpired()) it = m_bodyRequests.erase(it);
-        else ++it;
-    }
     QSet<QString> eligible;
     for (const QVariantMap &card : m_cards) {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (!m_mailBodies.value(id).isEmpty() || m_bodyRequests.contains(id)) continue;
+        if (!m_mailBodies.value(id).isEmpty() || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
         eligible.insert(id);
     }
     m_bodyPrefetchQueue.erase(std::remove_if(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end(),
@@ -1322,23 +1339,32 @@ void CardStore::queueMailBodyPrefetch() {
             queued.insert(id);
         }
     }
-    if (m_bodyPrefetchTimer.isActive()) return;
-    if (m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.isEmpty()) return;
-    if (!m_nextBodyPrefetch.hasExpired()) {
-        m_bodyPrefetchTimer.start(int(m_nextBodyPrefetch.remainingTime()));
-        return;
-    }
     prefetchNextMailBody();
 }
 void CardStore::prefetchNextMailBody() {
     if (!m_online || !m_open) return;
-    // Arm before emitting: a synchronous callback/snapshot cannot start a burst.
-    m_nextBodyPrefetch = QDeadlineTimer(3000, Qt::PreciseTimer);
-    m_bodyPrefetchTimer.start(3000);
-    if (m_bodyPrefetchQueue.isEmpty()) return;
-    const QString id = m_bodyPrefetchQueue.takeFirst();
-    m_bodyRequests.insert(id, QDeadlineTimer(60000, Qt::PreciseTimer));
-    emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
+    m_bodyPrefetchTimer.stop();
+    if (!m_bodyBackoff.hasExpired()) {
+        m_bodyPrefetchTimer.start(int(m_bodyBackoff.remainingTime()));
+        return;
+    }
+    // Two outstanding downloads bound memory/server work; a completed durable
+    // write releases a slot immediately, not after an arbitrary per-body sleep.
+    qint64 retryIn = 60000;
+    for (int index = 0; index < m_bodyPrefetchQueue.size() && m_bodyRequests.size() + m_bodyPersisting.size() < 2;) {
+        const QString id = m_bodyPrefetchQueue.at(index);
+        const auto retry = m_bodyRetryAfter.constFind(id);
+        if (retry != m_bodyRetryAfter.cend() && !retry->hasExpired()) {
+            retryIn = qMin(retryIn, retry->remainingTime());
+            ++index;
+            continue;
+        }
+        m_bodyPrefetchQueue.removeAt(index);
+        m_bodyRequests.insert(id);
+        emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
+    }
+    if (!m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.size() + m_bodyPersisting.size() < 2)
+        m_bodyPrefetchTimer.start(int(retryIn));
 }
 void CardStore::requestMailBody(const QString &cardId) {
     if (!m_open || cardId.isEmpty()) return;
@@ -1360,12 +1386,13 @@ void CardStore::requestMailBody(const QString &cardId) {
     if (!card) { emit mailBodyFailed(cardId); return; }
     const bool isMail = card->value(QStringLiteral("source")).toString() == QStringLiteral("mail");
     if (!isMail && !card->value(QStringLiteral("has_body")).toBool()) { emit mailBodyFailed(cardId); return; }
+    if (m_bodyRequests.contains(cardId) || m_bodyPersisting.contains(cardId)) return;
     m_bodyPrefetchQueue.removeAll(cardId);
-    const auto inFlight = m_bodyRequests.constFind(cardId);
-    if (inFlight != m_bodyRequests.cend() && !inFlight.value().hasExpired()) return;
-    m_bodyRequests.insert(cardId, QDeadlineTimer(60000, Qt::PreciseTimer));
-    if (!m_bodyPrefetchTimer.isActive()) m_bodyPrefetchTimer.start(3000);
-    emit requestMailBodyGet(cardId, QStringLiteral("/v1/cards/") + cardId + QStringLiteral("/body"));
+    m_bodyPrefetchQueue.prepend(cardId);
+    // An explicit reader retry can bypass this card's ordinary failure delay,
+    // but never the shared 429 cooldown or the bounded outstanding request set.
+    m_bodyRetryAfter.remove(cardId);
+    prefetchNextMailBody();
 }
 void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &body) {
     if (!m_open || cardId.isEmpty()) return;
@@ -1379,11 +1406,13 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     // Body responses omit empty source_url; SQLite requires a non-null string.
     if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
     // A malformed/error response must not replace a usable cached body.
-    if (html.trimmed().isEmpty()) { emit mailBodyFailed(cardId); return; }
+    if (html.trimmed().isEmpty()) { reportMailBodyFailed(cardId, 422); return; }
     const auto previous = m_mailBodies.value(cardId);
     QVariantMap updated{{QStringLiteral("html"), html}, {QStringLiteral("source_url"), sourceUrl}};
     updated.insert(QStringLiteral("messages"), hasMessages ? QVariant(messages) : previous.value(QStringLiteral("messages"), QVariantList{}));
+    m_bodyPersisting.insert(cardId);
     m_mailBodies.insert(cardId, updated);
+    emit mailSyncStateChanged();
     QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, messagesJson, previous, hasMessages] {
         const QString persistedMessages = hasMessages ? messagesJson : QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(previous.value(QStringLiteral("messages")).toList())).toJson(QJsonDocument::Compact));
         QSqlQuery q(m_db);
@@ -1394,14 +1423,33 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
         const bool ok = q.exec();
         const QString error = q.lastError().text();
         QMetaObject::invokeMethod(this, [this, cardId, previous, ok, error] {
-            if (!ok) { m_mailBodies.insert(cardId, previous); emit storageError(error); emit mailBodyFailed(cardId); return; }
+            m_bodyPersisting.remove(cardId);
+            if (!ok) {
+                m_mailBodies.insert(cardId, previous);
+                emit storageError(error);
+                reportMailBodyFailed(cardId);
+                return;
+            }
+            m_bodyRetryAfter.remove(cardId);
+            m_bodyRetryAttempts.remove(cardId);
             emit mailBodyChanged(cardId);
+            emit mailSyncStateChanged();
+            queueMailBodyPrefetch();
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
 }
-void CardStore::reportMailBodyFailed(const QString &cardId) {
+void CardStore::reportMailBodyFailed(const QString &cardId, int status) {
     m_bodyRequests.remove(cardId);
+    const int attempt = m_bodyRetryAttempts.value(cardId);
+    const int delay = status == 429 ? 60000 : qMin(60000, 1000 * (1 << qMin(attempt, 6)));
+    m_bodyRetryAttempts.insert(cardId, qMin(attempt + 1, 6));
+    m_bodyRetryAfter.insert(cardId, QDeadlineTimer(delay, Qt::PreciseTimer));
+    // The server shares a 60/min device window across routes and supplies no
+    // Retry-After. Park the entire body queue on 429, not just the rejected card.
+    if (status == 429) m_bodyBackoff = QDeadlineTimer(delay, Qt::PreciseTimer);
     emit mailBodyFailed(cardId);
+    emit mailSyncStateChanged();
+    queueMailBodyPrefetch();
 }
 QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl) const {
     if (!m_open || cardId.isEmpty() || dataUrl.isEmpty()) return {};

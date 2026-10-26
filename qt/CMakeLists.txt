@@ -49,8 +49,8 @@ endif()
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
 if(ANDROID)
-    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_CODE 34)
-    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_NAME "0.1-52")
+    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_CODE 35)
+    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_NAME "0.1-53")
     # Qt's Android TLS plugin loads OpenSSL at runtime; Android does not
     # supply it. Refuse an APK that can enroll over HTTP but never use HTTPS.
     foreach(_lb_openssl_name libcrypto_3.so libssl_3.so)
@@ -234,8 +234,10 @@ endif()
 if(NOT ANDROID)
     find_package(Qt6 REQUIRED COMPONENTS QuickTest)
     qt_add_executable(tst_maildetail tests/maildetail_runner.cpp src/maildocumentprofile.h src/maildocumentprofile.cpp)
+    # Exercise the APK's bundled theme, not the proof host's installed icons.
+    qt_add_resources(tst_maildetail "lb_test_icons" PREFIX "/" FILES ${_lb_icon_files})
     target_include_directories(tst_maildetail PRIVATE src)
-    target_compile_definitions(tst_maildetail PRIVATE LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    target_compile_definitions(tst_maildetail PRIVATE LB_BUNDLED_ICON_PROOF LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     target_link_libraries(tst_maildetail PRIVATE Qt6::Quick Qt6::QuickTest Qt6::WebEngineQuick)
     add_test(NAME tst_maildetail
              COMMAND tst_maildetail -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_maildetail.qml

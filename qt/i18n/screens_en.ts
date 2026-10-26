@@ -630,13 +630,13 @@
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="819"/>
-        <source>Refresh</source>
-        <translation>Refresh</translation>
+        <source>Sync mail</source>
+        <translation>Sync mail</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="820"/>
-        <source>Check updates</source>
-        <translation>Check updates</translation>
+        <source>Check for app updates</source>
+        <translation>Check for app updates</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="821"/>

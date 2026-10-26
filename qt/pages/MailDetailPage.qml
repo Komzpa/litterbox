@@ -104,7 +104,7 @@ Kirigami.Page {
     }
     function reload() {
         readCache()
-        loading = store.online
+        loading = !hasDocument && store.online
         if (loading) store.requestMailBody(cardId)
     }
     Connections {
@@ -186,7 +186,10 @@ Kirigami.Page {
         icon.height: 24
         icon.color: root.ink
         implicitWidth: showLabel ? implicitContentWidth + 24 : 48
-        implicitHeight: Math.max(48, implicitContentHeight + 16)
+        implicitHeight: showLabel ? Math.max(48, implicitContentHeight + 16) : 48
+        Layout.minimumWidth: implicitWidth
+        Layout.minimumHeight: 48
+        Layout.maximumHeight: root.compactActions ? 48 : Infinity
         Accessible.name: text
         QQC2.ToolTip.text: Accessible.name
         QQC2.ToolTip.visible: hovered || visualFocus
@@ -195,11 +198,15 @@ Kirigami.Page {
         contentItem: RowLayout {
             spacing: Kirigami.Units.smallSpacing
             Kirigami.Icon {
+                objectName: "mailBarIcon"
                 source: barButton.icon.name
                 isMask: true
                 color: root.ink
-                implicitWidth: 24
-                implicitHeight: 24
+                Layout.alignment: Qt.AlignCenter
+                Layout.minimumWidth: 24
+                Layout.maximumWidth: 24
+                Layout.minimumHeight: 24
+                Layout.maximumHeight: 24
             }
             QQC2.Label {
                 visible: barButton.showLabel
@@ -265,7 +272,7 @@ Kirigami.Page {
             objectName: "mailAppBar"
             z: 1
             Layout.fillWidth: true
-            implicitHeight: Math.max(56, actionRow.implicitHeight + 8)
+            implicitHeight: root.compactActions ? 56 : Math.max(56, actionRow.implicitHeight + 8)
             color: root.surface
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#dce5e3" }
             Connections {
@@ -297,6 +304,7 @@ Kirigami.Page {
                     Layout.leftMargin: 4
                     spacing: 0
                     QQC2.Label {
+                        id: barTitle
                         objectName: "mailBarTitle"
                         text: root.cardTitle || root.title
                         textFormat: Text.PlainText
@@ -313,7 +321,9 @@ Kirigami.Page {
                         textFormat: Text.PlainText
                         color: root.mutedInk
                         font.pointSize: Kirigami.Theme.defaultFont.pointSize - 2
-                        visible: text !== ""
+                        // Keep a single slim row even at large platform text scale;
+                        // full sender/arrival metadata remains in the document.
+                        visible: text !== "" && (!root.compactActions || implicitHeight + barTitle.implicitHeight <= 48)
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         Layout.fillWidth: true
@@ -323,7 +333,7 @@ Kirigami.Page {
                 BarButton {
                     id: archiveButton
                     objectName: "archiveMail"
-                    showLabel: root.embeddedMode || !root.compactActions
+                    showLabel: !root.compactActions
                     text: mailActions.source === "mail" ? qsTr("Archive") : mailActions.source === "journal" ? qsTr("Archive note") : mailActions.source === "manual" ? qsTr("Complete") : qsTr("Dismiss")
                     icon.name: mailActions.source === "mail" || mailActions.source === "journal" ? "mail-archive" : "dialog-ok"
                     Accessible.name: mailActions.primaryName
@@ -336,7 +346,7 @@ Kirigami.Page {
                 }
                 BarButton {
                     objectName: "openInGmail"
-                    showLabel: root.embeddedMode || !root.compactActions
+                    showLabel: !root.compactActions
                     text: mailActions.source === "mail" ? qsTr("Open in Gmail") : qsTr("Open source")
                     icon.name: "document-open"
                     visible: root.sourceUrl !== ""

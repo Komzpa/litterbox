@@ -632,13 +632,13 @@
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="819"/>
-        <source>Refresh</source>
-        <translation>Обновить</translation>
+        <source>Sync mail</source>
+        <translation>Синхронизировать почту</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="820"/>
-        <source>Check updates</source>
-        <translation>Проверить обновления</translation>
+        <source>Check for app updates</source>
+        <translation>Проверить обновления приложения</translation>
     </message>
     <message>
         <location filename="../qml/InboxView.qml" line="821"/>

@@ -1,3 +1,41 @@
+litterbox-qt (0.1-53) unstable; urgency=medium
+
+  * Reader painted Back/Archive bar buttons directly tappable, with compact
+    single-row phone header, slim app bar under 64px and 48dp targets (R59).
+  * Complete offline mail prefetch: download and persist every card body during
+    synchronization, bounded to two outstanding requests, with durable content-
+    sync completion tracking across restart and reconnect (R9).
+  * Left-aligned navigation drawer with distinct destination icons, visible
+    selected state, scrim/Back dismissal without list anchor loss (R55).
+  * Finite operation-error overlays dismiss after approximately eight seconds;
+    repeated background retries do not recreate the toast. Durable pending/Retry
+    and local-storage errors remain actionable (R55).
+  * Unambiguous "Sync mail" and "Check for app updates" command labels in
+    English, Russian and Belarusian translations, with equivalent explicit
+    wording (R39).
+  * Bounded wrapped scrolling overflow menu: inbox commands and reader actions
+    fit the usable phone viewport at default and 150% text scale, with labels
+    wrapping rather than clipping, reachable through a scrollable ListView (R60,
+    R70).
+  * Offline status now tracks durable body persistence separately from
+    connectivity: contentSyncIncomplete and mailSyncComplete report whether
+    every open mail has a persisted original (R9).
+  * API body GET requests use a 60-second transfer timeout; stalled transfers
+    release their slot for retry without overlapping the old HTTP request.
+  * Prefetch queue handles HTTP 429 with a shared one-minute cooldown and
+    per-card exponential backoff (up to 60 s), preserving retry across
+    reconnects (R59).
+  * Reader opens a cached body immediately without a network request when
+    available offline; missing bodies request only when online (R9).
+  * Navigation drawer uses left-aligned labels in a common icon column with
+    compact content-sized spacing, no separate Close destination (R55).
+  * Mobileux test coverage: error expiry without acknowledging pending writes,
+    sync time requires durable content not connectivity, auth and local-storage
+    errors remain actionable after error expiry, overflow dismissal preserves
+    list anchor (R55,R59,R60,R70).
+
+ -- Litterbox <litterbox@example.com>  Mon, 26 Oct 2026 20:50:00 +0400
+
 litterbox-qt (0.1-52) unstable; urgency=medium
 
   * Preserve journal notes locally and retry their original operation after a

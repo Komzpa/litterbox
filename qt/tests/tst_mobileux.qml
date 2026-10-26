@@ -21,6 +21,24 @@ TestCase {
         property bool online: true
         property string offlineReason: ""
         property int pendingOps: 0
+        property bool saveFailed: false
+        property var failedWrites: []
+        property int mailSyncPending: 0
+        property bool mailSyncComplete: true
+        property int refreshCalls: 0
+        signal mailSyncStateChanged()
+        signal operationFailed(string opId, int status, var response)
+        signal storageError(string message)
+        function retainedWriteFailed(opId) { return failedWrites.indexOf(opId) >= 0 }
+        property bool failLocalSave: true
+        // Failed local persistence must leave the production create dialog intact.
+        function createCard(title, summary, source) {
+            if (failLocalSave) {
+                storageError("fixture durable storage unavailable")
+                return ""
+            }
+            return "fixture-created-card"
+        }
         property var cached: ({})
         property var operations: []
         function enqueueOp(cardId, operation, args) {
@@ -32,7 +50,7 @@ TestCase {
         function cardIds() { const ids = []; for (let i = 0; i < count; ++i) ids.push(get(i).cardId); return ids }
         function pinnedCardIds() { return [] }
         function sourceLabel(card) { return card.source }
-        function refresh() {}
+        function refresh() { ++refreshCalls }
         function cachedMailBody(cardId) { return cached[cardId] || {} }
         function requestMailBody(cardId) {}
         function openCachedFile(cardId, link) { return "" }
@@ -73,6 +91,12 @@ TestCase {
         store.offlineReason = ""
         store.pendingOps = 0
         store.operations = []
+        store.saveFailed = false
+        store.failedWrites = []
+        store.mailSyncPending = 0
+        store.mailSyncComplete = true
+        store.refreshCalls = 0
+        store.failLocalSave = true
         const rows = []
         rows.push(mail("polis-1", "Polis.ge", "Туристическая страховка: скидка 20% до конца октября", testCase.polisPreheader, "2026-10-15T10:20:00Z"))
         // PostGIS bot-review bundle of 4 (leader first, members hidden until expanded).
@@ -170,6 +194,54 @@ TestCase {
         // One row: the narrow overflow sits beside the archive, not below it.
         fuzzyCompare(more.mapToItem(polisRow, 0, 0).y, archive.mapToItem(polisRow, 0, 0).y, 1)
     }
+    function test_overflowDismissalKeepsListAnchor_data() {
+        const rows = []
+        for (const size of [[412, 915], [480, 915], [549, 1280]])
+            for (const scale of [1, 1.5])
+                rows.push({tag: size[0] + "x" + size[1] + "-text" + scale,
+                    w: size[0], h: size[1], scale: scale})
+        return rows
+    }
+    function test_overflowDismissalKeepsListAnchor(data) {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        inbox.width = data.w
+        inbox.height = data.h
+        shown.list.positionViewAtIndex(8, ListView.Beginning)
+        wait(180)
+        const before = shown.list.contentY
+        const selected = inbox.selectedCardId
+        const stack = findChild(inbox, "pageStack")
+        const opener = findChild(inbox, "inboxCommands")
+        const menu = findChild(inbox, "headerMenu")
+        mouseClick(opener)
+        tryCompare(menu, "visible", true)
+        for (let i = 0; i < menu.count; ++i) {
+            const row = menu.itemAt(i)
+            row.font = Qt.font({family: inbox.themeFont.family, pointSize: inbox.themeFont.pointSize * data.scale})
+        }
+        wait(180)
+        const actions = findChild(menu, "headerMenuActions")
+        mouseWheel(actions, actions.width / 2, actions.height / 2, 0, -480)
+        wait(180)
+        fuzzyCompare(shown.list.contentY, before, 1, "popup scrolling must not move the inbox")
+        save(inbox, "overflow-" + data.tag)
+        // Window-coordinate tap outside the popup; do not emit close directly.
+        const outside = menu.parent.mapToItem(inbox.contentItem, 1, menu.parent.height / 2)
+        mouseClick(inbox.contentItem, outside.x, outside.y)
+        tryCompare(menu, "visible", false)
+        fuzzyCompare(shown.list.contentY, before, 1)
+        mouseClick(opener)
+        tryCompare(menu, "visible", true)
+        verify(inbox.handleBack())
+        tryCompare(menu, "visible", false)
+        fuzzyCompare(shown.list.contentY, before, 1)
+        compare(inbox.selectedCardId, selected)
+        compare(stack.depth, 1)
+        compare(store.operations.length, 0, "menu scrolling and dismissal must not triage mail")
+        inbox.close()
+    }
+
     function test_phoneDrawerSearchClearAndTouchTargets() {
         const shown = openInbox(true)
         const inbox = shown.inbox
@@ -185,12 +257,42 @@ TestCase {
             verify(nav && nav.visible && nav.width >= 48 && nav.height >= 48, name + " must be a reachable labeled destination")
             verify(nav.Accessible.name.length > 0)
         }
-        mouseClick(findChild(drawer, "navSettings"))
+        // Dispatch through the overlay: a scrim tap dismisses without navigating.
         const stack = findChild(inbox, "pageStack")
-        tryVerify(function() { return stack.depth === 2 && !drawer.visible })
-        compare(stack.currentItem.objectName, "settingsPage")
-        inbox.handleBack()
-        tryCompare(stack, "depth", 1)
+        const selectedBefore = inbox.selectedCardId
+        const queryBefore = inbox.searchQuery
+        const positionBefore = shown.list.contentY
+        mouseClick(inbox.contentItem, drawer.width + (inbox.width - drawer.width) / 2, inbox.height / 2)
+        tryCompare(drawer, "visible", false)
+        compare(stack.depth, 1)
+        mouseClick(drawerButton)
+        tryCompare(drawer, "visible", true)
+        verify(inbox.handleBack())
+        tryCompare(drawer, "visible", false)
+        compare(stack.depth, 1)
+        compare(inbox.selectedCardId, selectedBefore)
+        compare(inbox.searchQuery, queryBefore)
+        fuzzyCompare(shown.list.contentY, positionBefore, 1)
+        const destinations = [
+            {name: "navAccounts", page: "gmailAccountsPage"},
+            {name: "navAgents", page: "agentThreadsPage"},
+            {name: "navSettings", page: "settingsPage"}
+        ]
+        for (const destination of destinations) {
+            mouseClick(drawerButton)
+            tryCompare(drawer, "visible", true)
+            mouseClick(findChild(drawer, destination.name))
+            tryVerify(function() { return stack.depth === 2 && !drawer.visible })
+            compare(stack.currentItem.objectName, destination.page)
+            // Inbox is a real destination, not merely dismissal of the drawer.
+            drawer.open()
+            tryCompare(drawer, "visible", true)
+            verify(findChild(drawer, destination.name).checked)
+            mouseClick(findChild(drawer, "navInbox"))
+            tryCompare(drawer, "visible", false)
+            tryCompare(stack, "depth", 1)
+        }
+        compare(store.operations.length, 0, "navigation and dismissal must not triage cards")
         const toggle = findChild(inbox, "toggleSearch")
         verify(toggle && toggle.width >= 48 && toggle.height >= 48)
         mouseClick(toggle)
@@ -240,6 +342,121 @@ TestCase {
         const retry = findChild(offlineRow, "offlineRetry")
         verify(retry && retry.visible && retry.enabled)
         offline.inbox.close()
+    }
+    function test_errorExpiresWithoutAcknowledgingPendingWrite() {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        const row = findChild(inbox, "connectionStatusRow")
+        const timer = findChild(inbox, "operationErrorTimer")
+        const payload = {op_id: "owner-write", type: "note", args: {text: "Owner text must survive 422"}}
+        store.operations = [payload]
+        store.pendingOps = 1
+        store.saveFailed = true
+        store.failedWrites = [payload.op_id]
+        verify(row.visible, "online rejected writes must retain pending status")
+        store.operationFailed("reversible-archive", 422, {})
+        verify(inbox.operationError.length > 0)
+        verify(timer.running)
+        verify(timer.interval > 0 && timer.interval <= 8000)
+        // Exercise the real timer, not a direct onTriggered call or a shortened interval.
+        tryCompare(inbox, "operationError", "", 8500)
+        verify(!timer.running)
+        compare(store.pendingOps, 1)
+        compare(JSON.stringify(store.operations), JSON.stringify([payload]))
+        verify(!findChild(inbox, "bundleArchiveUndoBar").visible,
+            "expired generic error must leave no persistent error overlay")
+        verify(row.visible)
+        for (let i = 0; i < 3; ++i) store.operationFailed(payload.op_id, 422, {})
+        compare(inbox.operationError, "")
+        verify(!timer.running, "background retry must not recreate the toast")
+        const retry = findChild(row, "offlineRetry")
+        verify(retry.visible && retry.enabled)
+        mouseClick(retry)
+        compare(store.refreshCalls, 1)
+        compare(store.pendingOps, 1, "Retry is not acknowledgement")
+        compare(JSON.stringify(store.operations), JSON.stringify([payload]))
+        save(inbox, "online-pending-after-error-expiry")
+        // Only the simulated server acknowledgement changes the fixture's queue.
+        store.operations = []
+        store.failedWrites = []
+        store.saveFailed = false
+        store.pendingOps = 0
+        tryCompare(row, "visible", false)
+        inbox.close()
+    }
+    function test_syncTimeRequiresDurableContentNotConnectivity() {
+        const shown = openInbox(false)
+        const inbox = shown.inbox
+        const row = findChild(inbox, "connectionStatusRow")
+        inbox.lastSyncAt = 0
+        store.mailSyncComplete = false
+        store.mailSyncPending = 2
+        store.pendingOps = 0
+        store.online = true
+        compare(inbox.lastSyncAt, 0)
+        verify(row.visible)
+        verify(inbox.contentSyncIncomplete)
+        store.mailSyncStateChanged()
+        compare(inbox.lastSyncAt, 0, "metadata/missing bodies cannot report completed sync")
+        store.mailSyncPending = 0
+        store.mailSyncStateChanged()
+        compare(inbox.lastSyncAt, 0, "body persistence must complete before claiming sync")
+        verify(row.visible)
+        store.mailSyncComplete = true
+        store.mailSyncStateChanged()
+        verify(inbox.lastSyncAt > 0)
+        tryCompare(row, "visible", false)
+        const completedAt = inbox.lastSyncAt
+        store.online = false
+        store.online = true
+        compare(inbox.lastSyncAt, completedAt, "reconnect must not invent a new successful sync")
+        store.online = false
+        store.pendingOps = 1
+        store.pendingOps = 0
+        compare(inbox.lastSyncAt, completedAt, "offline queue transitions must not claim a fresh sync")
+        inbox.close()
+    }
+    function test_authAndLocalStorageRemainActionableAfterErrorExpiry() {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        inbox.gmailAccounts = [{address: "fixture@example.test", status: "reauth_required"}]
+        const reconnect = findChild(inbox, "reconnectBanner")
+        const dialog = findChild(inbox, "createDialog")
+        dialog.open()
+        tryCompare(dialog, "visible", true)
+        const title = findChild(dialog, "createTitle")
+        const summary = findChild(dialog, "createSummary")
+        title.text = "Unsaved owner draft"
+        summary.text = "Exact details survive a local storage failure"
+        const before = store.cardIds()
+        mouseClick(findChild(dialog, "createSaveButton"))
+        verify(dialog.visible)
+        compare(title.text, "Unsaved owner draft")
+        compare(summary.text, "Exact details survive a local storage failure")
+        compare(store.cardIds(), before)
+        verify(reconnect.visible)
+        compare(inbox.localStorageError, "fixture durable storage unavailable")
+        const row = findChild(inbox, "connectionStatusRow")
+        verify(row.visible)
+        store.operationFailed("archive", 422, {})
+        tryCompare(inbox, "operationError", "", 8500)
+        verify(reconnect.visible, "reauth is not transient")
+        verify(row.visible, "local storage failure is not transient")
+        compare(inbox.localStorageError, "fixture durable storage unavailable")
+        verify(dialog.visible)
+        compare(title.text, "Unsaved owner draft")
+        compare(summary.text, "Exact details survive a local storage failure")
+        verify(findChild(row, "offlineRetry").enabled)
+        inbox.offlineDetailsShown = true
+        verify(findChild(inbox, "offlineDetails").visible)
+        save(inbox, "auth-local-storage-actionable")
+        store.failLocalSave = false
+        mouseClick(findChild(dialog, "createSaveButton"))
+        tryCompare(dialog, "visible", false)
+        compare(inbox.localStorageError, "")
+        tryCompare(row, "visible", false)
+        verify(reconnect.visible, "successful local save cannot clear account reauth")
+        inbox.close()
     }
     // R66: agent report boilerplate is not the preview; mail text is untouched.
     function test_agentPreviewBoilerplate() {

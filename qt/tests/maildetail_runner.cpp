@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QIcon>
 #include <QLocale>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -81,6 +82,17 @@ class MailTestSetup : public QObject
 {
     Q_OBJECT
 public slots:
+    void applicationAvailable()
+    {
+#ifdef LB_BUNDLED_ICON_PROOF
+        // Same resource paths/fallback as main.cpp; select the Android theme
+        // explicitly so a host Breeze installation cannot hide a missing SVG.
+        QIcon::setThemeSearchPaths(QIcon::themeSearchPaths() << QStringLiteral(":/icons"));
+        QIcon::setFallbackSearchPaths(QIcon::fallbackSearchPaths() << QStringLiteral(":/icons"));
+        QIcon::setFallbackThemeName(QStringLiteral("litterbox"));
+        QIcon::setThemeName(QStringLiteral("litterbox"));
+#endif
+    }
     void qmlEngineAvailable(QQmlEngine *engine)
     {
         engine->rootContext()->setContextProperty(QStringLiteral("mailFixtures"), new MailFixtures(engine));

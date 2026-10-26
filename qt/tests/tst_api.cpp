@@ -5,10 +5,58 @@
 #include <QTcpSocket>
 #include <QtTest/QtTest>
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QPointer>
+#include <memory>
 
 class ApiTest : public QObject {
     Q_OBJECT
 private slots:
+    void stalledBodyAbortsActualReplyWithoutTimingOutMetadata() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        QHash<QByteArray, QPointer<QTcpSocket>> sockets;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                auto bytes = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, bytes] {
+                    bytes->append(socket->readAll());
+                    if (!bytes->contains("\r\n\r\n")) return;
+                    sockets.insert(bytes->left(bytes->indexOf("\r\n")).split(' ').value(1), socket);
+                    // Hold both real HTTP requests open without sending bytes.
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        QSignalSpy failed(&api, &Api::requestFailed);
+        QSignalSpy finished(&api, &Api::requestFinished);
+        QElapsedTimer elapsed;
+        elapsed.start();
+        const int bodyId = api.get(QStringLiteral("/v1/cards/stalled/body"));
+        const int metadataId = api.get(QStringLiteral("/v1/cards"));
+        QTRY_COMPARE(sockets.size(), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 65000);
+        // Allow Qt timer precision variance, but reject a shortened retry delay.
+        QVERIFY(elapsed.elapsed() >= 55000);
+        QCOMPARE(failed.first().at(0).toInt(), bodyId);
+        QCOMPARE(failed.first().at(1).toInt(), 0);
+        QCOMPARE(finished.size(), 0);
+        QTRY_VERIFY(sockets.value("/v1/cards/stalled/body").isNull() ||
+            sockets.value("/v1/cards/stalled/body")->state() == QAbstractSocket::UnconnectedState);
+        // Neighboring negative control: non-body GET has no new timeout and
+        // remains a usable live request after the body transfer was aborted.
+        auto metadata = sockets.value("/v1/cards");
+        QVERIFY(metadata);
+        QCOMPARE(metadata->state(), QAbstractSocket::ConnectedState);
+        metadata->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+        metadata->disconnectFromHost();
+        QTRY_COMPARE(finished.size(), 1);
+        QCOMPARE(finished.first().at(0).toInt(), metadataId);
+        QCOMPARE(failed.size(), 1);
+    }
     void listThenOpenChatDuringBodyPrefetch() {
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));

@@ -17,10 +17,16 @@ TestCase {
         id: storeStub
         property var cached: ({})
         property bool online: false
+        property var bodyRequests: []
+        property var operations: []
         signal mailBodyChanged(string cardId)
         signal mailBodyFailed(string cardId)
         function cachedMailBody(cardId) { return cached[cardId] || {} }
-        function requestMailBody(cardId) {}
+        function requestMailBody(cardId) { bodyRequests = bodyRequests.concat([cardId]) }
+        function enqueueOp(cardId, action, payload) {
+            operations = operations.concat([{cardId: cardId, action: action, payload: payload}])
+            return "test-operation"
+        }
     }
 
     Component { id: pageComponent; Pages.MailDetailPage {} }
@@ -29,6 +35,8 @@ TestCase {
         visible = true
         storeStub.cached = ({})
         storeStub.online = false
+        storeStub.bodyRequests = []
+        storeStub.operations = []
     }
 
     function relativeLuminance(color) {
@@ -178,27 +186,131 @@ TestCase {
 
     function test_navigationButtonsAreLightWithVisibleIcons() {
         const shown = openMessage("<p>Hello <b>world</b></p>", 598)
-        for (const name of ["backToInbox", "openInGmail"]) {
+        for (const name of ["backToInbox", "archiveMail", "openInGmail"]) {
             const button = findChild(shown.page, name)
             verify(button && button.visible, name)
             verify(button.background && button.background.color !== undefined, name + " has no light fill")
             verify(relativeLuminance(button.background.color) > 0.8, name + " fill is dark: " + button.background.color)
             verify(button.icon.name.length > 0, name + " has no icon")
             verify(relativeLuminance(button.icon.color) < 0.1, name + " icon is not dark ink on the light fill")
+            verifyPaintedBarIcon(button, name)
         }
     }
 
-    function test_failedRefreshKeepsReadableCachedMessage() {
-        storeStub.online = true
+    function verifyPaintedBarIcon(button, name) {
+        const icon = findChild(button, "mailBarIcon")
+        verify(icon && icon.visible, name + " has no visible icon item")
+        verify(waitForRendering(icon), name + " icon did not render")
+        const image = grabImage(icon)
+        let inkPixels = 0
+        for (let y = 0; y < image.height; ++y)
+            for (let x = 0; x < image.width; ++x)
+                if (image.alpha(x, y) > 128 && image.red(x, y) < 128 &&
+                    image.green(x, y) < 128 && image.blue(x, y) < 128) ++inkPixels
+        verify(inkPixels >= 12, name + " declares " + button.icon.name + " but paints no ink")
+    }
+
+    function test_compactHeaderPaintAndDisjointTargets_data() {
+        return [
+            {tag: "phone-412", viewWidth: 412, embedded: false},
+            {tag: "phone-480", viewWidth: 480, embedded: false},
+            {tag: "embedded-412", viewWidth: 412, embedded: true},
+            {tag: "embedded-480", viewWidth: 480, embedded: true}
+        ]
+    }
+
+    function test_compactHeaderPaintAndDisjointTargets(row) {
+        const subject = "Your meeting recap - MapLibre Immersive 3D Maps Workgroup Kickoff"
+        testCase.width = row.viewWidth
+        testCase.height = 915
+        storeStub.cached = {"header": {html: "<p>Original <b>formatted</b> message</p>",
+            source_url: "https://mail.synthetic.test/header"}}
+        let closed = 0
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "header", cardTitle: subject,
+            card: {source: "mail", sender_name: "Sender", sender_address: "sender@example.test",
+                received_at: "2026-10-25T12:00:00Z"},
+            width: row.viewWidth, height: 915, embeddedMode: row.embedded,
+            openLinks: false, requestClose: function() { ++closed }
+        })
+        verify(page)
+        verify(waitForPolish(page))
+        const bar = findChild(page, "mailAppBar")
+        verify(bar.height >= 48 && bar.height < 64, "phone header must stay one slim row")
+        let right = 0
+        for (const name of ["backToInbox", "archiveMail", "openInGmail", "mailActions"]) {
+            const button = findChild(page, name)
+            verify(button && button.visible, name + " is not reachable")
+            const box = button.mapToItem(bar, 0, 0)
+            verify(button.width >= 48 && button.height >= 48, name + " is smaller than 48dp")
+            verify(box.x >= right && box.y >= 0 && box.x + button.width <= bar.width &&
+                box.y + button.height <= bar.height, name + " overlaps or leaves the app bar")
+            right = box.x + button.width
+            if (name !== "mailActions") verifyPaintedBarIcon(button, name)
+        }
+        const title = findChild(page, "mailBarTitle")
+        verify(title.width > 0 && title.truncated, "long toolbar title must elide, not steal action targets")
+        verify(page.headerHtml.indexOf(subject) >= 0, "full subject must remain in the scrolling document")
+        const shot = grabImage(page)
+        shot.save(mailFixtures.screenshotPath("reader-header-" + row.tag + ".png"))
+        mouseClick(findChild(page, "backToInbox"))
+        compare(closed, 1, "the painted Back target must receive the pointer")
+    }
+
+    function test_cachedReadIsImmediate_data() {
+        return [{tag: "online", online: true}, {tag: "offline", online: false}]
+    }
+
+    function test_cachedReadIsImmediate(row) {
+        storeStub.online = row.online
         storeStub.cached = {"card-8": {html: "<p>Keep reading while offline.</p>"}}
         const page = createTemporaryObject(pageComponent, testCase, {
             store: storeStub, cardId: "card-8", openLinks: false
         })
-        compare(page.loading, true)
+        verify(page)
+        compare(page.loading, false)
+        compare(page.html, "<p>Keep reading while offline.</p>")
+        compare(page.errorText, "")
+        compare(storeStub.bodyRequests, [])
+        compare(storeStub.operations, [], "reading must never archive or enqueue an operation")
         storeStub.mailBodyFailed("card-8")
         compare(page.loading, false)
         compare(page.html, "<p>Keep reading while offline.</p>")
         compare(page.errorText, "")
+        storeStub.cached = {"card-8": {html: "<p>Later body update.</p>"}}
+        storeStub.mailBodyChanged("card-8")
+        compare(page.html, "<p>Later body update.</p>")
+        compare(page.loading, false)
+        compare(storeStub.bodyRequests, [])
+        compare(storeStub.operations, [])
+    }
+
+    function test_missingReadRequestsOnlyOnline_data() {
+        return [{tag: "online", online: true}, {tag: "offline", online: false}]
+    }
+
+    function test_missingReadRequestsOnlyOnline(row) {
+        storeStub.online = row.online
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "missing", openLinks: false
+        })
+        verify(page)
+        compare(page.hasDocument, false)
+        compare(page.loading, row.online)
+        verify(page.errorText.length > 0, "missing offline content must not look cached")
+        compare(storeStub.bodyRequests, row.online ? ["missing"] : [])
+        compare(storeStub.operations, [])
+        if (!row.online) return
+        // Delivery is deferred through the store signal, not a direct reload.
+        Qt.callLater(function() {
+            storeStub.cached = {"missing": {html: "<p>Newly cached body.</p>"}}
+            storeStub.mailBodyChanged("missing")
+        })
+        tryCompare(page, "loading", false)
+        compare(page.html, "<p>Newly cached body.</p>")
+        compare(page.errorText, "")
+        compare(storeStub.bodyRequests, ["missing"], "body arrival must not request again")
+        compare(storeStub.operations, [], "fetching a body must never archive or enqueue an operation")
     }
 
     function test_embeddedBackInvokesCloseCallbackAndCanReopen() {

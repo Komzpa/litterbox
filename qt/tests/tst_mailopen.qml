@@ -288,6 +288,8 @@ TestCase {
     // backing CardStore order, and continuation never goes backwards or wraps.
     function test_localArchiveContinuesToNextPresentedReader_data() {
         return [{tag: "middle", opened: 8, openedPresented: 8, expected: 9},
+                {tag: "middle-phone-412", opened: 8, openedPresented: 8, expected: 9, width: 412},
+                {tag: "middle-phone-480", opened: 8, openedPresented: 8, expected: 9, width: 480},
                 {tag: "filtered-not-backing-order", opened: 10, openedPresented: 1, expected: 11, search: "Message 1", rejected: 2},
                 {tag: "batch-removal-skips-removed-candidates", opened: 8, openedPresented: 8, expected: 11, batchRemovalIds: [9, 10]},
                 {tag: "end", opened: 39, openedPresented: 39, expected: -1}]
@@ -296,7 +298,7 @@ TestCase {
     function test_localArchiveContinuesToNextPresentedReader(row) {
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,
-            width: 700, height: 800
+            width: row.width || 700, height: 915
         })
         verify(inbox)
         inbox.show()
@@ -333,6 +335,14 @@ TestCase {
         verify(waitForRendering(reader), "The real reader must render before pointer delivery")
         const archive = findChild(reader, "archiveMail")
         verify(archive && archive.visible, "Archive must be available while reading")
+        verify(archive.width >= 48 && archive.height >= 48, "direct Archive must retain its phone pointer target")
+        if (row.width) {
+            const bar = findChild(reader, "mailAppBar")
+            verify(bar.height < 64, "phone Archive must remain in the slim reader header")
+            const box = archive.mapToItem(bar, 0, 0)
+            verify(box.x >= 0 && box.y >= 0 && box.x + archive.width <= bar.width &&
+                box.y + archive.height <= bar.height, "direct Archive must not leave the phone viewport")
+        }
         mouseClick(archive)
         compare(store.operations.length, 1)
         compare(store.operations[0].type, "archive")
