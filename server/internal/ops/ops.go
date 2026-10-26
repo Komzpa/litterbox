@@ -2,6 +2,14 @@
 // Handlers run inside the caller's transaction and share the cards table and
 // change-notify trigger already owned by internal/cards; this package adds no
 // second push path.
+//
+// create_reminder takes args {id, title, due_at, recurrence?}: id is a nonzero
+// client UUID, due_at is an RFC3339 timestamp, and recurrence is empty, daily,
+// or weekly. The envelope still requires card_id (clients use the reminder ID).
+// The reminder ID is scoped to the authenticated tenant; an existing ID is a
+// no-op, preserving its original fields. Like other ops it returns {"ok":true},
+// including on an identical op_id replay. POST /v1/reminders remains supported
+// for older clients and allocates its own ID using the same persistence logic.
 package ops
 
 import (
@@ -22,6 +30,7 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/ingest"
 	"github.com/Komzpa/litterbox/server/internal/journal"
+	"github.com/Komzpa/litterbox/server/internal/reminders"
 	"github.com/google/uuid"
 )
 
@@ -58,6 +67,18 @@ func Register(typ string, h Handler) {
 }
 
 func init() {
+	Register("create_reminder", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
+		var in struct {
+			ID uuid.UUID `json:"id"`
+			reminders.CreateInput
+		}
+		if err := json.Unmarshal(args, &in); err != nil { return err }
+		if in.ID == uuid.Nil { return fmt.Errorf("reminder id required") }
+		return reminders.CreateInTx(ctx, func(ctx context.Context, query string, args ...any) error {
+			_, err := tx.Exec(ctx, query, args...)
+			return err
+		}, tenant.String(), in.ID.String(), in.CreateInput)
+	})
 	Register("done", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
 		if err := applyCardUpdate(ctx, tx, tenant, card, true, ""); err != nil {
 			return err

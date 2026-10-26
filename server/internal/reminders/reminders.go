@@ -10,25 +10,51 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/cards"
+	"github.com/google/uuid"
 )
 
 type Handler struct { DB *sql.DB }
 
 func (h *Handler) Routes(mux *http.ServeMux) { mux.HandleFunc("POST /v1/reminders", h.Create) }
 
+// CreateInput is shared by POST /v1/reminders and the create_reminder operation.
+type CreateInput struct {
+	Title string `json:"title"`
+	DueAt time.Time `json:"due_at"`
+	Recurrence string `json:"recurrence"`
+}
+
+func (in CreateInput) Validate() error {
+	if strings.TrimSpace(in.Title) == "" || in.DueAt.IsZero() || (in.Recurrence != "" && in.Recurrence != "daily" && in.Recurrence != "weekly") {
+		return fmt.Errorf("title, due_at and optional daily/weekly recurrence required")
+	}
+	return nil
+}
+
+// CreateInTx inserts once per tenant and reminder ID, without changing an
+// existing reminder. The caller sets tenant RLS and commits its transaction.
+// exec bridges database/sql (the legacy route) and pgx (durable operations).
+func CreateInTx(ctx context.Context, exec func(context.Context, string, ...any) error, tenant, id string, in CreateInput) error {
+	if err := in.Validate(); err != nil { return err }
+	return exec(ctx, `INSERT INTO reminders(tenant_id,id,title,due_at,recurrence) VALUES($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,id) DO NOTHING`, tenant, id, strings.TrimSpace(in.Title), in.DueAt.UTC(), in.Recurrence)
+}
+
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	tenant, ok := cards.TenantFrom(r.Context())
 	if !ok || tenant == "" { http.Error(w, "unauthorized", http.StatusUnauthorized); return }
-	var in struct { Title string `json:"title"`; DueAt time.Time `json:"due_at"`; Recurrence string `json:"recurrence"` }
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || strings.TrimSpace(in.Title) == "" || in.DueAt.IsZero() || (in.Recurrence != "" && in.Recurrence != "daily" && in.Recurrence != "weekly") {
+	var in CreateInput
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Validate() != nil {
 		http.Error(w, "title, due_at and optional daily/weekly recurrence required", http.StatusBadRequest); return
 	}
 	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil { http.Error(w, "internal server error", 500); return }
 	defer tx.Rollback()
 	if _, err = tx.ExecContext(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`,tenant); err != nil { http.Error(w, "internal server error",500); return }
-	var id string
-	err = tx.QueryRowContext(r.Context(), `INSERT INTO reminders(tenant_id,title,due_at,recurrence) VALUES($1,$2,$3,$4) RETURNING id`, tenant, strings.TrimSpace(in.Title), in.DueAt.UTC(), in.Recurrence).Scan(&id)
+	id := uuid.NewString()
+	err = CreateInTx(r.Context(), func(ctx context.Context, query string, args ...any) error {
+		_, err := tx.ExecContext(ctx, query, args...)
+		return err
+	}, tenant, id, in)
 	if err != nil { http.Error(w, "internal server error", http.StatusInternalServerError); return }
 	if err=tx.Commit(); err != nil { http.Error(w,"internal server error",500); return }
 	w.Header().Set("Content-Type", "application/json")
