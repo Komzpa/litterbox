@@ -1,3 +1,10 @@
+litterbox-qt (0.1-52) unstable; urgency=medium
+
+  * Preserve journal notes locally and retry their original operation after a
+    server rejection instead of dropping the owner's text.
+
+ -- Litterbox <litterbox@example.com>  Mon, 26 Oct 2026 14:57:00 +0400
+
 litterbox-qt (0.1-46) unstable; urgency=medium
 
   * Align Belarusian UI strings with the KDE translation compendium.
