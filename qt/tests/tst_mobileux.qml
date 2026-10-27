@@ -283,6 +283,25 @@ TestCase {
         compare(inbox.selectedCardId, selectedBefore)
         compare(inbox.searchQuery, queryBefore)
         fuzzyCompare(shown.list.contentY, positionBefore, 1)
+        // R70: "tapping the scrim, Android Back or a closing swipe dismisses it".
+        // Start inside the drawer so its ScrollView must yield the close drag.
+        mouseClick(drawerButton)
+        tryCompare(drawer, "opened", true)
+        const startX = drawer.width * 0.7
+        const endX = 10
+        const swipeY = inbox.height / 2
+        const touch = touchEvent(inbox.contentItem)
+        touch.press(0, inbox.contentItem, startX, swipeY).commit()
+        for (let i = 1; i <= 30; ++i) {
+            wait(20)
+            touch.move(0, inbox.contentItem, startX + (endX - startX) * i / 30, swipeY).commit()
+        }
+        touch.release(0, inbox.contentItem, endX, swipeY).commit()
+        tryCompare(drawer, "visible", false)
+        compare(stack.depth, 1)
+        compare(inbox.selectedCardId, selectedBefore)
+        compare(inbox.searchQuery, queryBefore)
+        fuzzyCompare(shown.list.contentY, positionBefore, 1)
         const destinations = [
             {name: "navAccounts", page: "gmailAccountsPage"},
             {name: "navAgents", page: "agentThreadsPage"},

@@ -1161,6 +1161,7 @@ ApplicationWindow {
         }
         background: Rectangle { color: window.surface }
         contentItem: ScrollView {
+            contentWidth: availableWidth
             clip: true
             ColumnLayout {
                 width: navigationDrawer.availableWidth
