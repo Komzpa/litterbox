@@ -13,13 +13,16 @@ ApplicationWindow {
     width: Qt.platform.os === "android" ? 520 : 1280
     height: Qt.platform.os === "android" ? 800 : 900
     title: "Litterbox"
+    font: window.themeFont
     // Sol V5 owns a light content surface, independent of the host's color scheme.
     // Set both Controls and Kirigami colors: neither may inherit dark-theme ink
     // while the other paints the approved white cards and header.
     // Read the platform font once: Kirigami.Theme.defaultFont inside a row
     // creates a Theme attached object per item, ~0.2 ms each, which made
     // every new dense inbox row expensive (scroll collapse regression).
-    readonly property font themeFont: Kirigami.Theme.defaultFont
+    readonly property font themeFont: Qt.platform.os === "android" && typeof androidFontScale !== "undefined"
+        ? Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize * androidFontScale})
+        : Kirigami.Theme.defaultFont
     readonly property color themeHighlight: Kirigami.Theme.highlightColor
     readonly property color ink: "#263b3a"
     readonly property color mutedInk: "#586d70"

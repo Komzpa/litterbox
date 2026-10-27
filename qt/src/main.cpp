@@ -7,6 +7,8 @@
 #include "timerules.h"
 #ifdef Q_OS_ANDROID
 #include "androidmailview.h"
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
 #else
 #include "maildocumentprofile.h"
 #include "updatewatcher.h"
@@ -409,6 +411,24 @@ int main(int argc, char *argv[])
 
     TimeRules timeRules;
     QQmlApplicationEngine engine;
+#ifdef Q_OS_ANDROID
+    // Qt's Android platform font does not include Configuration.fontScale.
+    auto updateAndroidFontScale = [&engine, lastScale = 0.0f]() mutable {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        const auto resources = context.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
+        const auto configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
+        if (!configuration.isValid()) return;
+        const float scale = configuration.getField<jfloat>("fontScale");
+        if (scale <= 0 || scale == lastScale) return;
+        lastScale = scale;
+        engine.rootContext()->setContextProperty(QStringLiteral("androidFontScale"), scale);
+    };
+    updateAndroidFontScale();
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &app,
+                     [updateAndroidFontScale](Qt::ApplicationState state) mutable {
+        if (state == Qt::ApplicationActive) updateAndroidFontScale();
+    });
+#endif
     api.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("api"), &api);
     engine.rootContext()->setContextProperty(QStringLiteral("a2aStream"), &a2aStream);
