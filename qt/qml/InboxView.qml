@@ -1157,6 +1157,11 @@ ApplicationWindow {
         width: Math.min(window.width - 48, Math.max(260, Kirigami.Units.gridUnit * 16))
         height: window.height
         edge: Qt.LeftEdge
+        // Device floor: x=80 opens and x=40 does not at either 64 or 96 margin,
+        // so 80 px is a platform floor the margin does not tune. gridUnit is 18
+        // here (18 * 4 = 72, 18 * 5 = 90), so no integer multiple lands on the
+        // measured floor: pin 80 px directly instead of a gridUnit multiple.
+        dragMargin: window.desktopNavigation ? Application.styleHints.startDragDistance : 80
         onClosed: {
             if (!window.focusSearchAfterDrawerClose) return
             window.focusSearchAfterDrawerClose = false

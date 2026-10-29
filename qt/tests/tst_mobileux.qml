@@ -302,6 +302,28 @@ TestCase {
         compare(inbox.selectedCardId, selectedBefore)
         compare(inbox.searchQuery, queryBefore)
         fuzzyCompare(shown.list.contentY, positionBefore, 1)
+        // Device threshold measured at 80 px under both 64 and 96 margins, so 80
+        // is a platform floor rather than something the margin tunes; margin set
+        // to 80 so code and test agree with the measurement.
+        verify(!drawer.visible)
+        const edge = touchEvent(inbox.contentItem)
+        edge.press(0, inbox.contentItem, 80, swipeY).commit()
+        for (let i = 1; i <= 10; ++i) {
+            wait(16)
+            edge.move(0, inbox.contentItem, 80 + (drawer.width + 60 - 80) * i / 10, swipeY).commit()
+        }
+        edge.release(0, inbox.contentItem, drawer.width + 60, swipeY).commit()
+        tryCompare(drawer, "visible", true)
+        // A 300 ms closing fling still dismisses the drawer.
+        const fling = touchEvent(inbox.contentItem)
+        const flingStartX = drawer.width * 0.7
+        fling.press(0, inbox.contentItem, flingStartX, swipeY).commit()
+        for (let i = 1; i <= 15; ++i) {
+            wait(20)
+            fling.move(0, inbox.contentItem, flingStartX + (10 - flingStartX) * i / 15, swipeY).commit()
+        }
+        fling.release(0, inbox.contentItem, 10, swipeY).commit()
+        tryCompare(drawer, "visible", false)
         const destinations = [
             {name: "navAccounts", page: "gmailAccountsPage"},
             {name: "navAgents", page: "agentThreadsPage"},
