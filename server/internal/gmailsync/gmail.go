@@ -27,6 +27,22 @@ type Client struct {
 	mu                                                      sync.Mutex
 	accessToken                                             string
 	tokenExpiry                                             time.Time
+	// BatchURL overrides the Gmail HTTP batch endpoint; empty derives it from APIBase.
+	BatchURL string
+	bmu      sync.Mutex
+	pending  []*modifyCall
+	lmu      sync.Mutex
+	labels   map[string]string
+}
+
+// invalidateToken forgets the cached access token if it is still tok, so the
+// next call mints a fresh one (Gmail answered 401).
+func (c *Client) invalidateToken(tok string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.accessToken == tok {
+		c.accessToken = ""
+	}
 }
 
 type tokenResponse struct {
@@ -63,6 +79,7 @@ func (c *Client) token(ctx context.Context) (string, error) {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
 		var failure struct { Error string `json:"error"` }
 		if json.Unmarshal(b, &failure) == nil && failure.Error == "invalid_grant" {
+			c.accessToken = ""
 			return "", fmt.Errorf("%w: %s", ErrInvalidGrant, res.Status)
 		}
 		return "", fmt.Errorf("gmail token refresh: %s: %s", res.Status, b)
@@ -97,12 +114,36 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 		}
 		payload = b
 	}
+	return c.retrying(ctx, func() (bool, error) { return c.try(ctx, method, path, payload, out) })
+}
+
+// retryableStatus reports whether Gmail asked us to slow down or hit a
+// transient fault: 5xx (observed: 500 Internal error on a message raw fetch
+// that succeeds seconds later), 429, or a 403 per-user rate limit.
+func retryableStatus(code int, body []byte) bool {
+	return code >= 500 || code == http.StatusTooManyRequests || (code == http.StatusForbidden && bytes.Contains(body, []byte("rateLimitExceeded")))
+}
+
+// retrying runs one API attempt at a time with backoff while it reports retry.
+// A 401 drops the cached access token (try/sendBatch do that) and is retried
+// once immediately with a freshly minted token.
+func (c *Client) retrying(ctx context.Context, attemptFn func() (retry bool, err error)) error {
 	delay := c.RetryDelay
 	if delay <= 0 {
 		delay = 5 * time.Second
 	}
+	reauthed := false
 	for attempt := 0; ; attempt++ {
-		retry, err := c.try(ctx, method, path, payload, out)
+		retry, err := attemptFn()
+		if err == nil {
+			return nil
+		}
+		var api *APIError
+		if !reauthed && errors.As(err, &api) && api.StatusCode == http.StatusUnauthorized {
+			reauthed = true
+			attempt--
+			continue
+		}
 		if !retry || attempt >= 5 {
 			return err
 		}
@@ -155,17 +196,10 @@ func (c *Client) try(ctx context.Context, method, path string, payload []byte, o
 	if res.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
 		err := &APIError{StatusCode: res.StatusCode, Method: method, Path: path, Status: res.Status, Body: string(b)}
-		switch {
-		case res.StatusCode >= 500:
-			// Gmail serves transient 5xx (observed: 500 Internal error on a
-			// message raw fetch that succeeds seconds later); retry them.
-			return true, err
-		case res.StatusCode == http.StatusTooManyRequests:
-			return true, err
-		case res.StatusCode == http.StatusForbidden && bytes.Contains(b, []byte("rateLimitExceeded")):
-			return true, err
+		if res.StatusCode == http.StatusUnauthorized {
+			c.invalidateToken(tok)
 		}
-		return false, err
+		return retryableStatus(res.StatusCode, b), err
 	}
 	if out != nil {
 		return false, json.NewDecoder(res.Body).Decode(out)

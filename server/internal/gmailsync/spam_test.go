@@ -73,6 +73,18 @@ func newSpamFixture(t *testing.T) *spamFixture {
 			_ = json.NewEncoder(w).Encode(map[string]any{"labels": []any{map[string]string{"id": "INBOX", "name": "INBOX"}, map[string]string{"id": "STARRED", "name": "STARRED"}}})
 			return
 		}
+		if r.URL.Path == "/batch/gmail/v1" {
+			serveFakeBatch(w, r, func(thread, token string, payload []byte) (int, string) {
+				call := spamCall{Thread: thread, Token: token}
+				if err := json.Unmarshal(payload, &call); err != nil { t.Error(err) }
+				f.calls = append(f.calls, call)
+				if f.fail { return http.StatusForbidden, "fixture Gmail denied" }
+				f.gmail.inbox = len(call.Add) > 0 && call.Add[0] == "INBOX"
+				f.gmail.history = "2"
+				return http.StatusOK, "{}"
+			})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/modify") {
 			var call spamCall
 			if err := json.NewDecoder(r.Body).Decode(&call); err != nil { t.Error(err) }

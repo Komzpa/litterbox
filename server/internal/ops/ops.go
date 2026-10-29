@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -97,8 +96,11 @@ func init() {
 	})
 	for _, kind := range []string{"archive", "spam"} {
 		Register(kind, func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
+			// Validate and run the provider mutation before touching the card:
+			// the card UPDATE fires the tenant sequence trigger, whose row lock
+			// lasts until commit and must not span a WAN call.
 			var source string
-			if err := tx.QueryRow(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2 RETURNING source`, tenant, card).Scan(&source); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&source); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return fmt.Errorf("card not found")
 				}
@@ -116,6 +118,9 @@ func init() {
 				if err := CallIfRegistered(ctx, tx, tenant, card, "gmail."+kind, args); err != nil {
 					return err
 				}
+			}
+			if _, err := tx.Exec(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2`, tenant, card); err != nil {
+				return err
 			}
 			return ingest.OnDone(ctx, tx, tenant, card)
 		})
@@ -381,6 +386,26 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	payload, _ := json.Marshal(in)
 	hash := sha256.Sum256(payload)
 
+	// Provider (WAN) work runs before any transaction: an op that already has a
+	// receipt is a replay and never repeats side effects.
+	hctx := r.Context()
+	if pre, ok := lookupPreCommit(in.Type); ok {
+		read := a.reader(tenant)
+		recorded, err := a.opRecorded(r.Context(), read, tenant, in.OpID)
+		if err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if !recorded {
+			applied, err := pre(r.Context(), read, mustUUID(tenant), in.CardID, in.Args)
+			if err != nil {
+				a.reject(w, r, tenant, in, err, nil)
+				return
+			}
+			hctx = withApplied(hctx, applied)
+		}
+	}
+
 	tx, err := a.DB.Begin(r.Context())
 	if err != nil {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
@@ -412,32 +437,8 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		if err = handler(r.Context(), tx, mustUUID(tenant), in.CardID, in.Args); err != nil {
-			log.Printf("operation rejected: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
-			response := map[string]string{"error": err.Error()}
-			var reconnect *GmailReconnectError
-			if errors.As(err, &reconnect) {
-				// Restore the complete operation before persisting account health.
-				if rollbackErr := tx.Rollback(r.Context()); rollbackErr != nil {
-					http.Error(w, "database unavailable", http.StatusServiceUnavailable)
-					return
-				}
-				health, healthErr := a.DB.Begin(r.Context())
-				if healthErr == nil {
-					defer health.Rollback(r.Context())
-					_, healthErr = health.Exec(r.Context(), `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant)
-					if healthErr == nil {
-						_, healthErr = health.Exec(r.Context(), `UPDATE accounts SET status='reauth_required' WHERE tenant_id=$1 AND id=$2`, tenant, reconnect.AccountID)
-					}
-					if healthErr == nil { healthErr = health.Commit(r.Context()) }
-				}
-				if healthErr != nil { log.Printf("Gmail account health update: %v", healthErr) }
-				response["code"] = "gmail_reconnect_required"
-				response["account_address"] = reconnect.Address
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			_ = json.NewEncoder(w).Encode(response)
+		if err = handler(hctx, tx, mustUUID(tenant), in.CardID, in.Args); err != nil {
+			a.reject(w, r, tenant, in, err, tx)
 			return
 		}
 	default:

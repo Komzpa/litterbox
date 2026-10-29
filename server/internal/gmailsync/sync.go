@@ -10,7 +10,8 @@ import (
  	"net/http"
  	"net/mail"
  	"strconv"
- 	"strings"
+	"strings"
+	"sync"
  	"time"
 
  	"golang.org/x/net/html"
@@ -528,9 +529,22 @@ func ClientFactory(clientID, clientSecret, apiBase, tokenURL string, httpClient 
 	}
 }
 
+// clientKey identifies one credential version of one account: a rotated or
+// re-linked refresh token yields a new key, so stale tokens are never reused.
+type clientKey struct {
+	tenant, account uuid.UUID
+	credential      [sha256.Size]byte
+}
+
 // ClientForCard binds a write action to the account that owns the card's Gmail
-// thread, rather than to whichever account was connected most recently.
+// thread, rather than to whichever account was connected most recently. Clients
+// are shared per (tenant, account, credential version) so the OAuth access
+// token and label IDs are fetched once per account, not once per operation, and
+// concurrent mutations of one account coalesce into one provider request.
 func ClientForCard(clientID, clientSecret, apiBase, tokenURL string, httpClient *http.Client) func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (*Client, string, error) {
+	var mu sync.Mutex
+	clients := map[clientKey]*Client{}
+	factory := ClientFactory(clientID, clientSecret, apiBase, tokenURL, httpClient)
 	return func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID) (*Client, string, error) {
 		var a Account
 		var thread string
@@ -538,7 +552,20 @@ func ClientForCard(clientID, clientSecret, apiBase, tokenURL string, httpClient 
 		if err != nil {
 			return nil, "", err
 		}
-		return ClientFactory(clientID, clientSecret, apiBase, tokenURL, httpClient)(a), thread, nil
+		key := clientKey{tenant: tenant, account: a.ID, credential: sha256.Sum256(a.RefreshToken)}
+		mu.Lock()
+		defer mu.Unlock()
+		if c, ok := clients[key]; ok {
+			return c, thread, nil
+		}
+		for old := range clients {
+			if old.tenant == tenant && old.account == a.ID {
+				delete(clients, old) // refresh token rotated or re-linked
+			}
+		}
+		c := factory(a)
+		clients[key] = c
+		return c, thread, nil
 	}
 }
 
