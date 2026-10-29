@@ -76,9 +76,15 @@ TestCase {
             verify(label, pair[0])
             fuzzyCompare(label.font.pointSize, (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor, 0.01, pair[0])
             actualMetrics.font = label.font
-            expectedMetrics.font = Qt.font({family: label.font.family,
-                pointSize: (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor,
-                weight: label.font.weight})
+            // Qt.font({...}) truncates fractional point sizes; the real Heading's
+            // font.pointSize retains them. Derive the oracle without that truncation.
+            expectedMetrics.font.family = label.font.family
+            expectedMetrics.font.pointSize = (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor
+            expectedMetrics.font.weight = label.font.weight
+            console.info("FONT MEASURE scale=" + data.scale + " " + pair[0] + " base=" + baseSize
+                + " factor=" + inbox.fontScaleFactor + " points=" + label.font.pointSize
+                + "/" + expectedMetrics.font.pointSize + " metrics=" + actualMetrics.height
+                + "/" + expectedMetrics.height + " contentHeight=" + label.contentHeight)
             fuzzyCompare(actualMetrics.height, expectedMetrics.height, 1, pair[0] + " pixel height")
         }
         inbox.close()
