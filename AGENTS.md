@@ -22,8 +22,10 @@ receipt, a commit, or a desktop `.deb` are *candidates*, not a release.
 3. The authenticated manifest and the downloaded bytes match that candidate's
    versionCode, package and SHA-256; anonymous requests still get `401`.
 4. An older enrolled isolated client presses **Check for app updates** and is
-   offered **Update available** for the new version. Same-version client showing
-   no offer is the negative control.
+   offered the new version — the banner reads **Update ready** on older builds
+   and **Update available** on newer ones; either counts, and the file it
+   downloaded must hash to the served candidate. A same-version client shows no
+   offer and downloads no `update-*.apk`; that is the negative control.
 
 Only after all four does the work count as done. If publication is impossible,
 keep the task open and name the exact blocker — never report the fix as done.
