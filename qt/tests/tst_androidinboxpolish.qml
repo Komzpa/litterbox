@@ -53,39 +53,57 @@ TestCase {
         add("older-child", "Original project discussion", 1, "older", false, 2, 15, 0)
     }
     function test_fontScale_data() {
-        return [{tag: "default", scale: 1}, {tag: "large", scale: 1.5}]
+        return [1, 1.15, 1.3, 1.5].map(function(scale) { return {tag: "scale-" + scale, scale: scale} })
     }
     function test_fontScale(data) {
         fixture()
         for (let i = store.count - 1; i >= 0; --i)
-            if (store.get(i).cardId !== "today-single" && store.get(i).cardId !== "today-head") store.remove(i)
+            if (store.get(i).cardId !== "today-single" && store.get(i).cardId !== "yesterday-head") store.remove(i)
         const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
             timeRules: timeRules, width: 412, height: 915})
         verify(inbox)
         const baseSize = inbox.themeFont.pointSize
-        const family = inbox.themeFont.family
-        inbox.themeFont = Qt.font({family: family, pointSize: baseSize * data.scale})
+        inbox.systemFontScale = data.scale
+        fuzzyCompare(inbox.fontScaleFactor, data.scale, 0.001, "Android scale reaches the common font binding")
         inbox.show()
         const list = findChild(inbox, "inboxList")
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) && list.itemAtIndex(1) })
+        wait(200)
+        const surface = inbox.contentItem.parent
+        const image = grabImage(surface)
+        image.save(mailFixtures.screenshotPath("font-412x915-" + data.scale + ".png"))
         const rows = [list.itemAtIndex(0), list.itemAtIndex(1)]
-        for (const pair of [["mailTitle-today-single", 1.10, 0], ["mailSender-today-single", 1, 2],
-                            ["mailSnippet-today-single", 1, 1], ["connectionStatus", 1, 1],
-                            ["bundleAccountLabel-today-head", 1, 2], ["bundleLatestLabel-today-head", 1, 1]]) {
+        const phoneBase = Math.max(baseSize, 12)
+        for (const pair of [["mailTitle-today-single", 1.10, 0], ["mailSender-today-single", 1, 1],
+                            ["mailSnippet-today-single", 1, 0], ["connectionStatus", 1, 0],
+                            ["bundleAccountLabel-yesterday-head", 1, 1], ["bundleLatestLabel-yesterday-head", 1, 0],
+                            ["bundleMemberCount-yesterday-head", 1, 1]]) {
             const label = findChild(inbox, pair[0]) || findChild(rows[0], pair[0]) || findChild(rows[1], pair[0])
             verify(label, pair[0])
-            fuzzyCompare(label.font.pointSize, (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor, 0.01, pair[0])
+            fuzzyCompare(label.font.pointSize, (phoneBase * pair[1] - pair[2]) * data.scale, 0.01, pair[0])
             actualMetrics.font = label.font
             // Qt.font({...}) truncates fractional point sizes; the real Heading's
             // font.pointSize retains them. Derive the oracle without that truncation.
             expectedMetrics.font.family = label.font.family
-            expectedMetrics.font.pointSize = (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor
+            expectedMetrics.font.pointSize = (phoneBase * pair[1] - pair[2]) * data.scale
             expectedMetrics.font.weight = label.font.weight
             console.info("FONT MEASURE scale=" + data.scale + " " + pair[0] + " base=" + baseSize
                 + " factor=" + inbox.fontScaleFactor + " points=" + label.font.pointSize
                 + "/" + expectedMetrics.font.pointSize + " metrics=" + actualMetrics.height
                 + "/" + expectedMetrics.height + " contentHeight=" + label.contentHeight)
             fuzzyCompare(actualMetrics.height, expectedMetrics.height, 1, pair[0] + " pixel height")
+            const origin = label.mapToItem(surface, 0, 0)
+            let top = label.height, bottom = -1
+            for (let y = 0; y < label.height; ++y) {
+                let ink = 0
+                for (let x = 0; x < label.width; ++x) {
+                    const pixel = image.pixel(Math.floor(origin.x + x), Math.floor(origin.y + y))
+                    if (pixel.r < 0.65 && pixel.g < 0.65 && pixel.b < 0.65) ++ink
+                }
+                if (ink >= 3) { top = Math.min(top, y); bottom = y }
+            }
+            console.info("PAINT scale=" + data.scale + " element=" + pair[0] + " inkHeight=" + (bottom - top + 1))
+            verify(bottom >= top, pair[0] + " must paint visible ink")
         }
         inbox.close()
     }
