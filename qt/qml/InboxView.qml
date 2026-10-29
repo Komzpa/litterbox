@@ -639,12 +639,14 @@ ApplicationWindow {
     // itself exists and stays visible with no popup open, so its visible flag
     // must never proxy for "a popup is open" (it hid the Android native body).
     readonly property bool actualPopupsVisible: !!((navigationDrawer && navigationDrawer.visible) || (headerMenu && headerMenu.visible)
-        || (noteDialog && noteDialog.visible) || (createDialog && createDialog.visible))
+        || (noteDialog && noteDialog.visible) || (createDialog && createDialog.visible)
+        || (deleteJournalDialog && deleteJournalDialog.visible))
     function handleBack() {
         if (navigationDrawer.visible) { navigationDrawer.close(); return true }
         if (headerMenu.visible) { headerMenu.close(); return true }
         if (noteDialog.visible) { noteDialog.reject(); return true }
         if (createDialog.visible) { createDialog.reject(); return true }
+        if (deleteJournalDialog.visible) { deleteJournalDialog.reject(); return true }
         // The overlay item also exists without a popup; it must not swallow Back.
         if (stack.depth > 1) {
             if (stack.currentItem === mailDetailPage) closeReader()
@@ -2226,6 +2228,11 @@ ApplicationWindow {
                                         if (next) next()
                                     }
                                     onNoteRequested: { noteDialog.cardId = cardId; noteField.text = card.note || ""; noteDialog.open() }
+                                    journalDeleteLabel: qsTr("Delete")
+                                    onDeleteRequested: {
+                                        deleteJournalDialog.cardId = cardId
+                                        deleteJournalDialog.open()
+                                    }
                                     onOpenRequested: {
                                         if (card.source_url) Qt.openUrlExternally(card.source_url)
                                     }
@@ -2514,6 +2521,44 @@ ApplicationWindow {
         anchors.fill: parent
         acceptedButtons: Qt.BackButton
         onClicked: window.handleBack()
+    }
+    Dialog {
+        id: deleteJournalDialog
+        objectName: "deleteJournalDialog"
+        property string cardId: ""
+        title: qsTr("Delete private note?")
+        modal: true
+        width: Math.min(392, window.width - 32)
+        anchors.centerIn: parent
+        Material.theme: Material.Light
+        Material.background: window.surface
+        Material.foreground: window.ink
+        background: Rectangle { color: window.surface; radius: 8; border.color: "#dce5e3" }
+        contentItem: Label {
+            text: qsTr("This permanently deletes the journal entry, not just its inbox card.")
+            wrapMode: Text.Wrap
+            color: window.ink
+        }
+        footer: DialogButtonBox {
+            background: Rectangle { color: window.surface }
+            Button {
+                objectName: "deleteJournalCancel"
+                text: qsTr("Cancel")
+                implicitHeight: Math.max(48, window.tapTarget)
+                Accessible.name: text
+                onClicked: deleteJournalDialog.reject()
+            }
+            Button {
+                objectName: "deleteJournalConfirm"
+                text: qsTr("Delete")
+                implicitHeight: Math.max(48, window.tapTarget)
+                Accessible.name: text
+                onClicked: {
+                    if (store.enqueueOp(deleteJournalDialog.cardId, "delete_journal", {}))
+                        deleteJournalDialog.accept()
+                }
+            }
+        }
     }
     Dialog {
         id: noteDialog

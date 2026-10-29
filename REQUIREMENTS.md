@@ -18,6 +18,7 @@ Each requirement is **decided** or **open** and names its source.
   and create cards, and nothing else; after revocation every call with it
   fails. Cards it creates enter through the ingest API of R12. The owner's
   own backup copy of the database (R13) is not sending.
+- **R2-D Journal deletion** (decided, owner 2026-10-29: «эту хуйню даже нельзя удалить»). Journal card overflow exposes a visible, accessible Delete row with a minimum 48dp target. Cancel keeps the note; explicit confirmation queues durable `delete_journal` through the existing authenticated `/v1/ops` outbox. The server atomically removes both `journal_entries.id` and `cards.id` for that tenant; archive still preserves the entry. Replay is idempotent and other tenants/non-journal cards cannot be deleted. Proof fixtures must use disposable local stores/tenants, never the owner's tenant. Oracle: `qt/tests/tst_journaldelete.qml` at 412×915 and 480×915 checks visible Delete, cancel, confirm and pending removal; `TestJournalCreateReplayArchiveAndTenantIsolation` checks both rows, replay and tenant isolation.
 - **R3 Reachable Inbox Zero** (decided, owner 2026-09-27). The open list can
   be emptied in normal use; bundles clear many cards with one action.
 - **R4 No daily pages** (decided, from the owner's failed daily-note setup,

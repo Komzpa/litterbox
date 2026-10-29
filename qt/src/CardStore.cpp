@@ -305,7 +305,7 @@ void CardStore::projectPendingRemovals(QList<QVariantMap> &cards) const {
         const QString type = op.value(QStringLiteral("type")).toString();
         const QString id = op.value(QStringLiteral("card_id")).toString();
         const bool single = type == QStringLiteral("done") || type == QStringLiteral("archive") ||
-            type == QStringLiteral("spam") || type == QStringLiteral("snooze");
+            type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal");
         const bool bundle = type == QStringLiteral("bundle_done") || type == QStringLiteral("bundle_archive") ||
             type == QStringLiteral("bundle_spam");
         if (!single && !bundle) continue;
@@ -884,9 +884,12 @@ QVariantList CardStore::pendingAgentMessages(const QString &threadId) const {
 }
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_open || QUuid(cardId).isNull()) return {};
-    static const QSet<QString> types = {QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
+    static const QSet<QString> types = {QStringLiteral("delete_journal"), QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
         QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("create_reminder"), QStringLiteral("agent_message"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_spam"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
+    if (type == QStringLiteral("delete_journal") && std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const auto &card) {
+        return card.value(QStringLiteral("id")).toString() == cardId && card.value(QStringLiteral("source")).toString() == QStringLiteral("journal");
+    })) return {};
     if (type == QStringLiteral("spam") || type == QStringLiteral("bundle_spam")) {
         for (const QVariantMap &op : m_outbox)
             if (op.value(QStringLiteral("card_id")).toString() == cardId &&
@@ -904,7 +907,7 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         return card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
     };
     bool changed = false;
-    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze")) {
+    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal")) {
         const auto oldSize = cards.size();
         cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
             return card.value(QStringLiteral("id")).toString() == cardId;
@@ -1398,7 +1401,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         return; // Replay the same op; never prune on a failed durable ACK record.
     }
     QStringList removedIds;
-    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze"))
+    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal"))
         removedIds.append(operation.value(QStringLiteral("card_id")).toString());
     for (const auto &value : m_drafts.value(opId).value(QStringLiteral("removed_cards")).toList())
         removedIds.append(value.toMap().value(QStringLiteral("id")).toString());

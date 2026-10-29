@@ -161,4 +161,19 @@ func TestJournalCreateAsAppRole(t *testing.T) {
 		t.Fatalf("blank-body negative control: status=%d body=%s, want 422 journal body required", response.Code, response.Body.String())
 	}
 	t.Log("POST /v1/ops as non-owner litterbox_app: 200; card and journal body persisted; blank-body negative control: 422")
+	deleteOp := uuid.New()
+	payload := fmt.Sprintf(`{"op_id":%q,"card_id":%q,"type":"delete_journal","args":{}}`, deleteOp, card)
+	for range 2 {
+		response := httptest.NewRecorder()
+		api.ServeHTTP(response, httptest.NewRequest("POST", "/v1/ops", strings.NewReader(payload)))
+		if response.Code != 200 {
+			t.Fatalf("delete/replay as %s: status=%d body=%s", role, response.Code, response.Body.String())
+		}
+	}
+	for _, table := range []string{"cards", "journal_entries"} {
+		var count int
+		if err := admin.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s after app-role delete: count=%d error=%v", table, count, err)
+		}
+	}
 }
