@@ -92,9 +92,11 @@ binary. It installs `/opt/litterbox/server/litterbox` and the canonical unit at
 not restart it. Build the desktop with the existing Debian recipe, without adding
 a custom ELF note: its exact executable hash and source are bound by the build
 receipt. Configuration and credentials under `/etc/litterbox` never enter packages.
-Complete pending operator-owned SQL migrations before release; the CLI neither
-migrates databases nor changes grants. Migration `011` requires `SELECT, INSERT,
-UPDATE, DELETE` on `card_bodies` for `litterbox_app`, with RLS retained.
+Complete pending operator-owned SQL migrations before release; `tools/release_status.py --check` verifies them.
+The check probes created tables and effective table grants, not every migration
+statement. The CLI neither migrates databases nor changes grants. Migration `011`
+requires `SELECT, INSERT, UPDATE, DELETE` on `card_bodies` for `litterbox_app`,
+with RLS retained.
 
 Prepare a private absolute-path `cohort.json` with this contract (no credentials):
 

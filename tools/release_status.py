@@ -3,8 +3,9 @@
 
 Exits 0 when the working tree's Android versionCode, the served manifest
 version, the served APK digest and receipts/published-releases.json agree and no
-file under qt/ changed after the published source commit.  Exits 1 otherwise,
-printing one line per disagreement.  See AGENTS.md.
+file under qt/ changed after the published source commit, and migration table
+and table-grant checks pass. Exits 1 otherwise, printing each disagreement.
+These probes do not establish that every migration statement was applied.
 
 Read-only: never restarts the server, never touches /etc/litterbox.
 """
@@ -78,6 +79,62 @@ def load_ledger() -> list[dict[str, Any]]:
     return [entry for entry in releases or [] if entry.get("versionCode")]
 
 
+def schema_problems() -> list[str]:
+    """Probe migration-created tables and effective table grants, read-only."""
+    ident = r"[a-zA-Z_][a-zA-Z_0-9]*"
+    tables = re.compile(rf"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?({ident})\b", re.I)
+    grants = re.compile(r"\bGRANT\s+(.+?)\s+ON\s+(.+?)\s+TO\s+(.+?)\s*;", re.I | re.S)
+    probes: list[tuple[str, str, str, str]] = []
+    for path in sorted((ROOT / "server/db").glob("[0-9][0-9][0-9]_*.sql")):
+        text = re.sub(r"--[^\n]*|/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+        for name in tables.findall(text):
+            probes.append((path.name, "table", name.lower(), ""))
+        for privileges, targets, roles in grants.findall(text):
+            if re.match(r"\s*(FUNCTION|SEQUENCE)\b", targets, re.I):
+                continue
+            targets = re.sub(r"^\s*TABLE\s+", "", targets, flags=re.I)
+            names = [item.strip().lower() for item in targets.split(",")]
+            role_names = [item.strip().lower() for item in roles.split(",")]
+            rights = [item.strip().upper() for item in privileges.split(",")]
+            if (not all(re.fullmatch(ident, name) for name in names + role_names)
+                    or not all(right in {"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"} for right in rights)):
+                return [f"{path.name}: unsupported table GRANT; schema check cannot verify it"]
+            for name in names:
+                for role in role_names:
+                    for right in rights:
+                        probes.append((path.name, role, name, right))
+
+    def literal(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    rows = ",\n".join("(" + ",".join(map(literal, probe)) + ")" for probe in probes)
+    if not rows:
+        return ["no migration table or grant probes found"]
+    query = f"""WITH probes(migration, role_name, table_name, privilege) AS (VALUES {rows})
+        SELECT migration, role_name, table_name, privilege FROM probes
+        WHERE CASE WHEN role_name = 'table' THEN to_regclass('public.' || table_name) IS NULL
+          WHEN to_regclass('public.' || table_name) IS NULL
+            OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN true
+          ELSE NOT has_table_privilege(role_name, to_regclass('public.' || table_name), privilege) END;"""
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "-u", "postgres", "psql", "-X", "-p", "5435", "-d", "litterbox", "-At", "-F", "\t", "-v", "ON_ERROR_STOP=1", "-c", query],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as exc:
+        return [f"production database unreadable: {exc}"]
+    if result.returncode:
+        return [f"production database unreadable: {result.stderr.strip() or 'psql failed'}"]
+    problems = []
+    for line in result.stdout.splitlines():
+        migration, role, name, right = line.split("\t")
+        if role == "table":
+            problems.append(f"{migration}: missing table public.{name}")
+        else:
+            problems.append(f"{migration}: missing {right} on public.{name} for {role}")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
@@ -93,6 +150,7 @@ def main() -> int:
     served_version = served.get("LITTERBOX_ANDROID_VERSION", "")
     served_apk = served.get("LITTERBOX_ANDROID_APK_PATH", "")
     releases = load_ledger()
+    problems.extend(schema_problems())
 
     if not served_version:
         problems.append("served version unknown: /etc/litterbox/db.env unreadable")
