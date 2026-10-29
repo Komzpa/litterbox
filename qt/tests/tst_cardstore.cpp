@@ -111,6 +111,27 @@ public:
         });
     }
 };
+// Latency fake transport: each POST completes independently after a fixed wire
+// delay, like a real RTT. A serial pump pays it per op; a pipelined pump pays
+// it once per flight. High-water mark proves the batching.
+class LatencyTransport : public QObject, public cardstore::OpTransport {
+public:
+    QList<QVariantMap> posted;
+    int latencyMs;
+    int maxOutstanding = 0;
+    int outstanding = 0;
+    explicit LatencyTransport(int latency) : latencyMs(latency) {}
+    void postOp(const QString &, const QVariantMap &body,
+                std::function<void(int, const QVariantMap &)> completed) override {
+        posted.append(body);
+        ++outstanding;
+        maxOutstanding = qMax(maxOutstanding, outstanding);
+        QTimer::singleShot(latencyMs, this, [this, completed] {
+            --outstanding;
+            completed(200, {{QStringLiteral("ok"), true}});
+        });
+    }
+};
 // Drives the same request IDs and CardStore gate used by main.cpp.
 class SnapshotConsumer {
 public:
@@ -2266,17 +2287,22 @@ private slots:
         QSignalSpy posted(&store, &CardStore::requestPost);
         store.setOnline(true);
         const QString token = store.archiveBundleNow("bundle").value("token").toString();
-        QTRY_COMPARE(posted.size(), 1);
-        store.reportPostResult(posted.last().at(0).toString(), 422, {{"ok", false}});
-        QTRY_COMPARE(posted.size(), 2);
-        // Keep C queued when B fails, rather than transmitting another archive.
+        // The bounded pipeline sends the whole bundle at once, not one op
+        // per round trip; rejections then restore cards independently.
+        QTRY_COMPARE(posted.size(), 3);
+        store.reportPostResult(posted[0].at(0).toString(), 422, {{"ok", false}});
+        QTRY_COMPARE(store.pendingOps(), 2);
+        // No further transmissions after failures: the third op is already in
+        // flight, and going offline parks everything still unsent.
         store.setOnline(false);
-        store.reportPostResult(posted.last().at(0).toString(), 422, {{"ok", false}});
+        store.reportPostResult(posted[1].at(0).toString(), 422, {{"ok", false}});
         QTRY_COMPARE(store.pendingOps(), 1);
         QVERIFY(store.undoBundleArchive(token));
         QCOMPARE(store.cardIds(), QStringList({"P", "A", "B", "C"}));
-        QCOMPARE(store.pendingOps(), 0);
-        QCOMPARE(posted.size(), 2);
+        // C was already sent, so Undo queues its INBOX re-add on top of the
+        // still unacknowledged original; nothing unsent remains.
+        QCOMPARE(store.pendingOps(), 2);
+        QCOMPARE(posted.size(), 3);
     }
 
     void singleArchiveUndoAcrossAcknowledgement_data() {
@@ -2447,12 +2473,89 @@ private slots:
             QCOMPARE(server.received[i].value("type").toString(), QStringLiteral("gmail.label_add"));
             QCOMPARE(server.received[i].value("args").toMap().value("label").toString(), QStringLiteral("INBOX"));
         }
-        QCOMPARE(server.received[2].value("card_id").toString(), first);
-        QCOMPARE(server.received[3].value("card_id").toString(), last);
+        // Pipelined inverses may arrive in either order; both must land.
+        QCOMPARE(QSet<QString>({server.received[2].value("card_id").toString(),
+            server.received[3].value("card_id").toString()}), QSet<QString>({first, last}));
         QTRY_COMPARE(store.pendingOps(), 0);
         QCOMPARE(store.cardIds(), original);
         QVERIFY(store.applyRemoteCards({{"now", QVariantList{pinnedCard, mail(loose, QVariant()), mail(first, bundle), mail(middle, QVariant()), mail(last, bundle)}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
         QCOMPARE(store.cardIds(), original);
+    }
+    void outboxDrainsInBoundedRounds() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("drain.sqlite")));
+        QVariantList cards;
+        QStringList ids;
+        for (int i = 0; i < 100; ++i) {
+            const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            ids.append(id);
+            cards.append(QVariantMap{{"id", id}, {"title", QStringLiteral("Note %1").arg(i)},
+                {"source", "manual"}, {"state", "open"}});
+        }
+        QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        // 50 ms wire delay per POST: a serial pump pays ~5 s of RTT alone.
+        LatencyTransport transport(50);
+        store.setTransport(&transport);
+        QStringList ops;
+        for (const QString &id : ids) {
+            const QString op = store.saveNote(id, QStringLiteral("edit %1").arg(id));
+            QVERIFY(!op.isEmpty());
+            ops.append(op);
+        }
+        QCOMPARE(store.pendingOps(), 100);
+        store.setOnline(true);
+        QElapsedTimer wall;
+        wall.start();
+        QTRY_VERIFY2_WITH_TIMEOUT(store.pendingOps() == 0, "outbox did not drain", 30000);
+        const qint64 ms = wall.elapsed();
+        qInfo("drain 100 ops x 50ms RTT: max %d in flight, %lld ms", transport.maxOutstanding, ms);
+        QCOMPARE(transport.posted.size(), 100);
+        for (int i = 0; i < 100; ++i)
+            QCOMPARE(transport.posted[i].value("op_id").toString(), ops[i]);
+        QVERIFY2(transport.maxOutstanding >= 3, qPrintable(QStringLiteral("no pipelining: max %1").arg(transport.maxOutstanding)));
+        // 25 flights x 50 ms plus one durable ack commit per op; a serial pump
+        // pays the RTT per op (~8.5 s) instead of per flight.
+        QVERIFY2(ms < 5000, qPrintable(QStringLiteral("drain took %1 ms, no batching").arg(ms)));
+    }
+    void serverDeletedCardLeavesNoGhostRow() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("ghost.sqlite");
+        const QString ghost = QStringLiteral("77777777-7777-4777-8777-777777777777");
+        const QString survivor = QStringLiteral("88888888-8888-4888-8888-888888888888");
+        const auto sections = [&](bool withGhost) {
+            QVariantList now{QVariantMap{{"id", survivor}, {"source", "journal"},
+                {"state", "open"}, {"title", "DrawerNote02"}}};
+            if (withGhost) now.prepend(QVariantMap{{"id", ghost}, {"source", "journal"},
+                {"state", "open"}, {"title", "DrawerNote01"}});
+            return QVariantMap{{"now", now}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        };
+        CardStore store;
+        QVERIFY(store.open(path));
+        QVERIFY(store.applyRemoteCards(sections(true)));
+        QCOMPARE(store.rowCount(), 2);
+        const QString ghostEdit = store.saveNote(ghost, "stale edit");
+        QVERIFY(!ghostEdit.isEmpty());
+        const QString survivorEdit = store.saveNote(survivor, "owner edit");
+        QVERIFY(!survivorEdit.isEmpty());
+        // The server confirms the first card is gone (404) while the second
+        // edit is only generically rejected (422 retained for the owner,
+        // including across the refresh-triggered retry of the survivor).
+        ScriptedTransport transport({404, 422, 422});
+        QSignalSpy failed(&store, &CardStore::operationFailed);
+        store.setTransport(&transport);
+        store.setOnline(true);
+        QTRY_COMPARE(store.pendingOps(), 1);
+        QCOMPARE(store.cardIds(), QStringList{survivor});
+        QVERIFY(store.saveFailed());
+        QCOMPARE(failed.size(), 0); // Background sync never reports Save as undone.
+        QTest::qWait(500); // Let the async removal commit before reopening.
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.pendingOps(), 1);
+        QCOMPARE(reopened.cardIds(), QStringList{survivor});
     }
 };
 QTEST_MAIN(CardStoreTest)

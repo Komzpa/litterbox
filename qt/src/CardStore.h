@@ -159,13 +159,21 @@ private:
     void retainOwnerRows(QList<QVariantMap> &cards) const;
     void projectPendingRemovals(QList<QVariantMap> &cards) const;
     bool appendDraftRecord(const QVariantMap &record);
-    void retireRejectedOperation(const QString &opId, const QVariantMap &replacement = {});
+    // Drops the local row the server confirmed gone (404 or 422 card-not-found
+    // retirement) unless a remaining op still writes that card. Card-id carriers
+    // with no card subject (reorder_*, agent_message) never trigger a drop.
+    void dropServerDeletedCard(const QString &cardId);
+    void retireRejectedOperation(const QString &opId, const QVariantMap &replacement = {}, const QString &retiredCardId = {});
     QString m_rejectedReorder;
     quint64 m_rejectedReorderSnapshot = 0;
     QString m_draftPath;
     QHash<QString, QVariantMap> m_drafts;
     QStringList m_draftOrder;
-    void flushNext();
+    // Bounded outbox pipeline: up to kMaxInFlightOps POSTs share the wire.
+    // Per-card FIFO holds (a card's next op waits for its in-flight op) and
+    // reorder_* ops fly alone so the server always sees a coherent open set.
+    static constexpr int kMaxInFlightOps = 4;
+    bool flushNext();
     void queueMailBodyPrefetch();
     void prefetchNextMailBody();
     void queueSenderPhotoPrefetch();
@@ -232,7 +240,10 @@ private:
     QSet<QString> m_photoUnavailable;
     bool m_online = false;
     QString m_offlineReason;
-    QString m_inFlight;
+    // Bounded pipeline of sent-but-unacknowledged op ids (cap kMaxInFlightOps).
+    QSet<QString> m_inFlight;
+    // A 429 parks the whole pump until the shared per-device window recovers.
+    QDeadlineTimer m_rateCooldown{0, Qt::PreciseTimer};
     QTimer m_retryTimer;
     int m_retryAttempt = 0;
     cardstore::OpTransport *m_transport = nullptr;

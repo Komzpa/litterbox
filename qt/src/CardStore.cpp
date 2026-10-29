@@ -1126,7 +1126,7 @@ QVariantMap CardStore::archiveBundleNow(const QString &bundleId) {
 void CardStore::undoQueuedOp(const QString &opId) {
     const auto owner = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const auto &op) { return op.value(QStringLiteral("op_id")).toString() == opId; });
     if (owner != m_outbox.cend() && ownerWrite(*owner)) { qWarning() << "Refusing cancellation of owner op" << opId; return; }
-    if (!m_open || opId == m_inFlight || !m_mutations.contains(opId)) return;
+    if (!m_open || m_inFlight.contains(opId) || !m_mutations.contains(opId)) return;
     const auto queued = std::any_of(m_outbox.cbegin(), m_outbox.cend(),
         [&](const QVariantMap &op) { return op.value(QStringLiteral("op_id")).toString() == opId; });
     if (!queued) return;
@@ -1195,26 +1195,50 @@ bool CardStore::undoBundleArchive(const QString &token) {
     return true;
 }
 void CardStore::flush() {
-    if (m_online && m_open && m_inFlight.isEmpty() &&
-        (!m_retryTimer.isActive() || !m_deferredWrites.isEmpty())) flushNext();
+    if (!m_online || !m_open) return;
+    // Fill the bounded pipeline; every slot frees on its own ACK or failure.
+    // Per-op deferral (m_deferredWrites) parks one card, never the whole queue.
+    bool progressed = true;
+    while (progressed && (int)m_inFlight.size() < kMaxInFlightOps)
+        progressed = flushNext();
+    if (m_outbox.isEmpty() && m_inFlight.isEmpty()) emit flushFinished();
 }
-void CardStore::flushNext() {
-    if (!m_online || !m_inFlight.isEmpty()) return;
-    if (m_outbox.isEmpty()) { emit flushFinished(); return; }
+bool CardStore::flushNext() {
+    if (!m_online || !m_rateCooldown.hasExpired()) return false;
+    if (m_outbox.isEmpty()) return false;
+    // Preserve per-card order across the pipeline: a card with an op already
+    // on the wire or parked in backoff blocks only its own later ops.
+    QSet<QString> flyingCards;
+    bool reorderFlying = false;
+    for (const auto &id : std::as_const(m_inFlight)) {
+        const auto sent = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const auto &op) {
+            return op.value(QStringLiteral("op_id")).toString() == id;
+        });
+        if (sent == m_outbox.cend()) continue;
+        flyingCards.insert(sent->value(QStringLiteral("card_id")).toString());
+        const QString flyingType = sent->value(QStringLiteral("type")).toString();
+        if (flyingType == QStringLiteral("reorder_cards") || flyingType == QStringLiteral("reorder_pins"))
+            reorderFlying = true;
+    }
     QSet<QString> blockedCards;
     const auto next = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
-        const QString cardId = op.value(QStringLiteral("card_id")).toString();
-        if (m_deferredWrites.contains(op.value(QStringLiteral("op_id")).toString())) {
-            blockedCards.insert(cardId);
+        const QString opId = op.value(QStringLiteral("op_id")).toString();
+        if (m_inFlight.contains(opId) || m_deferredWrites.contains(opId)) {
+            blockedCards.insert(op.value(QStringLiteral("card_id")).toString());
             return false;
         }
-        return !blockedCards.contains(cardId);
+        if (flyingCards.contains(op.value(QStringLiteral("card_id")).toString())) return false;
+        if (reorderFlying) return false;
+        const QString type = op.value(QStringLiteral("type")).toString();
+        if ((type == QStringLiteral("reorder_cards") || type == QStringLiteral("reorder_pins")) && !m_inFlight.isEmpty())
+            return false; // Reorder ops fly alone against a coherent open set.
+        return !blockedCards.contains(op.value(QStringLiteral("card_id")).toString());
     });
-    if (next == m_outbox.cend()) return;
+    if (next == m_outbox.cend()) return false;
     const QVariantMap payload = *next;
     const QString id = payload.value(QStringLiteral("op_id")).toString();
-    if (!m_durableOps.contains(id)) return;
-    m_inFlight = id;
+    if (!m_durableOps.contains(id)) return false;
+    m_inFlight.insert(id);
     for (auto it = m_bundleArchives.begin(); it != m_bundleArchives.end(); ++it)
         for (const auto &[cardId, opId] : it->ops)
             if (opId == id) it->sent.insert(id);
@@ -1226,18 +1250,39 @@ void CardStore::flushNext() {
     } else {
         emit requestPost(id, QStringLiteral("/v1/ops"), payload);
     }
+    return true;
 }
-void CardStore::retireRejectedOperation(const QString &opId, const QVariantMap &replacement) {
+void CardStore::dropServerDeletedCard(const QString &cardId) {
+    if (cardId.isEmpty()) return;
+    // A remaining op still writing this card keeps the row; the next snapshot
+    // or the op's own retirement settles it. Reorder and agent-message ops
+    // carry a nominal card id, never a row subject.
+    for (const auto &op : std::as_const(m_outbox)) {
+        if (op.value(QStringLiteral("card_id")).toString() != cardId) continue;
+        const QString type = op.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("reorder_cards") || type == QStringLiteral("reorder_pins") ||
+            type == QStringLiteral("agent_message")) continue;
+        return;
+    }
+    auto matches = [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == cardId; };
+    if (std::none_of(m_cards.cbegin(), m_cards.cend(), matches)) return;
+    const auto before = m_cards;
+    QList<QVariantMap> after = m_cards;
+    after.erase(std::remove_if(after.begin(), after.end(), matches), after.end());
+    replaceCards(after);
+    persistCards(before, after);
+}
+void CardStore::retireRejectedOperation(const QString &opId, const QVariantMap &replacement, const QString &retiredCardId) {
     // Retirement is not an ACK; original journal bytes remain available.
     const QString replacementId = replacement.value(QStringLiteral("op_id")).toString();
     const QVariantMap draft{{QStringLiteral("op_id"), replacementId}, {QStringLiteral("op"), replacement}};
     QVariantMap record{{QStringLiteral("op_id"), opId}, {QStringLiteral("retired"), true}};
     if (!replacement.isEmpty()) record.insert(QStringLiteral("replacement"), draft);
     // One durable append binds retirement and replacement across process death.
-    if (!appendDraftRecord(record)) { m_inFlight.clear(); return; }
+    if (!appendDraftRecord(record)) { m_inFlight.remove(opId); return; }
     if (!replacement.isEmpty()) m_drafts.insert(replacementId, draft);
     m_drafts.remove(opId);
-    QMetaObject::invokeMethod(m_storage, [this, opId, replacement, replacementId] {
+    QMetaObject::invokeMethod(m_storage, [this, opId, replacement, replacementId, retiredCardId] {
         bool ok = m_db.transaction();
         QSqlQuery q(m_db);
         q.prepare(QStringLiteral("INSERT OR IGNORE INTO retired_ops VALUES(?)"));
@@ -1255,8 +1300,8 @@ void CardStore::retireRejectedOperation(const QString &opId, const QVariantMap &
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
         const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, opId, replacement, replacementId, ok, error] {
-            m_inFlight.clear();
+        QMetaObject::invokeMethod(this, [this, opId, replacement, replacementId, retiredCardId, ok, error] {
+            m_inFlight.remove(opId);
             if (!ok) { emit storageError(error); return; }
             m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const auto &op) {
                 return op.value(QStringLiteral("op_id")).toString() == opId;
@@ -1266,6 +1311,7 @@ void CardStore::retireRejectedOperation(const QString &opId, const QVariantMap &
             m_deferredWrites.remove(opId);
             m_durableOps.remove(opId);
             if (!replacement.isEmpty()) { m_outbox.append(replacement); m_durableOps.insert(replacementId); }
+            else dropServerDeletedCard(retiredCardId);
             emit pendingOpsChanged();
             refresh();
             flush();
@@ -1273,7 +1319,7 @@ void CardStore::retireRejectedOperation(const QString &opId, const QVariantMap &
     }, Qt::QueuedConnection);
 }
 void CardStore::reportPostResult(const QString &opId, int status, const QVariantMap &response) {
-    if (opId != m_inFlight || m_inFlight.isEmpty()) return;
+    if (!m_inFlight.contains(opId)) return;
     const bool acknowledged = status >= 200 && status < 300 && response.value(QStringLiteral("ok")) == QVariant(true);
     const bool semanticRejection = status == 409 || status == 422;
     const auto queued = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
@@ -1292,7 +1338,19 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         emit requestCards(QStringLiteral("/v1/cards"), m_rejectedReorderSnapshot);
         return;
     }
-    if (missing) { retireRejectedOperation(opId); return; }
+    if (missing) {
+        // The server confirms the card is gone. Retire the op, then drop the
+        // local row unless a remaining op still writes it. Reorder and
+        // agent-message ids name no row; the next snapshot settles the rest.
+        static const QSet<QString> rowSubjects{QStringLiteral("done"), QStringLiteral("archive"),
+            QStringLiteral("spam"), QStringLiteral("snooze"), QStringLiteral("delete_journal"),
+            QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
+            QStringLiteral("create_card"), QStringLiteral("create_reminder"),
+            QStringLiteral("gmail.label_add")};
+        const QString subject = rowSubjects.contains(type) ? operation.value(QStringLiteral("card_id")).toString() : QString();
+        retireRejectedOperation(opId, {}, subject);
+        return;
+    }
     // HTTP 4xx is permanent only for reversible actions, never for a write.
     // A server permission/schema failure must not erase the owner's content.
     const bool ownerWrite = CardStore::ownerWrite(operation);
@@ -1310,7 +1368,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         if (ownerWrite) {
             m_failedWrites.insert(opId);
             m_deferredWrites.insert(opId);
-            m_inFlight.clear();
+            m_inFlight.remove(opId);
             emit pendingOpsChanged();
             const int delay = status == 429 ? 60000 : qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
             m_retryAttempt = qMin(m_retryAttempt + 1, 6);
@@ -1343,14 +1401,16 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
                     while (q.next()) retained.append(QJsonDocument::fromJson(q.value(0).toByteArray()).object().toVariantMap());
                 QMetaObject::invokeMethod(this, [this, opId, canUndoLocally, ok, error, retained, operation, notifyFailure, status, response] {
                     if (!ok) {
-                        m_inFlight.clear();
+                        m_inFlight.remove(opId);
+                        m_deferredWrites.insert(opId);
                         emit storageError(error);
                         const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
                         m_retryAttempt = qMin(m_retryAttempt + 1, 6);
                         m_retryTimer.start(delay);
+                        flush();
                         return;
                     }
-                    m_inFlight.clear();
+                    m_inFlight.remove(opId);
                     m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const QVariantMap &op) {
                         return op.value(QStringLiteral("op_id")).toString() == opId;
                     }), m_outbox.end());
@@ -1385,19 +1445,25 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             deferred.restoreDeferred = true;
             m_mutations.insert(inverseId, deferred);
         }
-        m_inFlight.clear();
+        // Park only the failed card in backoff; the rest of the pipeline keeps
+        // draining. A 429 additionally parks the whole pump until the shared
+        // per-device window recovers.
+        m_inFlight.remove(opId);
+        m_deferredWrites.insert(opId);
         int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
         if (status == 429) {
             // No retry metadata is part of this response contract. Give the
             // shared per-IP minute window time to recover; retain the same op.
             delay = 60000;
+            m_rateCooldown = QDeadlineTimer(delay, Qt::PreciseTimer);
         }
         m_retryAttempt = qMin(m_retryAttempt + 1, 6);
         m_retryTimer.start(delay);
+        flush();
         return;
     }
     if (ownerWrite && !appendDraftRecord({{QStringLiteral("op_id"), opId}, {QStringLiteral("acked"), true}})) {
-        m_inFlight.clear();
+        m_inFlight.remove(opId);
         return; // Replay the same op; never prune on a failed durable ACK record.
     }
     QStringList removedIds;
@@ -1431,12 +1497,14 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         if (!ok) m_db.rollback();
         const QString error = q.lastError().text();
         QMetaObject::invokeMethod(this, [this, opId, ok, error, response, operation, removedIds] {
-            m_inFlight.clear();
+            m_inFlight.remove(opId);
             if (!ok) {
+                m_deferredWrites.insert(opId);
                 emit storageError(error);
                 const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
                 m_retryAttempt = qMin(m_retryAttempt + 1, 6);
                 m_retryTimer.start(delay);
+                flush();
                 return;
             }
             m_retryAttempt = 0;
