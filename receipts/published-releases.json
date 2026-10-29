@@ -10,6 +10,17 @@
       "source": "5bc8a0b301cd132e0dd950d7ea2650b8c01f9d33",
       "publishedAt": "2026-10-29T03:44:47Z",
       "receipt": "/home/kom/proj/ai_pr/litterbox-release-v35-20261029/publish/RELEASE-v35.md"
+    },
+    {
+      "versionCode": 36,
+      "versionName": "0.1-54",
+      "package": "org.qtproject.example.litterbox_qt",
+      "sha256": "069e1ee51a48e345ceffc03d4e4f37ab8d82e8682a0688ae680f6553af1e690f",
+      "bytes": 21266584,
+      "servedPath": "/opt/litterbox/server/litterbox-qt-v36-069e1ee5.apk",
+      "source": "69d7c3331aa138a8fcd844a7be44fb50fed463ee",
+      "publishedAt": "2026-10-29T05:52:11Z",
+      "receipt": "/home/kom/proj/ai_pr/litterbox-release-v36-20261029/publish/RELEASE-v36.md"
     }
   ]
 }
