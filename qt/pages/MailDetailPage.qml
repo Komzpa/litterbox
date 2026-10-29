@@ -67,6 +67,8 @@ Kirigami.Page {
         return !!((sheet && sheet.visible) || (snooze && snooze.visible))
     }
     readonly property bool actualPopupsVisible: ownerPopupVisible || localPopupsVisible
+    // 48 dp tap floor in item px. Android AX reports a box one device px short of its painted size, so Android adds one px above ceil(48 dp).
+    readonly property real tapTarget: (Math.ceil(48 * Screen.devicePixelRatio) + (Qt.platform.os === "android" ? 1 : 0)) / Screen.devicePixelRatio
     readonly property bool compactActions: width < Math.max(720, Kirigami.Units.gridUnit * 42)
     property bool closing: false
     property bool ready: false
@@ -185,11 +187,11 @@ Kirigami.Page {
         icon.width: 24
         icon.height: 24
         icon.color: root.ink
-        implicitWidth: showLabel ? implicitContentWidth + 24 : 48
-        implicitHeight: showLabel ? Math.max(48, implicitContentHeight + 16) : 48
+        implicitWidth: showLabel ? implicitContentWidth + 24 : root.tapTarget
+        implicitHeight: showLabel ? Math.max(root.tapTarget, implicitContentHeight + 16) : root.tapTarget
         Layout.minimumWidth: implicitWidth
-        Layout.minimumHeight: 48
-        Layout.maximumHeight: root.compactActions ? 48 : Infinity
+        Layout.minimumHeight: root.tapTarget
+        Layout.maximumHeight: root.compactActions ? root.tapTarget : Infinity
         Accessible.name: text
         QQC2.ToolTip.text: Accessible.name
         QQC2.ToolTip.visible: hovered || visualFocus
@@ -355,8 +357,8 @@ Kirigami.Page {
                 Litterbox.CardActions {
                     id: mailActions
                     objectName: "mailActions"
-                    implicitWidth: 48
-                    implicitHeight: 48
+                    implicitWidth: root.tapTarget
+                    implicitHeight: root.tapTarget
                     store: root.store
                     cardKey: root.cardId
                     source: root.card.source || ""

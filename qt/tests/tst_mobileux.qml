@@ -363,6 +363,46 @@ TestCase {
         compare(store.operations.length, 0)
         inbox.close()
     }
+    // Android AX reports a box one device px short of its painted size, so the pinned floor there
+    // is ceil(48 dp) + 1 device px (133 px at 440 dpi, 97 px at 320 dpi); elsewhere ceil(48 dp).
+    function minTapDevicePx() {
+        return Math.ceil(48 * Screen.devicePixelRatio) + (Qt.platform.os === "android" ? 1 : 0)
+    }
+    function minTapItemPx() { return minTapDevicePx() / Screen.devicePixelRatio }
+    function verifyTapTarget(item, what) {
+        verify(item && item.visible, what + " must exist and be visible")
+        const dpr = Screen.devicePixelRatio
+        verify(Math.round(item.width * dpr) >= minTapDevicePx() && Math.round(item.height * dpr) >= minTapDevicePx(),
+               what + " is " + item.width + "x" + item.height + " item px at dpr " + dpr + "; need >= 48 dp")
+    }
+    function test_tapTargetsReachFortyEightDpAtAnyDensity() {
+        const shown = openInbox(true)
+        const inbox = shown.inbox
+        compare(inbox.tapTarget, minTapItemPx())
+        verify(inbox.tapTarget * Screen.devicePixelRatio >= 48 * Screen.devicePixelRatio - 1e-6)
+        verifyTapTarget(findChild(inbox, "openNavigation"), "openNavigation")
+        verifyTapTarget(findChild(inbox, "toggleSearch"), "toggleSearch")
+        verifyTapTarget(findChild(inbox, "addCardButton"), "addCardButton")
+        mouseClick(findChild(inbox, "openNavigation"))
+        const drawer = findChild(inbox, "navigationDrawer")
+        tryVerify(function() { return drawer.visible })
+        for (const name of ["navInbox", "navAccounts", "navAgents", "navSettings"])
+            verifyTapTarget(findChild(drawer, name), name)
+        inbox.close()
+    }
+    function test_readerToolbarTapTargetsReachFortyEightDp() {
+        const shown = openInbox(true)
+        store.cached = {"single-0": {html: "<p>body</p>", source_url: "https://mail.google.com/mail/u/0/#inbox/abc"}}
+        shown.inbox.openPage("MailDetailPage", {store: store, cardId: "single-0", cardTitle: "Reader",
+                                                accountName: "a@example.com", card: store.get(8).card, openLinks: false})
+        tryCompare(findChild(shown.inbox, "pageStack"), "busy", false)
+        const bar = findChild(shown.inbox, "mailAppBar")
+        verify(bar)
+        verifyTapTarget(findChild(bar, "backToInbox"), "backToInbox")
+        verifyTapTarget(findChild(bar, "archiveMail"), "archiveMail")
+        verifyTapTarget(findChild(bar, "mailActions"), "mailActions (overflow)")
+        shown.inbox.close()
+    }
     function test_searchTextFiltersRealFixtureAndClearRestoresAllCards() {
         const shown = openInbox(true)
         mouseClick(findChild(shown.inbox, "toggleSearch"))

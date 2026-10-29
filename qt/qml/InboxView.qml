@@ -30,6 +30,8 @@ ApplicationWindow {
     readonly property color surface: "#ffffff"
     readonly property color canvas: "#f3f7f6"
     readonly property color accent: "#397d73"
+    // 48 dp tap floor in item px. Android AX reports a box one device px short of its painted size, so Android adds one px above ceil(48 dp).
+    readonly property real tapTarget: (Math.ceil(48 * Screen.devicePixelRatio) + (Qt.platform.os === "android" ? 1 : 0)) / Screen.devicePixelRatio
     readonly property bool desktopNavigation: width >= 900
     readonly property bool desktopReader: width >= Math.max(1220, Kirigami.Units.gridUnit * 70)
     readonly property bool compactInbox: inboxList.width < 640
@@ -114,7 +116,7 @@ ApplicationWindow {
         checked: window.activeLocation === location
         checkable: true
         display: AbstractButton.TextBesideIcon
-        implicitHeight: Math.max(48, implicitContentHeight + topPadding + bottomPadding)
+        implicitHeight: Math.max(window.tapTarget, implicitContentHeight + topPadding + bottomPadding)
         Accessible.name: location
         ToolTip.text: location
         ToolTip.visible: hovered || visualFocus
@@ -140,7 +142,7 @@ ApplicationWindow {
         rightPadding: 16
         topPadding: 12
         bottomPadding: 12
-        implicitHeight: Math.max(48, implicitContentHeight + topPadding + bottomPadding)
+        implicitHeight: Math.max(window.tapTarget, implicitContentHeight + topPadding + bottomPadding)
         Layout.fillWidth: true
         Accessible.name: text
         contentItem: RowLayout {
@@ -252,7 +254,7 @@ ApplicationWindow {
         font: window.themeFont
         implicitWidth: 280
         width: headerMenu.availableWidth
-        implicitHeight: visible ? Math.max(48, contentItem.implicitHeight + topPadding + bottomPadding) : 0
+        implicitHeight: visible ? Math.max(window.tapTarget, contentItem.implicitHeight + topPadding + bottomPadding) : 0
         height: implicitHeight
         leftPadding: 12
         rightPadding: 12
@@ -831,8 +833,8 @@ ApplicationWindow {
                     text: qsTr("Navigation")
                     icon.name: "application-menu"
                     display: AbstractButton.IconOnly
-                    implicitWidth: 48
-                    implicitHeight: 48
+                    implicitWidth: window.tapTarget
+                    implicitHeight: window.tapTarget
                     Accessible.name: text
                     ToolTip.text: text
                     ToolTip.visible: hovered || visualFocus
@@ -846,8 +848,8 @@ ApplicationWindow {
                     text: qsTr("Search inbox")
                     icon.name: "edit-find"
                     display: AbstractButton.IconOnly
-                    implicitWidth: 48
-                    implicitHeight: 48
+                    implicitWidth: window.tapTarget
+                    implicitHeight: window.tapTarget
                     Accessible.name: text
                     ToolTip.text: text
                     ToolTip.visible: hovered || visualFocus
@@ -862,8 +864,8 @@ ApplicationWindow {
                     icon.height: 24
                     icon.color: window.accent
                     display: window.compactInbox ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                    implicitHeight: 48
-                    implicitWidth: window.compactInbox ? 48 : implicitContentWidth + leftPadding + rightPadding
+                    implicitHeight: window.tapTarget
+                    implicitWidth: window.compactInbox ? window.tapTarget : implicitContentWidth + leftPadding + rightPadding
                     Material.foreground: window.accent
                     palette.buttonText: window.accent
                     Accessible.name: text
@@ -886,8 +888,8 @@ ApplicationWindow {
                     icon.height: 24
                     text: qsTr("Inbox commands")
                     display: AbstractButton.IconOnly
-                    implicitWidth: 48
-                    implicitHeight: 48
+                    implicitWidth: window.tapTarget
+                    implicitHeight: window.tapTarget
                     Accessible.name: qsTr("Inbox commands")
                     ToolTip.text: Accessible.name
                     onClicked: headerMenu.open()
@@ -946,9 +948,9 @@ ApplicationWindow {
                 TextField {
                     id: inboxSearch
                     objectName: "inboxSearch"
-                    Layout.minimumHeight: 48
+                    Layout.minimumHeight: window.tapTarget
                     Layout.fillWidth: true
-                    implicitHeight: Math.max(48, contentHeight + topPadding + bottomPadding)
+                    implicitHeight: Math.max(window.tapTarget, contentHeight + topPadding + bottomPadding)
                     placeholderText: qsTr("Search inbox")
                     Accessible.name: qsTr("Search inbox")
                     text: window.searchQuery
@@ -960,9 +962,9 @@ ApplicationWindow {
                     text: qsTr("Clear search")
                     icon.name: "edit-clear"
                     display: AbstractButton.IconOnly
-                    implicitWidth: 48
-                    implicitHeight: 48
-                    Layout.minimumHeight: 48
+                    implicitWidth: window.tapTarget
+                    implicitHeight: window.tapTarget
+                    Layout.minimumHeight: window.tapTarget
                     enabled: window.searching
                     Accessible.name: text
                     ToolTip.text: text
@@ -974,8 +976,8 @@ ApplicationWindow {
                     visible: window.desktopNavigation
                     model: [qsTr("Comfortable"), qsTr("Compact")]
                     currentIndex: window.compactDensity ? 1 : 0
-                    Layout.minimumHeight: 48
-                    implicitHeight: 48
+                    Layout.minimumHeight: window.tapTarget
+                    implicitHeight: window.tapTarget
                     Accessible.name: qsTr("Inbox density")
                     onActivated: window.compactDensity = currentIndex === 1
                 }
@@ -998,7 +1000,7 @@ ApplicationWindow {
                 ToolButton {
                     objectName: "offlineRetry"
                     text: qsTr("Retry")
-                    implicitHeight: 40
+                    implicitHeight: window.tapTarget
                     Material.foreground: window.accent
                     palette.buttonText: window.accent
                     onClicked: store.refresh()
@@ -1029,7 +1031,7 @@ ApplicationWindow {
                 Button {
                     objectName: "updateInstall"
                     text: qsTr("Install")
-                    Layout.minimumHeight: 48
+                    Layout.minimumHeight: window.tapTarget
                     onClicked: updater.installDownloadedUpdate()
                 }
             }
@@ -1040,7 +1042,7 @@ ApplicationWindow {
                 visible: window.reconnectStatus.length > 0
                 Layout.fillWidth: true
                 Layout.bottomMargin: 6
-                implicitHeight: Math.max(48, reconnectRow.implicitHeight) + 8
+                implicitHeight: Math.max(window.tapTarget, reconnectRow.implicitHeight) + 8
                 radius: Kirigami.Units.cornerRadius
                 color: "#fff4df"
                 border.color: "#e2c993"
@@ -1062,7 +1064,7 @@ ApplicationWindow {
                     Button {
                         objectName: "reconnectBannerButton"
                         text: qsTr("Reconnect")
-                        implicitHeight: 48
+                        implicitHeight: window.tapTarget
                         contentItem: Label { text: parent.text; color: window.ink; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
                         background: Rectangle { radius: 4; color: "#ffffff"; border.color: "#e2c993" }
                         onClicked: window.openPage("GmailAccountsPage")
@@ -1084,7 +1086,7 @@ ApplicationWindow {
         opacity: visible ? 1 : 0
         Behavior on opacity { enabled: !window.reduceMotion; NumberAnimation { duration: 180 } }
         width: Math.min(parent.width - 2 * 12, 560)
-        height: Math.max(48, undoBarRow.implicitHeight + 8)
+        height: Math.max(window.tapTarget, undoBarRow.implicitHeight + 8)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 16
@@ -1113,7 +1115,7 @@ ApplicationWindow {
                 visible: window.archiveUndoAvailable
                 text: qsTr("Undo")
                 implicitWidth: Math.max(64, implicitContentWidth + leftPadding + rightPadding)
-                implicitHeight: 48
+                implicitHeight: window.tapTarget
                 flat: true
                 contentItem: Label { text: bundleArchiveUndoButton.text; color: "#9fe0d3"; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle {
@@ -1741,7 +1743,7 @@ ApplicationWindow {
                                     Layout.column: 0
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 0
-                                    implicitHeight: Math.max(48, contentItem.implicitHeight)
+                                    implicitHeight: Math.max(window.tapTarget, contentItem.implicitHeight)
                                     padding: 0
                                     leftPadding: 0
                                     rightPadding: 0
@@ -1766,7 +1768,7 @@ ApplicationWindow {
                                             columns: window.compactInbox ? 1 : 4
                                             Item {
                                                 visible: !window.compactInbox
-                                                implicitWidth: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                                implicitWidth: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
@@ -1874,10 +1876,10 @@ ApplicationWindow {
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
-                                    Layout.minimumWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    Layout.preferredWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    Layout.maximumWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    Layout.minimumWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    Layout.preferredWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    Layout.maximumWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: qsTr("Archive bundle")
                                     Accessible.description: qsTr("Archives all %n unpinned email; pinned cards stay open", "", cardRow.bundleSummary.unpinned)
                                     ToolTip.text: Accessible.name
@@ -1899,8 +1901,8 @@ ApplicationWindow {
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                     Accessible.name: text
                                     ToolTip.text: text
                                     ToolTip.visible: hovered
@@ -1926,7 +1928,7 @@ ApplicationWindow {
                                                     text: qsTr("Mark bundle as spam · %1").arg(cardRow.bundleSummary.accounts.join(", "))
                                                     icon.name: "mail-mark-junk"
                                                     Accessible.name: text
-                                                    implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                                                    implicitHeight: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                                     onTriggered: {
                                                         const operation = window.cardStore.enqueueOp(cardId, "bundle_spam", {bundle_id: card.bundle_id})
                                                         if (operation) window.showArchiveUndo(operation, "spam")
@@ -1957,12 +1959,12 @@ ApplicationWindow {
                                     // R63: only eligible nonmail avatars are reorder handles;
                                     // mail avatars remain visible and pass travel to scrolling.
                                     Layout.alignment: Qt.AlignTop
-                                    Layout.minimumWidth: window.compactInbox ? 48 : -1
-                                    Layout.preferredWidth: window.compactInbox ? 48 : -1
-                                    Layout.maximumWidth: window.compactInbox ? 48 : Infinity
+                                    Layout.minimumWidth: window.compactInbox ? window.tapTarget : -1
+                                    Layout.preferredWidth: window.compactInbox ? window.tapTarget : -1
+                                    Layout.maximumWidth: window.compactInbox ? window.tapTarget : Infinity
                                     visible: !cardRow.bundled
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                     // Loaded only where shown: collapsed bundle members stay cheap (scrollresilience).
                                     // R67: the sender avatar leads the row on phones and desktop alike;
                                     // bundled members stay gated so the shared identity is shown once on
@@ -2058,7 +2060,7 @@ ApplicationWindow {
                                         enabled: cardText.activeFocus
                                         onActivated: cardActions.primaryAction()
                                     }
-                                    Layout.minimumHeight: 48
+                                    Layout.minimumHeight: window.tapTarget
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 0
                                     Layout.alignment: Qt.AlignTop
@@ -2186,8 +2188,8 @@ ApplicationWindow {
                                     icon.height: window.actionIconSize
                                     icon.color: window.ink
                                     display: AbstractButton.IconOnly
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                     opacity: 1
                                     Accessible.name: cardActions.primaryName
                                     ToolTip.text: Accessible.name
@@ -2197,8 +2199,8 @@ ApplicationWindow {
                                 Litterbox.CardActions {
                                     id: cardActions
                                     objectName: "inboxActions"
-                                    implicitWidth: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? 48 : Math.max(48, Kirigami.Units.gridUnit * 3)
+                                    implicitWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                                     icon.width: window.compactInbox ? 16 : 20
                                     icon.height: window.compactInbox ? 16 : 20
                                     store: window.cardStore
@@ -2284,7 +2286,7 @@ ApplicationWindow {
                     Button {
                         text: window.searching ? qsTr("Clear search") : qsTr("Add card")
                         icon.name: window.searching ? "edit-clear" : "list-add"
-                        implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                        implicitHeight: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                         Layout.alignment: Qt.AlignHCenter
                         onClicked: {
                             if (window.searching) { window.searchQuery = ""; inboxSearch.clear(); inboxList.forceActiveFocus() }
@@ -2343,7 +2345,7 @@ ApplicationWindow {
                 // Same column as the `=` handle inside the centred card frame.
                 x: (parent.width - Math.min(parent.width - 32, 1200)) / 2
                 y: 0
-                width: 48
+                width: window.tapTarget
                 height: parent.height
                 // A press on a handle keeps the pointer for the whole travel: the list
                 // is a Flickable and would otherwise take the grab mid-drag, which
@@ -2535,7 +2537,7 @@ ApplicationWindow {
                 id: noteSaveButton
                 objectName: "noteSaveButton"
                 text: qsTr("Save")
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                implicitHeight: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                 palette.button: window.surface
                 palette.buttonText: window.ink
                 background: Rectangle {
@@ -2556,7 +2558,7 @@ ApplicationWindow {
                 id: noteCancelButton
                 objectName: "noteCancelButton"
                 text: qsTr("Cancel")
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                implicitHeight: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                 palette.button: window.surface
                 palette.buttonText: window.ink
                 background: Rectangle {
@@ -2626,7 +2628,7 @@ ApplicationWindow {
                 objectName: "createSaveButton"
                 text: qsTr("Create")
                 enabled: (createDialog.journal ? createJournal.text : createTitle.text).trim().length > 0
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                implicitHeight: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                 palette.button: window.surface
                 palette.buttonText: window.ink
                 background: Rectangle {
@@ -2652,7 +2654,7 @@ ApplicationWindow {
                 id: createCancelButton
                 objectName: "createCancelButton"
                 text: qsTr("Cancel")
-                implicitHeight: Math.max(48, Kirigami.Units.gridUnit * 3)
+                implicitHeight: Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
                 palette.button: window.surface
                 palette.buttonText: window.ink
                 background: Rectangle {
