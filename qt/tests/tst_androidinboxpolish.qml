@@ -193,7 +193,11 @@ TestCase {
         const childTitle = findChild(child, "mailTitle-yesterday-child")
         verify(!childTitle.truncated, "expanded child subject wraps instead of clipping")
         const childFrame = findChild(child, "inboxCard")
-        verify(childFrame.height <= singleFrame.height, "expanded child is a compact sub-row")
+        // R36 permits wrapped child subjects; compare equivalent painted title geometry,
+        // allowing the child's fixed 4px padding against the single's compact padding.
+        const extraTitleHeight = Math.max(0, childTitle.height - singleTitle.height)
+        const extraPadding = Math.max(0, childFrame.topPadding + childFrame.bottomPadding - singleFrame.topPadding - singleFrame.bottomPadding)
+        verify(childFrame.height <= singleFrame.height + extraTitleHeight + extraPadding, "expanded child has no unexplained extra height")
         compare(childFrame.background.border.width, 0, "expanded child has no inner card border")
         compare(childFrame.background.radius, 0, "expanded child has no inner rounded card")
         compare(childFrame.topPadding, 4)
