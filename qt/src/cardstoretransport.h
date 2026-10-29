@@ -42,3 +42,34 @@ private:
     QHash<int, QString> m_requests;
     QSet<int> m_messageRequests;
 };
+
+// Events carry no card or device identity. Coalesce them while a snapshot or
+// outbox drain is in progress; a bounded fallback keeps remote changes visible
+// even when a retained write cannot drain.
+class CardEventRefresh : public QObject {
+public:
+    CardEventRefresh(CardStore &store, const QHash<int, quint64> &requests)
+        : QObject(&store), m_store(store), m_requests(requests) {
+        m_timer.setSingleShot(true);
+        connect(&m_timer, &QTimer::timeout, this, [this] {
+            if (!m_dirty || !m_store.online() || !m_requests.isEmpty()) return;
+            m_dirty = false;
+            m_store.refresh();
+        });
+        connect(&store, &CardStore::pendingOpsChanged, this, [this] {
+            if (m_dirty && m_store.pendingOps() == 0) schedule();
+        });
+    }
+    void event() { m_dirty = true; schedule(); }
+    void snapshotFinished() { if (m_dirty) schedule(); }
+private:
+    void schedule() {
+        if (!m_dirty || !m_store.online() || !m_requests.isEmpty()) return;
+        const int delay = m_store.pendingOps() ? 10000 : 150;
+        if (!m_timer.isActive() || delay == 150) m_timer.start(delay);
+    }
+    CardStore &m_store;
+    const QHash<int, quint64> &m_requests;
+    QTimer m_timer;
+    bool m_dirty = false;
+};

@@ -2590,6 +2590,62 @@ private slots:
         // pays the RTT per op (~8.5 s) instead of per flight.
         QVERIFY2(ms < 5000, qPrintable(QStringLiteral("drain took %1 ms, no batching").arg(ms)));
     }
+    void drainCardCountScaling() {
+        QList<qint64> times;
+        for (int count : {200, 5000}) {
+            QTemporaryDir directory;
+            const QString path = directory.filePath("scale.sqlite");
+            QVariantList cards;
+            for (int i = 0; i < count; ++i) cards.append(QVariantMap{{"id", QUuid::createUuid().toString(QUuid::WithoutBraces)}, {"source", "manual"}, {"state", "open"}});
+            {
+                CardStore writer;
+                QVERIFY(writer.open(path));
+                QVERIFY(writer.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+                for (int i = 0; i < 100; ++i) QVERIFY(!writer.enqueueOp(cards[i].toMap().value("id").toString(), "unpin").isEmpty());
+            }
+            CardStore store;
+            QVERIFY(store.open(path));
+            QCOMPARE(store.pendingOps(), 100);
+            LatencyTransport transport(1);
+            store.setTransport(&transport);
+            QElapsedTimer timer;
+            timer.start();
+            store.setOnline(true);
+            QTRY_COMPARE_WITH_TIMEOUT(store.pendingOps(), 0, 30000);
+            times.append(timer.elapsed());
+            QCOMPARE(transport.posted.size(), 100);
+        }
+        qInfo("DRAIN_SCALING 200=%lld ms 5000=%lld ms", times[0], times[1]);
+        QVERIFY2(times[1] <= 2 * times[0] + 150, "5000-card drain exceeds 2x plus scheduling allowance");
+    }
+    void streamEventsCoalesceDuringDrain() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("stream.sqlite")));
+        QVariantList cards;
+        for (int i = 0; i < 130; ++i) cards.append(QVariantMap{{"id", QUuid::createUuid().toString(QUuid::WithoutBraces)}, {"source", "manual"}, {"state", "open"}});
+        QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        for (const auto &card : cards) QVERIFY(!store.enqueueOp(card.toMap().value("id").toString(), "unpin").isEmpty());
+        LatencyTransport transport(10);
+        store.setTransport(&transport);
+        QHash<int, quint64> requests;
+        int fetches = 0;
+        CardEventRefresh coordinator(store, requests);
+        connect(&store, &CardStore::requestCards, &store, [&](const QString &, quint64 seq) { requests.insert(++fetches, seq); });
+        store.setOnline(true);
+        QCOMPARE(fetches, 1);
+        for (int i = 0; i < 130; ++i) coordinator.event();
+        QTRY_COMPARE_WITH_TIMEOUT(store.pendingOps(), 0, 30000);
+        QCOMPARE(fetches, 1);
+        requests.clear();
+        coordinator.snapshotFinished();
+        QTRY_COMPARE_WITH_TIMEOUT(fetches, 2, 5000);
+        for (int i = 0; i < 130; ++i) coordinator.event();
+        QCOMPARE(fetches, 2);
+        requests.clear();
+        coordinator.snapshotFinished();
+        QTRY_COMPARE_WITH_TIMEOUT(fetches, 3, 5000);
+    }
     void drainBench_data() {
         QTest::addColumn<int>("ops");
         QTest::addColumn<int>("rttMs");
