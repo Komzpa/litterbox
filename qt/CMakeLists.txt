@@ -51,8 +51,8 @@ endif()
 target_compile_definitions(litterbox-qt PRIVATE LB_SOURCE_PAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pages")
 set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
 if(ANDROID)
-    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_CODE 36)
-    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_NAME "0.1-54")
+    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_CODE 37)
+    set_property(TARGET litterbox-qt PROPERTY QT_ANDROID_VERSION_NAME "0.1-55")
     # Qt's Android TLS plugin loads OpenSSL at runtime; Android does not
     # supply it. Refuse an APK that can enroll over HTTP but never use HTTPS.
     foreach(_lb_openssl_name libcrypto_3.so libssl_3.so)
