@@ -1653,6 +1653,7 @@ private slots:
         store.setOnline(true);
         QTest::qWait(100);
         QCOMPARE(requested.size(), 4); // Shared rate-limit cooldown survives reconnect.
+        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), 5, 1500); // 429 parks ~1 s (Retry-After: 1), not 60 s.
         QVERIFY(!store.mailSyncComplete());
         store.setOnline(false);
     }
@@ -1692,6 +1693,35 @@ private slots:
         QVERIFY(maxInFlight <= CardStore::kBodyWindow);
         QCOMPARE(fetched, total);
         QVERIFY(store.bodyWriteTransactions() < fetched / 4); // batched writes
+    }
+    void failedBodyBatchCommitRollsBackSoNextBatchPersists() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("locked.sqlite");
+        CardStore store;
+        QVERIFY(store.open(path));
+        QSignalSpy errors(&store, &CardStore::storageError);
+        QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+        const QString conn = QStringLiteral("body-lock-reader");
+        {
+            QSqlDatabase reader = QSqlDatabase::addDatabase("QSQLITE", conn);
+            reader.setDatabaseName(path);
+            QVERIFY(reader.open());
+            QVERIFY(reader.transaction());
+            QSqlQuery q(reader);
+            QVERIFY(q.exec("SELECT * FROM mail_bodies"));
+            q.next();
+            store.applyRemoteMailBody("first", {{"html", "first"}});
+            QTRY_VERIFY_WITH_TIMEOUT(errors.size() >= 1, 15000); // commit refused while the reader holds its lock
+            q.finish();
+            reader.rollback();
+            reader.close();
+        }
+        QSqlDatabase::removeDatabase(conn);
+        store.applyRemoteMailBody("second", {{"html", "second"}});
+        QTRY_VERIFY_WITH_TIMEOUT(changed.size() >= 1 && changed.last().at(0).toString() == "second", 5000);
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.cachedMailBody("second").value("html").toString(), QString("second"));
     }
     void neverOpenedMailSynchronizesThroughHttpAndReopensOffline() {
         QTemporaryDir directory;

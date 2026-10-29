@@ -363,7 +363,10 @@ func TestDiagnosticQuotaIsDeviceScopedAndExactRouteOnly(t *testing.T) {
 }
 
 func TestDeviceBucketAllowsReconnectBurstAndKeepsSustainedCeiling(t *testing.T) {
-	b := NewTokenBucket(DeviceBurst, DeviceRefillPerSecond)
+	if DeviceBurst < 5000 || DeviceRefillPerSecond < 500 {
+		t.Fatal("device budget below gigabit-sync floor")
+	}
+	b := NewTokenBucket(DeviceBurst, 0) // no refill: burst must not depend on elapsed time
 	for i := 0; i < 5000; i++ {
 		if !b.Allow("device:a") {
 			t.Fatalf("burst request %d limited", i+1)

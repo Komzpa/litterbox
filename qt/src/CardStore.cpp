@@ -1767,7 +1767,7 @@ void CardStore::flushBodyWrites() {
                 if (!q.exec()) { ok = false; error = q.lastError().text(); break; }
             }
             if (ok) { ok = m_db.commit(); if (!ok) error = m_db.lastError().text(); }
-            else m_db.rollback();
+            if (!ok) m_db.rollback();
         }
         QMetaObject::invokeMethod(this, [this, batch, ok, error] {
             for (const BodyWrite &w : batch) {
