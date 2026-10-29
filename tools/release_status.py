@@ -134,6 +134,38 @@ def schema_problems() -> list[str]:
             problems.append(f"{migration}: missing {right} on public.{name} for {role}")
     return problems
 
+def server_problems(published_source: str) -> list[str]:
+    """The deployed server must contain the published Android source.
+
+    v36 shipped its APK while the running server was still the previous release,
+    without the routes the shipped client calls; nothing in this check noticed.
+    """
+    try:
+        out = subprocess.run(
+            ["curl", "-fsS", "--max-time", "5", "http://127.0.0.1:8081/v1/version"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as exc:
+        return [f"deployed server unreachable: {exc}"]
+    if out.returncode:
+        return ["deployed server unreachable: /v1/version did not answer"]
+    try:
+        build = json.loads(out.stdout).get("server_build", "")
+    except ValueError:
+        return ["deployed server /v1/version is not JSON"]
+    if len(build) < 7:
+        return [f"deployed server does not report a build SHA: {build!r}"]
+    contained = subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", published_source, build],
+        check=False,
+    ).returncode == 0
+    if not contained:
+        return [
+            f"deployed server build {build[:12]} does not contain the published "
+            f"source {published_source[:12]}: the server artifact was not cut over "
+            "with the client's release"]
+    return []
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -150,6 +182,10 @@ def main() -> int:
     served_version = served.get("LITTERBOX_ANDROID_VERSION", "")
     served_apk = served.get("LITTERBOX_ANDROID_APK_PATH", "")
     releases = load_ledger()
+    if releases:
+        latest_published = max(releases, key=lambda r: int(r["versionCode"]))
+        if latest_published.get("source"):
+            problems.extend(server_problems(latest_published["source"]))
     problems.extend(schema_problems())
 
     if not served_version:
