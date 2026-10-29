@@ -23,6 +23,10 @@
 #include <QFileInfo>
 #include <QLoggingCategory>
 
+// One 429 pauses only the op pump, for this long; the server's per-device token
+// bucket refills five requests per second.
+static constexpr int kRateLimitRetryMs = 1000;
+
 // Default to retaining unknown operations. Only reversible triage may roll back.
 bool CardStore::ownerWrite(const QVariantMap &op) {
     const auto args = op.value(QStringLiteral("args")).toMap();
@@ -1380,7 +1384,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             m_deferredWrites.insert(opId);
             m_inFlight.remove(opId);
             emit pendingOpsChanged();
-            const int delay = status == 429 ? 60000 : qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+            const int delay = status == 429 ? kRateLimitRetryMs : qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
             m_retryAttempt = qMin(m_retryAttempt + 1, 6);
             m_retryTimer.start(delay);
             flush(); // Unrelated queued actions must still progress.
@@ -1456,15 +1460,14 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             m_mutations.insert(inverseId, deferred);
         }
         // Park only the failed card in backoff; the rest of the pipeline keeps
-        // draining. A 429 additionally parks the whole pump until the shared
-        // per-device window recovers.
+        // draining. A 429 additionally pauses the pump for one bounded slice:
+        // the server's per-device token bucket refills continuously, so a
+        // second is enough for a fresh batch of requests; retain the same op.
         m_inFlight.remove(opId);
         m_deferredWrites.insert(opId);
         int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
         if (status == 429) {
-            // No retry metadata is part of this response contract. Give the
-            // shared per-IP minute window time to recover; retain the same op.
-            delay = 60000;
+            delay = kRateLimitRetryMs;
             m_rateCooldown = QDeadlineTimer(delay, Qt::PreciseTimer);
         }
         m_retryAttempt = qMin(m_retryAttempt + 1, 6);

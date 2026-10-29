@@ -1887,13 +1887,12 @@ private slots:
             QVERIFY(coldStart.applyRemoteCards(sections));
             QCOMPARE(coldStart.cardIds(), QStringList{neighbor});
         }
-        store.flush();
-        QTest::qWait(1100);
+        store.flush(); // an explicit flush must not bypass the cooldown
         QCOMPARE(posted.size(), 1);
         QCOMPARE(failed.size(), 0);
-        // Exercise the real existing timer: 429 must wait a complete minute.
-        QTRY_COMPARE_WITH_TIMEOUT(posted.size(), 2, 65000);
-        QVERIFY(retryElapsed.elapsed() >= 60000);
+        // Exercise the real timer: 429 waits one bounded slice, not a minute.
+        QTRY_COMPARE_WITH_TIMEOUT(posted.size(), 2, 5000);
+        QVERIFY(retryElapsed.elapsed() >= 1000);
         QCOMPARE(posted.last().at(0).toString(), op);
         QCOMPARE(posted.last().at(2).toMap(), payload);
         QCOMPARE(store.pendingOps(), 1);

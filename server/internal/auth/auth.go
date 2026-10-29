@@ -30,12 +30,13 @@ type Store interface {
 type Handler struct {
 	store              Store
 	limiter            *IPLimiter
+	deviceLimiter      *TokenBucket
 	diagnosticsLimiter *IPLimiter
 	devTenant          string
 }
 
 func NewHandler(store Store, devTenant string) *Handler {
-	return &Handler{store: store, limiter: NewIPLimiter(60, time.Minute), diagnosticsLimiter: NewIPLimiter(64, time.Minute), devTenant: devTenant}
+	return &Handler{store: store, limiter: NewIPLimiter(60, time.Minute), deviceLimiter: NewTokenBucket(DeviceBurst, DeviceRefillPerSecond), diagnosticsLimiter: NewIPLimiter(64, time.Minute), devTenant: devTenant}
 }
 
 type contextKey struct{}
@@ -107,11 +108,15 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			}
 			return
 		}
-		limiter := h.limiter
+		key := "device:" + d.TenantID + "/" + d.DeviceID
+		var allowed bool
 		if r.Method == http.MethodPost && r.URL.Path == "/v1/diagnostics/crashes" {
-			limiter = h.diagnosticsLimiter
+			allowed = h.diagnosticsLimiter.Allow(key)
+		} else {
+			allowed = h.deviceLimiter.Allow(key)
 		}
-		if !limiter.Allow("device:" + d.TenantID + "/" + d.DeviceID) {
+		if !allowed {
+			w.Header().Set("Retry-After", "1")
 			writeError(w, 429, "rate limit exceeded")
 			return
 		}
@@ -290,5 +295,60 @@ func (l *IPLimiter) Allow(ip string) bool {
 		return false
 	}
 	l.hits[ip] = append(active, now)
+	return true
+}
+
+// Device request budget. A reconnect drain posts one /v1/ops request per
+// queued operation, all within a fraction of a second on a LAN, so the budget
+// is a token bucket rather than a fixed window: DeviceBurst covers a normal
+// offline backlog (the owner's 100-op drain and a 200-op one with headroom for
+// the follow-up sync reads) and DeviceRefillPerSecond is the sustained ceiling,
+// 300 requests per minute, five times the former flat 60/minute. A device that
+// keeps asking faster than that is still refused with 429 and Retry-After.
+const (
+	DeviceBurst           = 400
+	DeviceRefillPerSecond = 5.0
+)
+
+// TokenBucket allows bursts up to its capacity and refills continuously.
+type TokenBucket struct {
+	mu      sync.Mutex
+	burst   float64
+	rate    float64
+	buckets map[string]*bucketState
+}
+
+type bucketState struct {
+	tokens float64
+	last   time.Time
+}
+
+func NewTokenBucket(burst int, refillPerSecond float64) *TokenBucket {
+	return &TokenBucket{burst: float64(burst), rate: refillPerSecond, buckets: make(map[string]*bucketState)}
+}
+
+func (b *TokenBucket) Allow(key string) bool {
+	now := time.Now()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s := b.buckets[key]
+	if s == nil {
+		s = &bucketState{tokens: b.burst, last: now}
+		b.buckets[key] = s
+		if len(b.buckets) > 4096 { // drop idle full buckets; they refill to the same state anyway
+			for k, v := range b.buckets {
+				if k != key && v.tokens+now.Sub(v.last).Seconds()*b.rate >= b.burst {
+					delete(b.buckets, k)
+				}
+			}
+		}
+	} else {
+		s.tokens = min(b.burst, s.tokens+now.Sub(s.last).Seconds()*b.rate)
+		s.last = now
+	}
+	if s.tokens < 1 {
+		return false
+	}
+	s.tokens--
 	return true
 }
