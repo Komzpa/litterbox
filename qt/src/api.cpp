@@ -194,6 +194,9 @@ int Api::get(const QString &path, const QJSValue &callback)
     // retry can release its slot without overlapping the old HTTP request.
     if (path.startsWith(QStringLiteral("/v1/cards/")) && path.endsWith(QStringLiteral("/body")))
         request.setTransferTimeout(60000);
+    // Snapshot identities gate event refreshes until the reply finishes.
+    if (path == QStringLiteral("/v1/cards"))
+        request.setTransferTimeout(30000);
     // Keep callback-driven UI loads ahead of signal-only cache prefetches.
     request.setPriority(callback.isCallable() ? QNetworkRequest::HighPriority : QNetworkRequest::LowPriority);
     trackJsonReply(id, m_nam->get(request));

@@ -2618,6 +2618,90 @@ private slots:
         qInfo("DRAIN_SCALING 200=%lld ms 5000=%lld ms", times[0], times[1]);
         QVERIFY2(times[1] <= 2 * times[0] + 150, "5000-card drain exceeds 2x plus scheduling allowance");
     }
+    void continuousEventsHaveBoundedRefresh() {
+        QTemporaryDir dir;
+        CardStore store;
+        QVERIFY(store.open(dir.filePath("deadline.sqlite")));
+        store.setOnline(true);
+        QHash<int, quint64> requests;
+        CardEventRefresh coordinator(store, requests);
+        QSignalSpy snapshots(&store, &CardStore::requestCards);
+        QElapsedTimer elapsed; elapsed.start();
+        coordinator.event();
+        QTimer events;
+        connect(&events, &QTimer::timeout, &store, [&] { coordinator.event(); });
+        events.start(100);
+        QTRY_VERIFY_WITH_TIMEOUT(!snapshots.isEmpty(), 750);
+        QVERIFY2(elapsed.elapsed() < 750, "continuous events starved the refresh");
+    }
+    void pendingDeadlineSurvivesFailedSnapshot() {
+        QTemporaryDir dir;
+        CardStore store;
+        QVERIFY(store.open(dir.filePath("pending-deadline.sqlite")));
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "manual"}, {"state", "open"}}}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QVERIFY(!store.enqueueOp(cardId, "unpin").isEmpty());
+        store.setOnline(true);
+        QHash<int, quint64> requests;
+        CardEventRefresh coordinator(store, requests);
+        QSignalSpy snapshots(&store, &CardStore::requestCards);
+        coordinator.event();
+        QTest::qWait(9000);
+        requests.insert(1, 1);
+        QTest::qWait(2000);
+        requests.clear();
+        coordinator.snapshotFinished();
+        QTRY_COMPARE_WITH_TIMEOUT(snapshots.size(), 1, 750);
+    }
+    void stalledSnapshotReleasesEventGate() {
+        QTemporaryDir dir;
+        CardStore store;
+        QVERIFY(store.open(dir.filePath("stalled.sqlite")));
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QList<QTcpSocket *> sockets;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (server.hasPendingConnections()) {
+                auto *socket = server.nextPendingConnection();
+                sockets.append(socket);
+                if (sockets.size() > 1) connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+                    socket->readAll();
+                    const QByteArray body = "{\"now\":[],\"later\":[],\"missed\":[]}";
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+        Api api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        QHash<int, quint64> requests;
+        CardEventRefresh coordinator(store, requests);
+        connect(&store, &CardStore::requestCards, &store, [&](const QString &path, quint64 seq) { requests.insert(api.get(path), seq); });
+        connect(&api, &Api::requestFinished, &store, [&](int id, const QJsonValue &body, int) {
+            if (!requests.contains(id)) return;
+            if (store.applyRemoteCards(body.toObject().toVariantMap(), requests.take(id))) store.setOnline(true);
+            coordinator.snapshotFinished();
+        });
+        connect(&api, &Api::requestFailed, &store, [&](int id, int status, const QString &error, const QJsonValue &) {
+            if (requests.remove(id)) coordinator.snapshotFinished();
+            if (status == 0) store.reportOffline(error);
+        });
+        QSignalSpy failed(&api, &Api::requestFailed);
+        QSignalSpy snapshots(&store, &CardStore::requestCards);
+        store.setOnline(true);
+        QTRY_COMPARE(sockets.size(), 1);
+        store.refresh(); // A newer snapshot succeeds while the first is stalled.
+        QTRY_COMPARE_WITH_TIMEOUT(snapshots.size(), 2, 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(requests.size(), 1, 1000);
+        coordinator.event();
+        QTRY_VERIFY_WITH_TIMEOUT(!failed.isEmpty(), 35000);
+        QVERIFY(requests.isEmpty());
+        store.setOnline(true);
+        QTRY_VERIFY_WITH_TIMEOUT(snapshots.size() >= 3, 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(requests.isEmpty(), 1000);
+        const int beforeEvent = snapshots.size();
+        coordinator.event();
+        QTRY_COMPARE_WITH_TIMEOUT(snapshots.size(), beforeEvent + 1, 1000);
+    }
     void streamEventsCoalesceDuringDrain() {
         QTemporaryDir directory;
         CardStore store;
