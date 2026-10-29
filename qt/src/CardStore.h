@@ -3,6 +3,7 @@
 
 #include <QAbstractListModel>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QDeadlineTimer>
 #include <QSqlDatabase>
 #include <QStringList>
@@ -235,6 +236,19 @@ private:
     // Body ids only; html/messages stay in SQLite and are read on demand
     // through a byte-bounded LRU (R9 bodies on demand).
     QSet<QString> m_bodyCached;
+    // Fetched bodies waiting for the next batched SQLite transaction.
+    struct BodyWrite { QString id, html, sourceUrl, messagesJson; bool hadBody = false; };
+    QList<BodyWrite> m_bodyWriteBatch;
+    QTimer m_bodyFlushTimer;
+    void flushBodyWrites();
+    int m_bodyTransactions = 0;
+    // Client-side mirror of the server's per-device token bucket (burst 400,
+    // 5/s): every body fetch costs one token, so prefetch paces itself under
+    // the budget instead of being parked by 429s.
+    double m_bodyTokens = kBodyBurst;
+    QElapsedTimer m_bodyTokenClock;
+    QSet<QString> m_bodyUrgent;
+    bool takeBodyToken(qint64 *waitMs);
     mutable QHash<QString, QVariantMap> m_bodyLru;
     mutable QStringList m_bodyLruOrder; // most recent last
     mutable qint64 m_bodyLruBytes = 0;
@@ -244,7 +258,11 @@ private:
 public:
     // Bytes (UTF-16) of body HTML currently resident in the LRU, for tests.
     qint64 residentBodyBytes() const { return m_bodyLruBytes; }
+    int bodyWriteTransactions() const { return m_bodyTransactions; }
     static constexpr qint64 kBodyLruBytes = 24 * 1024 * 1024;
+    static constexpr int kBodyWindow = 24;       // fetches + unflushed writes in flight
+    static constexpr double kBodyBurst = 300;    // of the server's 400, leaving ops headroom
+    static constexpr double kBodyRefillPerSecond = 4; // of the server's 5/s
 private:
     QStringList m_bodyPrefetchQueue;
     QSet<QString> m_bodyRequests;

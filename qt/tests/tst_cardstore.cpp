@@ -1602,19 +1602,18 @@ private slots:
         store.setOnline(true);
         QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
         QVERIFY(store.applyRemoteCards(sections));
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), CardStore::kBodyWindow);
         QCOMPARE(store.mailSyncPending(), 200);
         QVERIFY(!store.mailSyncComplete());
         for (int i = 0; i < 3; ++i) QVERIFY(store.applyRemoteCards(sections));
         store.requestMailBody(ids.first());
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), CardStore::kBodyWindow);
         store.applyRemoteMailBody(ids.first(), {{"html", "<p>First original</p>"}});
         // A slot stays occupied until SQLite commits; snapshots do not duplicate it.
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), CardStore::kBodyWindow);
         QVERIFY(store.applyRemoteCards(sections));
-        QCOMPARE(requested.size(), 2);
-        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), 3, 2000);
-        QCOMPARE(requested.last().at(0).toString(), ids.at(2));
+        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), CardStore::kBodyWindow + 1, 2000);
+        QCOMPARE(requested.last().at(0).toString(), ids.at(CardStore::kBodyWindow));
         QCOMPARE(store.mailSyncPending(), 199);
         QCOMPARE(store.pendingOps(), 0);
         QCOMPARE(store.rowCount(), 200);
@@ -1633,17 +1632,15 @@ private slots:
         store.setOnline(true);
         QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
         QVERIFY(store.applyRemoteCards(sections));
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), 3); // All three fit the wide window at once.
         for (int i = 0; i < 3; ++i) QVERIFY(store.applyRemoteCards(sections));
         store.requestMailBody(second);
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), 3);
         store.setOnline(false);
         QVERIFY(store.applyRemoteCards(sections));
         store.setOnline(true);
-        QCOMPARE(requested.size(), 2); // Live HTTP identities survive reconnect.
+        QCOMPARE(requested.size(), 3); // Live HTTP identities survive reconnect.
         store.reportMailBodyFailed(cardId, 503);
-        QCOMPARE(requested.size(), 3); // Another eligible card proceeds immediately.
-        QCOMPARE(requested.last().at(0).toString(), third);
         store.applyRemoteMailBody(second, {{"html", "<p>Second original</p>"}});
         QTRY_COMPARE(store.mailSyncPending(), 2);
         QCOMPARE(requested.size(), 3); // Failed card has a real retry delay.
@@ -1658,6 +1655,44 @@ private slots:
         QCOMPARE(requested.size(), 4); // Shared rate-limit cooldown survives reconnect.
         QVERIFY(!store.mailSyncComplete());
         store.setOnline(false);
+    }
+    void bodyPrefetchPipelinesWideBatchesWritesAndPacesToTokenBudget() {
+        // R9b: 400 bodies; the window is kBodyWindow wide, fetches complete
+        // out of order, SQLite sees far fewer transactions than bodies, and
+        // fetches stop at the client-side token burst instead of drawing 429s.
+        QTemporaryDir directory;
+        const QString path = directory.filePath("wide.sqlite");
+        constexpr int total = 400;
+        QVariantList cards;
+        QStringList ids;
+        for (int i = 0; i < total; ++i) {
+            ids << QUuid::createUuid().toString(QUuid::WithoutBraces);
+            cards << QVariantMap{{"id", ids.last()}, {"source", "mail"}};
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        QSet<QString> inFlight;
+        int maxInFlight = 0, fetched = 0;
+        connect(&store, &CardStore::requestMailBodyGet, &store, [&](const QString &id, const QString &) {
+            ++fetched;
+            inFlight.insert(id);
+            maxInFlight = qMax(maxInFlight, int(inFlight.size()));
+            QTimer::singleShot(5, &store, [&, id] {
+                inFlight.remove(id);
+                store.applyRemoteMailBody(id, {{"html", "<p>" + id + "</p>"}});
+            });
+        });
+        QElapsedTimer clock;
+        clock.start();
+        store.setOnline(true);
+        QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QTRY_VERIFY_WITH_TIMEOUT(fetched >= int(CardStore::kBodyBurst) && store.mailSyncPending() <= total - int(CardStore::kBodyBurst), 10000);
+        qInfo() << "BENCH bodies" << fetched << "max_in_flight" << maxInFlight << "wall_ms" << clock.elapsed();
+        QVERIFY(maxInFlight > 8);                       // wide, not two at a time
+        QVERIFY(maxInFlight <= CardStore::kBodyWindow);
+        QTest::qWait(300);
+        QVERIFY(fetched < int(CardStore::kBodyBurst) + 20); // paced at the refill rate once the burst is spent
+        QVERIFY(store.bodyWriteTransactions() < fetched / 4); // batched writes
     }
     void neverOpenedMailSynchronizesThroughHttpAndReopensOffline() {
         QTemporaryDir directory;

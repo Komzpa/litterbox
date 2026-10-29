@@ -92,6 +92,8 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_bodyPrefetchTimer.setSingleShot(true);
     m_bodyPrefetchTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_bodyPrefetchTimer, &QTimer::timeout, this, &CardStore::queueMailBodyPrefetch);
+    m_bodyFlushTimer.setSingleShot(true);
+    connect(&m_bodyFlushTimer, &QTimer::timeout, this, &CardStore::flushBodyWrites);
     m_photoPrefetchTimer.setSingleShot(true);
     m_photoPrefetchTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_photoPrefetchTimer, &QTimer::timeout, this, &CardStore::queueSenderPhotoPrefetch);
@@ -100,6 +102,7 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_storageThread.start();
 }
 CardStore::~CardStore() {
+    flushBodyWrites();
     m_bodyPrefetchTimer.stop();
     m_bodyPrefetchQueue.clear();
     m_bodyRequests.clear();
@@ -1577,6 +1580,12 @@ void CardStore::commitAcks() {
 }
 QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
     if (!m_bodyCached.contains(cardId)) return {};
+    for (const BodyWrite &w : m_bodyWriteBatch) {
+        if (w.id != cardId) continue;
+        const QJsonDocument messages = QJsonDocument::fromJson(w.messagesJson.toUtf8());
+        return {{QStringLiteral("html"), w.html}, {QStringLiteral("source_url"), w.sourceUrl},
+                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}};
+    }
     const auto hit = m_bodyLru.constFind(cardId);
     if (hit != m_bodyLru.cend()) {
         m_bodyLruOrder.removeOne(cardId);
@@ -1665,10 +1674,12 @@ void CardStore::prefetchNextMailBody() {
         m_bodyPrefetchTimer.start(int(m_bodyBackoff.remainingTime()));
         return;
     }
-    // Two outstanding downloads bound memory/server work; a completed durable
-    // write releases a slot immediately, not after an arbitrary per-body sleep.
+    // A wide pipeline (like the outbox drain) bounded by kBodyWindow and by
+    // the client-side token budget; a completed durable batch releases slots
+    // immediately, not after an arbitrary per-body sleep.
     qint64 retryIn = 60000;
-    for (int index = 0; index < m_bodyPrefetchQueue.size() && m_bodyRequests.size() + m_bodyPersisting.size() < 2;) {
+    bool tokenWait = false;
+    for (int index = 0; index < m_bodyPrefetchQueue.size() && m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow;) {
         const QString id = m_bodyPrefetchQueue.at(index);
         const auto retry = m_bodyRetryAfter.constFind(id);
         if (retry != m_bodyRetryAfter.cend() && !retry->hasExpired()) {
@@ -1676,12 +1687,23 @@ void CardStore::prefetchNextMailBody() {
             ++index;
             continue;
         }
+        qint64 waitMs = 0;
+        const bool urgent = m_bodyUrgent.remove(id);
+        if (!urgent && !takeBodyToken(&waitMs)) { retryIn = qMin(retryIn, waitMs); tokenWait = true; break; }
+        if (urgent) m_bodyTokens -= 1;
         m_bodyPrefetchQueue.removeAt(index);
         m_bodyRequests.insert(id);
         emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
     }
-    if (!m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.size() + m_bodyPersisting.size() < 2)
+    if (!m_bodyPrefetchQueue.isEmpty() && (tokenWait || m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow))
         m_bodyPrefetchTimer.start(int(retryIn));
+}
+bool CardStore::takeBodyToken(qint64 *waitMs) {
+    if (!m_bodyTokenClock.isValid()) m_bodyTokenClock.start();
+    m_bodyTokens = qMin(kBodyBurst, m_bodyTokens + m_bodyTokenClock.restart() / 1000.0 * kBodyRefillPerSecond);
+    if (m_bodyTokens >= 1) { m_bodyTokens -= 1; return true; }
+    *waitMs = qint64((1 - m_bodyTokens) / kBodyRefillPerSecond * 1000) + 1;
+    return false;
 }
 void CardStore::requestMailBody(const QString &cardId) {
     if (!m_open || cardId.isEmpty()) return;
@@ -1706,6 +1728,7 @@ void CardStore::requestMailBody(const QString &cardId) {
     if (m_bodyRequests.contains(cardId) || m_bodyPersisting.contains(cardId)) return;
     m_bodyPrefetchQueue.removeAll(cardId);
     m_bodyPrefetchQueue.prepend(cardId);
+    m_bodyUrgent.insert(cardId); // an opened reader never waits for the prefetch budget
     // An explicit reader retry can bypass this card's ordinary failure delay,
     // but never the shared 429 cooldown or the bounded outstanding request set.
     m_bodyRetryAfter.remove(cardId);
@@ -1727,31 +1750,53 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
     // A malformed/error response must not replace a usable cached body.
     if (html.trimmed().isEmpty()) { reportMailBodyFailed(cardId, 422); return; }
+    // A newer response for an id still waiting in the batch replaces it.
     const bool hadBody = m_bodyCached.contains(cardId);
+    m_bodyWriteBatch.removeIf([&](const BodyWrite &w) { return w.id == cardId; });
     m_bodyPersisting.insert(cardId);
     m_bodyCached.insert(cardId);
     lruRemove(cardId);
+    m_bodyWriteBatch.append({cardId, html, sourceUrl, messagesJson, hadBody});
     emit mailSyncStateChanged();
-    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, messagesJson, hadBody] {
-        QSqlQuery q(m_db);
-        q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages) VALUES(?,?,?,?) "
-                                 "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages"));
-        q.addBindValue(cardId); q.addBindValue(html); q.addBindValue(sourceUrl);
-        q.addBindValue(messagesJson);
-        const bool ok = q.exec();
-        const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, cardId, hadBody, ok, error] {
-            m_bodyPersisting.remove(cardId);
-            if (!ok) {
-                if (!hadBody) m_bodyCached.remove(cardId);
-                lruRemove(cardId);
-                emit storageError(error);
-                reportMailBodyFailed(cardId);
-                return;
+    if (m_bodyWriteBatch.size() >= 16) flushBodyWrites();
+    else if (!m_bodyFlushTimer.isActive()) m_bodyFlushTimer.start(25);
+}
+void CardStore::flushBodyWrites() {
+    m_bodyFlushTimer.stop();
+    if (m_bodyWriteBatch.isEmpty()) return;
+    const QList<BodyWrite> batch = std::move(m_bodyWriteBatch);
+    m_bodyWriteBatch.clear();
+    ++m_bodyTransactions;
+    // One transaction per batch; a body is released from m_bodyPersisting only
+    // after its transaction committed.
+    QMetaObject::invokeMethod(m_storage, [this, batch] {
+        bool ok = m_db.transaction();
+        QString error = m_db.lastError().text();
+        if (ok) {
+            QSqlQuery q(m_db);
+            q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages) VALUES(?,?,?,?) "
+                                     "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages"));
+            for (const BodyWrite &w : batch) {
+                q.addBindValue(w.id); q.addBindValue(w.html); q.addBindValue(w.sourceUrl); q.addBindValue(w.messagesJson);
+                if (!q.exec()) { ok = false; error = q.lastError().text(); break; }
             }
-            m_bodyRetryAfter.remove(cardId);
-            m_bodyRetryAttempts.remove(cardId);
-            emit mailBodyChanged(cardId);
+            if (ok) { ok = m_db.commit(); if (!ok) error = m_db.lastError().text(); }
+            else m_db.rollback();
+        }
+        QMetaObject::invokeMethod(this, [this, batch, ok, error] {
+            for (const BodyWrite &w : batch) {
+                m_bodyPersisting.remove(w.id);
+                if (ok) {
+                    m_bodyRetryAfter.remove(w.id);
+                    m_bodyRetryAttempts.remove(w.id);
+                    emit mailBodyChanged(w.id);
+                    continue;
+                }
+                if (!w.hadBody) m_bodyCached.remove(w.id);
+                lruRemove(w.id);
+                emit storageError(error);
+                reportMailBodyFailed(w.id);
+            }
             emit mailSyncStateChanged();
             queueMailBodyPrefetch();
         }, Qt::QueuedConnection);
