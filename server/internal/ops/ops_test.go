@@ -268,4 +268,23 @@ func TestJournalCreateReplayArchiveAndTenantIsolation(t *testing.T) {
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM journal_entries WHERE tenant_id=$1 AND id=$2`, tenant, cardID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("journal persisted after archive/replay count=%d error=%v", count, err)
 	}
+	api.Identity = func(context.Context) (string, string, bool) { return otherTenant.String(), "", true }
+	if status := post(uuid.New(), cardID, "delete_journal", `{}`); status != 422 {
+		t.Fatalf("foreign tenant delete status=%d, want 422", status)
+	}
+	api.Identity = func(context.Context) (string, string, bool) { return tenant.String(), "", true }
+	deleteOp := uuid.New()
+	for range 2 {
+		if status := post(deleteOp, cardID, "delete_journal", `{}`); status != 200 {
+			t.Fatalf("delete/replay status=%d, want 200", status)
+		}
+	}
+	for _, table := range []string{"cards", "journal_entries"} {
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE tenant_id=$1 AND id=$2`, tenant, cardID).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s after delete count=%d error=%v", table, count, err)
+		}
+	}
+	manual := uuid.New()
+	if status := post(uuid.New(), manual, "create_card", `{"title":"Keep task","kind":"manual"}`); status != 200 { t.Fatal(status) }
+	if status := post(uuid.New(), manual, "delete_journal", `{}`); status != 422 { t.Fatalf("manual delete status=%d", status) }
 }

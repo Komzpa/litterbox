@@ -60,6 +60,11 @@ add_test(NAME markspam COMMAND tst_bundleexpand
     -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
 set_tests_properties(markspam PROPERTIES ENVIRONMENT
     "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
+add_test(NAME journaldelete COMMAND tst_bundleexpand
+    -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_journaldelete.qml
+    -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
+set_tests_properties(journaldelete PROPERTIES ENVIRONMENT
+    "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
 # R67 sender-photo consumer regression: first online paint after cache-download
 # completion must appear without a manual refresh(); offline cached paint and
 # the default/missing/auth-state initials fallbacks must survive in one run.

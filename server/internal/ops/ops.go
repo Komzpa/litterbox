@@ -67,6 +67,16 @@ func Register(typ string, h Handler) {
 }
 
 func init() {
+	Register("delete_journal", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, _ json.RawMessage) error {
+		var source string
+		if err := tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, tenant, card).Scan(&source); err != nil {
+			return fmt.Errorf("journal card not found: %w", err)
+		}
+		if source != "journal" { return fmt.Errorf("delete requires a journal card") }
+		if _, err := tx.Exec(ctx, `DELETE FROM journal_entries WHERE tenant_id=$1 AND id=$2`, tenant, card); err != nil { return err }
+		_, err := tx.Exec(ctx, `DELETE FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card)
+		return err
+	})
 	Register("create_reminder", func(ctx context.Context, tx pgx.Tx, tenant, _ uuid.UUID, args json.RawMessage) error {
 		var in struct {
 			ID uuid.UUID `json:"id"`

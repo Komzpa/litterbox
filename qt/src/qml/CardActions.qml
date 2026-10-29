@@ -23,6 +23,8 @@ Controls.ToolButton {
     readonly property color actionCanvas: "#f3f7f6"
     readonly property color actionAccent: "#397d73"
     signal noteRequested()
+    signal deleteRequested()
+    property string journalDeleteLabel: ""
     signal openRequested()
     signal readCachedRequested()
     // Navigation follows the optimistic mutation, never its HTTP acknowledgement.
@@ -306,6 +308,13 @@ Controls.ToolButton {
                             text: root.primaryName
                             icon.name: root.source === "mail" || root.source === "journal" ? "mail-archive" : "dialog-ok"
                             onClicked: { actionSheet.close(); root.primaryAction() }
+                        }
+                        ActionRow {
+                            objectName: "actionRow-delete-" + root.cardKey
+                            text: root.journalDeleteLabel
+                            icon.name: "edit-delete"
+                            visible: root.source === "journal" && text.length > 0
+                            onClicked: { actionSheet.close(); root.deleteRequested() }
                         }
                         ActionRow {
                             objectName: "actionRow-spam-" + root.cardKey

@@ -448,6 +448,9 @@
 </context>
 <context>
     <name>InboxView</name>
+    <message><source>Delete</source><translation>Выдаліць</translation></message>
+    <message><source>Delete private note?</source><translation>Выдаліць асабістую нататку?</translation></message>
+    <message><source>This permanently deletes the journal entry, not just its inbox card.</source><translation>Запіс журнала будзе выдалены назаўсёды, а не толькі з уваходных.</translation></message>
     <message>
         <location filename="../qml/InboxView.qml" line="49"/>
         <location filename="../qml/InboxView.qml" line="128"/>
