@@ -49,9 +49,14 @@ never a silent downgrade of an installed phone.
 
 - Any release of shipped code publishes **all three** cohort artifacts from one
   source SHA — server `.deb`, ordinary desktop `.deb`, signed Android APK —
-  through `deploy/release.py plan/apply/rollback` (REQUIREMENTS R39). Naming a
-  subset is not a release: the v36 cutover published the APK alone and left both
-  the server and the desktop package on the previous cohort.
+  through `deploy/release.py plan/apply/rollback` (REQUIREMENTS R39). That CLI is
+  the sole cutover entrypoint: direct `dpkg -i`, copied files, edited environment
+  and hand restarts are not alternative routes. Naming a subset is not a release:
+  the v36 cutover published the APK alone and left both the server and the desktop
+  package on the previous cohort. Native enrollment-to-Online and phone-size proof
+  is required on the exact signed candidate; xcb measurements, desktop wrappers,
+  rebuilt artifacts and launch-only receipts cannot substitute, and missing native
+  proof blocks cutover. Copy these constraints verbatim into every release brief.
 - Record the release identity in `receipts/published-releases.json` in the same
   commit that publishes: versionCode/versionName/package/SHA-256/source/published
   time/receipt for the APK, plus an `artifacts` map with the same fields for the
