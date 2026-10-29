@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
-	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 )
 
 type tenantContextKey struct{}
@@ -30,6 +29,7 @@ type Handler struct {
 	Location *time.Location
 	NoteSink string
 	Events   *Events
+	previews previewCache
 }
 
 func NewHandler(db *sql.DB, zone, noteSink string) (*Handler, error) {
@@ -149,7 +149,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),(SELECT max(m.received_at) FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id),COALESCE(latest.text,''),COALESCE(latest.html,''),COALESCE((SELECT json_agg(json_build_object('subject',bc.subject,'sender',bc.sender)) FROM cards bc WHERE bc.tenant_id=c.tenant_id AND bc.bundle_id=c.bundle_id),'[]'),COALESCE(b.title_origin,'unknown') FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id LEFT JOIN LATERAL (SELECT m.text,m.html FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id ORDER BY m.received_at DESC LIMIT 1) latest ON true WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant)
+	// PostgreSQL row versions change on every message update. Snapshot entries
+	// remain valid for this request even if the bounded cache evicts them.
+	cached, versions := h.previews.snapshot(tenant)
+	versionsJSON, _ := json.Marshal(versions)
+	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),(SELECT max(m.received_at) FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id),COALESCE(latest.text,''),CASE WHEN COALESCE(latest.version,'')=$2::jsonb->>c.id::text THEN '' ELSE COALESCE(latest.html,'') END,COALESCE(latest.version,''),COALESCE((SELECT json_agg(json_build_object('subject',bc.subject,'sender',bc.sender)) FROM cards bc WHERE bc.tenant_id=c.tenant_id AND bc.bundle_id=c.bundle_id),'[]'),COALESCE(b.title_origin,'unknown') FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id LEFT JOIN LATERAL (SELECT m.text,m.html,m.id::text || ':' || m.xmin::text AS version FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id ORDER BY m.received_at DESC LIMIT 1) latest ON true WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant, string(versionsJSON))
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -163,10 +167,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		var pinnedRank sql.NullInt64
 		var accountName, bundleTitle sql.NullString
 		var receivedAt sql.NullTime
-		var senderRaw, htmlBody string
+		var senderRaw, htmlBody, htmlVersion string
 		var titleMembers []byte
 		var titleOrigin string
-		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order, &bundleID, &pinnedRank, &accountName, &bundleTitle, &c.Important, &c.HasBody, &c.SourceKind, &c.SenderName, &senderRaw, &receivedAt, &c.Snippet, &htmlBody, &titleMembers, &titleOrigin); err != nil {
+		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order, &bundleID, &pinnedRank, &accountName, &bundleTitle, &c.Important, &c.HasBody, &c.SourceKind, &c.SenderName, &senderRaw, &receivedAt, &c.Snippet, &htmlBody, &htmlVersion, &titleMembers, &titleOrigin); err != nil {
 			http.Error(w, "internal server error", 500)
 			return
 		}
@@ -185,7 +189,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 				sender = c.SenderAddress
 			}
             plain := mailSnippet(c.Snippet, c.Title, sender)
-            visible := mailSnippet(mailhtml.PreviewText(htmlBody), c.Title, sender)
+			preview := ""
+			if entry, ok := cached[c.ID]; ok && entry.key.version == htmlVersion {
+				h.previews.touch(entry.key)
+				preview = entry.text
+			} else {
+				preview = h.previews.project(tenant, c.ID, htmlVersion, htmlBody)
+			}
+			visible := mailSnippet(preview, c.Title, sender)
             c.Snippet = plain
             if visible != "" {
                 c.Snippet = visible
@@ -230,7 +241,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	sections := Section(all, now)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(sections)
+	writer, closeWriter := jsonResponseWriter(w, r)
+	defer closeWriter()
+	_ = json.NewEncoder(writer).Encode(sections)
 }
 // markSenderPhotos sets SenderHasPhoto for cards whose effective sender
 // (latest message sender, else the card's sender_address, matching the
