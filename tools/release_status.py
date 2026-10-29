@@ -167,6 +167,48 @@ def server_problems(published_source: str) -> list[str]:
     return []
 
 
+def cohort_problems(release: dict[str, Any]) -> list[str]:
+    """One release is one cohort (REQUIREMENTS R39): three artifacts, one source.
+
+    v36 recorded only the APK, so the server and the desktop package stayed on
+    the previous cohort and the shipped client called routes the live server did
+    not have.
+    """
+    artifacts = release.get("artifacts") or {}
+    missing = [name for name in ("server", "desktop") if not artifacts.get(name)]
+    if missing:
+        return [
+            f"cohort incomplete for release {release.get('versionCode')}: "
+            f"no {', '.join(missing)} artifact recorded in the ledger"]
+    problems = []
+    release_source = str(release.get("source") or "")
+    for name in ("server", "desktop"):
+        entry = artifacts[name]
+        source = str(entry.get("source") or "")
+        # The artifact must be built from the published client source or a
+        # descendant of it; an older artifact is the defect this catches.
+        fresh = bool(source) and subprocess.run(
+            ["git", "-C", str(ROOT), "merge-base", "--is-ancestor",
+             release_source, source], check=False).returncode == 0
+        if not fresh:
+            problems.append(
+                f"{name} artifact source {source[:12] or '(none)'} does not contain "
+                f"release source {release_source[:12]}: stale cohort artifact")
+        installed = installed_package_version(entry.get("deb") or entry.get("package"))
+        if installed and entry.get("versionName") and installed != entry["versionName"]:
+            problems.append(
+                f"{name} artifact {entry['versionName']} recorded but {installed} is "
+                "installed: the cutover did not happen")
+    return problems
+
+
+def installed_package_version(package: str | None) -> str:
+    if not package:
+        return ""
+    out = subprocess.run(["dpkg-query", "-W", "-f=${Version}", package],
+                         capture_output=True, text=True, check=False)
+    return out.stdout.strip() if out.returncode == 0 else ""
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
@@ -231,6 +273,8 @@ def main() -> int:
     if latest and int(latest["versionCode"]) > tree_code:
         problems.append(
             f"ledger versionCode {latest['versionCode']} > tree {tree_code}")
+    if latest:
+        problems.extend(cohort_problems(latest))
 
     if args.json:
         print(json.dumps({

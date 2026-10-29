@@ -47,9 +47,12 @@ never a silent downgrade of an installed phone.
 
 ## Minimum bar for other changes
 
-- Server/desktop fixes: the task names which of the three cohort artifacts
-  (server `.deb`, desktop `.deb`, Android APK) it publishes, or states that
-  none is shipped code.
-- Record the release identity (versionCode, versionName, package, SHA-256, source
-  SHA, published time, receipt path) in `receipts/published-releases.json` in
-  the same commit that publishes.
+- Any release of shipped code publishes **all three** cohort artifacts from one
+  source SHA — server `.deb`, ordinary desktop `.deb`, signed Android APK —
+  through `deploy/release.py plan/apply/rollback` (REQUIREMENTS R39). Naming a
+  subset is not a release: the v36 cutover published the APK alone and left both
+  the server and the desktop package on the previous cohort.
+- Record the release identity in `receipts/published-releases.json` in the same
+  commit that publishes: versionCode/versionName/package/SHA-256/source/published
+  time/receipt for the APK, plus an `artifacts` map with the same fields for the
+  server and desktop packages. An entry without `artifacts` fails the oracle.
