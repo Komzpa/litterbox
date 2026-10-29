@@ -35,20 +35,30 @@ bool CardStore::ownerWrite(const QVariantMap &op) {
 }
 
 bool CardStore::appendDraftRecord(const QVariantMap &record) {
+    return appendDraftRecords({record});
+}
+// One write and one file+directory fsync cover every record.
+bool CardStore::appendDraftRecords(const QList<QVariantMap> &records) {
     QFile journal(m_draftPath);
-    const QByteArray bytes = '\n' + QJsonDocument(QJsonObject::fromVariantMap(record)).toJson(QJsonDocument::Compact) + '\n';
+    QByteArray bytes;
+    for (const QVariantMap &record : records)
+        bytes += '\n' + QJsonDocument(QJsonObject::fromVariantMap(record)).toJson(QJsonDocument::Compact) + '\n';
     // Leading newline isolates a torn final record from the next append.
     if (!journal.open(QIODevice::WriteOnly | QIODevice::Append, QFileDevice::ReadOwner | QFileDevice::WriteOwner) ||
         journal.write(bytes) != bytes.size() || !journal.flush() || ::fsync(journal.handle()) != 0) {
         emit storageError(QStringLiteral("Cannot durably save owner draft: ") + journal.errorString());
         return false;
     }
+    // The directory entry only changes when the journal file is created; once one
+    // directory fsync has succeeded, appends need the file fsync alone.
+    if (m_draftDirSynced) return true;
     const QByteArray directory = QFile::encodeName(QFileInfo(m_draftPath).absolutePath());
     const int fd = ::open(directory.constData(), O_RDONLY | O_DIRECTORY);
     if (fd < 0) { emit storageError(QStringLiteral("Cannot open draft directory for sync")); return false; }
     const bool synced = ::fsync(fd) == 0;
     ::close(fd);
     if (!synced) { emit storageError(QStringLiteral("Cannot sync draft directory")); return false; }
+    m_draftDirSynced = true;
     return true;
 }
 
@@ -1199,7 +1209,7 @@ void CardStore::flush() {
     // Fill the bounded pipeline; every slot frees on its own ACK or failure.
     // Per-op deferral (m_deferredWrites) parks one card, never the whole queue.
     bool progressed = true;
-    while (progressed && (int)m_inFlight.size() < kMaxInFlightOps)
+    while (progressed && (int)m_inFlight.size() < m_maxInFlight)
         progressed = flushNext();
     if (m_outbox.isEmpty() && m_inFlight.isEmpty()) emit flushFinished();
 }
@@ -1462,10 +1472,9 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         flush();
         return;
     }
-    if (ownerWrite && !appendDraftRecord({{QStringLiteral("op_id"), opId}, {QStringLiteral("acked"), true}})) {
-        m_inFlight.remove(opId);
-        return; // Replay the same op; never prune on a failed durable ACK record.
-    }
+    // The durable ACK is group-committed (commitAcks): every ACK that lands
+    // while a commit is running shares the next journal fsync and the next
+    // SQLite transaction. The op keeps its in-flight slot until that commit.
     QStringList removedIds;
     if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal"))
         removedIds.append(operation.value(QStringLiteral("card_id")).toString());
@@ -1474,67 +1483,97 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     removedIds.erase(std::remove_if(removedIds.begin(), removedIds.end(), [&](const auto &id) {
         return std::any_of(m_cards.cbegin(), m_cards.cend(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; });
     }), removedIds.end());
-    m_drafts.remove(opId);
-    QMetaObject::invokeMethod(m_storage, [this, opId, response, operation, removedIds] {
+    m_ackQueue.append({opId, response, operation, removedIds, ownerWrite});
+    if (!m_ackCommitting && !m_ackScheduled) {
+        m_ackScheduled = true; // Queued: ACKs delivered in the same event-loop pass coalesce.
+        QMetaObject::invokeMethod(this, &CardStore::commitAcks, Qt::QueuedConnection);
+    }
+}
+void CardStore::commitAcks() {
+    m_ackScheduled = false;
+    if (m_ackCommitting || m_ackQueue.isEmpty() || !m_open) return;
+    QList<PendingAck> batch;
+    batch.swap(m_ackQueue);
+    QList<QVariantMap> records;
+    for (const auto &ack : std::as_const(batch))
+        if (ack.ownerWrite) records.append({{QStringLiteral("op_id"), ack.opId}, {QStringLiteral("acked"), true}});
+    if (!records.isEmpty() && !appendDraftRecords(records)) {
+        for (const auto &ack : std::as_const(batch)) m_inFlight.remove(ack.opId);
+        return; // Replay the same ops; never prune on a failed durable ACK record.
+    }
+    for (const auto &ack : std::as_const(batch)) m_drafts.remove(ack.opId);
+    m_ackCommitting = true;
+    QMetaObject::invokeMethod(m_storage, [this, batch] {
         bool ok = m_db.transaction();
         QSqlQuery q(m_db);
-        q.prepare(QStringLiteral("INSERT OR IGNORE INTO acknowledged_ops(op_id) VALUES(?)"));
-        q.addBindValue(opId);
-        if (ok) ok = q.exec();
-        q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);
-        if (ok) ok = q.exec();
-        q.prepare(QStringLiteral("DELETE FROM acknowledged_ops WHERE op_id=?")); q.addBindValue(opId);
-        if (ok) ok = q.exec();
-        // Delete only acknowledged removals, through the normal owner guard.
-        // In particular a pending note/create must never lose its durable row.
-        for (const auto &id : removedIds) {
-            q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?)"));
-            q.addBindValue(id);
-            q.addBindValue(id);
+        QString failure;
+        for (const auto &ack : batch) {
+            // Same statements, same order as the former per-op commit; one fsync.
+            q.prepare(QStringLiteral("INSERT OR IGNORE INTO acknowledged_ops(op_id) VALUES(?)"));
+            q.addBindValue(ack.opId);
             if (ok) ok = q.exec();
+            q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(ack.opId);
+            if (ok) ok = q.exec();
+            q.prepare(QStringLiteral("DELETE FROM acknowledged_ops WHERE op_id=?")); q.addBindValue(ack.opId);
+            if (ok) ok = q.exec();
+            // Delete only acknowledged removals, through the normal owner guard.
+            // In particular a pending note/create must never lose its durable row.
+            for (const auto &id : ack.removedIds) {
+                q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?)"));
+                q.addBindValue(id);
+                q.addBindValue(id);
+                if (ok) ok = q.exec();
+            }
+            if (!ok && failure.isEmpty()) failure = q.lastError().text();
         }
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
-        const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, opId, ok, error, response, operation, removedIds] {
-            m_inFlight.remove(opId);
+        const QString error = failure.isEmpty() ? q.lastError().text() : failure;
+        QMetaObject::invokeMethod(this, [this, batch, ok, error] {
+            m_ackCommitting = false;
+            for (const auto &ack : batch) m_inFlight.remove(ack.opId);
             if (!ok) {
-                m_deferredWrites.insert(opId);
+                for (const auto &ack : batch) m_deferredWrites.insert(ack.opId);
                 emit storageError(error);
                 const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
                 m_retryAttempt = qMin(m_retryAttempt + 1, 6);
                 m_retryTimer.start(delay);
                 flush();
+                if (!m_ackQueue.isEmpty() && !m_ackScheduled) commitAcks();
                 return;
             }
             m_retryAttempt = 0;
-            const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
-                return op.value(QStringLiteral("op_id")).toString() == opId;
-            });
-            for (const auto &id : removedIds) {
-                // Undo may already own this card while the removal ACK was pending.
-                if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == id; }))
-                    m_archivedAwaitingSnapshot.insert(id);
+            for (const auto &ack : batch) {
+                const QString &opId = ack.opId;
+                const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
+                    return op.value(QStringLiteral("op_id")).toString() == opId;
+                });
+                for (const auto &id : ack.removedIds) {
+                    // Undo may already own this card while the removal ACK was pending.
+                    if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == id; }))
+                        m_archivedAwaitingSnapshot.insert(id);
+                }
+                const bool restored = acknowledgedOp != m_outbox.cend() &&
+                    acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
+                    acknowledgedOp->value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX") &&
+                    m_mutations.contains(opId);
+                if (restored) {
+                    m_archivedAwaitingSnapshot.remove(acknowledgedOp->value(QStringLiteral("card_id")).toString());
+                    m_restoredAwaitingSnapshot.insert(opId, m_cardsRequestSequence);
+                }
+                m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const QVariantMap &op) {
+                    return op.value(QStringLiteral("op_id")).toString() == opId;
+                }), m_outbox.end());
+                m_failedWrites.remove(opId);
+                m_deferredWrites.remove(opId);
+                m_durableOps.remove(opId);
+                if (!restored) m_mutations.remove(opId);
+                emit operationAcknowledged(ack.operation, ack.response);
+                emit pendingOpsChanged();
+                if (restored) refresh();
             }
-            const bool restored = acknowledgedOp != m_outbox.cend() &&
-                acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
-                acknowledgedOp->value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX") &&
-                m_mutations.contains(opId);
-            if (restored) {
-                m_archivedAwaitingSnapshot.remove(acknowledgedOp->value(QStringLiteral("card_id")).toString());
-                m_restoredAwaitingSnapshot.insert(opId, m_cardsRequestSequence);
-            }
-            m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const QVariantMap &op) {
-                return op.value(QStringLiteral("op_id")).toString() == opId;
-            }), m_outbox.end());
-            m_failedWrites.remove(opId);
-            m_deferredWrites.remove(opId);
-            m_durableOps.remove(opId);
-            if (!restored) m_mutations.remove(opId);
-            emit operationAcknowledged(operation, response);
-            emit pendingOpsChanged();
-            if (restored) refresh();
             flush();
+            if (!m_ackQueue.isEmpty() && !m_ackScheduled) commitAcks();
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
 }

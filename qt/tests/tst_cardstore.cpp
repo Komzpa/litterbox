@@ -2519,6 +2519,58 @@ private slots:
         // pays the RTT per op (~8.5 s) instead of per flight.
         QVERIFY2(ms < 5000, qPrintable(QStringLiteral("drain took %1 ms, no batching").arg(ms)));
     }
+    void drainBench_data() {
+        QTest::addColumn<int>("ops");
+        QTest::addColumn<int>("rttMs");
+        QTest::addColumn<int>("inFlight");
+        for (int rtt : {1, 150})
+            for (int inFlight : {32})
+                for (int ops : {100, 200}) {
+                    if (rtt == 150 && ops == 200) continue;
+                    QTest::addRow("%dops_%dms_x%d", ops, rtt, inFlight) << ops << rtt << inFlight;
+                }
+    }
+    void drainBench() {
+        QFETCH(int, ops);
+        QFETCH(int, rttMs);
+        QFETCH(int, inFlight);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("bench.sqlite");
+        QVariantList cards;
+        QStringList ids;
+        for (int i = 0; i < ops; ++i) {
+            const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            ids.append(id);
+            cards.append(QVariantMap{{"id", id}, {"title", QStringLiteral("Note %1").arg(i)},
+                {"source", "manual"}, {"state", "open"}});
+        }
+        // Queue the ops, close, and reopen: a drain starts from a fully durable
+        // outbox, as after an offline period, not behind the enqueue commits.
+        {
+            CardStore writer;
+            QVERIFY(writer.open(path));
+            QVERIFY(writer.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            for (const QString &id : ids) QVERIFY(!writer.saveNote(id, QStringLiteral("edit %1").arg(id)).isEmpty());
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        store.setMaxInFlight(inFlight);
+        LatencyTransport transport(rttMs);
+        store.setTransport(&transport);
+        QCOMPARE(store.pendingOps(), ops);
+        store.setOnline(true);
+        QElapsedTimer wall;
+        wall.start();
+        QTRY_VERIFY2_WITH_TIMEOUT(store.pendingOps() == 0, "outbox did not drain", 60000);
+        const qint64 ms = wall.elapsed();
+        qInfo("BENCH ops=%d rtt=%dms inflight_cap=%d -> max_in_flight=%d wall=%lld ms",
+              ops, rttMs, inFlight, transport.maxOutstanding, ms);
+        QCOMPARE(transport.posted.size(), ops);
+        // Owner target: a 100-op queue drains in well under half a second at LAN RTT.
+        if (ops == 100 && rttMs == 1 && inFlight == 32)
+            QVERIFY2(ms < 500, qPrintable(QStringLiteral("100 ops took %1 ms").arg(ms)));
+    }
     void serverDeletedCardLeavesNoGhostRow() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
