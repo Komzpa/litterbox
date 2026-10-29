@@ -1721,8 +1721,8 @@ ApplicationWindow {
                         x: (parent.width - width) / 2
                         y: sectionHeader.height + (cardRow.lifted ? window.dragOffset : 0)
                         padding: window.edgeSpacing
-                        topPadding: cardRow.bundled && !cardRow.bundleLeader ? 4 : window.compactDensity ? (window.compactInbox ? 3 : 6) : 12
-                        bottomPadding: cardRow.bundled && !cardRow.bundleLeader ? 4 : window.compactDensity ? (window.compactInbox ? 3 : 6) : 12
+                        topPadding: cardRow.bundled && !cardRow.bundleLeader ? 4 : window.compactDensity ? (window.phoneTypography ? 3 : 6) : 12
+                        bottomPadding: cardRow.bundled && !cardRow.bundleLeader ? 4 : window.compactDensity ? (window.phoneTypography ? 3 : 6) : 12
                         rightPadding: window.compactInbox ? 0 : window.edgeSpacing
                         background: Rectangle {
                             color: cardRow.lifted ? "#e4efed" : cardRow.selected ? "#e7f1ee" : cardRow.bundled && !cardRow.bundleLeader ? "#f7faf9" : window.surface
