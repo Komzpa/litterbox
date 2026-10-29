@@ -20,7 +20,27 @@
       "servedPath": "/opt/litterbox/server/litterbox-qt-v36-069e1ee5.apk",
       "source": "69d7c3331aa138a8fcd844a7be44fb50fed463ee",
       "publishedAt": "2026-10-29T05:52:11Z",
-      "receipt": "/home/kom/proj/ai_pr/litterbox-release-v36-20261029/publish/RELEASE-v36.md"
+      "receipt": "/home/kom/proj/ai_pr/litterbox-release-v36-20261029/publish/RELEASE-v36.md",
+      "artifacts": {
+        "server": {
+          "versionName": "0.1-53",
+          "source": "3e31e269102a022513d0cb6dc72572169a71c5cd",
+          "sha256": "2dadfe07db75b873eae9129aa220066e16c8576de08261c86fafdbb0d19fdb3e",
+          "bytes": 8507356,
+          "deb": "litterbox-server",
+          "deb_path": "/tmp/lb-cutover-Mhgf/out/litterbox-server_0.1-53_amd64.deb",
+          "receipt": "/home/kom/proj/ai_pr/litterbox-crash-diag-20261029/SERVER-CUTOVER-r1.md"
+        },
+        "desktop": {
+          "versionName": "0.1-53",
+          "source": "c9a999dbbc14087d7feaca2bce7c3cc7c8a9545d",
+          "sha256": "532c55d7f319bfe72377bfa867ae59d282b71ba3f2cb65a6afdfcf5ff367766b",
+          "bytes": 627036,
+          "deb": "litterbox-qt",
+          "deb_path": "/home/kom/litterbox/litterbox-qt_0.1-53_amd64.deb",
+          "receipt": "/home/kom/proj/ai_pr/litterbox-release-v36-20261029/publish/COHORT-DESKTOP-r1.md"
+        }
+      }
     }
   ]
 }
