@@ -216,6 +216,7 @@ file(GLOB _lb_page_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_*.qml")
 list(REMOVE_ITEM _lb_page_tests
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_touchdefects.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_inboxlayout.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_journaldelete.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_androidinboxpolish.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_bundleexpand.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tst_scrollresilience.qml"
