@@ -10,7 +10,7 @@ ends with a **published release**, in the same task, not in a later "publish"
 task that can be dropped. Green tests, a built APK, an emulator install, a proof
 receipt, a commit, or a desktop `.deb` are *candidates*, not a release.
 
-"Released" means, all four observed on the real updater:
+"Released" means, all five observed on the real updater:
 
 1. A signed APK whose decimal `QT_ANDROID_VERSION_CODE` in `qt/CMakeLists.txt`
    is **strictly greater** than the served version and every recorded installed
@@ -26,14 +26,21 @@ receipt, a commit, or a desktop `.deb` are *candidates*, not a release.
    and **Update available** on newer ones; either counts, and the file it
    downloaded must hash to the served candidate. A same-version client shows no
    offer and downloads no `update-*.apk`; that is the negative control.
+5. The **server artifact** from the same cohort is deployed and running: its
+   `/v1/version` build SHA contains the published client source, so every route
+   the shipped client calls already exists. v36 shipped its APK while the server
+   stayed on the previous release, and the crash uploader and journal delete
+   met `404`/`422` against it. An APK-only release is not a release.
 
-Only after all four does the work count as done. If publication is impossible,
+Only after all five does the work count as done. If publication is impossible,
 keep the task open and name the exact blocker — never report the fix as done.
 
 Oracle: `python3 tools/release_status.py --check` exits non-zero when the working
 tree's versionCode, the served manifest, the served APK digest and
-`receipts/published-releases.json` disagree, or when `qt/` changed after the
-published source commit. Run it before claiming any mobile work complete.
+`receipts/published-releases.json` disagree, when `qt/` changed after the
+published source commit, when a migration's objects are absent from production,
+or when the deployed server's `/v1/version` build does not contain the published
+source. Run it before claiming any mobile work complete.
 
 Rollback is a publish of the previous known-good APK at its own versionCode —
 never a silent downgrade of an installed phone.
