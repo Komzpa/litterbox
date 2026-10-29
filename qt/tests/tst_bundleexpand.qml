@@ -665,6 +665,7 @@ TestCase {
         tryVerify(function() { return rejectedCards.indexOf(ids[0]) >= 0 && rejectedCards.indexOf(ids[1]) >= 0 }, 5000, "Stub server must reject both archive POSTs with 422")
         const bar = findChild(inbox, "bundleArchiveUndoBar")
         tryVerify(function() { return bar && bar.visible && findChild(bar, "bundleArchiveUndoMessage").text.length > 0 })
+        tryVerify(function() { return inbox.operationError.length > 0 }, 5000, "Rejected archive must raise the failure notice")
         tryCompare(inbox, "operationError", "", 8500)
         compare(store.pendingOps, 0, "Notice expiry cannot invent a pending operation")
         tryVerify(function() { return store.cardIds().indexOf(ids[0]) >= 0 && store.cardIds().indexOf(ids[1]) >= 0 }, 5000, "Rejected ops must restore both bundle members")
