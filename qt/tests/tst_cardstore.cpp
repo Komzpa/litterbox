@@ -1602,19 +1602,18 @@ private slots:
         store.setOnline(true);
         QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
         QVERIFY(store.applyRemoteCards(sections));
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), CardStore::kBodyWindow);
         QCOMPARE(store.mailSyncPending(), 200);
         QVERIFY(!store.mailSyncComplete());
         for (int i = 0; i < 3; ++i) QVERIFY(store.applyRemoteCards(sections));
         store.requestMailBody(ids.first());
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), CardStore::kBodyWindow);
         store.applyRemoteMailBody(ids.first(), {{"html", "<p>First original</p>"}});
         // A slot stays occupied until SQLite commits; snapshots do not duplicate it.
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), CardStore::kBodyWindow);
         QVERIFY(store.applyRemoteCards(sections));
-        QCOMPARE(requested.size(), 2);
-        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), 3, 2000);
-        QCOMPARE(requested.last().at(0).toString(), ids.at(2));
+        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), CardStore::kBodyWindow + 1, 2000);
+        QCOMPARE(requested.last().at(0).toString(), ids.at(CardStore::kBodyWindow));
         QCOMPARE(store.mailSyncPending(), 199);
         QCOMPARE(store.pendingOps(), 0);
         QCOMPARE(store.rowCount(), 200);
@@ -1633,17 +1632,15 @@ private slots:
         store.setOnline(true);
         QSignalSpy requested(&store, &CardStore::requestMailBodyGet);
         QVERIFY(store.applyRemoteCards(sections));
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), 3); // All three fit the wide window at once.
         for (int i = 0; i < 3; ++i) QVERIFY(store.applyRemoteCards(sections));
         store.requestMailBody(second);
-        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.size(), 3);
         store.setOnline(false);
         QVERIFY(store.applyRemoteCards(sections));
         store.setOnline(true);
-        QCOMPARE(requested.size(), 2); // Live HTTP identities survive reconnect.
+        QCOMPARE(requested.size(), 3); // Live HTTP identities survive reconnect.
         store.reportMailBodyFailed(cardId, 503);
-        QCOMPARE(requested.size(), 3); // Another eligible card proceeds immediately.
-        QCOMPARE(requested.last().at(0).toString(), third);
         store.applyRemoteMailBody(second, {{"html", "<p>Second original</p>"}});
         QTRY_COMPARE(store.mailSyncPending(), 2);
         QCOMPARE(requested.size(), 3); // Failed card has a real retry delay.
@@ -1656,8 +1653,75 @@ private slots:
         store.setOnline(true);
         QTest::qWait(100);
         QCOMPARE(requested.size(), 4); // Shared rate-limit cooldown survives reconnect.
+        QTRY_COMPARE_WITH_TIMEOUT(requested.size(), 5, 1500); // 429 parks ~1 s (Retry-After: 1), not 60 s.
         QVERIFY(!store.mailSyncComplete());
         store.setOnline(false);
+    }
+    void bodyPrefetchPipelinesWideAndBatchesWrites() {
+        // R9b: 400 bodies; the window is kBodyWindow wide, fetches complete
+        // out of order, SQLite sees far fewer transactions than bodies, and
+        // no client-side pacing.
+        QTemporaryDir directory;
+        const QString path = directory.filePath("wide.sqlite");
+        constexpr int total = 400;
+        QVariantList cards;
+        QStringList ids;
+        for (int i = 0; i < total; ++i) {
+            ids << QUuid::createUuid().toString(QUuid::WithoutBraces);
+            cards << QVariantMap{{"id", ids.last()}, {"source", "mail"}};
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        QSet<QString> inFlight;
+        int maxInFlight = 0, fetched = 0;
+        connect(&store, &CardStore::requestMailBodyGet, &store, [&](const QString &id, const QString &) {
+            ++fetched;
+            inFlight.insert(id);
+            maxInFlight = qMax(maxInFlight, int(inFlight.size()));
+            QTimer::singleShot(5, &store, [&, id] {
+                inFlight.remove(id);
+                store.applyRemoteMailBody(id, {{"html", "<p>" + id + "</p>"}});
+            });
+        });
+        QElapsedTimer clock;
+        clock.start();
+        store.setOnline(true);
+        QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        QTRY_COMPARE_WITH_TIMEOUT(store.mailSyncPending(), 0, 20000);
+        qInfo() << "BENCH bodies" << fetched << "max_in_flight" << maxInFlight << "wall_ms" << clock.elapsed();
+        QVERIFY(maxInFlight > 8);                       // wide, not two at a time
+        QVERIFY(maxInFlight <= CardStore::kBodyWindow);
+        QCOMPARE(fetched, total);
+        QVERIFY(store.bodyWriteTransactions() < fetched / 4); // batched writes
+    }
+    void failedBodyBatchCommitRollsBackSoNextBatchPersists() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("locked.sqlite");
+        CardStore store;
+        QVERIFY(store.open(path));
+        QSignalSpy errors(&store, &CardStore::storageError);
+        QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+        const QString conn = QStringLiteral("body-lock-reader");
+        {
+            QSqlDatabase reader = QSqlDatabase::addDatabase("QSQLITE", conn);
+            reader.setDatabaseName(path);
+            QVERIFY(reader.open());
+            QVERIFY(reader.transaction());
+            QSqlQuery q(reader);
+            QVERIFY(q.exec("SELECT * FROM mail_bodies"));
+            q.next();
+            store.applyRemoteMailBody("first", {{"html", "first"}});
+            QTRY_VERIFY_WITH_TIMEOUT(errors.size() >= 1, 15000); // commit refused while the reader holds its lock
+            q.finish();
+            reader.rollback();
+            reader.close();
+        }
+        QSqlDatabase::removeDatabase(conn);
+        store.applyRemoteMailBody("second", {{"html", "second"}});
+        QTRY_VERIFY_WITH_TIMEOUT(changed.size() >= 1 && changed.last().at(0).toString() == "second", 5000);
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.cachedMailBody("second").value("html").toString(), QString("second"));
     }
     void neverOpenedMailSynchronizesThroughHttpAndReopensOffline() {
         QTemporaryDir directory;
@@ -1776,6 +1840,44 @@ private slots:
         QCOMPARE(reopened.cachedMailBody(cardId).value("messages").toList().size(), 1);
         QVERIFY(reopened.cachedMailBody(missing).isEmpty());
     }
+    void mailBodiesLoadFromSqliteOnDemandWithBoundedResidentBytes() {
+        // R9 bodies on demand: opening a profile never loads body content;
+        // reads are served from SQLite through an LRU bounded by bytes.
+        QTemporaryDir directory;
+        const QString path = directory.filePath("on-demand.sqlite");
+        constexpr int count = 40;
+        const QString filler(1024 * 1024, QLatin1Char('x')); // 2 MiB UTF-16 each, 80 MiB total
+        QStringList ids;
+        QVariantList cards;
+        for (int i = 0; i < count; ++i) {
+            ids << QUuid::createUuid().toString(QUuid::WithoutBraces);
+            cards << QVariantMap{{"id", ids.last()}, {"source", "mail"}};
+        }
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+            for (int i = 0; i < count; ++i)
+                store.applyRemoteMailBody(ids.at(i), {{"html", QString::number(i) + filler},
+                    {"messages", QVariantList{QVariantMap{{"html", "<p>earlier " + QString::number(i) + "</p>"}}}}});
+            QTRY_COMPARE_WITH_TIMEOUT(changed.size(), count, 10000);
+            QVERIFY(store.mailSyncPending() == 0);
+        }
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.mailSyncPending(), 0); // sync metadata known without loading content
+        QCOMPARE(reopened.residentBodyBytes(), qint64(0));
+        for (int round = 0; round < 2; ++round)
+            for (int i = 0; i < count; ++i) {
+                const QVariantMap body = reopened.cachedMailBody(ids.at(i));
+                QCOMPARE(body.value("html").toString(), QString::number(i) + filler);
+                QCOMPARE(body.value("messages").toList().size(), 1);
+                QVERIFY(reopened.residentBodyBytes() <= CardStore::kBodyLruBytes);
+            }
+        QVERIFY(reopened.residentBodyBytes() > 0);
+        QVERIFY(reopened.cachedMailBody("missing").isEmpty());
+    }
     void foregroundBodyUsesCacheAndPreservesItOnBadResponses() {
         QTemporaryDir directory;
         CardStore store;
@@ -1887,13 +1989,12 @@ private slots:
             QVERIFY(coldStart.applyRemoteCards(sections));
             QCOMPARE(coldStart.cardIds(), QStringList{neighbor});
         }
-        store.flush();
-        QTest::qWait(1100);
+        store.flush(); // an explicit flush must not bypass the cooldown
         QCOMPARE(posted.size(), 1);
         QCOMPARE(failed.size(), 0);
-        // Exercise the real existing timer: 429 must wait a complete minute.
-        QTRY_COMPARE_WITH_TIMEOUT(posted.size(), 2, 65000);
-        QVERIFY(retryElapsed.elapsed() >= 60000);
+        // Exercise the real timer: 429 waits one bounded slice, not a minute.
+        QTRY_COMPARE_WITH_TIMEOUT(posted.size(), 2, 5000);
+        QVERIFY(retryElapsed.elapsed() >= 1000);
         QCOMPARE(posted.last().at(0).toString(), op);
         QCOMPARE(posted.last().at(2).toMap(), payload);
         QCOMPARE(store.pendingOps(), 1);
@@ -2518,6 +2619,58 @@ private slots:
         // 25 flights x 50 ms plus one durable ack commit per op; a serial pump
         // pays the RTT per op (~8.5 s) instead of per flight.
         QVERIFY2(ms < 5000, qPrintable(QStringLiteral("drain took %1 ms, no batching").arg(ms)));
+    }
+    void drainBench_data() {
+        QTest::addColumn<int>("ops");
+        QTest::addColumn<int>("rttMs");
+        QTest::addColumn<int>("inFlight");
+        for (int rtt : {1, 150})
+            for (int inFlight : {32})
+                for (int ops : {100, 200}) {
+                    if (rtt == 150 && ops == 200) continue;
+                    QTest::addRow("%dops_%dms_x%d", ops, rtt, inFlight) << ops << rtt << inFlight;
+                }
+    }
+    void drainBench() {
+        QFETCH(int, ops);
+        QFETCH(int, rttMs);
+        QFETCH(int, inFlight);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString path = directory.filePath("bench.sqlite");
+        QVariantList cards;
+        QStringList ids;
+        for (int i = 0; i < ops; ++i) {
+            const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            ids.append(id);
+            cards.append(QVariantMap{{"id", id}, {"title", QStringLiteral("Note %1").arg(i)},
+                {"source", "manual"}, {"state", "open"}});
+        }
+        // Queue the ops, close, and reopen: a drain starts from a fully durable
+        // outbox, as after an offline period, not behind the enqueue commits.
+        {
+            CardStore writer;
+            QVERIFY(writer.open(path));
+            QVERIFY(writer.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            for (const QString &id : ids) QVERIFY(!writer.saveNote(id, QStringLiteral("edit %1").arg(id)).isEmpty());
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        store.setMaxInFlight(inFlight);
+        LatencyTransport transport(rttMs);
+        store.setTransport(&transport);
+        QCOMPARE(store.pendingOps(), ops);
+        store.setOnline(true);
+        QElapsedTimer wall;
+        wall.start();
+        QTRY_VERIFY2_WITH_TIMEOUT(store.pendingOps() == 0, "outbox did not drain", 60000);
+        const qint64 ms = wall.elapsed();
+        qInfo("BENCH ops=%d rtt=%dms inflight_cap=%d -> max_in_flight=%d wall=%lld ms",
+              ops, rttMs, inFlight, transport.maxOutstanding, ms);
+        QCOMPARE(transport.posted.size(), ops);
+        // Owner target: a 100-op queue drains in well under half a second at LAN RTT.
+        if (ops == 100 && rttMs == 1 && inFlight == 32)
+            QVERIFY2(ms < 500, qPrintable(QStringLiteral("100 ops took %1 ms").arg(ms)));
     }
     void serverDeletedCardLeavesNoGhostRow() {
         QTemporaryDir directory;

@@ -249,7 +249,7 @@ func TestDevTenantIsOptIn(t *testing.T) {
 func TestRateLimitAlsoAppliesToAuthenticatedRequests(t *testing.T) {
 	store := &fakeStore{tokenHash: tokenHash("device-token"), device: Device{TenantID: "tenant", DeviceID: "device"}}
 	h := NewHandler(store, "")
-	h.limiter = NewIPLimiter(1, time.Minute)
+	h.deviceLimiter = NewTokenBucket(1, 0)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) {
 		if tenant, ok := cards.TenantFrom(r.Context()); !ok || tenant != "tenant" {
@@ -296,6 +296,7 @@ func TestRateLimitIsPerDeviceNotPerSharedAddress(t *testing.T) {
 		tokenHash("desktop-token"): {TenantID: "tenant", DeviceID: "desktop"},
 	}}
 	h := NewHandler(store, "")
+	h.deviceLimiter = NewTokenBucket(60, 0)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/cards", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	protected := h.Middleware(mux)
@@ -325,7 +326,9 @@ func TestDiagnosticQuotaIsDeviceScopedAndExactRouteOnly(t *testing.T) {
 		tokenHash("phone"):   {TenantID: "tenant", DeviceID: "phone"},
 		tokenHash("desktop"): {TenantID: "tenant", DeviceID: "desktop"},
 	}}
-	h := NewHandler(store, "").Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	limits := NewHandler(store, "")
+	limits.deviceLimiter = NewTokenBucket(60, 0)
+	h := limits.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := DeviceFromContext(r.Context()); !ok {
 			t.Error("diagnostics bypassed device authentication")
 		}
@@ -357,4 +360,36 @@ func TestDiagnosticQuotaIsDeviceScopedAndExactRouteOnly(t *testing.T) {
 	// Even an exhausted diagnostic budget must still authenticate every token.
 	delete(store.devices, tokenHash("phone"))
 	call("POST", path, "phone", 401)
+}
+
+func TestDeviceBucketAllowsReconnectBurstAndKeepsSustainedCeiling(t *testing.T) {
+	if DeviceBurst < 5000 || DeviceRefillPerSecond < 500 {
+		t.Fatal("device budget below gigabit-sync floor")
+	}
+	b := NewTokenBucket(DeviceBurst, 0) // no refill: burst must not depend on elapsed time
+	for i := 0; i < 5000; i++ {
+		if !b.Allow("device:a") {
+			t.Fatalf("burst request %d limited", i+1)
+		}
+	}
+	allowed := 5000
+	for b.Allow("device:a") {
+		allowed++
+	}
+	if allowed < DeviceBurst || allowed > DeviceBurst+1 {
+		t.Fatalf("burst allowed %d, want about %d", allowed, DeviceBurst)
+	}
+	if !b.Allow("device:b") {
+		t.Fatal("bucket was not isolated by device")
+	}
+	slow := NewTokenBucket(2, 100)
+	slow.Allow("k")
+	slow.Allow("k")
+	if slow.Allow("k") {
+		t.Fatal("empty bucket allowed a request")
+	}
+	time.Sleep(30 * time.Millisecond)
+	if !slow.Allow("k") {
+		t.Fatal("bucket did not refill")
+	}
 }

@@ -3,6 +3,7 @@
 
 #include <QAbstractListModel>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QDeadlineTimer>
 #include <QSqlDatabase>
 #include <QStringList>
@@ -45,6 +46,7 @@ public:
     bool saveFailed() const { return !m_failedWrites.isEmpty(); }
     Q_INVOKABLE bool retainedWriteFailed(const QString &opId) const { return m_failedWrites.contains(opId); }
     void setTransport(cardstore::OpTransport *transport);
+    void setMaxInFlight(int ops) { m_maxInFlight = qMax(1, ops); }
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void retrySync();
@@ -159,6 +161,19 @@ private:
     void retainOwnerRows(QList<QVariantMap> &cards) const;
     void projectPendingRemovals(QList<QVariantMap> &cards) const;
     bool appendDraftRecord(const QVariantMap &record);
+    bool appendDraftRecords(const QList<QVariantMap> &records);
+    // ACKed ops waiting for their group commit; see commitAcks().
+    struct PendingAck {
+        QString opId;
+        QVariantMap response;
+        QVariantMap operation;
+        QStringList removedIds;
+        bool ownerWrite;
+    };
+    void commitAcks();
+    QList<PendingAck> m_ackQueue;
+    bool m_ackCommitting = false;
+    bool m_ackScheduled = false;
     // Drops the local row the server confirmed gone (404 or 422 card-not-found
     // retirement) unless a remaining op still writes that card. Card-id carriers
     // with no card subject (reorder_*, agent_message) never trigger a drop.
@@ -167,12 +182,13 @@ private:
     QString m_rejectedReorder;
     quint64 m_rejectedReorderSnapshot = 0;
     QString m_draftPath;
+    bool m_draftDirSynced = false;
     QHash<QString, QVariantMap> m_drafts;
     QStringList m_draftOrder;
-    // Bounded outbox pipeline: up to kMaxInFlightOps POSTs share the wire.
+    // Bounded outbox pipeline: up to m_maxInFlight POSTs share the wire.
     // Per-card FIFO holds (a card's next op waits for its in-flight op) and
     // reorder_* ops fly alone so the server always sees a coherent open set.
-    static constexpr int kMaxInFlightOps = 4;
+    int m_maxInFlight = 32;
     bool flushNext();
     void queueMailBodyPrefetch();
     void prefetchNextMailBody();
@@ -217,7 +233,28 @@ private:
     quint64 m_latestCardsResponse = 0;
     int m_bundleUndoDurationMs = 8000;
     QTimer *m_bundleUndoTimer = nullptr;
-    QHash<QString, QVariantMap> m_mailBodies;
+    // Body ids only; html/messages stay in SQLite and are read on demand
+    // through a byte-bounded LRU (R9 bodies on demand).
+    QSet<QString> m_bodyCached;
+    // Fetched bodies waiting for the next batched SQLite transaction.
+    struct BodyWrite { QString id, html, sourceUrl, messagesJson; bool hadBody = false; };
+    QList<BodyWrite> m_bodyWriteBatch;
+    QTimer m_bodyFlushTimer;
+    void flushBodyWrites();
+    int m_bodyTransactions = 0;
+    mutable QHash<QString, QVariantMap> m_bodyLru;
+    mutable QStringList m_bodyLruOrder; // most recent last
+    mutable qint64 m_bodyLruBytes = 0;
+    QVariantMap readBodyFromDb(const QString &cardId) const;
+    void lruRemove(const QString &cardId) const;
+    void lruInsert(const QString &cardId, const QVariantMap &body) const;
+public:
+    // Bytes (UTF-16) of body HTML currently resident in the LRU, for tests.
+    qint64 residentBodyBytes() const { return m_bodyLruBytes; }
+    int bodyWriteTransactions() const { return m_bodyTransactions; }
+    static constexpr qint64 kBodyLruBytes = 24 * 1024 * 1024;
+    static constexpr int kBodyWindow = 24;       // fetches + unflushed writes in flight
+private:
     QStringList m_bodyPrefetchQueue;
     QSet<QString> m_bodyRequests;
     QTimer m_bodyPrefetchTimer;
@@ -240,7 +277,7 @@ private:
     QSet<QString> m_photoUnavailable;
     bool m_online = false;
     QString m_offlineReason;
-    // Bounded pipeline of sent-but-unacknowledged op ids (cap kMaxInFlightOps).
+    // Bounded pipeline of sent-but-unacknowledged op ids (cap m_maxInFlight).
     QSet<QString> m_inFlight;
     // A 429 parks the whole pump until the shared per-device window recovers.
     QDeadlineTimer m_rateCooldown{0, Qt::PreciseTimer};

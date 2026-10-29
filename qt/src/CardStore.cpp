@@ -23,6 +23,10 @@
 #include <QFileInfo>
 #include <QLoggingCategory>
 
+// One 429 pauses only the op pump, for this long; the server's per-device token
+// bucket refills five requests per second.
+static constexpr int kRateLimitRetryMs = 1000;
+
 // Default to retaining unknown operations. Only reversible triage may roll back.
 bool CardStore::ownerWrite(const QVariantMap &op) {
     const auto args = op.value(QStringLiteral("args")).toMap();
@@ -35,20 +39,30 @@ bool CardStore::ownerWrite(const QVariantMap &op) {
 }
 
 bool CardStore::appendDraftRecord(const QVariantMap &record) {
+    return appendDraftRecords({record});
+}
+// One write and one file+directory fsync cover every record.
+bool CardStore::appendDraftRecords(const QList<QVariantMap> &records) {
     QFile journal(m_draftPath);
-    const QByteArray bytes = '\n' + QJsonDocument(QJsonObject::fromVariantMap(record)).toJson(QJsonDocument::Compact) + '\n';
+    QByteArray bytes;
+    for (const QVariantMap &record : records)
+        bytes += '\n' + QJsonDocument(QJsonObject::fromVariantMap(record)).toJson(QJsonDocument::Compact) + '\n';
     // Leading newline isolates a torn final record from the next append.
     if (!journal.open(QIODevice::WriteOnly | QIODevice::Append, QFileDevice::ReadOwner | QFileDevice::WriteOwner) ||
         journal.write(bytes) != bytes.size() || !journal.flush() || ::fsync(journal.handle()) != 0) {
         emit storageError(QStringLiteral("Cannot durably save owner draft: ") + journal.errorString());
         return false;
     }
+    // The directory entry only changes when the journal file is created; once one
+    // directory fsync has succeeded, appends need the file fsync alone.
+    if (m_draftDirSynced) return true;
     const QByteArray directory = QFile::encodeName(QFileInfo(m_draftPath).absolutePath());
     const int fd = ::open(directory.constData(), O_RDONLY | O_DIRECTORY);
     if (fd < 0) { emit storageError(QStringLiteral("Cannot open draft directory for sync")); return false; }
     const bool synced = ::fsync(fd) == 0;
     ::close(fd);
     if (!synced) { emit storageError(QStringLiteral("Cannot sync draft directory")); return false; }
+    m_draftDirSynced = true;
     return true;
 }
 
@@ -78,6 +92,8 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_bodyPrefetchTimer.setSingleShot(true);
     m_bodyPrefetchTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_bodyPrefetchTimer, &QTimer::timeout, this, &CardStore::queueMailBodyPrefetch);
+    m_bodyFlushTimer.setSingleShot(true);
+    connect(&m_bodyFlushTimer, &QTimer::timeout, this, &CardStore::flushBodyWrites);
     m_photoPrefetchTimer.setSingleShot(true);
     m_photoPrefetchTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_photoPrefetchTimer, &QTimer::timeout, this, &CardStore::queueSenderPhotoPrefetch);
@@ -86,6 +102,7 @@ CardStore::CardStore(QObject *parent) : QAbstractListModel(parent),
     m_storageThread.start();
 }
 CardStore::~CardStore() {
+    flushBodyWrites();
     m_bodyPrefetchTimer.stop();
     m_bodyPrefetchQueue.clear();
     m_bodyRequests.clear();
@@ -145,7 +162,7 @@ bool CardStore::open(const QString &path) {
         }
     }
     QList<QVariantMap> cards, outbox;
-    QHash<QString, QVariantMap> bodies;
+    QSet<QString> cachedIds;
     QHash<QString, QString> photos;
     bool opened = false;
     // Startup only, before the window exists. Every subsequent write is queued.
@@ -241,13 +258,8 @@ bool CardStore::open(const QString &path) {
         }
         if (!writeCards(cards, recovered)) return;
         cards = std::move(recovered);
-        if (!q.exec(QStringLiteral("SELECT card_id,html,source_url,messages FROM mail_bodies"))) return;
-        while (q.next()) {
-            const QJsonDocument messages = QJsonDocument::fromJson(q.value(3).toByteArray());
-            bodies.insert(q.value(0).toString(), {{QStringLiteral("html"), q.value(1)},
-                {QStringLiteral("source_url"), q.value(2)},
-                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}});
-        }
+        if (!q.exec(QStringLiteral("SELECT card_id FROM mail_bodies"))) return;
+        while (q.next()) cachedIds.insert(q.value(0).toString());
         // R67: device photo cache survives restart; file URLs are local only.
         if (!q.exec(QStringLiteral("SELECT card_id,file_url FROM sender_photo_files"))) return;
         while (q.next()) {
@@ -262,7 +274,7 @@ bool CardStore::open(const QString &path) {
     m_open = true;
     m_outbox = std::move(outbox);
     for (const auto &op : m_outbox) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
-    m_mailBodies = std::move(bodies);
+    m_bodyCached = std::move(cachedIds);
     m_senderPhotos = std::move(photos);
     injectSenderPhotos(cards);
     replaceCards(std::move(cards));
@@ -1199,7 +1211,7 @@ void CardStore::flush() {
     // Fill the bounded pipeline; every slot frees on its own ACK or failure.
     // Per-op deferral (m_deferredWrites) parks one card, never the whole queue.
     bool progressed = true;
-    while (progressed && (int)m_inFlight.size() < kMaxInFlightOps)
+    while (progressed && (int)m_inFlight.size() < m_maxInFlight)
         progressed = flushNext();
     if (m_outbox.isEmpty() && m_inFlight.isEmpty()) emit flushFinished();
 }
@@ -1370,7 +1382,7 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             m_deferredWrites.insert(opId);
             m_inFlight.remove(opId);
             emit pendingOpsChanged();
-            const int delay = status == 429 ? 60000 : qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
+            const int delay = status == 429 ? kRateLimitRetryMs : qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
             m_retryAttempt = qMin(m_retryAttempt + 1, 6);
             m_retryTimer.start(delay);
             flush(); // Unrelated queued actions must still progress.
@@ -1446,15 +1458,14 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
             m_mutations.insert(inverseId, deferred);
         }
         // Park only the failed card in backoff; the rest of the pipeline keeps
-        // draining. A 429 additionally parks the whole pump until the shared
-        // per-device window recovers.
+        // draining. A 429 additionally pauses the pump for one bounded slice:
+        // the server's per-device token bucket refills continuously, so a
+        // second is enough for a fresh batch of requests; retain the same op.
         m_inFlight.remove(opId);
         m_deferredWrites.insert(opId);
         int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
         if (status == 429) {
-            // No retry metadata is part of this response contract. Give the
-            // shared per-IP minute window time to recover; retain the same op.
-            delay = 60000;
+            delay = kRateLimitRetryMs;
             m_rateCooldown = QDeadlineTimer(delay, Qt::PreciseTimer);
         }
         m_retryAttempt = qMin(m_retryAttempt + 1, 6);
@@ -1462,10 +1473,9 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
         flush();
         return;
     }
-    if (ownerWrite && !appendDraftRecord({{QStringLiteral("op_id"), opId}, {QStringLiteral("acked"), true}})) {
-        m_inFlight.remove(opId);
-        return; // Replay the same op; never prune on a failed durable ACK record.
-    }
+    // The durable ACK is group-committed (commitAcks): every ACK that lands
+    // while a commit is running shares the next journal fsync and the next
+    // SQLite transaction. The op keeps its in-flight slot until that commit.
     QStringList removedIds;
     if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal"))
         removedIds.append(operation.value(QStringLiteral("card_id")).toString());
@@ -1474,75 +1484,153 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     removedIds.erase(std::remove_if(removedIds.begin(), removedIds.end(), [&](const auto &id) {
         return std::any_of(m_cards.cbegin(), m_cards.cend(), [&](const auto &card) { return card.value(QStringLiteral("id")).toString() == id; });
     }), removedIds.end());
-    m_drafts.remove(opId);
-    QMetaObject::invokeMethod(m_storage, [this, opId, response, operation, removedIds] {
+    m_ackQueue.append({opId, response, operation, removedIds, ownerWrite});
+    if (!m_ackCommitting && !m_ackScheduled) {
+        m_ackScheduled = true; // Queued: ACKs delivered in the same event-loop pass coalesce.
+        QMetaObject::invokeMethod(this, &CardStore::commitAcks, Qt::QueuedConnection);
+    }
+}
+void CardStore::commitAcks() {
+    m_ackScheduled = false;
+    if (m_ackCommitting || m_ackQueue.isEmpty() || !m_open) return;
+    QList<PendingAck> batch;
+    batch.swap(m_ackQueue);
+    QList<QVariantMap> records;
+    for (const auto &ack : std::as_const(batch))
+        if (ack.ownerWrite) records.append({{QStringLiteral("op_id"), ack.opId}, {QStringLiteral("acked"), true}});
+    if (!records.isEmpty() && !appendDraftRecords(records)) {
+        for (const auto &ack : std::as_const(batch)) m_inFlight.remove(ack.opId);
+        return; // Replay the same ops; never prune on a failed durable ACK record.
+    }
+    for (const auto &ack : std::as_const(batch)) m_drafts.remove(ack.opId);
+    m_ackCommitting = true;
+    QMetaObject::invokeMethod(m_storage, [this, batch] {
         bool ok = m_db.transaction();
         QSqlQuery q(m_db);
-        q.prepare(QStringLiteral("INSERT OR IGNORE INTO acknowledged_ops(op_id) VALUES(?)"));
-        q.addBindValue(opId);
-        if (ok) ok = q.exec();
-        q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(opId);
-        if (ok) ok = q.exec();
-        q.prepare(QStringLiteral("DELETE FROM acknowledged_ops WHERE op_id=?")); q.addBindValue(opId);
-        if (ok) ok = q.exec();
-        // Delete only acknowledged removals, through the normal owner guard.
-        // In particular a pending note/create must never lose its durable row.
-        for (const auto &id : removedIds) {
-            q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?)"));
-            q.addBindValue(id);
-            q.addBindValue(id);
+        QString failure;
+        for (const auto &ack : batch) {
+            // Same statements, same order as the former per-op commit; one fsync.
+            q.prepare(QStringLiteral("INSERT OR IGNORE INTO acknowledged_ops(op_id) VALUES(?)"));
+            q.addBindValue(ack.opId);
             if (ok) ok = q.exec();
+            q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?")); q.addBindValue(ack.opId);
+            if (ok) ok = q.exec();
+            q.prepare(QStringLiteral("DELETE FROM acknowledged_ops WHERE op_id=?")); q.addBindValue(ack.opId);
+            if (ok) ok = q.exec();
+            // Delete only acknowledged removals, through the normal owner guard.
+            // In particular a pending note/create must never lose its durable row.
+            for (const auto &id : ack.removedIds) {
+                q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?)"));
+                q.addBindValue(id);
+                q.addBindValue(id);
+                if (ok) ok = q.exec();
+            }
+            if (!ok && failure.isEmpty()) failure = q.lastError().text();
         }
         if (ok) ok = m_db.commit();
         if (!ok) m_db.rollback();
-        const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, opId, ok, error, response, operation, removedIds] {
-            m_inFlight.remove(opId);
+        const QString error = failure.isEmpty() ? q.lastError().text() : failure;
+        QMetaObject::invokeMethod(this, [this, batch, ok, error] {
+            m_ackCommitting = false;
+            for (const auto &ack : batch) m_inFlight.remove(ack.opId);
             if (!ok) {
-                m_deferredWrites.insert(opId);
+                for (const auto &ack : batch) m_deferredWrites.insert(ack.opId);
                 emit storageError(error);
                 const int delay = qMin(60000, 1000 * (1 << qMin(m_retryAttempt, 6)));
                 m_retryAttempt = qMin(m_retryAttempt + 1, 6);
                 m_retryTimer.start(delay);
                 flush();
+                if (!m_ackQueue.isEmpty() && !m_ackScheduled) commitAcks();
                 return;
             }
             m_retryAttempt = 0;
-            const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
-                return op.value(QStringLiteral("op_id")).toString() == opId;
-            });
-            for (const auto &id : removedIds) {
-                // Undo may already own this card while the removal ACK was pending.
-                if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == id; }))
-                    m_archivedAwaitingSnapshot.insert(id);
+            for (const auto &ack : batch) {
+                const QString &opId = ack.opId;
+                const auto acknowledgedOp = std::find_if(m_outbox.cbegin(), m_outbox.cend(), [&](const QVariantMap &op) {
+                    return op.value(QStringLiteral("op_id")).toString() == opId;
+                });
+                for (const auto &id : ack.removedIds) {
+                    // Undo may already own this card while the removal ACK was pending.
+                    if (std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &card) { return card.value(QStringLiteral("id")).toString() == id; }))
+                        m_archivedAwaitingSnapshot.insert(id);
+                }
+                const bool restored = acknowledgedOp != m_outbox.cend() &&
+                    acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
+                    acknowledgedOp->value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX") &&
+                    m_mutations.contains(opId);
+                if (restored) {
+                    m_archivedAwaitingSnapshot.remove(acknowledgedOp->value(QStringLiteral("card_id")).toString());
+                    m_restoredAwaitingSnapshot.insert(opId, m_cardsRequestSequence);
+                }
+                m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const QVariantMap &op) {
+                    return op.value(QStringLiteral("op_id")).toString() == opId;
+                }), m_outbox.end());
+                m_failedWrites.remove(opId);
+                m_deferredWrites.remove(opId);
+                m_durableOps.remove(opId);
+                if (!restored) m_mutations.remove(opId);
+                emit operationAcknowledged(ack.operation, ack.response);
+                emit pendingOpsChanged();
+                if (restored) refresh();
             }
-            const bool restored = acknowledgedOp != m_outbox.cend() &&
-                acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
-                acknowledgedOp->value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX") &&
-                m_mutations.contains(opId);
-            if (restored) {
-                m_archivedAwaitingSnapshot.remove(acknowledgedOp->value(QStringLiteral("card_id")).toString());
-                m_restoredAwaitingSnapshot.insert(opId, m_cardsRequestSequence);
-            }
-            m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const QVariantMap &op) {
-                return op.value(QStringLiteral("op_id")).toString() == opId;
-            }), m_outbox.end());
-            m_failedWrites.remove(opId);
-            m_deferredWrites.remove(opId);
-            m_durableOps.remove(opId);
-            if (!restored) m_mutations.remove(opId);
-            emit operationAcknowledged(operation, response);
-            emit pendingOpsChanged();
-            if (restored) refresh();
             flush();
+            if (!m_ackQueue.isEmpty() && !m_ackScheduled) commitAcks();
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
 }
 QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
-    QVariantMap body = m_mailBodies.value(cardId);
-    if (!body.isEmpty() && !body.contains(QStringLiteral("messages")))
-        body.insert(QStringLiteral("messages"), QVariantList{});
+    if (!m_bodyCached.contains(cardId)) return {};
+    for (const BodyWrite &w : m_bodyWriteBatch) {
+        if (w.id != cardId) continue;
+        const QJsonDocument messages = QJsonDocument::fromJson(w.messagesJson.toUtf8());
+        return {{QStringLiteral("html"), w.html}, {QStringLiteral("source_url"), w.sourceUrl},
+                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}};
+    }
+    const auto hit = m_bodyLru.constFind(cardId);
+    if (hit != m_bodyLru.cend()) {
+        m_bodyLruOrder.removeOne(cardId);
+        m_bodyLruOrder.append(cardId);
+        return *hit;
+    }
+    const QVariantMap body = readBodyFromDb(cardId);
+    if (!body.isEmpty()) lruInsert(cardId, body);
     return body;
+}
+QVariantMap CardStore::readBodyFromDb(const QString &cardId) const {
+    QVariantMap body;
+    // Same storage thread and FIFO queue as the writers, so a read always
+    // observes every body write queued before it.
+    QMetaObject::invokeMethod(m_storage, [&] {
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("SELECT html,source_url,messages FROM mail_bodies WHERE card_id=?"));
+        q.addBindValue(cardId);
+        if (!q.exec() || !q.next()) return;
+        const QJsonDocument messages = QJsonDocument::fromJson(q.value(2).toByteArray());
+        body = {{QStringLiteral("html"), q.value(0)}, {QStringLiteral("source_url"), q.value(1)},
+                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}};
+    }, Qt::BlockingQueuedConnection);
+    return body;
+}
+static qint64 bodyBytes(const QVariantMap &body) {
+    qint64 bytes = 2 * (body.value(QStringLiteral("html")).toString().size() + body.value(QStringLiteral("source_url")).toString().size());
+    for (const QVariant &m : body.value(QStringLiteral("messages")).toList())
+        bytes += 2 * m.toMap().value(QStringLiteral("html")).toString().size();
+    return bytes;
+}
+void CardStore::lruRemove(const QString &cardId) const {
+    const auto it = m_bodyLru.find(cardId);
+    if (it == m_bodyLru.end()) return;
+    m_bodyLruBytes -= bodyBytes(*it);
+    m_bodyLru.erase(it);
+    m_bodyLruOrder.removeOne(cardId);
+}
+void CardStore::lruInsert(const QString &cardId, const QVariantMap &body) const {
+    lruRemove(cardId);
+    m_bodyLru.insert(cardId, body);
+    m_bodyLruOrder.append(cardId);
+    m_bodyLruBytes += bodyBytes(body);
+    // Always keep the newest body, even when it alone exceeds the cap.
+    while (m_bodyLruBytes > kBodyLruBytes && m_bodyLruOrder.size() > 1) lruRemove(m_bodyLruOrder.first());
 }
 int CardStore::mailSyncPending() const {
     int pending = 0;
@@ -1550,7 +1638,7 @@ int CardStore::mailSyncPending() const {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (m_mailBodies.value(id).isEmpty() || m_bodyPersisting.contains(id)) ++pending;
+        if (!m_bodyCached.contains(id) || m_bodyPersisting.contains(id)) ++pending;
     }
     return pending;
 }
@@ -1564,7 +1652,7 @@ void CardStore::queueMailBodyPrefetch() {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (!m_mailBodies.value(id).isEmpty() || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
+        if (m_bodyCached.contains(id) || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
         eligible.insert(id);
     }
     m_bodyPrefetchQueue.erase(std::remove_if(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end(),
@@ -1586,10 +1674,10 @@ void CardStore::prefetchNextMailBody() {
         m_bodyPrefetchTimer.start(int(m_bodyBackoff.remainingTime()));
         return;
     }
-    // Two outstanding downloads bound memory/server work; a completed durable
-    // write releases a slot immediately, not after an arbitrary per-body sleep.
+    // A wide pipeline (like the outbox drain) bounded by kBodyWindow; a completed durable batch releases slots
+    // immediately, not after an arbitrary per-body sleep.
     qint64 retryIn = 60000;
-    for (int index = 0; index < m_bodyPrefetchQueue.size() && m_bodyRequests.size() + m_bodyPersisting.size() < 2;) {
+    for (int index = 0; index < m_bodyPrefetchQueue.size() && m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow;) {
         const QString id = m_bodyPrefetchQueue.at(index);
         const auto retry = m_bodyRetryAfter.constFind(id);
         if (retry != m_bodyRetryAfter.cend() && !retry->hasExpired()) {
@@ -1601,7 +1689,7 @@ void CardStore::prefetchNextMailBody() {
         m_bodyRequests.insert(id);
         emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
     }
-    if (!m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.size() + m_bodyPersisting.size() < 2)
+    if (!m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow)
         m_bodyPrefetchTimer.start(int(retryIn));
 }
 void CardStore::requestMailBody(const QString &cardId) {
@@ -1639,38 +1727,62 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     const QString html = body.value(QStringLiteral("html")).toString();
     QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
     const bool hasMessages = body.contains(QStringLiteral("messages"));
-    const QVariantList messages = hasMessages ? body.value(QStringLiteral("messages")).toList() : QVariantList{};
+    // Earlier-message originals survive a body response that omits them: read
+    // them from SQLite only in that case, never to hold them resident.
+    const QVariantList messages = hasMessages ? body.value(QStringLiteral("messages")).toList()
+        : cachedMailBody(cardId).value(QStringLiteral("messages")).toList();
     const QString messagesJson = QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(messages)).toJson(QJsonDocument::Compact));
     // Body responses omit empty source_url; SQLite requires a non-null string.
     if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
     // A malformed/error response must not replace a usable cached body.
     if (html.trimmed().isEmpty()) { reportMailBodyFailed(cardId, 422); return; }
-    const auto previous = m_mailBodies.value(cardId);
-    QVariantMap updated{{QStringLiteral("html"), html}, {QStringLiteral("source_url"), sourceUrl}};
-    updated.insert(QStringLiteral("messages"), hasMessages ? QVariant(messages) : previous.value(QStringLiteral("messages"), QVariantList{}));
+    // A newer response for an id still waiting in the batch replaces it.
+    const bool hadBody = m_bodyCached.contains(cardId);
+    m_bodyWriteBatch.removeIf([&](const BodyWrite &w) { return w.id == cardId; });
     m_bodyPersisting.insert(cardId);
-    m_mailBodies.insert(cardId, updated);
+    m_bodyCached.insert(cardId);
+    lruRemove(cardId);
+    m_bodyWriteBatch.append({cardId, html, sourceUrl, messagesJson, hadBody});
     emit mailSyncStateChanged();
-    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, messagesJson, previous, hasMessages] {
-        const QString persistedMessages = hasMessages ? messagesJson : QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(previous.value(QStringLiteral("messages")).toList())).toJson(QJsonDocument::Compact));
-        QSqlQuery q(m_db);
-        q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages) VALUES(?,?,?,?) "
-                                 "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages"));
-        q.addBindValue(cardId); q.addBindValue(html); q.addBindValue(sourceUrl);
-        q.addBindValue(persistedMessages);
-        const bool ok = q.exec();
-        const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, cardId, previous, ok, error] {
-            m_bodyPersisting.remove(cardId);
-            if (!ok) {
-                m_mailBodies.insert(cardId, previous);
-                emit storageError(error);
-                reportMailBodyFailed(cardId);
-                return;
+    if (m_bodyWriteBatch.size() >= 16) flushBodyWrites();
+    else if (!m_bodyFlushTimer.isActive()) m_bodyFlushTimer.start(25);
+}
+void CardStore::flushBodyWrites() {
+    m_bodyFlushTimer.stop();
+    if (m_bodyWriteBatch.isEmpty()) return;
+    const QList<BodyWrite> batch = std::move(m_bodyWriteBatch);
+    m_bodyWriteBatch.clear();
+    ++m_bodyTransactions;
+    // One transaction per batch; a body is released from m_bodyPersisting only
+    // after its transaction committed.
+    QMetaObject::invokeMethod(m_storage, [this, batch] {
+        bool ok = m_db.transaction();
+        QString error = m_db.lastError().text();
+        if (ok) {
+            QSqlQuery q(m_db);
+            q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages) VALUES(?,?,?,?) "
+                                     "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages"));
+            for (const BodyWrite &w : batch) {
+                q.addBindValue(w.id); q.addBindValue(w.html); q.addBindValue(w.sourceUrl); q.addBindValue(w.messagesJson);
+                if (!q.exec()) { ok = false; error = q.lastError().text(); break; }
             }
-            m_bodyRetryAfter.remove(cardId);
-            m_bodyRetryAttempts.remove(cardId);
-            emit mailBodyChanged(cardId);
+            if (ok) { ok = m_db.commit(); if (!ok) error = m_db.lastError().text(); }
+            if (!ok) m_db.rollback();
+        }
+        QMetaObject::invokeMethod(this, [this, batch, ok, error] {
+            for (const BodyWrite &w : batch) {
+                m_bodyPersisting.remove(w.id);
+                if (ok) {
+                    m_bodyRetryAfter.remove(w.id);
+                    m_bodyRetryAttempts.remove(w.id);
+                    emit mailBodyChanged(w.id);
+                    continue;
+                }
+                if (!w.hadBody) m_bodyCached.remove(w.id);
+                lruRemove(w.id);
+                emit storageError(error);
+                reportMailBodyFailed(w.id);
+            }
             emit mailSyncStateChanged();
             queueMailBodyPrefetch();
         }, Qt::QueuedConnection);
@@ -1679,11 +1791,10 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
 void CardStore::reportMailBodyFailed(const QString &cardId, int status) {
     m_bodyRequests.remove(cardId);
     const int attempt = m_bodyRetryAttempts.value(cardId);
-    const int delay = status == 429 ? 60000 : qMin(60000, 1000 * (1 << qMin(attempt, 6)));
+    const int delay = status == 429 ? 1000 : qMin(60000, 1000 * (1 << qMin(attempt, 6)));
     m_bodyRetryAttempts.insert(cardId, qMin(attempt + 1, 6));
     m_bodyRetryAfter.insert(cardId, QDeadlineTimer(delay, Qt::PreciseTimer));
-    // The server shares a 60/min device window across routes and supplies no
-    // Retry-After. Park the entire body queue on 429, not just the rejected card.
+    // The server's per-device bucket answers 429 with Retry-After: 1. Park the entire body queue on 429, not just the rejected card.
     if (status == 429) m_bodyBackoff = QDeadlineTimer(delay, Qt::PreciseTimer);
     emit mailBodyFailed(cardId);
     emit mailSyncStateChanged();
