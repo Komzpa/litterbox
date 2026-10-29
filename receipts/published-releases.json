@@ -1,0 +1,15 @@
+{
+  "releases": [
+    {
+      "versionCode": 35,
+      "versionName": "0.1-53",
+      "package": "org.qtproject.example.litterbox_qt",
+      "sha256": "d8b7031d363561f1012fbe7d8785f5aa9d75301560ad3fe94cf751ac12ec91f6",
+      "bytes": 21254296,
+      "servedPath": "/opt/litterbox/server/litterbox-qt-v35-d8b7031d.apk",
+      "source": "5bc8a0b301cd132e0dd950d7ea2650b8c01f9d33",
+      "publishedAt": "2026-10-29T03:44:47Z",
+      "receipt": "/home/kom/proj/ai_pr/litterbox-release-v35-20261029/publish/RELEASE-v35.md"
+    }
+  ]
+}
