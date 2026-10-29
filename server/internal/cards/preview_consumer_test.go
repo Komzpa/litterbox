@@ -34,9 +34,9 @@ func TestPreviewConsumerPreservation(t *testing.T) {
  db,err:=sql.Open("pgx",td.DSN); if err!=nil {t.Fatal(err)}; defer db.Close()
  paths,err:=filepath.Glob("../../db/*.sql");if err!=nil {t.Fatal(err)}
  for _,path:=range paths {raw,err:=os.ReadFile(path);if err!=nil {t.Fatal(err)};if _,err=db.Exec(td.Migration(string(raw)));err!=nil {t.Fatalf("%s: %v",path,err)}}
+ h:=Handler{DB:db,Location:time.UTC}
  list:=func(tenant uuid.UUID) []Card {
   t.Helper()
-  h:=Handler{DB:db,Location:time.UTC}
   req:=httptest.NewRequest("GET","/v1/cards",nil);req=req.WithContext(WithTenant(req.Context(),tenant.String()))
   w:=httptest.NewRecorder();h.List(w,req)
   if w.Code!=200 {t.Fatalf("List: %d %s",w.Code,w.Body.String())}
@@ -74,6 +74,11 @@ func TestPreviewConsumerPreservation(t *testing.T) {
   var text,body string
   if err:=db.QueryRow(`SELECT text,html FROM messages WHERE tenant_id=$1 AND card_id=$2`,tenant,card).Scan(&text,&body);err!=nil {t.Fatal(err)}
   if text!=tc.text || body!=tc.html {t.Fatal("List changed full MIME bodies")}
+  if tc.name=="B1-cancellation" {
+   warm:=list(tenant);if len(warm)!=1 || warm[0].Snippet!=tc.want {t.Fatalf("warm preview=%+v",warm)}
+   if _,err:=db.Exec(`UPDATE messages SET html='<p>Updated live preview.</p>' WHERE tenant_id=$1 AND card_id=$2`,tenant,card);err!=nil {t.Fatal(err)}
+   changed:=list(tenant);if len(changed)!=1 || changed[0].Snippet!="Updated live preview." {t.Fatalf("updated preview=%+v",changed)}
+  }
   t.Logf("preview=%q text_sha256=%x html_sha256=%x",rows[0].Snippet,sha256.Sum256([]byte(text)),sha256.Sum256([]byte(body)))
  })}
  for _,tc:=range []struct{name,subject,state string;cluster bool}{
