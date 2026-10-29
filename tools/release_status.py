@@ -118,13 +118,22 @@ def main() -> int:
 
     latest = max(releases, key=lambda r: int(r["versionCode"])) if releases else None
     if latest and latest.get("source"):
-        changed = git("log", "--oneline", f"{latest['source']}..HEAD", "--", "qt/")
+        source = latest["source"]
+        changed = git("log", "--oneline", f"{source}..HEAD", "--", "qt/")
         if changed:
             count = len(changed.splitlines())
             problems.append(
-                f"{count} qt/ commit(s) after published source {latest['source'][:12]}: "
+                f"{count} qt/ commit(s) after published source {source[:12]}: "
                 "unreleased mobile change")
             notes.extend(changed.splitlines()[:5])
+        contained = subprocess.run(
+            ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", source, "HEAD"],
+            check=False,
+        ).returncode == 0
+        if not contained:
+            problems.append(
+                f"HEAD does not contain published source {source[:12]}: "
+                "this tree would ship older mobile code than the served APK")
     if latest and int(latest["versionCode"]) > tree_code:
         problems.append(
             f"ledger versionCode {latest['versionCode']} > tree {tree_code}")
