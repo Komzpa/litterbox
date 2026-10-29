@@ -1,0 +1,38 @@
+{
+  "status": "PASS_OLDER_CONSUMER_UPDATE_READY_UI",
+  "accepted": true,
+  "artifact_source_sha": "cd2c7347b9e3cefa76ecc35a5f148089f9ff7c86",
+  "served_android": {
+    "version_code": 34,
+    "package": "org.qtproject.example.litterbox_qt",
+    "sha256": "a94d1f66c0e31083f744b5bbb0f7118ea292533f489c5e108d675e9d1e1c552c",
+    "signer_sha256": "a36ea8f6c4aa164adbbfb07ccbd4161ef2756b9bbdeef37123a7fe30d9e76a37"
+  },
+  "older_consumer": {
+    "device": "isolated owned AVD litterbox-older-consumer-20261026b",
+    "installed_version_code": 33,
+    "installed_version_name": "0.1-45",
+    "installed_apk_path": "/opt/litterbox/server/litterbox-qt-v33-fd338b14.apk",
+    "installed_apk_sha256": "fd338b14b0c933732872b6591b6064ed0b6cd03ec2041272419d02e965d88afb",
+    "package": "org.qtproject.example.litterbox_qt",
+    "signer_sha256": "a36ea8f6c4aa164adbbfb07ccbd4161ef2756b9bbdeef37123a7fe30d9e76a37",
+    "normal_ui_enrollment": true,
+    "enrolled_status_readback": true,
+    "configured_api_origin": "http://10.0.2.2:8081 (isolated Android emulator host alias to production loopback API)",
+    "explicit_settings_check_updates_tapped": true,
+    "ui_result": "Update ready; Install action visible; no installer action taken",
+    "basis": "AndroidUpdater only exposes update-ready after strictly-newer manifest check, complete APK download, and exact manifest SHA-256 match; published v34 manifest/APK SHA verified for all three public/server origins in release-cd2c734-publication.json; the APK installed in this consumer remains v33."
+  },
+  "capture": {
+    "path": "receipts/older-consumer-update-proof/older-client-update-ready-redacted-v2.png",
+    "sha256": "564ef77d8e7d14ad03cdc81cb4094b34214993a6983fc4e9d0258e56e59657e0",
+    "redactions": "Only the device/tenant identifiers and mailbox address values are masked. Update ready and Install, the enrolled state, emulator server URL and Check updates control remain visible."
+  },
+  "retro": [
+    "Retried the original installed old APK and normal enrollment UI in a new isolated AVD; never touched the preserved candidate AVD.",
+    "The isolated emulator used Xvfb/llvmpipe; this capture proves only the visible update-ready state, not renderer or layout quality.",
+    "Public HTTPS connection from app could not be completed in this AVD; enrollment used emulator-only 10.0.2.2:8081 host loopback alias. Published endpoint authentication/byte evidence remains separate and is referenced, not rerun.",
+    "The first failed AVD launch and mis-taps did not alter production data; an isolated device was created via normal invite/enroll and revoked with DELETE 204.",
+    "No installer/unknown-source prompt was opened or approved; no physical phone, owner desktop, mail/archive/SMTP or source runtime edits."
+  ]
+}
