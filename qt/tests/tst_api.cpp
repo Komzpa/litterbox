@@ -79,7 +79,8 @@ private slots:
         QElapsedTimer elapsed;
         elapsed.start();
         const int bodyId = api.get(QStringLiteral("/v1/cards/stalled/body"));
-        const int metadataId = api.get(QStringLiteral("/v1/cards"));
+        // /v1/cards carries its own 30 s snapshot deadline; use an untimed GET.
+        const int metadataId = api.get(QStringLiteral("/v1/version"));
         QTRY_COMPARE(sockets.size(), 2);
         QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 65000);
         // Allow Qt timer precision variance, but reject a shortened retry delay.
@@ -89,9 +90,9 @@ private slots:
         QCOMPARE(finished.size(), 0);
         QTRY_VERIFY(sockets.value("/v1/cards/stalled/body").isNull() ||
             sockets.value("/v1/cards/stalled/body")->state() == QAbstractSocket::UnconnectedState);
-        // Neighboring negative control: non-body GET has no new timeout and
+        // Neighboring negative control: an untimed GET has no new timeout and
         // remains a usable live request after the body transfer was aborted.
-        auto metadata = sockets.value("/v1/cards");
+        auto metadata = sockets.value("/v1/version");
         QVERIFY(metadata);
         QCOMPARE(metadata->state(), QAbstractSocket::ConnectedState);
         metadata->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
