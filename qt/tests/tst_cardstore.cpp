@@ -1361,6 +1361,81 @@ private slots:
         QCOMPARE(server.received[0].value("args").toMap().value("note").toString(), QStringLiteral("First edit"));
         QCOMPARE(server.received[1].value("args").toMap().value("note").toString(), QStringLiteral("Latest edit"));
     }
+    void rejectedReorderRebasedFromFreshSnapshot_data() {
+        QTest::addColumn<QString>("reason");
+        QTest::newRow("removed-id") << QStringLiteral("card not found");
+        QTest::newRow("new-id") << QStringLiteral("card order must include every open card");
+    }
+    void rejectedReorderRebasedFromFreshSnapshot() {
+        QFETCH(QString, reason);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("rebase.sqlite");
+        const QString second = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString third = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString added = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        CardStore store;
+        QVERIFY(store.open(path));
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}}, QVariantMap{{"id", second}}, QVariantMap{{"id", third}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+        const QString original = store.reorderCards({second, third, cardId});
+        QVERIFY(!original.isEmpty());
+        QSignalSpy posts(&store, &CardStore::requestPost);
+        QSignalSpy snapshots(&store, &CardStore::requestCards);
+        store.setOnline(true);
+        QTRY_COMPARE(posts.size(), 1);
+        store.reportPostResult(original, 422, {{"error", reason}});
+        QCOMPARE(store.pendingOps(), 1);
+        QVERIFY(!snapshots.isEmpty());
+        const quint64 fresh = snapshots.last().at(1).toULongLong();
+        QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}}, QVariantMap{{"id", third}}, QVariantMap{{"id", added}}}},
+            {"later", QVariantList{}}, {"missed", QVariantList{}}}, fresh));
+        QTRY_COMPARE(posts.size(), 2);
+        const QVariantMap replacement = posts.last().at(2).toMap();
+        const QString replacementId = replacement.value("op_id").toString();
+        QVERIFY(replacementId != original);
+        QCOMPARE(replacement.value("args").toMap().value("cards").toList(), (QVariantList{third, cardId, added}));
+        QCOMPARE(store.pendingOps(), 1);
+        store.reportPostResult(replacementId, 200, {{"ok", true}});
+        QTRY_COMPARE(store.pendingOps(), 0);
+        store.retrySync();
+        QCOMPARE(posts.size(), 2);
+    }
+    void deletedCardOperationRetires_data() {
+        QTest::addColumn<int>("status");
+        QTest::newRow("http404") << 404;
+        QTest::newRow("semantic422") << 422;
+    }
+    void deletedCardOperationRetires() {
+        QFETCH(int, status);
+        QTemporaryDir directory;
+        const QString path = directory.filePath("deleted.sqlite");
+        QString original;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"note", "Original"}}}},
+                {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            original = store.enqueueOp(cardId, "note", {{"note", "Preserve original journal bytes"}});
+            QVERIFY(!original.isEmpty());
+            QSignalSpy posts(&store, &CardStore::requestPost);
+            QSignalSpy acknowledgements(&store, &CardStore::operationAcknowledged);
+            store.setOnline(true);
+            QTRY_COMPARE(posts.size(), 1);
+            store.reportPostResult(original, status, {{"error", "card not found"}});
+            QTRY_COMPARE(store.pendingOps(), 0);
+            QCOMPARE(acknowledgements.size(), 0);
+            store.retrySync();
+            QCOMPARE(posts.size(), 1);
+        }
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.pendingOps(), 0);
+        QFile journal(path + ".drafts.jsonl");
+        QVERIFY(journal.open(QIODevice::ReadOnly));
+        const QByteArray bytes = journal.readAll();
+        QVERIFY(bytes.contains("Preserve original journal bytes"));
+        QVERIFY(bytes.contains("\"retired\":true"));
+    }
     void rejectedJournalRetainsTextAndRetries_data() {
         QTest::addColumn<QString>("retryVia");
         QTest::newRow("backoff") << QStringLiteral("backoff");

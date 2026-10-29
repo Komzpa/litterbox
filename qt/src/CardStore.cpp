@@ -122,6 +122,7 @@ bool CardStore::open(const QString &path) {
     m_drafts.clear();
     m_draftOrder.clear();
     m_draftPath = path + QStringLiteral(".drafts.jsonl");
+    QSet<QString> retired;
     QFile journal(m_draftPath);
     if (journal.exists()) {
         if (!journal.open(QIODevice::ReadOnly)) { emit storageError(journal.errorString()); return false; }
@@ -129,7 +130,17 @@ bool CardStore::open(const QString &path) {
             const auto record = QJsonDocument::fromJson(journal.readLine()).object().toVariantMap();
             const QString id = record.value(QStringLiteral("op_id")).toString();
             if (id.isEmpty()) continue; // Empty lines or a torn, unaccepted append.
-            if (record.value(QStringLiteral("acked")).toBool()) m_drafts.remove(id);
+            if (record.value(QStringLiteral("retired")).toBool()) {
+                retired.insert(id);
+                m_drafts.remove(id);
+                const auto replacement = record.value(QStringLiteral("replacement")).toMap();
+                const QString replacementId = replacement.value(QStringLiteral("op_id")).toString();
+                if (!replacementId.isEmpty()) {
+                    m_drafts.insert(replacementId, replacement);
+                    m_draftOrder.append(replacementId);
+                }
+            }
+            else if (record.value(QStringLiteral("acked")).toBool()) m_drafts.remove(id);
             else { m_drafts.insert(id, record); m_draftOrder.append(id); }
         }
     }
@@ -174,10 +185,21 @@ bool CardStore::open(const QString &path) {
             classify.addBindValue(pending.value(0));
             if (!classify.exec()) return;
         }
-        if (!execute(QStringLiteral("CREATE TABLE IF NOT EXISTS acknowledged_ops (op_id TEXT PRIMARY KEY)")) ||
-            !execute(QStringLiteral("CREATE TRIGGER IF NOT EXISTS retain_owner_outbox BEFORE DELETE ON outbox WHEN OLD.owner_write=1 AND NOT EXISTS(SELECT 1 FROM acknowledged_ops WHERE op_id=OLD.op_id) BEGIN SELECT RAISE(ABORT,'Refusing deletion of unacknowledged owner op'); END")) ||
+        if (!execute(QStringLiteral("CREATE TABLE IF NOT EXISTS retired_ops (op_id TEXT PRIMARY KEY)")) ||
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS acknowledged_ops (op_id TEXT PRIMARY KEY)")) ||
+            !execute(QStringLiteral("DROP TRIGGER IF EXISTS retain_owner_outbox")) ||
+            !execute(QStringLiteral("CREATE TRIGGER retain_owner_outbox BEFORE DELETE ON outbox WHEN OLD.owner_write=1 AND NOT EXISTS(SELECT 1 FROM acknowledged_ops WHERE op_id=OLD.op_id) AND NOT EXISTS(SELECT 1 FROM retired_ops WHERE op_id=OLD.op_id) BEGIN SELECT RAISE(ABORT,'Refusing deletion of unacknowledged owner op'); END")) ||
             !execute(QStringLiteral("CREATE TRIGGER IF NOT EXISTS retain_owner_card BEFORE DELETE ON cards WHEN EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=OLD.id) BEGIN SELECT RAISE(ABORT,'Refusing deletion of unacknowledged owner row'); END")) ||
             !execute(QStringLiteral("CREATE TRIGGER IF NOT EXISTS immutable_owner_outbox BEFORE UPDATE OF payload,op_id ON outbox WHEN OLD.owner_write=1 BEGIN SELECT RAISE(ABORT,'Refusing overwrite of owner op'); END"))) return;
+        for (const auto &id : retired) {
+            QSqlQuery retire(m_db);
+            retire.prepare(QStringLiteral("INSERT OR IGNORE INTO retired_ops VALUES(?)"));
+            retire.addBindValue(id);
+            if (!retire.exec()) return;
+            retire.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?"));
+            retire.addBindValue(id);
+            if (!retire.exec()) return;
+        }
         QSqlQuery q(m_db);
         if (!q.exec(QStringLiteral("SELECT payload,sender_name FROM cards ORDER BY position"))) return;
         while (q.next()) {
@@ -652,6 +674,26 @@ bool CardStore::applyRemoteCards(const QVariantMap &sections, quint64 requestId)
         return leftPinned && leftRank.toLongLong() < rightRank.toLongLong();
     });
     m_latestCardsResponse = requestId;
+    if (!m_rejectedReorder.isEmpty() && requestId >= m_rejectedReorderSnapshot) {
+        const QString rejectedId = m_rejectedReorder;
+        m_rejectedReorder.clear();
+        QVariantList order;
+        QSet<QString> included;
+        for (const auto &op : std::as_const(m_outbox)) {
+            if (op.value(QStringLiteral("op_id")).toString() != rejectedId) continue;
+            for (const auto &value : op.value(QStringLiteral("args")).toMap().value(QStringLiteral("cards")).toList())
+                if (ids.contains(value.toString())) { order.append(value); included.insert(value.toString()); }
+        }
+        for (const auto &card : cards) {
+            const QVariant id = card.value(QStringLiteral("id"));
+            if (!included.contains(id.toString())) order.append(id);
+        }
+        QVariantMap replacement;
+        if (!order.isEmpty()) replacement = {{QStringLiteral("op_id"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
+            {QStringLiteral("card_id"), order.first()}, {QStringLiteral("type"), QStringLiteral("reorder_cards")},
+            {QStringLiteral("args"), QVariantMap{{QStringLiteral("cards"), order}}}};
+        retireRejectedOperation(rejectedId, replacement);
+    }
     for (auto it = m_restoredAwaitingSnapshot.begin(); it != m_restoredAwaitingSnapshot.end();) {
         if (requestId > it.value()) {
             m_mutations.remove(it.key());
@@ -1182,6 +1224,51 @@ void CardStore::flushNext() {
         emit requestPost(id, QStringLiteral("/v1/ops"), payload);
     }
 }
+void CardStore::retireRejectedOperation(const QString &opId, const QVariantMap &replacement) {
+    // Retirement is not an ACK; original journal bytes remain available.
+    const QString replacementId = replacement.value(QStringLiteral("op_id")).toString();
+    const QVariantMap draft{{QStringLiteral("op_id"), replacementId}, {QStringLiteral("op"), replacement}};
+    QVariantMap record{{QStringLiteral("op_id"), opId}, {QStringLiteral("retired"), true}};
+    if (!replacement.isEmpty()) record.insert(QStringLiteral("replacement"), draft);
+    // One durable append binds retirement and replacement across process death.
+    if (!appendDraftRecord(record)) { m_inFlight.clear(); return; }
+    if (!replacement.isEmpty()) m_drafts.insert(replacementId, draft);
+    m_drafts.remove(opId);
+    QMetaObject::invokeMethod(m_storage, [this, opId, replacement, replacementId] {
+        bool ok = m_db.transaction();
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("INSERT OR IGNORE INTO retired_ops VALUES(?)"));
+        q.addBindValue(opId);
+        if (ok) ok = q.exec();
+        q.prepare(QStringLiteral("DELETE FROM outbox WHERE op_id=?"));
+        q.addBindValue(opId);
+        if (ok) ok = q.exec();
+        if (ok && !replacement.isEmpty()) {
+            q.prepare(QStringLiteral("INSERT INTO outbox(op_id,payload,owner_write) VALUES(?,?,1)"));
+            q.addBindValue(replacementId);
+            q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(replacement)).toJson(QJsonDocument::Compact)));
+            ok = q.exec();
+        }
+        if (ok) ok = m_db.commit();
+        if (!ok) m_db.rollback();
+        const QString error = q.lastError().text();
+        QMetaObject::invokeMethod(this, [this, opId, replacement, replacementId, ok, error] {
+            m_inFlight.clear();
+            if (!ok) { emit storageError(error); return; }
+            m_outbox.erase(std::remove_if(m_outbox.begin(), m_outbox.end(), [&](const auto &op) {
+                return op.value(QStringLiteral("op_id")).toString() == opId;
+            }), m_outbox.end());
+            m_mutations.remove(opId);
+            m_failedWrites.remove(opId);
+            m_deferredWrites.remove(opId);
+            m_durableOps.remove(opId);
+            if (!replacement.isEmpty()) { m_outbox.append(replacement); m_durableOps.insert(replacementId); }
+            emit pendingOpsChanged();
+            refresh();
+            flush();
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
 void CardStore::reportPostResult(const QString &opId, int status, const QVariantMap &response) {
     if (opId != m_inFlight || m_inFlight.isEmpty()) return;
     const bool acknowledged = status >= 200 && status < 300 && response.value(QStringLiteral("ok")) == QVariant(true);
@@ -1192,6 +1279,17 @@ void CardStore::reportPostResult(const QString &opId, int status, const QVariant
     if (queued == m_outbox.cend()) return;
     const QVariantMap operation = *queued;
     const QString type = operation.value(QStringLiteral("type")).toString();
+    const QString error = response.value(QStringLiteral("error")).toString();
+    const bool missing = status == 404 || (status == 422 && error == QStringLiteral("card not found"));
+    const bool staleOrder = type == QStringLiteral("reorder_cards") &&
+        (missing || (status == 422 && error == QStringLiteral("card order must include every open card")));
+    if (staleOrder) {
+        m_rejectedReorder = opId;
+        m_rejectedReorderSnapshot = ++m_cardsRequestSequence;
+        emit requestCards(QStringLiteral("/v1/cards"), m_rejectedReorderSnapshot);
+        return;
+    }
+    if (missing) { retireRejectedOperation(opId); return; }
     // HTTP 4xx is permanent only for reversible actions, never for a write.
     // A server permission/schema failure must not erase the owner's content.
     const bool ownerWrite = CardStore::ownerWrite(operation);

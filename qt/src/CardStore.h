@@ -159,6 +159,9 @@ private:
     void retainOwnerRows(QList<QVariantMap> &cards) const;
     void projectPendingRemovals(QList<QVariantMap> &cards) const;
     bool appendDraftRecord(const QVariantMap &record);
+    void retireRejectedOperation(const QString &opId, const QVariantMap &replacement = {});
+    QString m_rejectedReorder;
+    quint64 m_rejectedReorderSnapshot = 0;
     QString m_draftPath;
     QHash<QString, QVariantMap> m_drafts;
     QStringList m_draftOrder;

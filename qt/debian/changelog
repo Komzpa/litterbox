@@ -1,5 +1,8 @@
 litterbox-qt (0.1-53) unstable; urgency=medium
 
+  * Rebase rejected stale card orders against a fresh server snapshot with a
+    new operation identity. Retire explicitly not-found operations durably,
+    separately from acknowledgements, without erasing original draft bytes.
   * Retry and Sync mail now request a fresh snapshot even while offline,
     without changing automatic refresh gating.
   * Expose the offline Retry action to accessibility with a 48dp minimum target.

@@ -138,10 +138,16 @@ Each requirement is **decided** or **open** and names its source.
   and the existing idempotent thread-message endpoint; composer text clears only
   after the local durable append, never before. Owner-authored content and
   its outbox operation may be pruned only after a 2xx acknowledgement of that
-  exact op_id. HTTP status, network loss, process death, restart, missing/stale
-  snapshots, enrollment, profile switching and app updates never authorize
-  deletion or rollback of owner text. Only reversible archive/spam/snooze/pin
-  triage may roll back. SQLite guards refuse unacknowledged owner-row/outbox
+  exact op_id, except for explicit server not-found rejection (404 or 422
+  `card not found`): retire that operation durably without erasing the original
+  draft journal bytes or reporting an ACK. A stale `reorder_cards` rejection
+  instead retires and replaces the request with a new op_id after a fresh server
+  snapshot, retaining the intended relative order of surviving ids and appending
+  newly observed ids (owner-directed correction, 2026-10-29). Generic HTTP errors,
+  network loss, process death, restart, missing/stale snapshots, enrollment,
+  profile switching and app updates never authorize deletion or rollback of
+  owner text. Only reversible archive/spam/snooze/pin triage may roll back.
+  SQLite guards refuse unacknowledged and unretired owner-row/outbox
   deletion and immutable-payload overwrite; model reconciliation retains pending
   owner rows and fields. Startup replays fsynced drafts missing from SQLite.
   Retention preserves the durable owner bytes, not visibility of a card already
