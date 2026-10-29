@@ -28,6 +28,8 @@ TestCase {
     }
     QtObject { id: timeRules; function display(value) { return value } }
     Component { id: inboxComponent; App.InboxView {} }
+    FontMetrics { id: actualMetrics }
+    FontMetrics { id: expectedMetrics }
     function fixture() {
         store.clear()
         const now = new Date()
@@ -49,6 +51,37 @@ TestCase {
         add("today-single", "Review latest patch", 0, "", undefined, 0, 12, 0, "can1357/oh-my-pi [bot]")
         add("older-head", "OSGeo review comments", 1, "older", true, 2, 16, 0)
         add("older-child", "Original project discussion", 1, "older", false, 2, 15, 0)
+    }
+    function test_fontScale_data() {
+        return [{tag: "default", scale: 1}, {tag: "large", scale: 1.5}]
+    }
+    function test_fontScale(data) {
+        fixture()
+        for (let i = store.count - 1; i >= 0; --i)
+            if (store.get(i).cardId !== "today-single" && store.get(i).cardId !== "today-head") store.remove(i)
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
+            timeRules: timeRules, width: 412, height: 915})
+        verify(inbox)
+        const baseSize = inbox.themeFont.pointSize
+        const family = inbox.themeFont.family
+        inbox.themeFont = Qt.font({family: family, pointSize: baseSize * data.scale})
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) && list.itemAtIndex(1) })
+        const rows = [list.itemAtIndex(0), list.itemAtIndex(1)]
+        for (const pair of [["mailTitle-today-single", 1.10, 0], ["mailSender-today-single", 1, 2],
+                            ["mailSnippet-today-single", 1, 1], ["connectionStatus", 1, 1],
+                            ["bundleAccountLabel-today-head", 1, 2], ["bundleLatestLabel-today-head", 1, 1]]) {
+            const label = findChild(inbox, pair[0]) || findChild(rows[0], pair[0]) || findChild(rows[1], pair[0])
+            verify(label, pair[0])
+            fuzzyCompare(label.font.pointSize, (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor, 0.01, pair[0])
+            actualMetrics.font = label.font
+            expectedMetrics.font = Qt.font({family: label.font.family,
+                pointSize: (baseSize * pair[1] - pair[2]) * inbox.fontScaleFactor,
+                weight: label.font.weight})
+            fuzzyCompare(actualMetrics.height, expectedMetrics.height, 1, pair[0] + " pixel height")
+        }
+        inbox.close()
     }
     function test_capture_data() {
         return [{tag: "phone", w: 549, h: 1280}, {tag: "neighbor", w: 480, h: 1280},

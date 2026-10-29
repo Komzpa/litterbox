@@ -20,7 +20,7 @@ ApplicationWindow {
     // Read the platform font once: Kirigami.Theme.defaultFont inside a row
     // creates a Theme attached object per item, ~0.2 ms each, which made
     // every new dense inbox row expensive (scroll collapse regression).
-    readonly property font themeFont: Qt.platform.os === "android" && typeof androidFontScale !== "undefined"
+    property font themeFont: Qt.platform.os === "android" && typeof androidFontScale !== "undefined"
         ? Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize * androidFontScale})
         : Kirigami.Theme.defaultFont
     readonly property real fontScaleFactor: themeFont.pointSize / Kirigami.Theme.defaultFont.pointSize
@@ -992,7 +992,7 @@ ApplicationWindow {
                     text: window.offlineSummary()
                     color: window.mutedInk
                     font.family: window.themeFont.family
-                    font.pointSize: window.themeFont.pointSize - 1
+                    font.pointSize: window.themeFont.pointSize - window.fontScaleFactor
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                     TapHandler { onTapped: window.offlineDetailsShown = !window.offlineDetailsShown }
@@ -1015,7 +1015,7 @@ ApplicationWindow {
                 visible: window.offlineDetailsShown && (window.localStorageError.length > 0 || (!store.online && store.offlineReason.length > 0))
                 text: qsTr("Details: %1").arg(window.localStorageError || store.offlineReason)
                 color: window.mutedInk
-                font.pointSize: window.themeFont.pointSize - 2
+                font.pointSize: window.themeFont.pointSize - 2 * window.fontScaleFactor
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 Layout.bottomMargin: 4
@@ -1685,7 +1685,7 @@ ApplicationWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
                             anchors.topMargin: window.compactInbox ? 6 : window.edgeSpacing
-                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
+                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize
                             text: (window.sectionStarts[cardId] ? (cardRow.displaySection === "pinned" ? qsTr("Pinned") : cardRow.displaySection === "now" ? qsTr("Now") : cardRow.displaySection === "later" ? qsTr("Later") : qsTr("Missed")) : "")
                                 + (window.sectionStarts[cardId] && window.dateStarts[cardId] ? " · " : "") + (window.dateStarts[cardId] || "")
                             font.family: window.themeFont.family
@@ -1787,7 +1787,7 @@ ApplicationWindow {
                                                 implicitHeight: countLabel.implicitHeight + (window.compactInbox ? 4 : 8)
                                                 radius: Kirigami.Units.cornerRadius
                                                 color: "#e7f1ee"
-                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: window.themeFont.family; font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize }
+                                                Label { id: countLabel; objectName: "bundleMemberCount-" + cardId; anchors.centerIn: parent; text: window.emailCountText(card.bundle_member_count || 0); color: window.ink; font.family: window.themeFont.family; font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize }
                                             }
                                             Item { visible: !window.compactInbox; Layout.fillWidth: true }
                                         }
@@ -1796,7 +1796,7 @@ ApplicationWindow {
                                             text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
                                             color: window.mutedInk
                                             font.family: window.themeFont.family
-                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
+                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
                                             wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
@@ -1811,7 +1811,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
                                             wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
-                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 1 : window.themeFont.pointSize
+                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - window.fontScaleFactor : window.themeFont.pointSize
                                             maximumLineCount: window.compactInbox ? 1 : Infinity
                                             elide: Text.ElideRight
                                         }
@@ -1859,7 +1859,7 @@ ApplicationWindow {
                                         text: window.mailArrival(cardRow.latestCard)
                                         visible: text.length > 0
                                         color: window.mutedInk
-                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize
                                         Layout.fillWidth: true
                                         Layout.rightMargin: (48 - window.actionIconSize) / 2
                                         horizontalAlignment: Text.AlignRight
@@ -2096,7 +2096,7 @@ ApplicationWindow {
                                             visible: text.length > 0 && cardRow.showMemberSender
                                             color: window.mutedInk
                                             font.family: window.themeFont.family
-                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
+                                            font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize
                                             elide: Text.ElideRight
                                             Layout.minimumWidth: 0
                                             Layout.fillWidth: window.compactInbox
@@ -2139,7 +2139,7 @@ ApplicationWindow {
                                         visible: card.source !== "mail"
                                         color: window.mutedInk
                                         font.family: window.themeFont.family
-                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize
                                         wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -2150,7 +2150,7 @@ ApplicationWindow {
                                         visible: text.length > 0
                                         color: window.mutedInk
                                         font.family: window.themeFont.family
-                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 1 : window.themeFont.pointSize
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - window.fontScaleFactor : window.themeFont.pointSize
                                         textFormat: Text.PlainText
                                         wrapMode: window.largeText || card.source !== "mail" ? Text.Wrap : Text.NoWrap
                                         // Large platform text reflows instead of clipping the content.
@@ -2174,7 +2174,7 @@ ApplicationWindow {
                                         text: window.mailArrival(card)
                                         visible: card.source === "mail" && text.length > 0
                                         color: window.mutedInk
-                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 : window.themeFont.pointSize
+                                        font.pointSize: window.compactInbox ? window.themeFont.pointSize - 2 * window.fontScaleFactor : window.themeFont.pointSize
                                         Layout.fillWidth: true
                                         Layout.rightMargin: (48 - window.actionIconSize) / 2
                                         horizontalAlignment: Text.AlignRight
