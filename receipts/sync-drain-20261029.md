@@ -119,3 +119,37 @@ server holds the rows, so they remain visible as real synced notes.
 - No in-flight timeout was added: duplicate sends after a lost ACK stay
   impossible by construction (completion frees the slot), and the server
   already dedups by op_id.
+
+## 7. Addendum — 150 ms RTT head-to-head (Main's check)
+
+Same 100-op `LatencyTransport` drain, delay raised to 150 ms per round trip
+(temporary worktree edit, reverted; no committed churn). `QT_QPA_PLATFORM=offscreen`:
+
+| build | max in flight | drain wall | composition |
+|---|---|---|---|
+| pre-fix (serial) | 1 | **20052 ms** | 100 × 150 ms RTT + ~5 s durable ack commits |
+| post-fix (pipeline) | 4 | **7236 ms** | 25 flights × 150 ms + ~3.5 s durable ack commits |
+
+The pipelining beats the serial baseline by **2.8× at 150 ms RTT**, exactly
+the RTT/4 scaling the fix targets. (At 0 ms simulated RTT the local numbers
+look flat — 4020 ms before vs ~3700 ms after — because per-op fsync'd ack
+commits serialize on both builds; that cost is intentional durability, and on
+the phone it is dwarfed by the wire RTT.)
+
+Which mechanism caused the owner's 8-ops-per-90-minutes? **The stall, not the
+serialisation.** One-op-per-RTT serialisation caps a working link at ~1 op/s
+(the owner's own "one per second" observation) — over 90 minutes that is
+thousands of ops, not 8. ~11 min/op means the pump was wedged, by two lines
+in the pre-fix `qt/src/CardStore.cpp`:
+
+- `1202: if (!m_online || !m_inFlight.isEmpty()) return;` — a single
+  in-flight slot gates the entire queue, and
+- the `staleOrder` early return (old `1290-1294`, after the three 08:54
+  reorder rejections) exits `reportPostResult` **without freeing that slot**;
+  the slot frees only when a fresh snapshot triggers retirement. Between
+  snapshots — and behind the global retry-timer gate (old `1198-1199`) after
+  any transient failure — nothing else could send.
+
+The 5-op burst at 13:07 is the wedge clearing for a moment, then re-wedging.
+This fix removes both: the pipeline keeps draining around a stuck slot, and
+backoff parks one card instead of the whole queue.
