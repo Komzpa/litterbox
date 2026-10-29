@@ -31,7 +31,7 @@ func acceptsGzip(header string) bool {
 
 func jsonResponseWriter(w http.ResponseWriter, r *http.Request) (io.Writer, func()) {
 	w.Header().Add("Vary", "Accept-Encoding")
-	if !acceptsGzip(r.Header.Get("Accept-Encoding")) { return w, func() {} }
+	if !acceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) { return w, func() {} }
 	w.Header().Set("Content-Encoding", "gzip")
 	writer := gzip.NewWriter(w)
 	return writer, func() { _ = writer.Close() }

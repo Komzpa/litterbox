@@ -47,4 +47,15 @@ func TestJSONCompressionNegotiation(t *testing.T) {
 			if body != `{"ok":true}` { t.Fatalf("body = %q", body) }
 		})
 	}
+	t.Run("repeated-fields-explicit-exclusion", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/v1/cards", nil)
+		r.Header.Add("Accept-Encoding", "*")
+		r.Header.Add("Accept-Encoding", "gzip;q=0")
+		out, closeOut := jsonResponseWriter(w, r)
+		_, _ = io.WriteString(out, `{"ok":true}`)
+		closeOut()
+		if got := w.Header().Get("Content-Encoding"); got != "" { t.Fatalf("content encoding = %q", got) }
+		if got := w.Body.String(); got != `{"ok":true}` { t.Fatalf("body = %q", got) }
+	})
 }
