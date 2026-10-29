@@ -159,7 +159,7 @@ bool CardStore::open(const QString &path) {
         }
     }
     QList<QVariantMap> cards, outbox;
-    QHash<QString, QVariantMap> bodies;
+    QSet<QString> cachedIds;
     QHash<QString, QString> photos;
     bool opened = false;
     // Startup only, before the window exists. Every subsequent write is queued.
@@ -255,13 +255,8 @@ bool CardStore::open(const QString &path) {
         }
         if (!writeCards(cards, recovered)) return;
         cards = std::move(recovered);
-        if (!q.exec(QStringLiteral("SELECT card_id,html,source_url,messages FROM mail_bodies"))) return;
-        while (q.next()) {
-            const QJsonDocument messages = QJsonDocument::fromJson(q.value(3).toByteArray());
-            bodies.insert(q.value(0).toString(), {{QStringLiteral("html"), q.value(1)},
-                {QStringLiteral("source_url"), q.value(2)},
-                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}});
-        }
+        if (!q.exec(QStringLiteral("SELECT card_id FROM mail_bodies"))) return;
+        while (q.next()) cachedIds.insert(q.value(0).toString());
         // R67: device photo cache survives restart; file URLs are local only.
         if (!q.exec(QStringLiteral("SELECT card_id,file_url FROM sender_photo_files"))) return;
         while (q.next()) {
@@ -276,7 +271,7 @@ bool CardStore::open(const QString &path) {
     m_open = true;
     m_outbox = std::move(outbox);
     for (const auto &op : m_outbox) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
-    m_mailBodies = std::move(bodies);
+    m_bodyCached = std::move(cachedIds);
     m_senderPhotos = std::move(photos);
     injectSenderPhotos(cards);
     replaceCards(std::move(cards));
@@ -1581,10 +1576,52 @@ void CardStore::commitAcks() {
     }, Qt::QueuedConnection);
 }
 QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
-    QVariantMap body = m_mailBodies.value(cardId);
-    if (!body.isEmpty() && !body.contains(QStringLiteral("messages")))
-        body.insert(QStringLiteral("messages"), QVariantList{});
+    if (!m_bodyCached.contains(cardId)) return {};
+    const auto hit = m_bodyLru.constFind(cardId);
+    if (hit != m_bodyLru.cend()) {
+        m_bodyLruOrder.removeOne(cardId);
+        m_bodyLruOrder.append(cardId);
+        return *hit;
+    }
+    const QVariantMap body = readBodyFromDb(cardId);
+    if (!body.isEmpty()) lruInsert(cardId, body);
     return body;
+}
+QVariantMap CardStore::readBodyFromDb(const QString &cardId) const {
+    QVariantMap body;
+    // Same storage thread and FIFO queue as the writers, so a read always
+    // observes every body write queued before it.
+    QMetaObject::invokeMethod(m_storage, [&] {
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("SELECT html,source_url,messages FROM mail_bodies WHERE card_id=?"));
+        q.addBindValue(cardId);
+        if (!q.exec() || !q.next()) return;
+        const QJsonDocument messages = QJsonDocument::fromJson(q.value(2).toByteArray());
+        body = {{QStringLiteral("html"), q.value(0)}, {QStringLiteral("source_url"), q.value(1)},
+                {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}}};
+    }, Qt::BlockingQueuedConnection);
+    return body;
+}
+static qint64 bodyBytes(const QVariantMap &body) {
+    qint64 bytes = 2 * (body.value(QStringLiteral("html")).toString().size() + body.value(QStringLiteral("source_url")).toString().size());
+    for (const QVariant &m : body.value(QStringLiteral("messages")).toList())
+        bytes += 2 * m.toMap().value(QStringLiteral("html")).toString().size();
+    return bytes;
+}
+void CardStore::lruRemove(const QString &cardId) const {
+    const auto it = m_bodyLru.find(cardId);
+    if (it == m_bodyLru.end()) return;
+    m_bodyLruBytes -= bodyBytes(*it);
+    m_bodyLru.erase(it);
+    m_bodyLruOrder.removeOne(cardId);
+}
+void CardStore::lruInsert(const QString &cardId, const QVariantMap &body) const {
+    lruRemove(cardId);
+    m_bodyLru.insert(cardId, body);
+    m_bodyLruOrder.append(cardId);
+    m_bodyLruBytes += bodyBytes(body);
+    // Always keep the newest body, even when it alone exceeds the cap.
+    while (m_bodyLruBytes > kBodyLruBytes && m_bodyLruOrder.size() > 1) lruRemove(m_bodyLruOrder.first());
 }
 int CardStore::mailSyncPending() const {
     int pending = 0;
@@ -1592,7 +1629,7 @@ int CardStore::mailSyncPending() const {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (m_mailBodies.value(id).isEmpty() || m_bodyPersisting.contains(id)) ++pending;
+        if (!m_bodyCached.contains(id) || m_bodyPersisting.contains(id)) ++pending;
     }
     return pending;
 }
@@ -1606,7 +1643,7 @@ void CardStore::queueMailBodyPrefetch() {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (!m_mailBodies.value(id).isEmpty() || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
+        if (m_bodyCached.contains(id) || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
         eligible.insert(id);
     }
     m_bodyPrefetchQueue.erase(std::remove_if(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end(),
@@ -1681,31 +1718,33 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     const QString html = body.value(QStringLiteral("html")).toString();
     QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
     const bool hasMessages = body.contains(QStringLiteral("messages"));
-    const QVariantList messages = hasMessages ? body.value(QStringLiteral("messages")).toList() : QVariantList{};
+    // Earlier-message originals survive a body response that omits them: read
+    // them from SQLite only in that case, never to hold them resident.
+    const QVariantList messages = hasMessages ? body.value(QStringLiteral("messages")).toList()
+        : cachedMailBody(cardId).value(QStringLiteral("messages")).toList();
     const QString messagesJson = QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(messages)).toJson(QJsonDocument::Compact));
     // Body responses omit empty source_url; SQLite requires a non-null string.
     if (sourceUrl.isNull()) sourceUrl = QStringLiteral("");
     // A malformed/error response must not replace a usable cached body.
     if (html.trimmed().isEmpty()) { reportMailBodyFailed(cardId, 422); return; }
-    const auto previous = m_mailBodies.value(cardId);
-    QVariantMap updated{{QStringLiteral("html"), html}, {QStringLiteral("source_url"), sourceUrl}};
-    updated.insert(QStringLiteral("messages"), hasMessages ? QVariant(messages) : previous.value(QStringLiteral("messages"), QVariantList{}));
+    const bool hadBody = m_bodyCached.contains(cardId);
     m_bodyPersisting.insert(cardId);
-    m_mailBodies.insert(cardId, updated);
+    m_bodyCached.insert(cardId);
+    lruRemove(cardId);
     emit mailSyncStateChanged();
-    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, messagesJson, previous, hasMessages] {
-        const QString persistedMessages = hasMessages ? messagesJson : QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(previous.value(QStringLiteral("messages")).toList())).toJson(QJsonDocument::Compact));
+    QMetaObject::invokeMethod(m_storage, [this, cardId, html, sourceUrl, messagesJson, hadBody] {
         QSqlQuery q(m_db);
         q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages) VALUES(?,?,?,?) "
                                  "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages"));
         q.addBindValue(cardId); q.addBindValue(html); q.addBindValue(sourceUrl);
-        q.addBindValue(persistedMessages);
+        q.addBindValue(messagesJson);
         const bool ok = q.exec();
         const QString error = q.lastError().text();
-        QMetaObject::invokeMethod(this, [this, cardId, previous, ok, error] {
+        QMetaObject::invokeMethod(this, [this, cardId, hadBody, ok, error] {
             m_bodyPersisting.remove(cardId);
             if (!ok) {
-                m_mailBodies.insert(cardId, previous);
+                if (!hadBody) m_bodyCached.remove(cardId);
+                lruRemove(cardId);
                 emit storageError(error);
                 reportMailBodyFailed(cardId);
                 return;

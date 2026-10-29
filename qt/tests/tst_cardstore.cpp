@@ -1776,6 +1776,44 @@ private slots:
         QCOMPARE(reopened.cachedMailBody(cardId).value("messages").toList().size(), 1);
         QVERIFY(reopened.cachedMailBody(missing).isEmpty());
     }
+    void mailBodiesLoadFromSqliteOnDemandWithBoundedResidentBytes() {
+        // R9 bodies on demand: opening a profile never loads body content;
+        // reads are served from SQLite through an LRU bounded by bytes.
+        QTemporaryDir directory;
+        const QString path = directory.filePath("on-demand.sqlite");
+        constexpr int count = 40;
+        const QString filler(1024 * 1024, QLatin1Char('x')); // 2 MiB UTF-16 each, 80 MiB total
+        QStringList ids;
+        QVariantList cards;
+        for (int i = 0; i < count; ++i) {
+            ids << QUuid::createUuid().toString(QUuid::WithoutBraces);
+            cards << QVariantMap{{"id", ids.last()}, {"source", "mail"}};
+        }
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+            for (int i = 0; i < count; ++i)
+                store.applyRemoteMailBody(ids.at(i), {{"html", QString::number(i) + filler},
+                    {"messages", QVariantList{QVariantMap{{"html", "<p>earlier " + QString::number(i) + "</p>"}}}}});
+            QTRY_COMPARE_WITH_TIMEOUT(changed.size(), count, 10000);
+            QVERIFY(store.mailSyncPending() == 0);
+        }
+        CardStore reopened;
+        QVERIFY(reopened.open(path));
+        QCOMPARE(reopened.mailSyncPending(), 0); // sync metadata known without loading content
+        QCOMPARE(reopened.residentBodyBytes(), qint64(0));
+        for (int round = 0; round < 2; ++round)
+            for (int i = 0; i < count; ++i) {
+                const QVariantMap body = reopened.cachedMailBody(ids.at(i));
+                QCOMPARE(body.value("html").toString(), QString::number(i) + filler);
+                QCOMPARE(body.value("messages").toList().size(), 1);
+                QVERIFY(reopened.residentBodyBytes() <= CardStore::kBodyLruBytes);
+            }
+        QVERIFY(reopened.residentBodyBytes() > 0);
+        QVERIFY(reopened.cachedMailBody("missing").isEmpty());
+    }
     void foregroundBodyUsesCacheAndPreservesItOnBadResponses() {
         QTemporaryDir directory;
         CardStore store;

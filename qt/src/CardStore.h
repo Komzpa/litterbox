@@ -232,7 +232,20 @@ private:
     quint64 m_latestCardsResponse = 0;
     int m_bundleUndoDurationMs = 8000;
     QTimer *m_bundleUndoTimer = nullptr;
-    QHash<QString, QVariantMap> m_mailBodies;
+    // Body ids only; html/messages stay in SQLite and are read on demand
+    // through a byte-bounded LRU (R9 bodies on demand).
+    QSet<QString> m_bodyCached;
+    mutable QHash<QString, QVariantMap> m_bodyLru;
+    mutable QStringList m_bodyLruOrder; // most recent last
+    mutable qint64 m_bodyLruBytes = 0;
+    QVariantMap readBodyFromDb(const QString &cardId) const;
+    void lruRemove(const QString &cardId) const;
+    void lruInsert(const QString &cardId, const QVariantMap &body) const;
+public:
+    // Bytes (UTF-16) of body HTML currently resident in the LRU, for tests.
+    qint64 residentBodyBytes() const { return m_bodyLruBytes; }
+    static constexpr qint64 kBodyLruBytes = 24 * 1024 * 1024;
+private:
     QStringList m_bodyPrefetchQueue;
     QSet<QString> m_bodyRequests;
     QTimer m_bodyPrefetchTimer;
