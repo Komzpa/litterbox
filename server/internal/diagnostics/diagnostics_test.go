@@ -192,13 +192,13 @@ func TestFullSpoolDoesNotConsumeOrdinaryQuota(t *testing.T) {
 			if w := request(h, "POST", Path, "valid-token", wire(r)); w.Code != 429 {
 				t.Fatalf("diagnostic 65: %d want 429", w.Code)
 			}
-			for ; ordinary < 60; ordinary++ {
+			for ; ordinary < auth.DeviceBurst; ordinary++ {
 				if w := request(h, "GET", "/v1/mail/body", "valid-token", ""); w.Code != 200 {
 					t.Fatalf("ordinary %d: %d", ordinary+1, w.Code)
 				}
 			}
 			if w := request(h, "GET", "/v1/mail/body", "valid-token", ""); w.Code != 429 {
-				t.Fatalf("ordinary 61: %d want 429", w.Code)
+				t.Fatalf("ordinary %d: %d want 429", auth.DeviceBurst+1, w.Code)
 			}
 		})
 	}

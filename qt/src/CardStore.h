@@ -45,6 +45,7 @@ public:
     bool saveFailed() const { return !m_failedWrites.isEmpty(); }
     Q_INVOKABLE bool retainedWriteFailed(const QString &opId) const { return m_failedWrites.contains(opId); }
     void setTransport(cardstore::OpTransport *transport);
+    void setMaxInFlight(int ops) { m_maxInFlight = qMax(1, ops); }
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void retrySync();
@@ -159,6 +160,19 @@ private:
     void retainOwnerRows(QList<QVariantMap> &cards) const;
     void projectPendingRemovals(QList<QVariantMap> &cards) const;
     bool appendDraftRecord(const QVariantMap &record);
+    bool appendDraftRecords(const QList<QVariantMap> &records);
+    // ACKed ops waiting for their group commit; see commitAcks().
+    struct PendingAck {
+        QString opId;
+        QVariantMap response;
+        QVariantMap operation;
+        QStringList removedIds;
+        bool ownerWrite;
+    };
+    void commitAcks();
+    QList<PendingAck> m_ackQueue;
+    bool m_ackCommitting = false;
+    bool m_ackScheduled = false;
     // Drops the local row the server confirmed gone (404 or 422 card-not-found
     // retirement) unless a remaining op still writes that card. Card-id carriers
     // with no card subject (reorder_*, agent_message) never trigger a drop.
@@ -167,12 +181,13 @@ private:
     QString m_rejectedReorder;
     quint64 m_rejectedReorderSnapshot = 0;
     QString m_draftPath;
+    bool m_draftDirSynced = false;
     QHash<QString, QVariantMap> m_drafts;
     QStringList m_draftOrder;
-    // Bounded outbox pipeline: up to kMaxInFlightOps POSTs share the wire.
+    // Bounded outbox pipeline: up to m_maxInFlight POSTs share the wire.
     // Per-card FIFO holds (a card's next op waits for its in-flight op) and
     // reorder_* ops fly alone so the server always sees a coherent open set.
-    static constexpr int kMaxInFlightOps = 4;
+    int m_maxInFlight = 32;
     bool flushNext();
     void queueMailBodyPrefetch();
     void prefetchNextMailBody();
@@ -240,7 +255,7 @@ private:
     QSet<QString> m_photoUnavailable;
     bool m_online = false;
     QString m_offlineReason;
-    // Bounded pipeline of sent-but-unacknowledged op ids (cap kMaxInFlightOps).
+    // Bounded pipeline of sent-but-unacknowledged op ids (cap m_maxInFlight).
     QSet<QString> m_inFlight;
     // A 429 parks the whole pump until the shared per-device window recovers.
     QDeadlineTimer m_rateCooldown{0, Qt::PreciseTimer};

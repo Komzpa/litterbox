@@ -259,9 +259,15 @@ Each requirement is **decided** or **open** and names its source.
   revoked on its own, and a revoked token is refused on its next request. A
   request without a valid token gets HTTP 401 and no card data. The public
   entry point limits the request rate per device (the authenticated token's
-  device; per client address only for requests without a valid token); limit
-  60 requests per minute per key (owner accepted 2026-09-28; per device since
-  2026-10-14, because every client reaches the server from 127.0.0.1).
+  device; per client address only for requests without a valid token). Per
+  client address the limit stays 60 requests per minute (owner accepted
+  2026-09-28). Per device it is a token bucket (v38; owner 2026-10-29: a
+  gigabit reconnect drain must sync in half a second): burst 400 requests,
+  refilled at 5 per second (300 per minute sustained). A 100- or 200-op
+  offline drain therefore never meets 429; a device that keeps exceeding the
+  sustained rate gets 429 with `Retry-After: 1`, and the client waits one
+  second, not a minute, before retrying that op. The public reverse proxy's
+  own limit (docs/DEPLOYMENT.md) is separate and applies to remote drains.
 - **R42 Android server configuration** (decided, owner 2026-10-02; the v6 build always showed "Offline · changes saved on this device" because Android has no LB_SERVER and the app defaulted to its own localhost with no way to change it). The installed Android build reaches its configured server with no environment variables: the server base URL resolves test profile > LB_SERVER env > saved `server_url` > compiled LB_DEFAULT_SERVER_URL default, and the compiled default is never 127.0.0.1. Per R17 the repository default stays empty; each release build passes its real URL with -DLB_DEFAULT_SERVER_URL=<url>. The enrollment screen shows an editable Server field prefilled with the current URL; enrolling saves the server URL and the device token to QSettings and takes the app online without a restart or hand-copied token. No clause above contradicts this. Oracle: the Qt serverurl precedence test plus the enrollment QML test; install the signed release APK with no LB_SERVER set and enroll it against a disposable server.
 
 ## Project

@@ -153,3 +153,27 @@ in the pre-fix `qt/src/CardStore.cpp`:
 The 5-op burst at 13:07 is the wedge clearing for a moment, then re-wedging.
 This fix removes both: the pipeline keeps draining around a stuck slot, and
 backoff parks one card instead of the whole queue.
+
+## 8. Addendum — group-committed ACKs (gigabit drain)
+
+Measured (temporary timers, removed): at ~1 ms RTT one ACK cost ~14 ms draft-journal
+fsync (GUI thread) + ~21 ms SQLite commit ≈ 35 ms/op ⇒ ~29 ops/s local ceiling vs
+~1000 ops/s the 1 ms wire allows per slot. Local commit dominates ~35:1.
+
+Fix: ACKs queue and are committed as one batch (`CardStore::commitAcks`): one
+journal append + one fsync, one SQLite transaction (same statements/order, outbox
+row deleted only inside the committed transaction, ops hold their in-flight slot
+until commit, so per-card order and no-ACK-for-retired-ops are unchanged); the
+draft directory is fsynced once, not per append. `m_maxInFlight` 4 → 32 so batches
+are large (cost: ≤32 outbox payloads on the wire; reorder ops still fly alone).
+
+100/200 ops (outbox pre-durable, `drainBench`), wall ms (max in flight):
+
+| case | before (cap 4) | after (cap 32) |
+|---|---|---|
+| 100 ops, 1 ms | 3347 (4) | 202-302 (32) |
+| 200 ops, 1 ms | 6792 (4) | 452-573 (32) |
+| 100 ops, 150 ms | 5797 (4) | 806-856 (32) |
+
+Caveat: server limits 60 req/min per device (`auth.go` IPLimiter); a burst >60
+POSTs gets 429 and parks the pump 60 s. A batch endpoint is needed for that.
