@@ -417,6 +417,10 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if newest.IsZero() {
 		newest = time.Now().UTC()
 	}
+	messageIDs := make([]string, len(t.Messages))
+	for i, m := range t.Messages {
+		messageIDs[i] = m.ID
+	}
 	state := "open"
 	if !inbox {
 		state = "archived"
@@ -426,7 +430,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		return e
 	}
 	defer tx.Rollback(ctx)
-	_, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sender_address,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, senderAddr, newest)
+	_, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sender_address,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' AND (cards.state<>'archived' OR EXISTS(SELECT 1 FROM unnest($11::text[]) AS incoming(id) WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=cards.tenant_id AND m.card_id=cards.id AND m.gmail_message_id=incoming.id))) THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, senderAddr, newest, messageIDs)
 	if e != nil {
 		return e
 	}
