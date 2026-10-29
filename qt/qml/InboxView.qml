@@ -23,6 +23,7 @@ ApplicationWindow {
     readonly property font themeFont: Qt.platform.os === "android" && typeof androidFontScale !== "undefined"
         ? Qt.font({family: Kirigami.Theme.defaultFont.family, pointSize: Kirigami.Theme.defaultFont.pointSize * androidFontScale})
         : Kirigami.Theme.defaultFont
+    readonly property real fontScaleFactor: themeFont.pointSize / Kirigami.Theme.defaultFont.pointSize
     readonly property color themeHighlight: Kirigami.Theme.highlightColor
     readonly property color ink: "#263b3a"
     readonly property color mutedInk: "#586d70"
@@ -837,7 +838,8 @@ ApplicationWindow {
                     ToolTip.visible: hovered || visualFocus
                     onClicked: navigationDrawer.open()
                 }
-                Kirigami.Heading { text: window.activeLocation; color: window.ink; level: 3; Layout.fillWidth: true; elide: Text.ElideRight }
+                // Kirigami.Heading does not inherit the window font; level 3 = 1.15x of the scaled themeFont.
+                Kirigami.Heading { text: window.activeLocation; color: window.ink; level: 3; font.family: window.themeFont.family; font.pointSize: window.themeFont.pointSize * 1.15; Layout.fillWidth: true; elide: Text.ElideRight }
                 ToolButton {
                     objectName: "toggleSearch"
                     visible: !window.desktopNavigation && stack.depth === 1
@@ -2267,6 +2269,8 @@ ApplicationWindow {
                         text: window.searching ? qsTr("No matching cards") : qsTr("You're all caught up")
                         color: window.ink
                         level: 3
+                        font.family: window.themeFont.family
+                        font.pointSize: window.themeFont.pointSize * 1.15
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
                     }
@@ -2480,6 +2484,8 @@ ApplicationWindow {
                     text: qsTr("Select a card to read")
                     color: window.ink
                     level: 2
+                    font.family: window.themeFont.family
+                    font.pointSize: window.themeFont.pointSize * 1.20
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
@@ -2512,6 +2518,8 @@ ApplicationWindow {
         Material.primary: window.accent
         property string cardId
         title: qsTr("Card note")
+        // Material's header title uses a fixed pixel size; follow the Android font scale.
+        header: Label { text: noteDialog.title; visible: text.length > 0; elide: Label.ElideRight; padding: 24; bottomPadding: 0; font.pixelSize: Material.dialogTitleFontPixelSize * window.fontScaleFactor }
         modal: true
         width: Math.min(392, window.width - 32)
         implicitWidth: width
@@ -2602,6 +2610,8 @@ ApplicationWindow {
         Material.accent: window.accent
         Material.primary: window.accent
         title: qsTr("Create card")
+        // Material's header title uses a fixed pixel size; follow the Android font scale.
+        header: Label { text: createDialog.title; visible: text.length > 0; elide: Label.ElideRight; padding: 24; bottomPadding: 0; font.pixelSize: Material.dialogTitleFontPixelSize * window.fontScaleFactor }
         modal: true
         width: Math.min(392, window.width - 32)
         implicitWidth: width
@@ -2690,6 +2700,8 @@ ApplicationWindow {
     Dialog {
         id: updateDialog
         title: qsTr("Install Android update")
+        // Material's header title uses a fixed pixel size; follow the Android font scale.
+        header: Label { text: updateDialog.title; visible: text.length > 0; elide: Label.ElideRight; padding: 24; bottomPadding: 0; font.pixelSize: Material.dialogTitleFontPixelSize * window.fontScaleFactor }
         modal: true
         width: Math.min(392, window.width - 32)
         implicitWidth: width
