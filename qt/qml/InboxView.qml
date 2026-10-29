@@ -932,7 +932,7 @@ ApplicationWindow {
                         InboxMenuItem { objectName: "headerMenuAgents"; text: qsTr("Agents"); icon.name: "user-identity"; onTriggered: openPage("AgentThreadsPage") }
                         InboxMenuItem { objectName: "headerMenuSettings"; text: qsTr("Settings"); icon.name: "application-menu"; onTriggered: openPage("SettingsPage") }
                         InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; visible: !api.token; onTriggered: openPage("EnrollmentPage") }
-                        InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Sync mail"); icon.name: "view-refresh"; onTriggered: store.refresh() }
+                        InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Sync mail"); icon.name: "view-refresh"; onTriggered: store.retrySync() }
                         InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check for app updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
                         InboxMenuItem { objectName: "densityComfortable"; text: qsTr("Comfortable density"); checkable: true; checked: !window.compactDensity; onTriggered: window.compactDensity = false }
                         InboxMenuItem { objectName: "densityCompact"; text: qsTr("Compact density"); checkable: true; checked: window.compactDensity; onTriggered: window.compactDensity = true }
@@ -1001,9 +1001,13 @@ ApplicationWindow {
                     objectName: "offlineRetry"
                     text: qsTr("Retry")
                     implicitHeight: window.tapTarget
+                    Layout.minimumHeight: window.tapTarget
+                    Layout.minimumWidth: window.tapTarget
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("Retry sync")
                     Material.foreground: window.accent
                     palette.buttonText: window.accent
-                    onClicked: store.refresh()
+                    onClicked: store.retrySync()
                 }
             }
             Label {
@@ -1959,12 +1963,13 @@ ApplicationWindow {
                                     // R63: only eligible nonmail avatars are reorder handles;
                                     // mail avatars remain visible and pass travel to scrolling.
                                     Layout.alignment: Qt.AlignTop
-                                    Layout.minimumWidth: window.compactInbox ? window.tapTarget : -1
-                                    Layout.preferredWidth: window.compactInbox ? window.tapTarget : -1
-                                    Layout.maximumWidth: window.compactInbox ? window.tapTarget : Infinity
+                                    // Layouts snap to whole item px; round the shared floor up, never down.
+                                    Layout.minimumWidth: window.compactInbox ? Math.ceil(window.tapTarget) : -1
+                                    Layout.preferredWidth: window.compactInbox ? Math.ceil(window.tapTarget) : -1
+                                    Layout.maximumWidth: window.compactInbox ? Math.ceil(window.tapTarget) : Infinity
                                     visible: !cardRow.bundled
                                     implicitWidth: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
-                                    implicitHeight: window.compactInbox ? window.tapTarget : Math.max(window.tapTarget, Kirigami.Units.gridUnit * 3)
+                                    implicitHeight: window.compactInbox ? Math.ceil(window.tapTarget) : Math.max(Math.ceil(window.tapTarget), Kirigami.Units.gridUnit * 3)
                                     // Loaded only where shown: collapsed bundle members stay cheap (scrollresilience).
                                     // R67: the sender avatar leads the row on phones and desktop alike;
                                     // bundled members stay gated so the shared identity is shown once on
@@ -2060,7 +2065,8 @@ ApplicationWindow {
                                         enabled: cardText.activeFocus
                                         onActivated: cardActions.primaryAction()
                                     }
-                                    Layout.minimumHeight: window.tapTarget
+                                    // GridLayout rounds fractional item-px minimums; preserve the dp floor.
+                                    Layout.minimumHeight: Math.ceil(window.tapTarget)
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 0
                                     Layout.alignment: Qt.AlignTop

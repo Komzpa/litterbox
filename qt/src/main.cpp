@@ -463,7 +463,8 @@ int main(int argc, char *argv[])
                 return;
             }
             if (cardsRequests.contains(id)) {
-                store.applyRemoteCards(data.toObject().toVariantMap(), cardsRequests.take(id));
+                if (store.applyRemoteCards(data.toObject().toVariantMap(), cardsRequests.take(id)))
+                    store.setOnline(true);
                 return;
             }
         });

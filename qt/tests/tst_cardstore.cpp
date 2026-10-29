@@ -130,6 +130,24 @@ public:
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void retrySyncBypassesOfflineRefreshGate() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("retry.sqlite")));
+        store.reportOffline(QStringLiteral("disconnected"));
+        QSignalSpy requests(&store, &CardStore::requestCards);
+        store.refresh();
+        QCOMPARE(requests.size(), 0);
+        store.retrySync();
+        QCOMPARE(requests.size(), 1);
+        QCOMPARE(requests.first().at(0).toString(), QStringLiteral("/v1/cards"));
+        const quint64 retryId = requests.first().at(1).toULongLong();
+        store.setOnline(true);
+        QCOMPARE(requests.size(), 2);
+        QVERIFY(requests.last().at(1).toULongLong() > retryId);
+        store.refresh();
+        QCOMPARE(requests.size(), 3);
+    }
     void diagnosticSpoolPreservesMailOutboxAndUndo_data() {
         QTest::addColumn<int>("diagnosticStatus");
         for (int status : {200, 422, 503})

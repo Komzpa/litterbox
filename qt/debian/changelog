@@ -1,5 +1,8 @@
 litterbox-qt (0.1-53) unstable; urgency=medium
 
+  * Retry and Sync mail now request a fresh snapshot even while offline,
+    without changing automatic refresh gating.
+  * Expose the offline Retry action to accessibility with a 48dp minimum target.
   * Reader painted Back/Archive bar buttons directly tappable, with compact
     single-row phone header, slim app bar under 64px and 48dp targets (R59).
   * Complete offline mail prefetch: download and persist every card body during

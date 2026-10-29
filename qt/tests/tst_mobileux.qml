@@ -26,6 +26,7 @@ TestCase {
         property int mailSyncPending: 0
         property bool mailSyncComplete: true
         property int refreshCalls: 0
+        property int retrySyncCalls: 0
         signal mailSyncStateChanged()
         signal operationFailed(string opId, int status, var response)
         signal storageError(string message)
@@ -60,6 +61,7 @@ TestCase {
         function pinnedCardIds() { return [] }
         function sourceLabel(card) { return card.source }
         function refresh() { ++refreshCalls }
+        function retrySync() { ++retrySyncCalls }
         function cachedMailBody(cardId) { return cached[cardId] || {} }
         function requestMailBody(cardId) {}
         function openCachedFile(cardId, link) { return "" }
@@ -105,6 +107,7 @@ TestCase {
         store.mailSyncPending = 0
         store.mailSyncComplete = true
         store.refreshCalls = 0
+        store.retrySyncCalls = 0
         store.failLocalSave = true
         store.savedNote = ({})
         const rows = []
@@ -463,7 +466,8 @@ TestCase {
         const retry = findChild(row, "offlineRetry")
         verify(retry.visible && retry.enabled)
         mouseClick(retry)
-        compare(store.refreshCalls, 1)
+        compare(store.retrySyncCalls, 1)
+        compare(store.refreshCalls, 0)
         compare(store.pendingOps, 1, "Retry is not acknowledgement")
         compare(JSON.stringify(store.operations), JSON.stringify([payload]))
         save(inbox, "online-pending-after-error-expiry")

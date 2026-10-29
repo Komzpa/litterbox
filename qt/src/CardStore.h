@@ -47,6 +47,7 @@ public:
     void setTransport(cardstore::OpTransport *transport);
     static void registerQml(const char *uri, int major, int minor);
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void retrySync();
     // Request IDs order HTTP responses, not local mutations or ACKs. Direct
     // cache/test snapshots (ID zero) are authoritative at application time.
     Q_INVOKABLE bool applyRemoteCards(const QVariantMap &sections, quint64 requestId = 0);

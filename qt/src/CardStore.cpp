@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <QFileInfo>
+#include <QLoggingCategory>
 
 // Default to retaining unknown operations. Only reversible triage may roll back.
 bool CardStore::ownerWrite(const QVariantMap &op) {
@@ -594,6 +595,8 @@ void CardStore::setTransport(cardstore::OpTransport *transport) {
     m_transport = transport;
     flush();
 }
+Q_LOGGING_CATEGORY(lcRetry, "litterbox.retry", QtInfoMsg)
+
 void CardStore::refresh() {
     // Retry and the next sync explicitly retry retained writes, without waiting
     // for the automatic backoff. Never change the operation's id or payload.
@@ -603,6 +606,15 @@ void CardStore::refresh() {
         flush();
     }
     if (m_online && m_open) emit requestCards(QStringLiteral("/v1/cards"), ++m_cardsRequestSequence);
+}
+void CardStore::retrySync() {
+    qCDebug(lcRetry) << "retrySync entry online=" << m_online << "open=" << m_open
+                     << "gateBypassed=" << (!m_online && m_open);
+    if (m_online) refresh();
+    else if (m_open) {
+        qCDebug(lcRetry) << "retrySync emitting requestCards online=false open=true gateBypassed=true seq=" << (m_cardsRequestSequence + 1);
+        emit requestCards(QStringLiteral("/v1/cards"), ++m_cardsRequestSequence);
+    }
 }
 bool CardStore::applyRemoteCards(const QVariantMap &sections, quint64 requestId) {
     if (!m_open) return false;
