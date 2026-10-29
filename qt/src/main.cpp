@@ -440,6 +440,7 @@ int main(int argc, char *argv[])
     // Agent chat uses the same durable queue with its client_msg_id endpoint.
     QHash<int, quint64> cardsRequests;
     CardStoreTransport operationTransport(store, api);
+    CardEventRefresh cardEventRefresh(store, cardsRequests);
     QHash<int, QString> mailBodyRequests;
     QHash<int, QString> senderPhotoRequests;
     QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
@@ -463,8 +464,10 @@ int main(int argc, char *argv[])
                 return;
             }
             if (cardsRequests.contains(id)) {
-                if (store.applyRemoteCards(data.toObject().toVariantMap(), cardsRequests.take(id)))
+                const quint64 sequence = cardsRequests.take(id);
+                if (store.applyRemoteCards(data.toObject().toVariantMap(), sequence))
                     store.setOnline(true);
+                cardEventRefresh.snapshotFinished();
                 return;
             }
         });
@@ -478,7 +481,7 @@ int main(int argc, char *argv[])
     QObject::connect(&api, &Api::requestFailed, &app,
         [&](int id, int status, const QString &error, const QJsonValue &data) {
             if (crashUploader.ownsRequest(id)) return; // Diagnostics never change card sync state.
-            cardsRequests.remove(id);
+            if (cardsRequests.remove(id)) cardEventRefresh.snapshotFinished();
             if (status == 0) store.reportOffline(error);
             if (mailBodyRequests.contains(id)) store.reportMailBodyFailed(mailBodyRequests.take(id), status);
             if (senderPhotoRequests.contains(id)) store.reportSenderPhotoFailed(senderPhotoRequests.take(id), status);
@@ -497,7 +500,7 @@ int main(int argc, char *argv[])
             cardEvent = false;
             retrySeconds = 1;
             store.setOnline(true);
-            store.refresh();
+            cardEventRefresh.event();
         }
     });
     QObject::connect(&api, &Api::streamFinished, &app, [&](int id, const QString &error) {

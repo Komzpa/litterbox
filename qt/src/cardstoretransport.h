@@ -3,6 +3,7 @@
 #include "CardStore.h"
 #include "api.h"
 #include <QHash>
+#include <QElapsedTimer>
 #include <QJsonObject>
 #include <QUrl>
 
@@ -41,4 +42,40 @@ public:
 private:
     QHash<int, QString> m_requests;
     QSet<int> m_messageRequests;
+};
+
+// Events carry no card or device identity. Coalesce them while a snapshot or
+// outbox drain is in progress; a bounded fallback keeps remote changes visible
+// even when a retained write cannot drain.
+class CardEventRefresh : public QObject {
+public:
+    CardEventRefresh(CardStore &store, const QHash<int, quint64> &requests)
+        : QObject(&store), m_store(store), m_requests(requests) {
+        m_timer.setSingleShot(true);
+        m_timer.setTimerType(Qt::PreciseTimer);
+        connect(&m_timer, &QTimer::timeout, this, [this] {
+            if (!m_dirty || !m_store.online() || !m_requests.isEmpty()) return;
+            m_dirty = false;
+            m_firstDirty.invalidate();
+            m_store.refresh();
+        });
+        connect(&store, &CardStore::pendingOpsChanged, this, [this] {
+            if (m_dirty && m_store.pendingOps() == 0) schedule();
+        });
+    }
+    void event() { if (!m_dirty) m_firstDirty.start(); m_dirty = true; schedule(); }
+    void snapshotFinished() { if (m_dirty) schedule(); }
+private:
+    void schedule() {
+        if (!m_dirty || !m_store.online() || !m_requests.isEmpty()) return;
+        const int deadline = m_store.pendingOps() ? 10000 : 500;
+        const int remaining = qMax(0, deadline - int(m_firstDirty.elapsed()));
+        const int delay = m_store.pendingOps() ? remaining : qMin(150, remaining);
+        m_timer.start(delay);
+    }
+    CardStore &m_store;
+    const QHash<int, quint64> &m_requests;
+    QTimer m_timer;
+    QElapsedTimer m_firstDirty;
+    bool m_dirty = false;
 };
