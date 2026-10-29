@@ -1674,11 +1674,9 @@ void CardStore::prefetchNextMailBody() {
         m_bodyPrefetchTimer.start(int(m_bodyBackoff.remainingTime()));
         return;
     }
-    // A wide pipeline (like the outbox drain) bounded by kBodyWindow and by
-    // the client-side token budget; a completed durable batch releases slots
+    // A wide pipeline (like the outbox drain) bounded by kBodyWindow; a completed durable batch releases slots
     // immediately, not after an arbitrary per-body sleep.
     qint64 retryIn = 60000;
-    bool tokenWait = false;
     for (int index = 0; index < m_bodyPrefetchQueue.size() && m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow;) {
         const QString id = m_bodyPrefetchQueue.at(index);
         const auto retry = m_bodyRetryAfter.constFind(id);
@@ -1687,23 +1685,12 @@ void CardStore::prefetchNextMailBody() {
             ++index;
             continue;
         }
-        qint64 waitMs = 0;
-        const bool urgent = m_bodyUrgent.remove(id);
-        if (!urgent && !takeBodyToken(&waitMs)) { retryIn = qMin(retryIn, waitMs); tokenWait = true; break; }
-        if (urgent) m_bodyTokens -= 1;
         m_bodyPrefetchQueue.removeAt(index);
         m_bodyRequests.insert(id);
         emit requestMailBodyGet(id, QStringLiteral("/v1/cards/") + id + QStringLiteral("/body"));
     }
-    if (!m_bodyPrefetchQueue.isEmpty() && (tokenWait || m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow))
+    if (!m_bodyPrefetchQueue.isEmpty() && m_bodyRequests.size() + m_bodyPersisting.size() < kBodyWindow)
         m_bodyPrefetchTimer.start(int(retryIn));
-}
-bool CardStore::takeBodyToken(qint64 *waitMs) {
-    if (!m_bodyTokenClock.isValid()) m_bodyTokenClock.start();
-    m_bodyTokens = qMin(kBodyBurst, m_bodyTokens + m_bodyTokenClock.restart() / 1000.0 * kBodyRefillPerSecond);
-    if (m_bodyTokens >= 1) { m_bodyTokens -= 1; return true; }
-    *waitMs = qint64((1 - m_bodyTokens) / kBodyRefillPerSecond * 1000) + 1;
-    return false;
 }
 void CardStore::requestMailBody(const QString &cardId) {
     if (!m_open || cardId.isEmpty()) return;
@@ -1728,7 +1715,6 @@ void CardStore::requestMailBody(const QString &cardId) {
     if (m_bodyRequests.contains(cardId) || m_bodyPersisting.contains(cardId)) return;
     m_bodyPrefetchQueue.removeAll(cardId);
     m_bodyPrefetchQueue.prepend(cardId);
-    m_bodyUrgent.insert(cardId); // an opened reader never waits for the prefetch budget
     // An explicit reader retry can bypass this card's ordinary failure delay,
     // but never the shared 429 cooldown or the bounded outstanding request set.
     m_bodyRetryAfter.remove(cardId);
@@ -1805,11 +1791,10 @@ void CardStore::flushBodyWrites() {
 void CardStore::reportMailBodyFailed(const QString &cardId, int status) {
     m_bodyRequests.remove(cardId);
     const int attempt = m_bodyRetryAttempts.value(cardId);
-    const int delay = status == 429 ? 60000 : qMin(60000, 1000 * (1 << qMin(attempt, 6)));
+    const int delay = status == 429 ? 1000 : qMin(60000, 1000 * (1 << qMin(attempt, 6)));
     m_bodyRetryAttempts.insert(cardId, qMin(attempt + 1, 6));
     m_bodyRetryAfter.insert(cardId, QDeadlineTimer(delay, Qt::PreciseTimer));
-    // The server shares a 60/min device window across routes and supplies no
-    // Retry-After. Park the entire body queue on 429, not just the rejected card.
+    // The server's per-device bucket answers 429 with Retry-After: 1. Park the entire body queue on 429, not just the rejected card.
     if (status == 429) m_bodyBackoff = QDeadlineTimer(delay, Qt::PreciseTimer);
     emit mailBodyFailed(cardId);
     emit mailSyncStateChanged();

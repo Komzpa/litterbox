@@ -298,16 +298,14 @@ func (l *IPLimiter) Allow(ip string) bool {
 	return true
 }
 
-// Device request budget. A reconnect drain posts one /v1/ops request per
-// queued operation, all within a fraction of a second on a LAN, so the budget
-// is a token bucket rather than a fixed window: DeviceBurst covers a normal
-// offline backlog (the owner's 100-op drain and a 200-op one with headroom for
-// the follow-up sync reads) and DeviceRefillPerSecond is the sustained ceiling,
-// 300 requests per minute, five times the former flat 60/minute. A device that
-// keeps asking faster than that is still refused with 429 and Retry-After.
+// Device request budget. A token bucket sized for a gigabit link: a full sync
+// (3k+ bodies, then photos and ops) must never be refused, so DeviceBurst
+// covers 5,000 back-to-back requests and DeviceRefillPerSecond sustains 500/s
+// (30,000 per minute). Only a runaway loop beyond that gets 429 with
+// Retry-After.
 const (
-	DeviceBurst           = 400
-	DeviceRefillPerSecond = 5.0
+	DeviceBurst           = 5000
+	DeviceRefillPerSecond = 500.0
 )
 
 // TokenBucket allows bursts up to its capacity and refills continuously.

@@ -242,13 +242,6 @@ private:
     QTimer m_bodyFlushTimer;
     void flushBodyWrites();
     int m_bodyTransactions = 0;
-    // Client-side mirror of the server's per-device token bucket (burst 400,
-    // 5/s): every body fetch costs one token, so prefetch paces itself under
-    // the budget instead of being parked by 429s.
-    double m_bodyTokens = kBodyBurst;
-    QElapsedTimer m_bodyTokenClock;
-    QSet<QString> m_bodyUrgent;
-    bool takeBodyToken(qint64 *waitMs);
     mutable QHash<QString, QVariantMap> m_bodyLru;
     mutable QStringList m_bodyLruOrder; // most recent last
     mutable qint64 m_bodyLruBytes = 0;
@@ -261,8 +254,6 @@ public:
     int bodyWriteTransactions() const { return m_bodyTransactions; }
     static constexpr qint64 kBodyLruBytes = 24 * 1024 * 1024;
     static constexpr int kBodyWindow = 24;       // fetches + unflushed writes in flight
-    static constexpr double kBodyBurst = 300;    // of the server's 400, leaving ops headroom
-    static constexpr double kBodyRefillPerSecond = 4; // of the server's 5/s
 private:
     QStringList m_bodyPrefetchQueue;
     QSet<QString> m_bodyRequests;

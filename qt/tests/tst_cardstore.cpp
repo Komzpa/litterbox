@@ -1656,10 +1656,10 @@ private slots:
         QVERIFY(!store.mailSyncComplete());
         store.setOnline(false);
     }
-    void bodyPrefetchPipelinesWideBatchesWritesAndPacesToTokenBudget() {
+    void bodyPrefetchPipelinesWideAndBatchesWrites() {
         // R9b: 400 bodies; the window is kBodyWindow wide, fetches complete
         // out of order, SQLite sees far fewer transactions than bodies, and
-        // fetches stop at the client-side token burst instead of drawing 429s.
+        // no client-side pacing.
         QTemporaryDir directory;
         const QString path = directory.filePath("wide.sqlite");
         constexpr int total = 400;
@@ -1686,12 +1686,11 @@ private slots:
         clock.start();
         store.setOnline(true);
         QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
-        QTRY_VERIFY_WITH_TIMEOUT(fetched >= int(CardStore::kBodyBurst) && store.mailSyncPending() <= total - int(CardStore::kBodyBurst), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(store.mailSyncPending(), 0, 20000);
         qInfo() << "BENCH bodies" << fetched << "max_in_flight" << maxInFlight << "wall_ms" << clock.elapsed();
         QVERIFY(maxInFlight > 8);                       // wide, not two at a time
         QVERIFY(maxInFlight <= CardStore::kBodyWindow);
-        QTest::qWait(300);
-        QVERIFY(fetched < int(CardStore::kBodyBurst) + 20); // paced at the refill rate once the burst is spent
+        QCOMPARE(fetched, total);
         QVERIFY(store.bodyWriteTransactions() < fetched / 4); // batched writes
     }
     void neverOpenedMailSynchronizesThroughHttpAndReopensOffline() {
