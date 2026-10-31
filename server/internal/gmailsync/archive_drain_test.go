@@ -30,6 +30,9 @@ type slowGmail struct {
 	requests atomic.Int32
 	mu       sync.Mutex
 	archived map[string]int
+	quota bool
+	stamps []time.Time
+	throttled atomic.Int32
 }
 
 var modifyLine = regexp.MustCompile(`^POST \S*/threads/([^/\s]+)/modify`)
@@ -42,6 +45,7 @@ func (g *slowGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "drain-access", "expires_in": 3600})
 	case strings.HasSuffix(r.URL.Path, "/modify"):
 		g.requests.Add(1)
+		if !g.allow() { http.Error(w, "quota", http.StatusTooManyRequests); return }
 		thread := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/gmail/v1/users/me/threads/"), "/modify")
 		if strings.HasPrefix(thread, "bad-") {
 			http.Error(w, "fixture Gmail denied "+thread, http.StatusForbidden)
@@ -51,6 +55,7 @@ func (g *slowGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/batch/gmail/v1":
 		g.requests.Add(1)
 		serveFakeBatch(w, r, func(thread, _ string, _ []byte) (int, string) {
+			if !g.allow() { return http.StatusTooManyRequests, "quota" }
 			if strings.HasPrefix(thread, "bad-") {
 				return http.StatusForbidden, "fixture Gmail denied " + thread
 			}
@@ -106,6 +111,19 @@ func (g *slowGmail) record(thread string) {
 	g.archived[thread]++
 }
 
+func (g *slowGmail) allow() bool {
+	if !g.quota { return true }
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := time.Now()
+	active := g.stamps[:0]
+	for _, stamp := range g.stamps { if now.Sub(stamp) < time.Second { active = append(active, stamp) } }
+	g.stamps = active
+	if len(active) >= 25 { g.throttled.Add(1); return false }
+	g.stamps = append(g.stamps, now)
+	return true
+}
+
 // drain posts one archive op per card concurrently through the real ops.API and
 // returns each card's HTTP status and the wall time.
 func (f *spamFixture) drain(cards []uuid.UUID) (map[uuid.UUID]int, time.Duration) {
@@ -132,7 +150,7 @@ func (f *spamFixture) drain(cards []uuid.UUID) (map[uuid.UUID]int, time.Duration
 func newDrainFixture(t *testing.T, n int, bad int) (*spamFixture, *slowGmail, []uuid.UUID) {
 	t.Helper()
 	f := newSpamFixture(t)
-	g := &slowGmail{latency: 300 * time.Millisecond}
+	g := &slowGmail{latency: 150 * time.Millisecond, quota: true}
 	srv := httptest.NewServer(g)
 	t.Cleanup(srv.Close)
 	useTestOps(ClientForCard("id", "secret", srv.URL+"/gmail/v1/users/me", srv.URL+"/token", srv.Client()))
@@ -151,10 +169,8 @@ func newDrainFixture(t *testing.T, n int, bad int) (*spamFixture, *slowGmail, []
 	return f, g, cards
 }
 
-// 130 concurrent archives of one account against a 300 ms provider must not
-// queue behind the tenant sequence lock or pay one OAuth exchange and one
-// provider round trip each.
-func TestArchiveBacklogDrainsInUnderASecondAndAHalf(t *testing.T) {
+// Quota-aware throughput proof through the real HTTP operation consumer.
+func TestArchiveBacklogDrainsWithinQuota(t *testing.T) {
 	f, g, cards := newDrainFixture(t, 130, 0)
 	ctx := context.Background()
 	var cursor, nextBefore int64
@@ -165,7 +181,7 @@ func TestArchiveBacklogDrainsInUnderASecondAndAHalf(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, elapsed := f.drain(cards)
-	t.Logf("130 archives: wall=%v token POSTs=%d provider requests=%d", elapsed, g.tokens.Load(), g.requests.Load())
+	t.Logf("130 archives: wall=%v token POSTs=%d provider requests=%d throttled=%d", elapsed, g.tokens.Load(), g.requests.Load(), g.throttled.Load())
 	for card, code := range status {
 		if code != 200 {
 			t.Errorf("card %s status=%d, want 200", card, code)
@@ -211,9 +227,19 @@ func TestArchiveBacklogDrainsInUnderASecondAndAHalf(t *testing.T) {
 	if n := g.tokens.Load(); n > 1 {
 		t.Errorf("OAuth token POSTs=%d, want at most 1", n)
 	}
-	if elapsed >= 1500*time.Millisecond {
-		t.Errorf("wall time %v, want under 1.5s", elapsed)
+	if elapsed >= 9*time.Second {
+		t.Errorf("wall time %v, want under 9s with a 25 ops/s quota", elapsed)
 	}
+	if g.throttled.Load() != 0 { t.Errorf("provider observed %d quota violations", g.throttled.Load()) }
+}
+
+func TestTenArchivesThroughputWithinQuota(t *testing.T) {
+	f, g, cards := newDrainFixture(t, 10, 0)
+	status, elapsed := f.drain(cards)
+	t.Logf("10 archives: wall=%v token POSTs=%d provider requests=%d throttled=%d", elapsed, g.tokens.Load(), g.requests.Load(), g.throttled.Load())
+	for card, code := range status { if code != 200 { t.Errorf("card %s status=%d", card, code) }; f.state(t, card, "archived") }
+	if elapsed >= time.Second { t.Errorf("10 ops took %v, want under 1s", elapsed) }
+	if g.tokens.Load() != 1 || g.throttled.Load() != 0 { t.Errorf("tokens=%d throttled=%d", g.tokens.Load(), g.throttled.Load()) }
 }
 
 // One provider refusal fails only that op: its card stays open and leaves no

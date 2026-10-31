@@ -385,12 +385,26 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, _ := json.Marshal(in)
 	hash := sha256.Sum256(payload)
+	// Serialize retries before checking the ledger, including concurrent copies.
+	unlock, err := lockOperation(r.Context(), tenant+"/op/"+in.OpID.String())
+	if err != nil {
+		a.reject(w, r, tenant, in, err, nil)
+		return
+	}
+	defer unlock()
 
 	// Provider (WAN) work runs before any transaction: an op that already has a
 	// receipt is a replay and never repeats side effects.
 	hctx := r.Context()
 	if pre, ok := lookupPreCommit(in.Type); ok {
 		read := a.reader(tenant)
+		// Keep conflicting thread mutations ordered until their DB commit.
+		unlockTargets, err := lockProviderTargets(r.Context(), read, mustUUID(tenant), in)
+		if err != nil {
+			a.reject(w, r, tenant, in, err, nil)
+			return
+		}
+		defer unlockTargets()
 		recorded, err := a.opRecorded(r.Context(), read, tenant, in.OpID)
 		if err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)

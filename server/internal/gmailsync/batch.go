@@ -22,8 +22,8 @@ const (
 	// batchWindow is how long the first queued mutation waits for company.
 	// Concurrent archives of one account arrive within a few milliseconds.
 	batchWindow = 20 * time.Millisecond
-	// maxBatchCalls is Gmail's limit of calls in one HTTP batch request.
-	maxBatchCalls = 100
+	// Each threads.modify costs 10 of the user's 250 quota units/second.
+	maxBatchCalls = 25
 	gmailBatchAPI = "https://www.googleapis.com/batch/gmail/v1"
 )
 
@@ -33,6 +33,7 @@ type modifyResult struct {
 }
 
 type modifyCall struct {
+	ctx context.Context
 	thread  string
 	payload []byte
 	done    chan modifyResult
@@ -52,7 +53,7 @@ func (c *Client) ModifyBatched(ctx context.Context, thread string, add, remove [
 		return err
 	}
 	err = c.retrying(ctx, func() (bool, error) {
-		call := &modifyCall{thread: thread, payload: payload, done: make(chan modifyResult, 1)}
+		call := &modifyCall{ctx: ctx, thread: thread, payload: payload, done: make(chan modifyResult, 1)}
 		c.enqueue(call)
 		select {
 		case r := <-call.done:
@@ -110,17 +111,60 @@ func (c *Client) batchURL() string {
 func threadModifyPath(thread string) string { return "/threads/" + url.PathEscape(thread) + "/modify" }
 
 func (c *Client) send(calls []*modifyCall) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	if len(calls) == 1 {
-		retry, err := c.try(ctx, "POST", threadModifyPath(calls[0].thread), calls[0].payload, nil)
-		calls[0].done <- modifyResult{retry, err}
+	// One sender per account enforces quota across simultaneous batch flushes.
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if c.quotaUsed+len(calls) > maxBatchCalls {
+		if delay := time.Until(c.quotaUntil); delay > 0 {
+			time.Sleep(delay)
+		}
+	}
+	if !time.Now().Before(c.quotaUntil) {
+		c.quotaUsed = 0
+	}
+	active := calls[:0]
+	for _, call := range calls {
+		if err := call.ctx.Err(); err != nil {
+			call.done <- modifyResult{err: err}
+		} else {
+			active = append(active, call)
+		}
+	}
+	if len(active) == 0 {
 		return
 	}
-	results := c.sendBatch(ctx, calls)
-	for i, call := range calls {
-		call.done <- results[i]
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	// Warm the token before the final cancellation check: OAuth can take WAN time.
+	_, err := c.token(ctx)
+	calls = active
+	active = calls[:0]
+	for _, call := range calls {
+		if e := call.ctx.Err(); e != nil {
+			call.done <- modifyResult{err: e}
+		} else if err != nil {
+			call.done <- modifyResult{err: err}
+		} else {
+			active = append(active, call)
+		}
 	}
+	if len(active) == 0 {
+		return
+	}
+	c.quotaUsed += len(active)
+	if len(active) == 1 {
+		call := active[0]
+		retry, err := c.try(call.ctx, "POST", threadModifyPath(call.thread), call.payload, nil)
+		call.done <- modifyResult{retry, err}
+	} else {
+		results := c.sendBatch(ctx, active)
+		for i, call := range active {
+			call.done <- results[i]
+		}
+	}
+	// Start the rolling window at completion, conservatively allowing for WAN
+	// jitter and provider processing rather than assuming request arrival times.
+	c.quotaUntil = time.Now().Add(time.Second)
 }
 
 func (c *Client) sendBatch(ctx context.Context, calls []*modifyCall) []modifyResult {

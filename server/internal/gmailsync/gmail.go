@@ -31,6 +31,9 @@ type Client struct {
 	BatchURL string
 	bmu      sync.Mutex
 	pending  []*modifyCall
+	sendMu sync.Mutex
+	quotaUntil time.Time
+	quotaUsed int
 	lmu      sync.Mutex
 	labels   map[string]string
 }
@@ -134,6 +137,9 @@ func (c *Client) retrying(ctx context.Context, attemptFn func() (retry bool, err
 	}
 	reauthed := false
 	for attempt := 0; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		retry, err := attemptFn()
 		if err == nil {
 			return nil
