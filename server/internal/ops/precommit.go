@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"io"
+	"net"
 	"net/http"
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Reader runs fn inside a short read-only transaction scoped to the tenant.
@@ -77,14 +80,37 @@ func (a API) reader(tenant string) Reader {
 	return func(ctx context.Context, fn func(pgx.Tx) error) error {
 		tx, err := a.DB.Begin(ctx)
 		if err != nil {
-			return err
+			return &StorageError{Err: err}
 		}
 		defer tx.Rollback(ctx)
 		if _, err = tx.Exec(ctx, `SELECT set_config('litterbox.tenant_id',$1,true)`, tenant); err != nil {
-			return err
+			return &StorageError{Err: err}
 		}
-		return fn(tx)
+		if err = fn(tx); isStorageFailure(err) {
+			return &StorageError{Err: err}
+		}
+		return err
 	}
+}
+
+// StorageError marks a database or infrastructure failure, as opposed to a
+// semantic rejection of the operation. The API answers it with 503, which the
+// client retries; 422 would make the client drop the queued operation.
+type StorageError struct{ Err error }
+
+func (e *StorageError) Error() string { return "database unavailable: " + e.Err.Error() }
+func (e *StorageError) Unwrap() error { return e.Err }
+
+// isStorageFailure reports errors raised by the database or its connection.
+func isStorageFailure(err error) bool {
+	if err == nil || errors.Is(err, pgx.ErrNoRows) {
+		return false
+	}
+	var pg *pgconn.PgError
+	var conn *pgconn.ConnectError
+	var netErr net.Error
+	return errors.As(err, &pg) || errors.As(err, &conn) || errors.As(err, &netErr) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || pgconn.Timeout(err)
 }
 
 func (a API) opRecorded(ctx context.Context, read Reader, tenant string, op uuid.UUID) (bool, error) {
@@ -107,16 +133,18 @@ func init() {
 			return mailProviderPhase(ctx, read, tenant, card, kind, args)
 		})
 		RegisterPreCommit("bundle_"+kind, func(ctx context.Context, read Reader, tenant, card uuid.UUID, args json.RawMessage) ([]uuid.UUID, error) {
-			var ids []uuid.UUID
-			err := read(ctx, func(tx pgx.Tx) error {
-				var err error
-				if ids, err = bundleOpenUnpinnedIDs(ctx, tx, tenant, args); err == nil && len(ids) == 0 {
-					ids, err = bundleFallbackIDs(ctx, tx, tenant, card, args)
+			ids, resolved := Targets(ctx)
+			if !resolved {
+				err := read(ctx, func(tx pgx.Tx) (err error) {
+					ids, err = resolveBundleTargets(ctx, tx, tenant, card, args)
+					return err
+				})
+				if err != nil {
+					return nil, err
 				}
-				return err
-			})
-			if err != nil || len(ids) == 0 {
-				return nil, nil // the handler reports malformed or empty bundles
+			}
+			if len(ids) == 0 {
+				return nil, nil // the handler reports empty bundles
 			}
 			// The first member runs alone: it warms the account's token and label
 			// caches and surfaces a revoked grant once, instead of every member
@@ -173,6 +201,12 @@ func mailProviderPhase(ctx context.Context, read Reader, tenant, card uuid.UUID,
 // reject answers 422 for a failed operation. tx is the operation's open
 // transaction, or nil when the failure happened in the provider phase.
 func (a API) reject(w http.ResponseWriter, r *http.Request, tenant string, in request, err error, tx pgx.Tx) {
+	var storage *StorageError
+	if errors.As(err, &storage) {
+		log.Printf("operation unavailable: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	log.Printf("operation rejected: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
 	response := map[string]string{"error": err.Error()}
 	var reconnect *GmailReconnectError

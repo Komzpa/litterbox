@@ -212,14 +212,13 @@ func init() {
 	})
 	for _, kind := range []string{"archive", "spam"} {
 		Register("bundle_"+kind, func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
-			ids, err := bundleOpenUnpinnedIDs(ctx, tx, tenant, args)
-			if err != nil {
-				return err
-			}
-			if len(ids) == 0 {
-				// A dissolved bundle still targets the client's named cards.
-				ids, err = bundleFallbackIDs(ctx, tx, tenant, card, args)
-				if err != nil {
+			// ServeHTTP resolved the target set once, before the provider phase;
+			// commit exactly that set. A dissolved bundle still targets the
+			// client's named cards (see resolveBundleTargets).
+			ids, resolved := Targets(ctx)
+			if !resolved {
+				var err error
+				if ids, err = resolveBundleTargets(ctx, tx, tenant, card, args); err != nil {
 					return err
 				}
 			}
@@ -399,19 +398,27 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if pre, ok := lookupPreCommit(in.Type); ok {
 		read := a.reader(tenant)
 		// Keep conflicting thread mutations ordered until their DB commit.
-		unlockTargets, err := lockProviderTargets(r.Context(), read, mustUUID(tenant), in)
+		// The target set is resolved here once and carried through the provider
+		// phase and the commit.
+		ids, keys, err := resolveTargets(r.Context(), read, mustUUID(tenant), in)
+		if err != nil {
+			a.reject(w, r, tenant, in, err, nil)
+			return
+		}
+		unlockTargets, err := lockThreads(r.Context(), keys)
 		if err != nil {
 			a.reject(w, r, tenant, in, err, nil)
 			return
 		}
 		defer unlockTargets()
+		hctx = withTargets(hctx, ids)
 		recorded, err := a.opRecorded(r.Context(), read, tenant, in.OpID)
 		if err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		if !recorded {
-			applied, err := pre(r.Context(), read, mustUUID(tenant), in.CardID, in.Args)
+			applied, err := pre(hctx, read, mustUUID(tenant), in.CardID, in.Args)
 			if err != nil {
 				a.reject(w, r, tenant, in, err, nil)
 				return
