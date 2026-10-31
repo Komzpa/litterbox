@@ -84,6 +84,7 @@ Each requirement is **decided** or **open** and names its source.
   patterns, BSD-3; EasyPrivacy email-tracker section) plus a heuristic for
   1x1 and invisible images; removed trackers are never requested, and other
   images are fetched as before.
+- **R72 Pipeline notification bundles** (decided, owner 2026-10-31). Bitbucket pipeline-failure mail for one repository forms one deterministic bundle across branches and commit SHAs, keyed by the stable sender address and repository; a different repository or sender never joins it. This route does not depend on embedding similarity. Oracle: `TestRouteBitbucketPipelineBySenderAndRepository` uses the observed Gmail From/Subject/body shape and covers same-repository merge plus different-repository and different-sender controls.
 
 ## Card lifecycle
 

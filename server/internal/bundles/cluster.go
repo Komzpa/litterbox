@@ -174,14 +174,13 @@ func ReassignGitHub(ctx context.Context, tx pgx.Tx, tenant uuid.UUID) error {
 }
 
 // Cluster immediately assigns open mail cards to bundles across accounts.
-// GitHub mail is routed deterministically by repo and who must act (see
-// RouteGitHubMail) without embeddings. Remaining mail is clustered by
-// embeddings; provider boilerplate is stripped before embedding. Any
-// embedding failure falls back to structured keys: GitHub mail keeps its
-// routed keys and is never keyed by sender alone. The embed error is logged
-// once per run so a missing local model is visible instead of silently
-// reshaping the inbox. Read and write transactions are tenant-scoped and short;
-// all embedding calls run between them with no database transaction open.
+// GitHub and Bitbucket notifications are routed deterministically by repo
+// without embeddings. Remaining mail is clustered by embeddings; provider
+// boilerplate is stripped before embedding. Embedding failures fall back to
+// structured routes only. The embed error is logged once per run so a missing
+// local model is visible instead of silently reshaping the inbox. Read and
+// write transactions are tenant-scoped and short; embedding calls run between
+// them with no database transaction open.
 func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embedder) error {
 	if embedder == nil {
 		return errors.New("nil bundle embedder")
@@ -205,6 +204,9 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 	var rest []*mailCard
 	for _, c := range cards {
 		if _, routed := RouteGitHubMail(c.sender, c.subject, c.text); routed {
+			continue
+		}
+		if _, routed := RouteBitbucketMail(c.sender, c.subject, c.text); routed {
 			continue
 		}
 		rest = append(rest, c)
@@ -240,6 +242,9 @@ func Cluster(ctx context.Context, db ClusterDB, tenant uuid.UUID, embedder Embed
 	}
 	defer tx.Rollback(context.Background())
 	if err := assignGitHub(ctx, tx, tenant, cards); err != nil {
+		return err
+	}
+	if err := assignBitbucket(ctx, tx, tenant, cards); err != nil {
 		return err
 	}
 	if err := assignAgentDigest(ctx, tx, tenant); err != nil {
