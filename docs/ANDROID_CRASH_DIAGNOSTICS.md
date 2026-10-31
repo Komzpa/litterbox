@@ -184,3 +184,53 @@ route existence.
 The exact Android retained exit row, Java spool contents and authenticated
 server receipt must also be checked together in disposable runtime proof.
 History availability alone cannot satisfy that exact-row acceptance gate.
+
+## Archive-storm registry crash (2026-10-31)
+
+`fix-archive-storm` changes inbox control-registry removal to assignment of
+`undefined`, including drag rekeying. Every consumer already treats that value
+as absent; the drag scan skips empty entries. Removed controls are not retained.
+This avoids repeatedly deleting/re-adding dynamic card-id properties on the same
+JavaScript objects during `registerControls` on presentation changes.
+
+On the isolated real-mail v40 emulator, the original APK crashed twice in two
+fresh trials: 18 taps / 28 queued operations (fault `0x40`, uptime 232 s), then
+33 taps / 90 operations (fault `0x38`, uptime 46 s). The earlier acceptance run
+also crashed at 97 operations. These are operation-row counts, not tap counts.
+A test-only interpreter APK reproduced the same GUI-thread SIGSEGV after
+54 taps / 78 operations (fault `0x50`, uptime 89 s). Its last QML console stack
+was `unregisterControls <- registerControls <- onCardIdChanged <-
+rebuildPresentation` at the `rows = ordered` notification. ARM64 translation
+still yielded only an anonymous host-exec native frame; it did **not** expose
+an Android guest C++ caller.
+
+A small isolated Qt 6.7.3 desktop registry-churn input reproduced SIGSEGV
+without Litterbox, mail, delegates, networking or Android translation. GDB
+resolved `QV4::Object::insertMember <- QV4::Object::internalPut <-
+QV4::Runtime::StoreElement::call`. The same input with clear-to-undefined
+completed 10,000 rounds and exited 0; delete/re-add exited 139. These are
+desktop diagnostic frames, not fabricated Android frames. The native run
+receipts and retained probe are in `publish/cohort/archive-*.json`,
+`archive-interp-1-logcat.txt`, `registry-churn.qml` and `registry-churn-gdb.txt`.
+
+Retro: `console.trace()` in Qt 6.7 takes no arguments; log a label separately.
+Interpreter mode alone does not bypass this engine object-property failure.
+Recover caller context at the small registry owner rather than adding generic
+delegate-lifetime guards. The first fixed-build trial did not start because
+all three transient setup units were externally stopped together; those
+attempts are setup failures, never passing load trials. Recovery reused the
+same AVD/user, existing DB clone and ports and re-added the in-guest DNAT.
+No owner phone, owner checkout, accessibility dump or live 8081 service was used.
+
+The exact non-instrumented candidate from source
+`2ec8d7797d641043f6e578ea863e2992e77f61df` is
+`artifacts/litterbox-v40-fix-archive-storm.apk`, SHA-256
+`8ea188b27e6a09f39fa1dcb4e006432044fcdb1de8d6047c10ba5223a5ee8c77`.
+Three consecutive native trials queued **130, 130 and 131 operations**, drained
+in **7,805, 7,794 and 9,751 ms**, retained PID **6726** throughout and had empty
+crash buffers. All three started with an empty outbox (the first command used
+`resume`, but the observed initial count was zero). No interpreter or trace
+instrumentation is in this candidate. v38 under the same real-mail trigger
+has **not** been run by this bounded lane; its historical synthetic control is
+not a substitute. The original rejected release acceptance is not overwritten.
+This is a proven crash-fix candidate, not a published release.
