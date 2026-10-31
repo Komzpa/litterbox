@@ -10,7 +10,9 @@
 (c) every semantic anchor in qt/tests/icon-semantics.json is present and the
     icon it shows is the checked-in one;
 (d) every icon name used in QML is listed in known_icons of that map, so a new
-    icon must be added to the map before it can ship.
+    icon must be added to the map before it can ship;
+(e) every named or conditional QML icon declaration matches its callsite entry,
+    including ordered branches, and every mapped callsite still exists.
 Exit status 0 means all checks pass; each failure is printed as file:line.
 """
 import argparse
@@ -74,6 +76,62 @@ def qml_files(qt):
     return files
 
 
+# Lex strings and comments before braces, so QML/JavaScript expressions cannot
+# change the enclosing-object stack by containing a brace in a string.
+QML_TOKEN = re.compile(
+    r'(?P<comment>//[^\n]*|/\*[\s\S]*?\*/)|'
+    r'(?P<string>"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|`(?:\\.|[^`\\])*`)|'
+    r'(?P<identity>\b(?:id\s*:\s*[A-Za-z_]\w*|objectName\s*:\s*"(?:\\.|[^"\\])*"))|'
+    r'(?P<assignment>(?<![\w.])(?:icon\.name|source)\s*:\s*[^;\n}]+)|'
+    r'(?P<open>\{)|(?P<close>\})'
+)
+
+
+def declarations(path, qt):
+    """Return named icon choices with their enclosing QML identity chain."""
+    text = path.read_text()
+    stack = []
+    found = []
+    for match in QML_TOKEN.finditer(text):
+        kind = match.lastgroup
+        token = match.group()
+        if kind == "open":
+            before = text[max(0, match.start() - 256):match.start()]
+            opener = re.search(r'([\w.]+)\s*$', before)
+            stack.append({"kind": opener.group(1) if opener else "", "id": None, "object": None})
+        elif kind == "close":
+            if stack:
+                stack.pop()
+        elif kind == "identity" and stack:
+            name, value = token.split(":", 1)
+            stack[-1]["object" if name.strip() == "objectName" else "id"] = value.strip().strip('"')
+        elif kind == "assignment":
+            property_name, rhs = token.split(":", 1)
+            property_name = property_name.strip()
+            is_icon_source = property_name == "source" and stack and stack[-1]["kind"] in ("Icon", "Kirigami.Icon")
+            if property_name != "icon.name" and not is_icon_source:
+                continue
+            rhs = COMPARISON.sub("", rhs)
+            values = [s for s in re.findall(r'"([^"]*)"', rhs) if not s or ICON_NAME.fullmatch(s)]
+            # Renderer bindings forward a caller's choice, rather than declaring one.
+            if not values and not re.search(r'["\']', rhs):
+                continue
+            found.append((list(stack), values, text.count("\n", 0, match.start()) + 1))
+
+    bases = []
+    for nodes, values, line in found:
+        chain = "/".join(node["id"] or node["object"] for node in nodes if node["id"] or node["object"])
+        bases.append(chain)
+    result = []
+    for ordinal, ((nodes, values, line), chain) in enumerate(zip(found, bases), 1):
+        # Unnamed elements and duplicate identity chains need a deterministic suffix.
+        if not nodes or not (nodes[-1]["id"] or nodes[-1]["object"]) or bases.count(chain) > 1:
+            chain += "#%d" % ordinal
+        key = "%s::%s" % (path.relative_to(qt), chain)
+        result.append((key, values, line))
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     here = Path(__file__).resolve().parent
@@ -102,10 +160,31 @@ def main():
                     failures.append("(a) %s:%d icon '%s' has no bundled SVG" % (path.relative_to(qt), number, name))
 
     # (d) every icon used in QML is listed in the map, so new icons are added deliberately.
-    known = set(json.loads(semantic_map.read_text())["known_icons"])
+    mapping = json.loads(semantic_map.read_text())
+    known = set(mapping["known_icons"])
     for name in sorted(set(used) - known):
         failures.append("(d) icon '%s' used at %s is not in %s known_icons" %
                         (name, used[name][0], semantic_map.relative_to(qt) if semantic_map.is_relative_to(qt) else semantic_map))
+
+    # (e) Match the reviewed choices in both directions, including branch order.
+    expected = mapping["callsites"]
+    callsites_seen = set()
+    for path in sources:
+        for key, values, number in declarations(path, qt):
+            for name in values:
+                if name and name not in bundled:
+                    failures.append("(a) %s:%d icon '%s' has no bundled SVG" % (path.relative_to(qt), number, name))
+                if name and name not in known:
+                    failures.append("(d) %s:%d icon '%s' is not in known_icons" % (path.relative_to(qt), number, name))
+            if key in callsites_seen:
+                failures.append("(e) %s:%d duplicate icon callsite %s" % (path.relative_to(qt), number, key))
+            callsites_seen.add(key)
+            if key not in expected:
+                failures.append("(e) %s:%d unmapped icon callsite %s: %s" % (path.relative_to(qt), number, key, values))
+            elif values != expected[key]:
+                failures.append("(e) %s:%d icon mismatch at %s: got %s, expected %s" % (path.relative_to(qt), number, key, values, expected[key]))
+    for key in sorted(set(expected) - callsites_seen):
+        failures.append("(e) mapped icon callsite no longer exists: %s" % key)
 
     # (b) bundled action SVGs paint with currentColor only.
     for path in sorted((bundle / "actions").rglob("*.svg")):
@@ -118,7 +197,7 @@ def main():
                 failures.append("(b) %s hard-codes %s=%s" % (path.relative_to(qt), match.group(1), value))
 
     # (c) semantic anchors use the checked-in icon.
-    entries = json.loads(semantic_map.read_text())["entries"]
+    entries = mapping["entries"]
     for entry in entries:
         allowed = {entry["icon"], *entry.get("also_allowed", [])}
         shown = 0
@@ -145,7 +224,7 @@ def main():
 
     for failure in failures:
         print(failure)
-    print("icon oracle: %d failure(s), %d bundled icons, %d semantic entries" % (len(failures), len(bundled), len(entries)))
+    print("icon oracle: %d failure(s), %d bundled icons, %d semantic entries, %d callsites" % (len(failures), len(bundled), len(entries), len(callsites_seen)))
     return 1 if failures else 0
 
 
