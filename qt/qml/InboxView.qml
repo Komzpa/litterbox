@@ -1672,10 +1672,14 @@ ApplicationWindow {
                             onImplicitHeightChanged: if (implicitHeight > 0) cardRow.measuredHeight = implicitHeight
                     property string registeredCardId: ""
                     property string registeredBundleId: ""
+                    // Clear, never `delete`: rows re-register on every archive, and
+                    // Qt 6.7 V4 crashes (SIGSEGV storing into a null member slot)
+                    // once delete/re-add churn makes it rebuild these objects'
+                    // internal class. Readers treat an undefined entry as absent.
                     function unregisterControls() {
-                        if (window.cardHandles[registeredCardId] === dragHandle) delete window.cardHandles[registeredCardId]
-                        if (window.captureActions[registeredCardId] === cardActions) delete window.captureActions[registeredCardId]
-                        if (window.bundleOpeners[registeredBundleId] === bundleToggle) delete window.bundleOpeners[registeredBundleId]
+                        if (window.cardHandles[registeredCardId] === dragHandle) window.cardHandles[registeredCardId] = undefined
+                        if (window.captureActions[registeredCardId] === cardActions) window.captureActions[registeredCardId] = undefined
+                        if (window.bundleOpeners[registeredBundleId] === bundleToggle) window.bundleOpeners[registeredBundleId] = undefined
                     }
                     function registerControls() {
                         unregisterControls()
@@ -2403,7 +2407,7 @@ ApplicationWindow {
                             // entry can be stale.
                             const cardKey = String(handle.objectName).replace("reorderHandle-", "")
                             if (cardKey !== ids[i]) {
-                                delete window.cardHandles[ids[i]]
+                                window.cardHandles[ids[i]] = undefined
                                 window.cardHandles[cardKey] = handle
                             }
                             reorderSurface.draggingId = cardKey
