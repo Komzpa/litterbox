@@ -646,6 +646,7 @@ the final acceptance; until he sees it each item is partial.
   shows the content, not a black surface. Oracle: archive storm plus snapshot
   fixture with a frame-time log, and an emulator pause/resume journey.
 - **R71 Android launcher shows the Litterbox name and icon** (decided, owner 2026-10-21 «на андроиде иконки приложения, названия нету»). The installed Android app appears in the launcher as Litterbox with the app icon, not the build target name and not a default placeholder. Oracle: `aapt dump badging` on the release APK shows `application-label:'Litterbox'` and a resolved non-empty application icon, with an `ic_launcher` mipmap entry for every shipped density.
+  The Android launcher icon is adaptive: its artwork fills the launcher shape without a white plate, the foreground stays inside the centered 66dp safe zone on the 108dp canvas, and a monochrome layer supports themed icons. Legacy density PNGs remain available on older Android. Oracle: `python3 qt/tests/check_adaptive_icon.py` verifies the Qt manifest's icon and roundIcon resolve to adaptive XML with foreground, background and monochrome resources.
 
 ## Approved desktop and mobile acceptance (2026-10-18)
 
