@@ -253,6 +253,10 @@ export JAVA_HOME=${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}
     -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
     -DANDROID_PLATFORM="android-$ANDROID_API" \
     "-DQT_ANDROID_EXTRA_LIBS=$ANDROID_OPENSSL_ROOT/libcrypto_3.so;$ANDROID_OPENSSL_ROOT/libssl_3.so"
+# Icons are release-blocking: no APK is built with an unbundled, unmapped or
+# off-semantics icon, or a non-adaptive launcher icon (REQUIREMENTS R72).
+python3 "$APP_ROOT/tests/icon_oracle.py" "$APP_ROOT"
+python3 "$APP_ROOT/tests/check_adaptive_icon.py"
 cmake --build "$BUILD_DIR" --target litterbox-qt_make_apk --parallel "$BUILD_JOBS"
 
 APK=${APK:-"$BUILD_DIR/android-build/build/outputs/apk/release/android-build-release-unsigned.apk"}
