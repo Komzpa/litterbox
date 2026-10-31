@@ -4,7 +4,6 @@ package bundles
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/mail"
 	"strings"
@@ -91,7 +90,8 @@ func Snooze(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, raw json.Raw
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return errors.New("card missing or snooze time is not in the future")
+		// Stale op: card is gone or the time already passed. Accept as a no-op.
+		return nil
 	}
 	var source string
 	if err = tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&source); err != nil {

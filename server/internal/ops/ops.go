@@ -157,24 +157,29 @@ func init() {
 			return fmt.Errorf("cards required")
 		}
 		seen := make(map[uuid.UUID]bool, len(in.Cards))
-		for i, id := range in.Cards {
+		for _, id := range in.Cards {
 			if id == uuid.Nil || seen[id] {
 				return fmt.Errorf("invalid card order")
 			}
 			seen[id] = true
-			tag, err := tx.Exec(ctx, `UPDATE cards SET note_order=$3 WHERE tenant_id=$1 AND id=$2 AND state='open'`, tenant, id, i)
+		}
+		// Stale ids (deleted, done, snoozed since the op was queued) are skipped;
+		// the surviving ids are reordered.
+		applied := 0
+		for _, id := range in.Cards {
+			tag, err := tx.Exec(ctx, `UPDATE cards SET note_order=$3 WHERE tenant_id=$1 AND id=$2 AND state='open'`, tenant, id, applied)
 			if err != nil {
 				return err
 			}
-			if tag.RowsAffected() != 1 {
-				return fmt.Errorf("card not found")
+			if tag.RowsAffected() == 1 {
+				applied++
 			}
 		}
 		var openCount int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM cards WHERE tenant_id=$1 AND state='open'`, tenant).Scan(&openCount); err != nil {
 			return err
 		}
-		if openCount != len(in.Cards) {
+		if openCount != applied {
 			return fmt.Errorf("card order must include every open card")
 		}
 		return nil

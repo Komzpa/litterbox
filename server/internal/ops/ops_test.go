@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -287,4 +288,102 @@ func TestJournalCreateReplayArchiveAndTenantIsolation(t *testing.T) {
 	manual := uuid.New()
 	if status := post(uuid.New(), manual, "create_card", `{"title":"Keep task","kind":"manual"}`); status != 200 { t.Fatal(status) }
 	if status := post(uuid.New(), manual, "delete_journal", `{}`); status != 422 { t.Fatalf("manual delete status=%d", status) }
+}
+
+func TestStaleReorderAndSnoozeAreAcceptedAsNoOps(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("set CARD_TEST_POSTGRES=1 to run PostgreSQL integration test")
+	}
+	dsn := os.Getenv("DATABASE_URL")
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	schema := "ops_stale_test_" + uuid.NewString()[:8]
+	if _, err = pool.Exec(context.Background(), `CREATE SCHEMA `+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(context.Background(), `DROP SCHEMA `+schema+` CASCADE`)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	db, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, ddl := range []string{
+		`CREATE TABLE cards (tenant_id uuid NOT NULL, id uuid NOT NULL, source text NOT NULL DEFAULT 'todo', state text NOT NULL DEFAULT 'open', snooze_until timestamptz, note_order integer NOT NULL DEFAULT 9, PRIMARY KEY(tenant_id,id))`,
+		`CREATE TABLE ops (tenant_id uuid NOT NULL, op_id uuid NOT NULL, device_id uuid, payload_hash bytea NOT NULL, payload jsonb NOT NULL, PRIMARY KEY(tenant_id,op_id))`,
+	} {
+		if _, err := db.Exec(context.Background(), ddl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tenant, otherTenant := uuid.New(), uuid.New()
+	a, b, gone, foreign := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for _, row := range []struct{ tenant, id uuid.UUID }{{tenant, a}, {tenant, b}, {otherTenant, foreign}} {
+		if _, err := db.Exec(context.Background(), `INSERT INTO cards(tenant_id,id) VALUES($1,$2)`, row.tenant, row.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	api := API{DB: db, Identity: func(context.Context) (string, string, bool) { return tenant.String(), "", true }}
+	post := func(typ string, card uuid.UUID, args string) int {
+		t.Helper()
+		body := fmt.Sprintf(`{"op_id":%q,"card_id":%q,"type":%q,"args":%s}`, uuid.NewString(), card, typ, args)
+		w := httptest.NewRecorder()
+		api.ServeHTTP(w, httptest.NewRequest("POST", "/v1/ops", strings.NewReader(body)))
+		return w.Code
+	}
+	// reorder with a removed id succeeds and reorders survivors.
+	if s := post("reorder_cards", a, fmt.Sprintf(`{"cards":[%q,%q,%q]}`, b, gone, a)); s != 200 {
+		t.Fatalf("stale reorder status=%d, want 200", s)
+	}
+	var ordered string
+	if err := db.QueryRow(context.Background(), `SELECT string_agg(id::text,',' ORDER BY note_order) FROM cards WHERE tenant_id=$1`, tenant).Scan(&ordered); err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("%s,%s", b, a); ordered != want {
+		t.Fatalf("order=%s, want %s", ordered, want)
+	}
+	// snooze on a missing card is a no-op success.
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	if s := post("snooze", gone, fmt.Sprintf(`{"until":%q}`, future)); s != 200 {
+		t.Fatalf("missing-card snooze status=%d, want 200", s)
+	}
+	// snooze with a past time is a no-op success; card stays open.
+	if s := post("snooze", a, fmt.Sprintf(`{"until":%q}`, past)); s != 200 {
+		t.Fatalf("past snooze status=%d, want 200", s)
+	}
+	var state string
+	if err := db.QueryRow(context.Background(), `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, a).Scan(&state); err != nil || state != "open" {
+		t.Fatalf("state=%q err=%v, want open", state, err)
+	}
+	// Negative controls: malformed ops and a foreign-tenant card still reject.
+	if s := post("snooze", a, `{"until":"not-a-time"}`); s != 422 {
+		t.Errorf("bad snooze time status=%d, want 422", s)
+	}
+	if s := post("snooze", a, `"x"`); s != 422 {
+		t.Errorf("bad snooze payload status=%d, want 422", s)
+	}
+	if s := post("reorder_cards", a, `{"cards":[]}`); s != 422 {
+		t.Errorf("empty reorder status=%d, want 422", s)
+	}
+	if s := post("reorder_cards", a, fmt.Sprintf(`{"cards":[%q,%q]}`, a, a)); s != 422 {
+		t.Errorf("duplicate reorder status=%d, want 422", s)
+	}
+	if s := post("reorder_cards", a, fmt.Sprintf(`{"cards":[%q,%q]}`, a, foreign)); s != 422 {
+		t.Errorf("foreign-tenant reorder status=%d, want 422 (open card b omitted)", s)
+	}
+	if s := post("snooze", foreign, fmt.Sprintf(`{"until":%q}`, future)); s != 200 {
+		t.Errorf("foreign-tenant snooze status=%d, want 200 no-op", s)
+	}
+	var foreignState string
+	if err := db.QueryRow(context.Background(), `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, otherTenant, foreign).Scan(&foreignState); err != nil || foreignState != "open" {
+		t.Fatalf("foreign state=%q err=%v, want untouched open", foreignState, err)
+	}
 }

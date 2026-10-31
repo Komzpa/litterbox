@@ -148,10 +148,16 @@ Each requirement is **decided** or **open** and names its source.
   its outbox operation may be pruned only after a 2xx acknowledgement of that
   exact op_id, except for explicit server not-found rejection (404 or 422
   `card not found`): retire that operation durably without erasing the original
-  draft journal bytes or reporting an ACK. A stale `reorder_cards` rejection
-  instead retires and replaces the request with a new op_id after a fresh server
-  snapshot, retaining the intended relative order of surviving ids and appending
-  newly observed ids (owner-directed correction, 2026-10-29). Generic HTTP errors,
+  draft journal bytes or reporting an ACK. The server accepts stale queued ops as
+  no-ops with a 2xx ACK, so they must never surface "Couldn't save to server":
+  `snooze` on a missing card or with a time no longer in the future leaves the
+  card open/unchanged, and `reorder_cards` skips ids that no longer exist and
+  reorders the survivors (owner-directed, 2026-10-31). Only genuinely malformed
+  ops (bad payload, wrong tenant) are rejected. A `reorder_cards` rejection for
+  an order missing a newly observed open card still retires and replaces the
+  request with a new op_id after a fresh server snapshot, retaining the intended
+  relative order of surviving ids and appending newly observed ids
+  (owner-directed correction, 2026-10-29). Generic HTTP errors,
   network loss, process death, restart, missing/stale snapshots, enrollment,
   profile switching and app updates never authorize deletion or rollback of
   owner text. Only reversible archive/spam/snooze/pin triage may roll back.
