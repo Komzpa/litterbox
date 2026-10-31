@@ -1,0 +1,42 @@
+{
+  "_comment": "Single checked-in map read by qt/tests/icon_oracle.py. Each semantic action must show the listed icon at its anchor (objectName prefix). known_icons lists every icon name QML may use: a new icon MUST be added here, with its semantic entry if it is an action.",
+  "entries": [
+    {"semantic": "archive", "anchor": "actionRow-primary-", "icon": "mail-archive", "also_allowed": ["dialog-ok"], "note": "card action sheet; dialog-ok only for non-mail Done"},
+    {"semantic": "archive", "anchor": "archiveBundle-", "icon": "mail-archive"},
+    {"semantic": "archive", "anchor": "doneButton-", "icon": "mail-archive", "also_allowed": ["dialog-ok"], "note": "card toolbar; dialog-ok only for non-mail Done"},
+    {"semantic": "archive", "anchor": "archiveMail", "icon": "mail-archive", "also_allowed": ["dialog-ok"], "note": "mail detail toolbar"},
+    {"semantic": "accounts", "anchor": "navAccounts", "icon": "user-group"},
+    {"semantic": "accounts", "anchor": "headerMenuAccounts", "icon": "user-group"},
+    {"semantic": "delete", "anchor": "actionRow-delete-", "icon": "edit-delete"}
+  ],
+  "known_icons": [
+    "application-menu",
+    "appointment-new",
+    "arrow-down",
+    "arrow-right",
+    "configure",
+    "dialog-close",
+    "dialog-messages",
+    "dialog-ok",
+    "document-edit",
+    "document-open",
+    "document-preview",
+    "edit-clear",
+    "edit-delete",
+    "edit-find",
+    "go-previous",
+    "list-add",
+    "list-remove",
+    "mail-archive",
+    "mail-mark-junk",
+    "mail-message",
+    "mail-receive",
+    "overflow-menu",
+    "pin",
+    "system-software-update",
+    "transform-move",
+    "user-group",
+    "user-identity",
+    "view-refresh"
+  ]
+}

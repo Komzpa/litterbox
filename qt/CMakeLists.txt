@@ -163,6 +163,8 @@ qt_add_executable(tst_i18n tests/tst_i18n.cpp)
 target_link_libraries(tst_i18n PRIVATE Qt6::Core Qt6::Test)
 target_compile_definitions(tst_i18n PRIVATE LB_QT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME i18n COMMAND tst_i18n)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME icon_oracle COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tests/icon_oracle.py ${CMAKE_CURRENT_SOURCE_DIR})
 
 qt_add_executable(tst_api tests/tst_api.cpp src/api.h src/api.cpp)
 target_include_directories(tst_api PRIVATE src)
