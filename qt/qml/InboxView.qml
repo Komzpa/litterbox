@@ -150,9 +150,9 @@ ApplicationWindow {
     component Destinations: ColumnLayout {
         spacing: 4
         DestinationButton { objectName: "navInbox"; destination: ""; location: qsTr("Inbox"); icon.name: "mail-receive"; Layout.fillWidth: true }
-        DestinationButton { objectName: "navAccounts"; destination: "GmailAccountsPage"; location: qsTr("Accounts"); icon.name: "mail-receive"; Layout.fillWidth: true }
-        DestinationButton { objectName: "navAgents"; destination: "AgentThreadsPage"; location: qsTr("Agents"); icon.name: "user-identity"; Layout.fillWidth: true }
-        DestinationButton { objectName: "navSettings"; destination: "SettingsPage"; location: qsTr("Settings"); icon.name: "application-menu"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navAccounts"; destination: "GmailAccountsPage"; location: qsTr("Accounts"); icon.name: "user-group"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navAgents"; destination: "AgentThreadsPage"; location: qsTr("Agents"); icon.name: "dialog-messages"; Layout.fillWidth: true }
+        DestinationButton { objectName: "navSettings"; destination: "SettingsPage"; location: qsTr("Settings"); icon.name: "configure"; Layout.fillWidth: true }
     }
     component DrawerAction: ToolButton {
         id: action
@@ -949,9 +949,9 @@ ApplicationWindow {
                             radius: Kirigami.Units.cornerRadius
                             border.color: "#dce5e3"
                         }
-                        InboxMenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "mail-receive"; onTriggered: openPage("GmailAccountsPage") }
-                        InboxMenuItem { objectName: "headerMenuAgents"; text: qsTr("Agents"); icon.name: "user-identity"; onTriggered: openPage("AgentThreadsPage") }
-                        InboxMenuItem { objectName: "headerMenuSettings"; text: qsTr("Settings"); icon.name: "application-menu"; onTriggered: openPage("SettingsPage") }
+                        InboxMenuItem { objectName: "headerMenuAccounts"; text: qsTr("Accounts"); icon.name: "user-group"; onTriggered: openPage("GmailAccountsPage") }
+                        InboxMenuItem { objectName: "headerMenuAgents"; text: qsTr("Agents"); icon.name: "dialog-messages"; onTriggered: openPage("AgentThreadsPage") }
+                        InboxMenuItem { objectName: "headerMenuSettings"; text: qsTr("Settings"); icon.name: "configure"; onTriggered: openPage("SettingsPage") }
                         InboxMenuItem { objectName: "headerMenuEnroll"; text: qsTr("Enroll device"); icon.name: "user-identity"; visible: !api.token; onTriggered: openPage("EnrollmentPage") }
                         InboxMenuItem { objectName: "headerMenuRefresh"; text: qsTr("Sync mail"); icon.name: "view-refresh"; onTriggered: store.retrySync() }
                         InboxMenuItem { objectName: "headerMenuUpdates"; text: qsTr("Check for app updates"); icon.name: "system-software-update"; visible: updater.supported; enabled: !updater.busy; onTriggered: updater.checkForUpdates() }
@@ -1209,7 +1209,7 @@ ApplicationWindow {
                     Layout.margins: 8
                     spacing: 4
                     DrawerAction { objectName: "navInbox"; text: qsTr("Inbox"); icon.name: "mail-receive"; checkable: true; autoExclusive: true; checked: window.activeLocation === text; onClicked: window.navigateTo("") }
-                    DrawerAction { objectName: "navAccounts"; text: qsTr("Accounts"); icon.name: "user-identity"; checkable: true; autoExclusive: true; checked: window.activeLocation === text; onClicked: window.navigateTo("GmailAccountsPage") }
+                    DrawerAction { objectName: "navAccounts"; text: qsTr("Accounts"); icon.name: "user-group"; checkable: true; autoExclusive: true; checked: window.activeLocation === text; onClicked: window.navigateTo("GmailAccountsPage") }
                     DrawerAction {
                         objectName: "navAgents"
                         text: qsTr("Agents")
@@ -1900,7 +1900,7 @@ ApplicationWindow {
                                     id: archiveBundle
                                     objectName: "archiveBundle-" + cardId
                                     text: qsTr("Archive bundle")
-                                    icon.name: "mail-mark-read-symbolic"
+                                    icon.name: "mail-archive"
                                     icon.color: window.ink
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
@@ -2214,7 +2214,7 @@ ApplicationWindow {
                                 ToolButton {
                                     objectName: "doneButton-" + cardId
                                     text: card.source === "mail" || card.source === "journal" ? qsTr("Archive") : qsTr("Done")
-                                    icon.name: card.source === "mail" ? "mail-mark-read-symbolic" : "dialog-ok"
+                                    icon.name: card.source === "mail" ? "mail-archive" : "dialog-ok"
                                     icon.width: window.actionIconSize
                                     icon.height: window.actionIconSize
                                     icon.color: window.ink
@@ -2294,7 +2294,7 @@ ApplicationWindow {
                     spacing: Kirigami.Units.mediumSpacing
                     Kirigami.Icon {
                         objectName: "inboxEmptyIcon"
-                        source: "mail-mark-read"
+                        source: "dialog-ok"
                         color: window.accent
                         // Composite the icon within its own content layer so
                         // its render node cannot paint over popup overlays.
