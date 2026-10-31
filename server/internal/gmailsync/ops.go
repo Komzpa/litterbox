@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 
 	"github.com/Komzpa/litterbox/server/internal/ops"
 	"github.com/google/uuid"
@@ -53,10 +55,17 @@ func (c *Client) planModify(ctx context.Context, name, label string, add, remove
 	return nil, []string{id}, nil
 }
 
-// reconnectError converts a revoked/expired refresh grant into the typed
-// reconnect error carrying the card's account, using lookup to read it.
-func reconnectError(err error, lookup func() (uuid.UUID, string, error)) error {
+// providerOperationError distinguishes temporary provider outages from terminal
+// rejections, and attaches the account to revoked/expired refresh grants.
+func providerOperationError(err error, lookup func() (uuid.UUID, string, error)) error {
 	if !errors.Is(err, ErrInvalidGrant) {
+		var api *APIError
+		var transport net.Error
+		if (errors.As(err, &api) && retryableStatus(api.StatusCode, []byte(api.Body))) ||
+			errors.As(err, &transport) || errors.Is(err, context.DeadlineExceeded) ||
+			errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return &ops.TransientProviderError{Err: err}
+		}
 		return err
 	}
 	if account, address, e := lookup(); e == nil {
@@ -79,7 +88,7 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 	register := func(name string, add, remove []string) {
 		ops.RegisterPreCommit("gmail."+name, func(ctx context.Context, read ops.Reader, tenant, cardID uuid.UUID, args json.RawMessage) (applied []uuid.UUID, err error) {
 			defer func() {
-				err = reconnectError(err, func() (account uuid.UUID, address string, e error) {
+				err = providerOperationError(err, func() (account uuid.UUID, address string, e error) {
 					e = read(ctx, func(tx pgx.Tx) error {
 						return tx.QueryRow(ctx, accountOfCard, tenant, cardID).Scan(&account, &address)
 					})
@@ -109,7 +118,7 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 		})
 		ops.Register("gmail."+name, func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID, args json.RawMessage) (err error) {
 			defer func() {
-				err = reconnectError(err, func() (account uuid.UUID, address string, e error) {
+				err = providerOperationError(err, func() (account uuid.UUID, address string, e error) {
 					e = tx.QueryRow(ctx, accountOfCard, tenant, cardID).Scan(&account, &address)
 					return
 				})

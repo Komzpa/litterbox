@@ -85,7 +85,7 @@ func (c *Client) token(ctx context.Context) (string, error) {
 			c.accessToken = ""
 			return "", fmt.Errorf("%w: %s", ErrInvalidGrant, res.Status)
 		}
-		return "", fmt.Errorf("gmail token refresh: %s: %s", res.Status, b)
+		return "", &APIError{StatusCode: res.StatusCode, Method: http.MethodPost, Path: "/token", Status: res.Status, Body: string(b)}
 	}
 	var t tokenResponse
 	if e = json.NewDecoder(res.Body).Decode(&t); e != nil {

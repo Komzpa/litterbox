@@ -101,6 +101,13 @@ type StorageError struct{ Err error }
 func (e *StorageError) Error() string { return "database unavailable: " + e.Err.Error() }
 func (e *StorageError) Unwrap() error { return e.Err }
 
+// TransientProviderError marks an exhausted or interrupted provider request.
+// Like storage failures, it must retain the client's durable queued operation.
+type TransientProviderError struct{ Err error }
+
+func (e *TransientProviderError) Error() string { return "provider unavailable: " + e.Err.Error() }
+func (e *TransientProviderError) Unwrap() error { return e.Err }
+
 // isStorageFailure reports errors raised by the database or its connection.
 func isStorageFailure(err error) bool {
 	if err == nil || errors.Is(err, pgx.ErrNoRows) {
@@ -198,13 +205,19 @@ func mailProviderPhase(ctx context.Context, read Reader, tenant, card uuid.UUID,
 	return provider(ctx, read, tenant, card, args)
 }
 
-// reject answers 422 for a failed operation. tx is the operation's open
-// transaction, or nil when the failure happened in the provider phase.
+// reject answers 503 for temporary failures and 422 for terminal rejections.
+// tx is the open operation transaction, or nil during the provider phase.
 func (a API) reject(w http.ResponseWriter, r *http.Request, tenant string, in request, err error, tx pgx.Tx) {
 	var storage *StorageError
 	if errors.As(err, &storage) {
 		log.Printf("operation unavailable: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	var transient *TransientProviderError
+	if errors.As(err, &transient) {
+		log.Printf("operation unavailable: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
+		http.Error(w, "provider unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	log.Printf("operation rejected: type=%s card_id=%s error=%v", in.Type, in.CardID, err)
