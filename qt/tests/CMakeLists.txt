@@ -27,7 +27,7 @@ if(NOT ANDROID)
                               LB_MAIL_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(tst_mailresize PRIVATE Qt6::QuickTest Qt6::WebEngineQuick Qt6::Sql KF6::Kirigami)
     add_test(NAME bodyfreshness COMMAND tst_mailresize
-        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_bodyfreshness.qml
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/bodyfreshness.qml
         -import ${CMAKE_CURRENT_SOURCE_DIR}/qml-imports)
     set_tests_properties(bodyfreshness PROPERTIES ENVIRONMENT
         "QT_QPA_PLATFORM=${LB_TEST_PLATFORM};QT_QUICK_CONTROLS_STYLE=org.kde.desktop")
