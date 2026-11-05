@@ -612,6 +612,25 @@ TestCase {
         const collapsedFrame = findChild(collapsedLeader, "inboxCard")
         compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
     }
+    function test_sameNameDifferentMailbox() {
+        store.clear()
+        const cards = Newsletter.cards()
+        cards[1].sender_address = "other@example.test"
+        for (const card of cards) store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915})
+        verify(inbox); inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const header = findChild(list.itemAtIndex(0), "bundleAccountLabel-" + cards[0].id)
+        tryVerify(function() { return header.text.indexOf("newsletter@example.test") >= 0 && header.text.indexOf("other@example.test") >= 0 })
+        verify(!header.truncated && header.contentHeight <= header.height + 1, "both mailboxes fit on the summary")
+        mouseClick(findChild(list.itemAtIndex(0), "bundleToggle-" + cards[0].id))
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1) !== null && list.itemAtIndex(1).visible })
+        const sender = findChild(list.itemAtIndex(1), "mailSender-" + cards[1].id)
+        verify(sender.visible && sender.text.indexOf("other@example.test") >= 0)
+        verify(!sender.truncated && sender.contentHeight <= sender.height + 1, "the member mailbox is readable")
+        inbox.close()
+    }
     function test_expandedMemberContext_data() {
         return [{tag: "desktop", viewWidth: 1356, viewHeight: 475},
                 {tag: "phone", viewWidth: 412, viewHeight: 915}]
@@ -683,10 +702,12 @@ TestCase {
         compare(JSON.stringify(cards), retained, "Consumer does not mutate retained fixture bodies/order")
         const singleRow = list.itemAtIndex(3)
         verify(findChild(singleRow, "mailSender-single-context").visible)
-        compare(findChild(singleRow, "mailAccount-single-context").visible, !inbox.compactInbox)
+        const standaloneAccount = findChild(singleRow, "mailAccount-single-context")
+        verify(standaloneAccount.visible && standaloneAccount.width >= 40, "standalone account remains legible on phone")
         const mixed = cards.map(function(card) { return Object.assign({}, card) })
         mixed[2].account_name = "different@example.test"
         mixed[2].sender_name = "Different sender"
+        mixed[2].sender_address = "different-sender@example.test"
         populate(mixed)
         tryVerify(ready)
         wait(150)

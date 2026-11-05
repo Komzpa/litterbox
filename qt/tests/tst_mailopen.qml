@@ -81,6 +81,43 @@ TestCase {
     }
     function init() { store.batchRemovalIds = []; populateStore("mail") }
 
+    function test_nonMailSummaryOpensFullReader() {
+        store.clear()
+        const id = "research-result"
+        const summary = "First paragraph <unsafe> & text.\n\nhttps://example.test/report\n\nLast paragraph remains readable."
+        const card = {id: id, title: "Research", source: "research", source_kind: "research_result", section: "now", summary: summary, note: "Owner note <last>", source_url: "https://example.test/source", has_body: false, pinned_rank: null, bundle_id: "", timed: false}
+        store.append({cardId: id, title: card.title, section: "now", card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915})
+        verify(inbox); inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        mouseClick(findChild(list.itemAtIndex(0), "openCard-" + id))
+        tryCompare(inbox, "readerOpen", true)
+        const page = inbox.mailDetailPage
+        verify(page.documentHtml.indexOf("Last paragraph remains readable.") >= 0)
+        verify(page.documentHtml.indexOf("&lt;unsafe&gt; &amp;") >= 0)
+        verify(page.documentHtml.indexOf("Owner note &lt;last&gt;") >= 0)
+        verify(page.documentHtml.indexOf('href="https://example.test/report"') >= 0)
+        compare(page.sourceUrl, card.source_url)
+        compare(store.operations.length, 0)
+        inbox.close()
+    }
+    function test_nonMailCachedBodyKeepsSummaryAndLinks() {
+        store.clear()
+        const id = "research-with-body"
+        const card = {id: id, title: "Research", source: "research", section: "now", summary: "Summary <full> ending", source_url: "https://example.test/source", has_body: true, pinned_rank: null, bundle_id: "", timed: false}
+        store.cached = ({[id]: {html: '<p>Original <a href="https://example.test/attachment">link</a></p>'}})
+        store.append({cardId: id, title: card.title, section: "now", card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915})
+        verify(inbox); inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        mouseClick(findChild(list.itemAtIndex(0), "openCard-" + id))
+        tryCompare(inbox, "readerOpen", true)
+        verify(inbox.mailDetailPage.documentHtml.indexOf("Summary &lt;full&gt; ending") >= 0)
+        verify(inbox.mailDetailPage.documentHtml.indexOf('href="https://example.test/attachment"') >= 0)
+        inbox.close()
+    }
     function test_openUnreadQueuesMarkRead() {
         pagesDir = Qt.resolvedUrl("fixtures/unread-pages/")
         populateStore("mail", 8)

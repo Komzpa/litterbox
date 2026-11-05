@@ -106,14 +106,14 @@ Kirigami.Page {
         if (JSON.stringify(messages) !== JSON.stringify(stable)) messages = stable
         legacyIncomplete = Number(body.shape_version || 0) < 1 && stable.some(m => !m.html)
         html = body.html || ""
-        if (!html && (root.card || {}).source !== "mail") html = fallbackHtml()
-        sourceUrl = body.source_url || ""
+        if ((root.card || {}).source && root.card.source !== "mail") html = fallbackHtml() + html || "<div></div>"
+        sourceUrl = body.source_url || ((root.card || {}).source_url || "")
         errorText = hasDocument ? "" : qsTr("This message is not cached on this device yet.")
     }
     function reload() {
         readCache()
         loading = !hasDocument && store.online
-        if (store.online) store.requestMailBody(cardId)
+        if (store.online && ((root.card || {}).source === "mail" || (root.card || {}).has_body)) store.requestMailBody(cardId)
     }
     Connections {
         target: root.store
@@ -240,9 +240,12 @@ Kirigami.Page {
     function fallbackHtml() {
         const c = root.card || {}
         const text = String(c.summary || c.snippet || "")
-        if (!text) return ""
-        const linked = escapeHtml(text).replace(/(https?:\/\/[^\s<]+)/g, "<a href='$1'>$1</a>")
-        return linked.split(/\n{2,}/).map(function(part) { return "<p>" + part.replace(/\n/g, "<br>") + "</p>" }).join("")
+        const note = String(c.note || "")
+        function paragraphs(value) {
+            const linked = escapeHtml(value).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+            return linked.split(/\n{2,}/).map(function(part) { return "<p>" + part.replace(/\n/g, "<br>") + "</p>" }).join("")
+        }
+        return (text ? paragraphs(text) : "") + (note ? "<section><h2>" + qsTr("Note") + "</h2>" + paragraphs(note) + "</section>" : "")
     }
     readonly property string headerHtml: "<header style='padding:4px 0 16px'><h1 style='font-size:1.4em;line-height:1.3;margin:0 0 8px'>"
         + escapeHtml(root.cardTitle || root.title) + "</h1>"

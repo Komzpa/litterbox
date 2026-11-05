@@ -385,6 +385,9 @@ ApplicationWindow {
         const name = String(card.sender_name || "").trim()
         return name || String(card.sender_address || "").trim()
     }
+    function senderKey(card) {
+        return String(card.sender_address || "").trim().toLowerCase() || ("card:" + String(card.id || ""))
+    }
     function mailArrival(card) {
         if (!card.received_at) return ""
         const arrived = new Date(card.received_at)
@@ -596,7 +599,6 @@ ApplicationWindow {
             if (!entry || !entry.cardId || !card) continue
             if (card.bundle_leader === false && (window.searching
                     ? window.searchCollapsedBundles[card.bundle_id] : !window.expandedBundles[card.bundle_id])) continue
-            if (card.source !== "mail" && !card.has_body) continue
             candidates.push(entry)
         }
         if (!candidates.length) return null
@@ -1445,7 +1447,7 @@ ApplicationWindow {
                             if (refresh) entries.push(entry)
                             const card = entry.card
                             if (refresh && card.bundle_id && card.pinned_rank == null && card.section !== "pinned") {
-                                const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], senders: [], important: 0, unpinned: 0, lastId: ""})
+                                const summary = summaries[card.bundle_id] || (summaries[card.bundle_id] = {accounts: [], senders: [], senderKeys: [], senderAddresses: [], important: 0, unpinned: 0, lastId: ""})
                                 if (card.account_name && summary.accounts.indexOf(card.account_name) < 0) summary.accounts.push(card.account_name)
                                 if (card.pinned_rank == null && card.section !== "pinned") {
                                     ++summary.unpinned
@@ -1456,8 +1458,13 @@ ApplicationWindow {
                                     summary.latestAt = card.received_at || ""
                                     summary.latestTitle = entry.title || ""
                                 }
-                                const sender = typeof card.sender_name === "string" ? card.sender_name.trim() : ""
-                                if (sender && summary.senders.indexOf(sender) < 0) summary.senders.push(sender)
+                                const sender = window.mailSender(card)
+                                const key = window.senderKey(card)
+                                if (sender && key && summary.senderKeys.indexOf(key) < 0) {
+                                    summary.senderKeys.push(key)
+                                    summary.senders.push(sender)
+                                    summary.senderAddresses.push(String(card.sender_address || "").trim())
+                                }
                             }
                             if (card.bundle_leader === true) {
                                 sections[card.bundle_id] = card.section
@@ -1473,7 +1480,13 @@ ApplicationWindow {
                         if (refresh) {
                             for (const bundle in summaries) {
                                 const summary = summaries[bundle]
-                                summary.senderLabel = summary.senders.slice(0, 2).join(", ") + (summary.senders.length > 2 ? " +" + (summary.senders.length - 2) : "")
+                                summary.hasDuplicateNames = false
+                                const labels = summary.senders.map(function(name, i) {
+                                    const duplicate = summary.senders.some(function(other, j) { return j !== i && other.toLowerCase() === name.toLowerCase() })
+                                    if (duplicate) summary.hasDuplicateNames = true
+                                    return duplicate && summary.senderAddresses[i] ? name + " <" + summary.senderAddresses[i] + ">" : name
+                                })
+                                summary.senderLabel = labels.slice(0, 2).join(", ") + (labels.length > 2 ? " +" + (labels.length - 2) : "")
                             }
                             sourceEntries = entries
                             window.bundleSections = sections
@@ -1636,8 +1649,8 @@ ApplicationWindow {
                     readonly property bool bundled: !!card.bundle_id && card.section !== "pinned" && card.pinned_rank == null && !card.important
                     readonly property bool bundleExpanded: window.searching ? !window.searchCollapsedBundles[card.bundle_id] : !!window.expandedBundles[card.bundle_id]
                     readonly property bool bundleLeader: bundled && card.bundle_leader === true
-                    readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], senders: [], important: 0, unpinned: 0, lastId: cardId}
-                    readonly property bool showMemberSender: !bundled || bundleSummary.senders.length !== 1 || bundleSummary.senders[0] !== window.mailSender(card)
+                    readonly property var bundleSummary: window.bundleSummaries[card.bundle_id] || {accounts: [], senders: [], senderKeys: [], important: 0, unpinned: 0, lastId: cardId}
+                    readonly property bool showMemberSender: !bundled || bundleSummary.senderKeys.length !== 1 || bundleSummary.senderKeys[0] !== window.senderKey(card)
                     readonly property bool showMemberAccount: !bundled || bundleSummary.accounts.length !== 1 || bundleSummary.accounts[0] !== card.account_name
                     readonly property bool lastMember: bundleSummary.lastId === cardId
                     readonly property var latestCard: bundleSummary.latestAt && (!card.received_at || bundleSummary.latestAt > card.received_at) ? Object.assign({}, card, {received_at: bundleSummary.latestAt}) : card
@@ -1830,8 +1843,8 @@ ApplicationWindow {
                                             font.pointSize: window.metaPointSize
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
-                                            wrapMode: window.compactInbox ? Text.NoWrap : Text.Wrap
-                                            elide: Text.ElideRight
+                                            wrapMode: cardRow.bundleSummary.hasDuplicateNames ? Text.WrapAnywhere : window.compactInbox ? Text.NoWrap : Text.Wrap
+                                            elide: cardRow.bundleSummary.hasDuplicateNames ? Text.ElideNone : Text.ElideRight
                                         }
                                         Label {
                                             objectName: "bundleLatestLabel-" + cardId
@@ -2050,10 +2063,9 @@ ApplicationWindow {
                                     Layout.column: 1
                                     Layout.columnSpan: 1
                                     function openCard() {
-                                        if (card.source === "mail" || card.has_body) cardActions.readCachedRequested()
-                                        else cardActions.openRequested()
+                                        cardActions.readCachedRequested()
                                     }
-                                    activeFocusOnTab: card.source === "mail" || !!card.has_body || !!card.source_url
+                                    activeFocusOnTab: true
                                     Accessible.role: Accessible.Button
                                     Accessible.name: qsTr("Open %1").arg(title)
                                     Keys.onReturnPressed: openCard()
@@ -2117,19 +2129,25 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         objectName: "mailContext-" + cardId
-                                        visible: card.source === "mail" && ((cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0 && (!window.compactInbox || cardRow.bundled)))
+                                        visible: card.source === "mail" && ((cardRow.showMemberSender && mailSenderLabel.text.length > 0) || (cardRow.showMemberAccount && mailAccountLabel.text.length > 0))
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing
                                         Label {
                                             id: mailSenderLabel
                                             objectName: "mailSender-" + cardId
-                                            text: window.mailSender(card)
+                                            readonly property bool sharedName: cardRow.bundleSummary.senders.filter(function(s) { return s.toLowerCase() === window.mailSender(card).toLowerCase() }).length > 1
+                                            text: {
+                                                const name = window.mailSender(card)
+                                                const address = String(card.sender_address || "").trim()
+                                                return sharedName && address ? name + " <" + address + ">" : name
+                                            }
                                             visible: text.length > 0 && cardRow.showMemberSender
                                             color: card.unread ? window.ink : window.mutedInk
                                             font.family: window.themeFont.family
                                             font.weight: card.unread ? Font.Bold : Font.Normal
                                             font.pointSize: window.metaPointSize
-                                            elide: Text.ElideRight
+                                            wrapMode: sharedName ? Text.WrapAnywhere : Text.NoWrap
+                                            elide: sharedName ? Text.ElideNone : Text.ElideRight
                                             Layout.minimumWidth: 0
                                             Layout.fillWidth: window.compactInbox
                                             // R67: every displayed sender identity line carries its avatar.
@@ -2158,10 +2176,12 @@ ApplicationWindow {
                                             id: mailAccountLabel
                                             objectName: "mailAccount-" + cardId
                                             text: card.account_name || ""
-                                            visible: text.length > 0 && cardRow.showMemberAccount && (!window.compactInbox || cardRow.bundled)
+                                            visible: text.length > 0 && cardRow.showMemberAccount
                                             color: window.mutedInk
                                             font: window.themeFont
                                             elide: Text.ElideLeft
+                                            Layout.minimumWidth: window.compactInbox ? Math.min(48, cardText.width / 3) : 0
+                                            Layout.preferredWidth: window.compactInbox ? Math.min(120, cardText.width * 0.4) : implicitWidth
                                             Layout.maximumWidth: Math.min(180, cardText.width / 2)
                                         }
                                     }

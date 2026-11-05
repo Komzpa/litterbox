@@ -31,6 +31,17 @@ func (e *Events) Run(ctx context.Context) {
 		}
 		if err == nil {
 			e.readyOnce.Do(func() { close(e.ready) })
+			// A disconnected listener may have missed changes for any tenant.
+			e.mu.Lock()
+			for _, subscribers := range e.subscribers {
+				for ch := range subscribers {
+					select {
+					case ch <- struct{}{}:
+					default:
+					}
+				}
+			}
+			e.mu.Unlock()
 			for ctx.Err() == nil {
 				notification, waitErr := conn.WaitForNotification(ctx)
 				if waitErr != nil {

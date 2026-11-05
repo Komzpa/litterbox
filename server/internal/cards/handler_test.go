@@ -200,6 +200,18 @@ func TestPostgresNotePersistence(t *testing.T) {
 	if got := get(tenant).Now[0].Note; got != "not actionable" {
 		t.Fatalf("upsert lost note=%q", got)
 	}
+	t.Run("ClearedNoteDelta", func(t *testing.T) {
+		if w := request(tenant, "POST", "/v1/cards/"+id+"/note", `{"text":""}`); w.Code != 204 {
+			t.Fatalf("clear: %d", w.Code)
+		}
+		w := request(tenant, "GET", "/v1/cards/notes?since=2000-01-01T00:00:00Z", "")
+		var result struct {
+			Notes []NoteUpdate `json:"notes"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || len(result.Notes) != 1 || result.Notes[0].CardID != id || result.Notes[0].Note != "" {
+			t.Fatalf("cleared note missing: %s (%v)", w.Body.String(), err)
+		}
+	})
 	if w := request(tenant, "POST", "/v1/cards/"+id+"/dismiss", `{"note":"do not repeat"}`); w.Code != 204 {
 		t.Fatalf("dismiss status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -375,7 +387,7 @@ func TestCardArrivalAndSenderAddress(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,subject) VALUES($1,$2,'manual','arrival-task','Manual task')`, tenant, manualCard); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,text,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],'old body',decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],'Latest thread preview',decode('00','hex'),'2026-10-04T07:43:00Z')`, tenant, mailCard); err != nil {
+	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,text,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],'old body',decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],'Latest thread preview',decode('00','hex'),'2026-10-04T07:43:00Z'),($1,gen_random_uuid(),$2,'m-draft',ARRAY['DRAFT'],'Draft secret',decode('00','hex'),'2026-10-04T08:43:00Z'),($1,gen_random_uuid(),$2,'m-trash',ARRAY['TRASH'],'Trash secret',decode('00','hex'),'2026-10-04T09:43:00Z'),($1,gen_random_uuid(),$2,'m-spam',ARRAY['SPAM'],'Spam secret',decode('00','hex'),'2026-10-04T10:43:00Z')`, tenant, mailCard); err != nil {
 		t.Fatal(err)
 	}
 	handler, err := NewHandler(db, "Asia/Tbilisi", filepath.Join(t.TempDir(), "feedback.md"))
@@ -407,13 +419,40 @@ func TestCardArrivalAndSenderAddress(t *testing.T) {
 		t.Fatalf("mail card missing from response: %v", rows)
 	}
 	if got := mail["received_at"]; got != "2026-10-04T07:43:00Z" {
-		t.Fatalf("received_at=%v, want latest message arrival 2026-10-04T07:43:00Z as RFC3339 UTC", got)
+		t.Errorf("received_at=%v, want latest message arrival 2026-10-04T07:43:00Z as RFC3339 UTC", got)
 	}
 	if got := mail["sender_address"]; got != "welcome@cerebras.net" {
 		t.Fatalf("sender_address=%v, want welcome@cerebras.net", got)
 	}
 	if got := mail["snippet"]; got != "Latest thread preview" {
 		t.Fatalf("snippet=%v, want newest message text", got)
+	}
+	// Remove newer excluded messages one at a time so each label is the
+	// newest candidate in turn; the same visible message must keep winning.
+	for _, removed := range []string{"m-spam", "m-trash"} {
+		if _, err := db.Exec(`DELETE FROM messages WHERE tenant_id=$1 AND card_id=$2 AND gmail_message_id=$3`, tenant, mailCard, removed); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("GET", "/v1/cards?now=2026-10-04T12:00:00%2B04:00", nil)
+		req = req.WithContext(WithTenant(req.Context(), tenant))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		var sections Sections
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &sections) != nil {
+			t.Fatalf("list after %s: %d %s", removed, w.Code, w.Body.String())
+		}
+		var found bool
+		for _, c := range append(append(sections.Now, sections.Later...), sections.Missed...) {
+			if c.ID == mailCard {
+				found = true
+				if c.Snippet != "Latest thread preview" || c.ReceivedAt == nil || c.ReceivedAt.UTC().Format(time.RFC3339) != "2026-10-04T07:43:00Z" {
+					t.Errorf("after removing %s: %+v", removed, c)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("mail missing after %s", removed)
+		}
 	}
 	manual, ok := rows[manualCard]
 	if !ok {

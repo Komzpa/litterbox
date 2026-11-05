@@ -17,6 +17,7 @@ import (
 	"github.com/Komzpa/litterbox/server/internal/bodyversion"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml/trackers"
+	"github.com/Komzpa/litterbox/server/internal/mailvisibility"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 )
 
@@ -71,7 +72,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	messages := []threadMessage{}
 	if source == "mail" {
-		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html,text,('UNREAD' = ANY(labels)) FROM messages WHERE tenant_id=$1 AND card_id=$2 AND NOT (labels && ARRAY['DRAFT','TRASH','SPAM']::text[]) ORDER BY received_at ASC,gmail_message_id ASC`, tenantID, cardID)
+		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html,text,('UNREAD' = ANY(labels)) FROM messages WHERE tenant_id=$1 AND card_id=$2 AND `+mailvisibility.SQL+` ORDER BY received_at ASC,gmail_message_id ASC`, tenantID, cardID)
 		if queryErr != nil {
 			http.Error(w, "internal server error", 500)
 			return

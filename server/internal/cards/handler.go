@@ -13,6 +13,7 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/bodyversion"
 	"github.com/Komzpa/litterbox/server/internal/bundles"
+	"github.com/Komzpa/litterbox/server/internal/mailvisibility"
 )
 
 type tenantContextKey struct{}
@@ -87,7 +88,7 @@ func (h *Handler) NotesSince(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,COALESCE(NULLIF(title,''),subject),note,note_updated_at FROM cards WHERE tenant_id=$1 AND note_updated_at > $2 AND note <> '' ORDER BY note_updated_at,id`, tenant, since)
+	rows, err := tx.QueryContext(r.Context(), `SELECT id::text,COALESCE(NULLIF(title,''),subject),note,note_updated_at FROM cards WHERE tenant_id=$1 AND note_updated_at > $2 ORDER BY note_updated_at,id`, tenant, since)
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -154,7 +155,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	// remain valid for this request even if the bounded cache evicts them.
 	cached, versions := h.previews.snapshot(tenant)
 	versionsJSON, _ := json.Marshal(versions)
-	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'UNREAD' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),(SELECT max(m.received_at) FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id),COALESCE(latest.text,''),CASE WHEN COALESCE(latest.version,'')=$2::jsonb->>c.id::text THEN '' ELSE COALESCE(latest.html,'') END,COALESCE(latest.version,''),COALESCE((SELECT json_agg(json_build_object('subject',bc.subject,'sender',bc.sender)) FROM cards bc WHERE bc.tenant_id=c.tenant_id AND bc.bundle_id=c.bundle_id),'[]'),COALESCE(b.title_origin,'unknown'),`+bodyversion.SQL+` FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id LEFT JOIN LATERAL (SELECT m.text,m.html,m.id::text || ':' || m.xmin::text AS version FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id ORDER BY m.received_at DESC LIMIT 1) latest ON true WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant, string(versionsJSON))
+	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'UNREAD' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),latest.received_at,COALESCE(latest.text,''),CASE WHEN COALESCE(latest.version,'')=$2::jsonb->>c.id::text THEN '' ELSE COALESCE(latest.html,'') END,COALESCE(latest.version,''),COALESCE((SELECT json_agg(json_build_object('subject',bc.subject,'sender',bc.sender)) FROM cards bc WHERE bc.tenant_id=c.tenant_id AND bc.bundle_id=c.bundle_id),'[]'),COALESCE(b.title_origin,'unknown'),`+bodyversion.SQL+` FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id LEFT JOIN LATERAL (SELECT m.received_at,m.text,m.html,m.id::text || ':' || m.xmin::text AS version FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND `+mailvisibility.SQL+` ORDER BY m.received_at DESC,m.gmail_message_id DESC LIMIT 1) latest ON true WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant, string(versionsJSON))
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
