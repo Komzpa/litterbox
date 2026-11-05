@@ -9,7 +9,29 @@ WebEngineView {
     signal linkActivated(string link)
     backgroundColor: "white"
     profile: MailDocumentProfile { id: mailProfile }
-    url: mailProfile.documentUrl(html)
+    property string renderedHtml: ""
+    property int htmlRevision: 0
+    url: mailProfile.documentUrl(renderedHtml)
+    onHtmlChanged: {
+        const revision = ++htmlRevision
+        const nextHtml = html
+        if (loading || loadProgress !== 100 || renderedHtml === "") {
+            renderedHtml = nextHtml
+            return
+        }
+        // ApplicationWorld is isolated from mail; document JavaScript stays disabled.
+        runJavaScript(`Array.from(document.querySelectorAll("main.lb-reader > details.lb-previous[data-lb-key]"))
+            .map(d => [d.getAttribute("data-lb-key"), d.open])`, WebEngineScript.ApplicationWorld, function(states) {
+            if (revision !== root.htmlRevision) return
+            let result = nextHtml
+            for (const state of (states || [])) {
+                const marker = "<details class='lb-previous' data-lb-key='" + state[0] + "'"
+                result = result.replace(marker + " open", marker)
+                if (state[1]) result = result.replace(marker, marker + " open")
+            }
+            root.renderedHtml = result
+        })
+    }
     settings.javascriptEnabled: false
     settings.javascriptCanOpenWindows: false
     settings.localContentCanAccessRemoteUrls: false

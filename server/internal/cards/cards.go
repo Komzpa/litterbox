@@ -39,7 +39,8 @@ type Card struct {
 	// HasBody reports that card_bodies holds a rendered document for this
 	// card (a Gmail mail body or a server-built file document); the client
 	// prefetches it through GET /v1/cards/{id}/body for offline reads.
-	HasBody bool `json:"has_body"`
+	HasBody     bool   `json:"has_body"`
+	BodyVersion string `json:"body_version,omitempty"`
 	// SenderHasPhoto reports that sender_photos holds a decoded Google
 	// contact photo for this card's sender (People API, exact mailbox
 	// match, non-default only). The client fetches the bytes through

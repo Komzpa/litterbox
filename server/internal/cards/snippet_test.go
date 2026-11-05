@@ -131,7 +131,7 @@ func (c snippetConn) QueryContext(_ context.Context, query string, _ []driver.Na
 		return nil, fmt.Errorf("unexpected query: %s", query)
 	}
 	now := time.Now().UTC()
-	return &snippetRows{values: []driver.Value{"card", "mail", c.title, "", nil, false, "open", "", now, int64(0), nil, nil, "owner@example.test", nil, false, false, true, "", c.senderName, c.sender, now, c.text, "", "version", []byte("[]"), "unknown"}}, nil
+	return &snippetRows{values: []driver.Value{"card", "mail", c.title, "", nil, false, "open", "", now, int64(0), nil, nil, "owner@example.test", nil, false, false, true, "", c.senderName, c.sender, now, c.text, "", "version", []byte("[]"), "unknown", "body-version"}}, nil
 }
 
 type snippetTx struct{}

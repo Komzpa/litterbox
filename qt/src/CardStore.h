@@ -237,8 +237,10 @@ private:
     // through a byte-bounded LRU (R9 bodies on demand).
     QSet<QString> m_bodyCached;
     QSet<QString> m_bodyNeedsRefresh;
+    QHash<QString, QString> m_bodyVersions;
+    bool bodyIsStale(const QVariantMap &card) const;
     // Fetched bodies waiting for the next batched SQLite transaction.
-    struct BodyWrite { QString id, html, sourceUrl, messagesJson; bool hadBody = false; int shapeVersion = 0; };
+    struct BodyWrite { QString id, html, sourceUrl, messagesJson; bool hadBody = false; int shapeVersion = 0; QString bodyVersion; };
     QList<BodyWrite> m_bodyWriteBatch;
     QTimer m_bodyFlushTimer;
     void flushBodyWrites();

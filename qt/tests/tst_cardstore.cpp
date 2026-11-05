@@ -2017,7 +2017,8 @@ private slots:
         const QVariantMap useful = store.cachedMailBody(cardId);
         store.applyRemoteMailBody(cardId, {{"error", "rate limit exceeded"}});
         store.reportMailBodyFailed(cardId);
-        QCOMPARE(failed.size(), 5);
+        // Failed background refreshes do not surface an error for a readable cache.
+        QCOMPARE(failed.size(), 3);
         QCOMPARE(store.cachedMailBody(cardId), useful);
         store.requestMailBody(cardId);
         QCOMPARE(changed.size(), 2);
@@ -2236,6 +2237,49 @@ private slots:
         QCOMPARE(cached.value("source_url").toString(), QStringLiteral("https://mail.synthetic.test/legacy"));
         QVERIFY(cached.contains("messages"));
         QCOMPARE(cached.value("messages").toList(), QVariantList{});
+    }
+    void staleBodyRefreshRetainsCachedCopy() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("body-version.sqlite");
+        const auto sections = [&](const QString &version) {
+            return QVariantMap{{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "mail"}, {"body_version", version}}}},
+                               {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        };
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            store.setOnline(true);
+            QVERIFY(store.applyRemoteCards(sections("v1")));
+            store.applyRemoteMailBody(cardId, {{"html", "old"}, {"shape_version", 2}, {"body_version", "v1"}});
+            QTRY_COMPARE(store.cachedMailBody(cardId).value("body_version").toString(), QString("v1"));
+            QTRY_COMPARE(store.mailSyncPending(), 0);
+        }
+        CardStore store;
+        QVERIFY(store.open(path));
+        QSignalSpy requests(&store, &CardStore::requestMailBodyGet);
+        QSignalSpy failures(&store, &CardStore::mailBodyFailed);
+        QVERIFY(store.applyRemoteCards(sections("v2")));
+        store.requestMailBody(cardId);
+        QCOMPARE(store.cachedMailBody(cardId).value("html").toString(), QString("old"));
+        QCOMPARE(requests.size(), 0); // Offline stale cache stays readable.
+        store.setOnline(true);
+        QCOMPARE(requests.size(), 1);
+        store.reportMailBodyFailed(cardId, 503);
+        QCOMPARE(failures.size(), 0);
+        QCOMPARE(store.cachedMailBody(cardId).value("html").toString(), QString("old"));
+        QTRY_COMPARE_WITH_TIMEOUT(requests.size(), 2, 2500);
+        const QVariantList messages{QVariantMap{{"id", "new"}, {"html", "new message"}}};
+        store.applyRemoteMailBody(cardId, {{"html", "new"}, {"messages", messages}, {"shape_version", 2}, {"body_version", "v2"}});
+        QTRY_COMPARE(store.cachedMailBody(cardId).value("body_version").toString(), QString("v2"));
+        QTRY_COMPARE(store.mailSyncPending(), 0);
+        QCOMPARE(store.cachedMailBody(cardId).value("messages").toList(), messages);
+        // The cards stream causes a fresh snapshot while the reader is open.
+        QVERIFY(store.applyRemoteCards(sections("v3")));
+        QCOMPARE(requests.size(), 3);
+        QCOMPARE(store.cachedMailBody(cardId).value("html").toString(), QString("new"));
+        store.applyRemoteMailBody(cardId, {{"html", "unversioned response"}, {"shape_version", 2}});
+        QCOMPARE(store.cachedMailBody(cardId).value("html").toString(), QString("new"));
+        QCOMPARE(failures.size(), 0);
     }
     void legacyBodyRefreshKeepsOfflineCopyUntilCorrected() {
         QTemporaryDir directory;

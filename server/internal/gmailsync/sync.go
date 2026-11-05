@@ -467,7 +467,9 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		received := time.UnixMilli(millis).UTC()
 		message := prepared[i]
 		senderMeta := preparedSenders[i]
-		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash,received_at=EXCLUDED.received_at,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received, senderMeta.name, senderMeta.address)
+		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash,received_at=EXCLUDED.received_at,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address
+        WHERE (messages.labels,messages.html,messages.text,messages.body_hash,messages.received_at,messages.sender_name,messages.sender_address)
+          IS DISTINCT FROM (EXCLUDED.labels,EXCLUDED.html,EXCLUDED.text,EXCLUDED.body_hash,EXCLUDED.received_at,EXCLUDED.sender_name,EXCLUDED.sender_address)`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received, senderMeta.name, senderMeta.address)
 		if e != nil {
 			return e
 		}
@@ -491,7 +493,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 			body.WriteString("</pre>")
 		}
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,$3) ON CONFLICT(tenant_id,card_id) DO UPDATE SET html=EXCLUDED.html,updated_at=now()`, a.TenantID, cardID, body.String())
+	_, e = tx.Exec(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,$3) ON CONFLICT(tenant_id,card_id) DO UPDATE SET html=EXCLUDED.html,updated_at=now() WHERE card_bodies.html IS DISTINCT FROM EXCLUDED.html`, a.TenantID, cardID, body.String())
 	if e != nil {
 		return e
 	}

@@ -97,7 +97,7 @@ Kirigami.Page {
         let stable = []
         for (let i = 0; i < incoming.length; ++i) {
             const key = incoming[i].gmail_message_id || incoming[i].id || ("index:" + i)
-            if (!(key in flags)) { flags[key] = !!incoming[i].unread; changed = true }
+            if (!(key in flags)) { flags[key] = !!incoming[i].unread || i === incoming.length - 1; changed = true }
             let message = Object.assign({}, incoming[i])
             message.unread = flags[key]
             stable.push(message)
@@ -113,7 +113,7 @@ Kirigami.Page {
     function reload() {
         readCache()
         loading = !hasDocument && store.online
-        if (loading) store.requestMailBody(cardId)
+        if (store.online) store.requestMailBody(cardId)
     }
     Connections {
         target: root.store
@@ -260,7 +260,8 @@ Kirigami.Page {
             const key = message.gmail_message_id || message.id || ("index:" + i)
             const expanded = initialUnread[key] || i === messages.length - 1
             const preview = String(message.preview || "")
-            result += "<details class='lb-previous'" + (expanded ? " open" : "") + "><summary>" + escapeHtml(line)
+            const encodedKey = encodeURIComponent(String(key)).replace(/'/g, "%27")
+            result += "<details class='lb-previous' data-lb-key='" + encodedKey + "'" + (expanded ? " open" : "") + "><summary>" + escapeHtml(line)
                 + (preview ? " · " + escapeHtml(preview) : "") + "</summary><section class='lb-original'>"
                 + String(message.html || "") + "</section></details>"
         }

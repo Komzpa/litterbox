@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
@@ -116,6 +118,7 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	mux.Handle("GET /v1/cards/{id}/body", h)
 	var lastMessages []threadMessage
 	var shapeVersion int
+	var bodyVersion string
 	fetch := func(tenantID, cardID string) (int, string) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/cards/"+cardID+"/body", nil)
 		req = req.WithContext(agents.WithTenant(req.Context(), tenantID))
@@ -132,12 +135,14 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 			SourceURL    string          `json:"source_url"`
 			Messages     []threadMessage `json:"messages"`
 			ShapeVersion int             `json:"shape_version"`
+			BodyVersion  string          `json:"body_version"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 			t.Fatal(err)
 		}
 		lastMessages = resp.Messages
 		shapeVersion = resp.ShapeVersion
+		bodyVersion = resp.BodyVersion
 		return w.Code, resp.HTML + "|" + resp.ThreadID + "|" + resp.AccountID + "|" + resp.SourceURL
 	}
 
@@ -168,6 +173,67 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	if want := "https://mail.google.com/mail/?authuser=user%40example.com#all/thread-abc"; !strings.Contains(got, "|thread-abc|"+account.String()+"|"+want) {
 		t.Fatalf("mail body must keep thread/account/gmail url: %q", got)
 	}
+	listVersion := func() string {
+		req := httptest.NewRequest(http.MethodGet, "/v1/cards", nil)
+		req = req.WithContext(cards.WithTenant(req.Context(), tenant.String()))
+		w := httptest.NewRecorder()
+		(&cards.Handler{DB: db, Location: time.UTC}).List(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("list: %d %s", w.Code, w.Body.String())
+		}
+		var sections cards.Sections
+		if err := json.Unmarshal(w.Body.Bytes(), &sections); err != nil {
+			t.Fatal(err)
+		}
+		for _, card := range sections.Now {
+			if card.ID == mailCard.String() {
+				return card.BodyVersion
+			}
+		}
+		t.Fatal("mail missing from list")
+		return ""
+	}
+	// A body version identifies all reader-visible content, independently of
+	// the one-time wire shape migration.
+	version := bodyVersion
+	if version == "" {
+		t.Fatal("missing body_version")
+	}
+	if got := listVersion(); got != version {
+		t.Fatalf("list version %q != body version %q", got, version)
+	}
+	fetch(tenant.String(), mailCard.String())
+	if bodyVersion != version {
+		t.Fatal("unchanged body changed version")
+	}
+	for _, mutation := range []string{
+		`UPDATE messages SET labels=ARRAY['UNREAD'] WHERE gmail_message_id='old-message'`,
+		`UPDATE messages SET text='Edited text' WHERE gmail_message_id='old-message'`,
+		`UPDATE messages SET labels=ARRAY['TRASH'] WHERE gmail_message_id='middle-message'`,
+		`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at) VALUES ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','55555555-5555-4555-8555-555555555555','ffffffff-ffff-4fff-8fff-ffffffffffff','added','{}','','added',decode('00','hex'),now())`,
+		`DELETE FROM messages WHERE gmail_message_id='added'`,
+		`UPDATE card_bodies SET html='<p>changed</p>' WHERE card_id='ffffffff-ffff-4fff-8fff-ffffffffffff'`,
+	} {
+		if _, err := db.Exec(mutation); err != nil {
+			t.Fatal(err)
+		}
+		fetch(tenant.String(), mailCard.String())
+		if bodyVersion == "" || bodyVersion == version {
+			t.Fatalf("version did not change after %s", mutation)
+		}
+		version = bodyVersion
+		if got := listVersion(); got != version {
+			t.Fatalf("list version %q != body version %q", got, version)
+		}
+	}
+	// Restore the fixture used by the following assertions.
+	if _, err := db.Exec(`UPDATE messages SET labels='{}', text='Earlier <plain> & text' WHERE gmail_message_id='old-message'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE messages SET labels=ARRAY['UNREAD'] WHERE gmail_message_id='middle-message'`); err != nil {
+		t.Fatal(err)
+	}
+	fetch(tenant.String(), mailCard.String())
 	if shapeVersion != 2 {
 		t.Fatalf("shape_version=%d, want 2", shapeVersion)
 	}

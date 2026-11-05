@@ -282,7 +282,7 @@ TestCase {
         compare(page.loading, false)
         compare(page.html, "<p>Keep reading while offline.</p>")
         compare(page.errorText, "")
-        compare(storeStub.bodyRequests, [])
+        compare(storeStub.bodyRequests, row.online ? ["card-8"] : [])
         compare(storeStub.operations, [], "reading must never archive or enqueue an operation")
         storeStub.mailBodyFailed("card-8")
         compare(page.loading, false)
@@ -292,7 +292,7 @@ TestCase {
         storeStub.mailBodyChanged("card-8")
         compare(page.html, "<p>Later body update.</p>")
         compare(page.loading, false)
-        compare(storeStub.bodyRequests, [])
+        compare(storeStub.bodyRequests, row.online ? ["card-8"] : [])
         compare(storeStub.operations, [])
     }
 
@@ -499,6 +499,19 @@ TestCase {
         body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => d.open)`, WebEngineScript.ApplicationWorld, value => states = value)
         tryVerify(function() { return states !== null })
         compare(states, [true, true, false, true])
+        // A new reply changes the document. The manually opened first message
+        // and the formerly newest message both stay expanded.
+        refreshed.messages.push({id: "e", sender_name: "New reply", html: "<p>New reply body</p>"})
+        storeStub.cached = {"mixed": refreshed}
+        storeStub.mailBodyChanged("mixed")
+        let updated = null
+        tryVerify(function() {
+            body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => d.open)`,
+                WebEngineScript.ApplicationWorld, value => updated = value)
+            return updated && updated.length === 5
+        }, 15000)
+        compare(updated, [true, true, false, true, true])
+        verify(page.documentHtml.indexOf("New reply body") >= 0)
     }
 
     function test_originalThreadUsesNativeDisclosureInsideSingleDocumentScroll() {

@@ -163,7 +163,7 @@ bool CardStore::open(const QString &path) {
     }
     QList<QVariantMap> cards, outbox;
     QSet<QString> cachedIds, staleBodyIds;
-    QHash<QString, QString> photos;
+    QHash<QString, QString> photos, bodyVersions;
     bool opened = false;
     // Startup only, before the window exists. Every subsequent write is queued.
     QMetaObject::invokeMethod(m_storage, [&, this] {
@@ -173,16 +173,18 @@ bool CardStore::open(const QString &path) {
         if (!execute(QStringLiteral("PRAGMA synchronous=FULL")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, op_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)")) ||
-            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]', shape_version INTEGER NOT NULL DEFAULT 0)")) ||
+            !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS mail_bodies (card_id TEXT PRIMARY KEY, html TEXT NOT NULL, source_url TEXT NOT NULL, messages TEXT NOT NULL DEFAULT '[]', shape_version INTEGER NOT NULL DEFAULT 0, body_version TEXT NOT NULL DEFAULT '')")) ||
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS sender_photo_files (card_id TEXT PRIMARY KEY, file_url TEXT NOT NULL)"))) return;
         QSqlQuery bodyColumns(m_db);
         if (!bodyColumns.exec(QStringLiteral("PRAGMA table_info(mail_bodies)"))) return;
-        bool hasMessages = false, hasShapeVersion = false;
+        bool hasMessages = false, hasShapeVersion = false, hasBodyVersion = false;
         while (bodyColumns.next())
             if (bodyColumns.value(1).toString() == QStringLiteral("messages")) hasMessages = true;
             else if (bodyColumns.value(1).toString() == QStringLiteral("shape_version")) hasShapeVersion = true;
+            else if (bodyColumns.value(1).toString() == QStringLiteral("body_version")) hasBodyVersion = true;
         if (!hasMessages && !execute(QStringLiteral("ALTER TABLE mail_bodies ADD COLUMN messages TEXT NOT NULL DEFAULT '[]'"))) return;
         if (!hasShapeVersion && !execute(QStringLiteral("ALTER TABLE mail_bodies ADD COLUMN shape_version INTEGER NOT NULL DEFAULT 0"))) return;
+        if (!hasBodyVersion && !execute(QStringLiteral("ALTER TABLE mail_bodies ADD COLUMN body_version TEXT NOT NULL DEFAULT ''"))) return;
         QSqlQuery columns(m_db);
         if (!columns.exec(QStringLiteral("PRAGMA table_info(cards)"))) return;
         bool hasSenderName = false;
@@ -262,10 +264,11 @@ bool CardStore::open(const QString &path) {
         }
         if (!writeCards(cards, recovered)) return;
         cards = std::move(recovered);
-        if (!q.exec(QStringLiteral("SELECT card_id,shape_version FROM mail_bodies"))) return;
+        if (!q.exec(QStringLiteral("SELECT card_id,shape_version,body_version FROM mail_bodies"))) return;
         while (q.next()) {
             const QString id = q.value(0).toString();
             cachedIds.insert(id);
+            bodyVersions.insert(id, q.value(2).toString());
             if (q.value(1).toInt() < 2) staleBodyIds.insert(id);
         }
         // R67: device photo cache survives restart; file URLs are local only.
@@ -284,6 +287,7 @@ bool CardStore::open(const QString &path) {
     for (const auto &op : m_outbox) m_durableOps.insert(op.value(QStringLiteral("op_id")).toString());
     m_bodyCached = std::move(cachedIds);
     m_bodyNeedsRefresh = std::move(staleBodyIds);
+    m_bodyVersions = std::move(bodyVersions);
     m_senderPhotos = std::move(photos);
     injectSenderPhotos(cards);
     replaceCards(std::move(cards));
@@ -1627,7 +1631,7 @@ QVariantMap CardStore::cachedMailBody(const QString &cardId) const {
         const QJsonDocument messages = QJsonDocument::fromJson(w.messagesJson.toUtf8());
         return {{QStringLiteral("html"), w.html}, {QStringLiteral("source_url"), w.sourceUrl},
                 {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}},
-                {QStringLiteral("shape_version"), w.shapeVersion}};
+                {QStringLiteral("shape_version"), w.shapeVersion}, {QStringLiteral("body_version"), w.bodyVersion}};
     }
     const auto hit = m_bodyLru.constFind(cardId);
     if (hit != m_bodyLru.cend()) {
@@ -1645,13 +1649,13 @@ QVariantMap CardStore::readBodyFromDb(const QString &cardId) const {
     // observes every body write queued before it.
     QMetaObject::invokeMethod(m_storage, [&] {
         QSqlQuery q(m_db);
-        q.prepare(QStringLiteral("SELECT html,source_url,messages,shape_version FROM mail_bodies WHERE card_id=?"));
+        q.prepare(QStringLiteral("SELECT html,source_url,messages,shape_version,body_version FROM mail_bodies WHERE card_id=?"));
         q.addBindValue(cardId);
         if (!q.exec() || !q.next()) return;
         const QJsonDocument messages = QJsonDocument::fromJson(q.value(2).toByteArray());
         body = {{QStringLiteral("html"), q.value(0)}, {QStringLiteral("source_url"), q.value(1)},
                 {QStringLiteral("messages"), messages.isArray() ? messages.array().toVariantList() : QVariantList{}},
-                {QStringLiteral("shape_version"), q.value(3)}};
+                {QStringLiteral("shape_version"), q.value(3)}, {QStringLiteral("body_version"), q.value(4)}};
     }, Qt::BlockingQueuedConnection);
     return body;
 }
@@ -1676,13 +1680,18 @@ void CardStore::lruInsert(const QString &cardId, const QVariantMap &body) const 
     // Always keep the newest body, even when it alone exceeds the cap.
     while (m_bodyLruBytes > kBodyLruBytes && m_bodyLruOrder.size() > 1) lruRemove(m_bodyLruOrder.first());
 }
+bool CardStore::bodyIsStale(const QVariantMap &card) const {
+    const QString id = card.value(QStringLiteral("id")).toString();
+    const QString expected = card.value(QStringLiteral("body_version")).toString();
+    return m_bodyNeedsRefresh.contains(id) || (!expected.isEmpty() && m_bodyVersions.value(id) != expected);
+}
 int CardStore::mailSyncPending() const {
     int pending = 0;
     for (const QVariantMap &card : m_cards) {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if (!m_bodyCached.contains(id) || m_bodyNeedsRefresh.contains(id) || m_bodyPersisting.contains(id)) ++pending;
+        if (!m_bodyCached.contains(id) || bodyIsStale(card) || m_bodyPersisting.contains(id)) ++pending;
     }
     return pending;
 }
@@ -1696,7 +1705,7 @@ void CardStore::queueMailBodyPrefetch() {
         if (card.value(QStringLiteral("source")).toString() != QStringLiteral("mail") &&
             !card.value(QStringLiteral("has_body")).toBool()) continue;
         const QString id = card.value(QStringLiteral("id")).toString();
-        if ((m_bodyCached.contains(id) && !m_bodyNeedsRefresh.contains(id)) || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
+        if ((m_bodyCached.contains(id) && !bodyIsStale(card)) || m_bodyRequests.contains(id) || m_bodyPersisting.contains(id)) continue;
         eligible.insert(id);
     }
     m_bodyPrefetchQueue.erase(std::remove_if(m_bodyPrefetchQueue.begin(), m_bodyPrefetchQueue.end(),
@@ -1738,10 +1747,8 @@ void CardStore::prefetchNextMailBody() {
 }
 void CardStore::requestMailBody(const QString &cardId) {
     if (!m_open || cardId.isEmpty()) return;
-    if (!cachedMailBody(cardId).isEmpty()) {
-        emit mailBodyChanged(cardId);
-        return;
-    }
+    const bool cached = !cachedMailBody(cardId).isEmpty();
+    if (cached) emit mailBodyChanged(cardId);
     if (!m_online) return;
     // Mail cards keep their existing fetchable body; non-mail cards opt in
     // via has_body from /v1/cards. Cards without either have no body route.
@@ -1753,7 +1760,8 @@ void CardStore::requestMailBody(const QString &cardId) {
     for (const QVariantMap &c : m_cards) {
         if (c.value(QStringLiteral("id")).toString() == cardId) { card = &c; break; }
     }
-    if (!card) { emit mailBodyFailed(cardId); return; }
+    if (!card) { if (!cached) emit mailBodyFailed(cardId); return; }
+    if (cached && !bodyIsStale(*card)) return;
     const bool isMail = card->value(QStringLiteral("source")).toString() == QStringLiteral("mail");
     if (!isMail && !card->value(QStringLiteral("has_body")).toBool()) { emit mailBodyFailed(cardId); return; }
     if (m_bodyRequests.contains(cardId) || m_bodyPersisting.contains(cardId)) return;
@@ -1774,6 +1782,15 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
         reportMailBodyFailed(cardId, 503);
         return;
     }
+    QString bodyVersion = body.value(QStringLiteral("body_version")).toString();
+    for (const auto &card : std::as_const(m_cards)) {
+        if (card.value(QStringLiteral("id")).toString() == cardId &&
+            !card.value(QStringLiteral("body_version")).toString().isEmpty() && bodyVersion.isEmpty()) {
+            reportMailBodyFailed(cardId, 503);
+            return;
+        }
+    }
+    if (bodyVersion.isNull()) bodyVersion = QStringLiteral("");
     const QString html = body.value(QStringLiteral("html")).toString();
     QString sourceUrl = body.value(QStringLiteral("source_url")).toString();
     const bool hasMessages = body.contains(QStringLiteral("messages"));
@@ -1792,7 +1809,7 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     m_bodyPersisting.insert(cardId);
     m_bodyCached.insert(cardId);
     lruRemove(cardId);
-    m_bodyWriteBatch.append({cardId, html, sourceUrl, messagesJson, hadBody, body.value(QStringLiteral("shape_version")).toInt()});
+    m_bodyWriteBatch.append({cardId, html, sourceUrl, messagesJson, hadBody, body.value(QStringLiteral("shape_version")).toInt(), bodyVersion});
     emit mailSyncStateChanged();
     if (m_bodyWriteBatch.size() >= 16) flushBodyWrites();
     else if (!m_bodyFlushTimer.isActive()) m_bodyFlushTimer.start(25);
@@ -1810,10 +1827,10 @@ void CardStore::flushBodyWrites() {
         QString error = m_db.lastError().text();
         if (ok) {
             QSqlQuery q(m_db);
-            q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages,shape_version) VALUES(?,?,?,?,?) "
-                                     "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages, shape_version=excluded.shape_version"));
+            q.prepare(QStringLiteral("INSERT INTO mail_bodies(card_id,html,source_url,messages,shape_version,body_version) VALUES(?,?,?,?,?,?) "
+                                     "ON CONFLICT(card_id) DO UPDATE SET html=excluded.html, source_url=excluded.source_url, messages=excluded.messages, shape_version=excluded.shape_version, body_version=excluded.body_version"));
             for (const BodyWrite &w : batch) {
-                q.addBindValue(w.id); q.addBindValue(w.html); q.addBindValue(w.sourceUrl); q.addBindValue(w.messagesJson); q.addBindValue(w.shapeVersion);
+                q.addBindValue(w.id); q.addBindValue(w.html); q.addBindValue(w.sourceUrl); q.addBindValue(w.messagesJson); q.addBindValue(w.shapeVersion); q.addBindValue(w.bodyVersion);
                 if (!q.exec()) { ok = false; error = q.lastError().text(); break; }
             }
             if (ok) { ok = m_db.commit(); if (!ok) error = m_db.lastError().text(); }
@@ -1824,9 +1841,17 @@ void CardStore::flushBodyWrites() {
                 m_bodyPersisting.remove(w.id);
                 if (ok) {
                     m_bodyNeedsRefresh.remove(w.id);
+                    m_bodyVersions.insert(w.id, w.bodyVersion);
                     m_bodyRetryAfter.remove(w.id);
                     m_bodyRetryAttempts.remove(w.id);
                     emit mailBodyChanged(w.id);
+                    for (const auto &card : std::as_const(m_cards)) {
+                        if (card.value(QStringLiteral("id")).toString() == w.id && bodyIsStale(card)) {
+                            m_bodyRetryAfter.insert(w.id, QDeadlineTimer(1000, Qt::PreciseTimer));
+                            refresh();
+                            break;
+                        }
+                    }
                     continue;
                 }
                 if (!w.hadBody) m_bodyCached.remove(w.id);
@@ -1847,7 +1872,7 @@ void CardStore::reportMailBodyFailed(const QString &cardId, int status) {
     m_bodyRetryAfter.insert(cardId, QDeadlineTimer(delay, Qt::PreciseTimer));
     // The server's per-device bucket answers 429 with Retry-After: 1. Park the entire body queue on 429, not just the rejected card.
     if (status == 429) m_bodyBackoff = QDeadlineTimer(delay, Qt::PreciseTimer);
-    emit mailBodyFailed(cardId);
+    if (!m_bodyCached.contains(cardId)) emit mailBodyFailed(cardId);
     emit mailSyncStateChanged();
     queueMailBodyPrefetch();
 }

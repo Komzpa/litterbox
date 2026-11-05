@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Komzpa/litterbox/server/internal/bodyversion"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/google/uuid"
@@ -56,6 +57,19 @@ func TestThreadSyncReconcilesMessages(t *testing.T) {
 		}
 	}
 	save()
+	readVersion := func() string {
+		t.Helper()
+		var version string
+		if err := db.QueryRow(ctx, `SELECT `+bodyversion.SQL+` FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id WHERE c.tenant_id=$1 AND c.gmail_thread_id='thread-1'`, tenant).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		return version
+	}
+	unchanged := readVersion()
+	save()
+	if got := readVersion(); got != unchanged {
+		t.Fatalf("unchanged sync changed body version: %s != %s", got, unchanged)
+	}
 	// The older archived message arrives after the newest; then the first is removed.
 	msgs = []map[string]any{first, latest, draft, middle}
 	save()

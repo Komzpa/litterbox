@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/Komzpa/litterbox/server/internal/bodyversion"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml/trackers"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
@@ -46,7 +47,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	tx, err := h.DB.BeginTx(r.Context(), nil)
+	tx, err := h.DB.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -58,8 +59,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var source string
 	var account, threadID, address sql.NullString
-	var raw string
-	err = tx.QueryRowContext(r.Context(), `SELECT c.source,c.account_id::text,c.gmail_thread_id,a.address,b.html FROM cards c JOIN card_bodies b ON b.tenant_id=c.tenant_id AND b.card_id=c.id LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id WHERE c.tenant_id=$1 AND c.id=$2`, tenantID, cardID).Scan(&source, &account, &threadID, &address, &raw)
+	var raw, version string
+	err = tx.QueryRowContext(r.Context(), `SELECT c.source,c.account_id::text,c.gmail_thread_id,a.address,b.html,`+bodyversion.SQL+` FROM cards c JOIN card_bodies b ON b.tenant_id=c.tenant_id AND b.card_id=c.id LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id WHERE c.tenant_id=$1 AND c.id=$2`, tenantID, cardID).Scan(&source, &account, &threadID, &address, &raw, &version)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -133,7 +134,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SourceURL    string          `json:"source_url,omitempty"`
 		Messages     []threadMessage `json:"messages"`
 		ShapeVersion int             `json:"shape_version"`
-	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages, 2}); err != nil {
+		BodyVersion  string          `json:"body_version"`
+	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages, 2, version}); err != nil {
 		return
 	}
 }
