@@ -153,6 +153,10 @@ TestCase {
         const singleTitle = findChild(single, "mailTitle-today-single")
         const singleArchive = findChild(single, "doneButton-today-single")
         const singleDate = findChild(single, "mailDate-today-single")
+        const singleAccount = findChild(single, "mailAccount-today-single")
+        verify(singleAccount.visible && singleAccount.text === "owner@example.test")
+        verify(!singleAccount.truncated && singleAccount.contentHeight <= singleAccount.height + 1,
+               "standalone account remains fully readable")
         for (const id of ["today-head", "yesterday-head", "yesterday-child", "yesterday", "older", "older-head"]) {
             const row = rowFor(id)
             const frame = findChild(row, "inboxCard")
@@ -180,7 +184,16 @@ TestCase {
             verify(archive.width >= 48 && archive.height >= 48 && more.width >= 48 && more.height >= 48)
             if (bundle && id !== "yesterday-head") {
                 const chip = findChild(row, "bundleMemberCount-" + id)
+                const account = findChild(row, "bundleAccountIndicator-" + id)
+                verify(account.visible && account.text === "owner@example.test")
+                verify(!account.truncated && account.contentHeight <= account.height + 1,
+                       "bundle account remains fully readable")
                 compare(chip.visible, id !== "today-head", "count chip appears only for two or more messages")
+                for (const name of ["bundleTitleLabel-", "bundleAccountLabel-", "bundleAccountIndicator-", "bundleLatestLabel-", "bundleMemberCount-"]) {
+                    const item = findChild(row, name + id)
+                    if (item) console.info("BOX " + data.w + " " + id + " " + name + " " + item.x + "," + item.y + " " + item.width + "x" + item.height + " visible=" + item.visible)
+                }
+                console.info("FRAME " + data.w + " " + id + " " + frame.width + "x" + frame.height + " single=" + singleFrame.height + " chip=" + chip.parent.height)
                 if (id === "today-head") {
                     verify(Math.abs(frame.height - singleFrame.height) <= 2, "one-message thread and matched single bounding boxes have equal height within 2px")
                     console.info("BBOX " + data.w + ": single=" + singleFrame.width + "x" + singleFrame.height + "; one-message thread=" + frame.width + "x" + frame.height)

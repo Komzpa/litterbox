@@ -612,6 +612,19 @@ TestCase {
         const collapsedFrame = findChild(collapsedLeader, "inboxCard")
         compare(collapsedNext.y - collapsedLeader.y - collapsedFrame.y - collapsedFrame.height, gap)
     }
+    function test_bundleAccountFromMembersWhenLeaderHasNone() {
+        store.clear()
+        const cards = Newsletter.cards()
+        cards[0].account_name = ""
+        for (const card of cards) store.append({cardId: card.id, title: card.title, section: card.section, card: card})
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater, timeRules: timeRules, width: 412, height: 915})
+        verify(inbox); inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) !== null })
+        const account = findChild(list.itemAtIndex(0), "bundleAccountIndicator-" + cards[0].id)
+        verify(account.visible && account.text === cards[1].account_name && !account.truncated)
+        inbox.close()
+    }
     function test_sameNameDifferentMailbox() {
         store.clear()
         const cards = Newsletter.cards()
@@ -674,9 +687,10 @@ TestCase {
                     context: findChild(row, "mailContext-" + card.id).visible}
         })
         const header = findChild(list.itemAtIndex(0), "bundleAccountLabel-" + cards[0].id)
-        const headerHasAccount = header.text.indexOf(cards[0].account_name) >= 0
+        const accountIndicator = findChild(list.itemAtIndex(0), "bundleAccountIndicator-" + cards[0].id)
+        const headerHasAccount = accountIndicator.visible && accountIndicator.width >= 40 && accountIndicator.text === cards[0].account_name
         compare(header.text.split(cards[0].sender_name).length - 1, 1, "Shared sender appears once on summary")
-        compare(header.text.split(cards[0].account_name).length - 1, 1, "Shared account appears once on summary")
+        verify(headerHasAccount, "Shared account appears on summary")
         for (let i = 0; i < cards.length; ++i) {
             const row = list.itemAtIndex(i)
             compare(row.cardId, cards[i].id, "Expansion preserves source order")

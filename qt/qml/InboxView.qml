@@ -1483,10 +1483,11 @@ ApplicationWindow {
                                 summary.hasDuplicateNames = false
                                 const labels = summary.senders.map(function(name, i) {
                                     const duplicate = summary.senders.some(function(other, j) { return j !== i && other.toLowerCase() === name.toLowerCase() })
-                                    if (duplicate) summary.hasDuplicateNames = true
+                                    if (duplicate && summary.senderAddresses[i]) summary.hasDuplicateNames = true
                                     return duplicate && summary.senderAddresses[i] ? name + " <" + summary.senderAddresses[i] + ">" : name
                                 })
-                                summary.senderLabel = labels.slice(0, 2).join(", ") + (labels.length > 2 ? " +" + (labels.length - 2) : "")
+                                const visibleLabels = [...new Set(labels)]
+                                summary.senderLabel = visibleLabels.slice(0, 2).join(", ") + (visibleLabels.length > 2 ? " +" + (visibleLabels.length - 2) : "")
                             }
                             sourceEntries = entries
                             window.bundleSections = sections
@@ -1834,17 +1835,34 @@ ApplicationWindow {
                                             }
                                             Item { visible: !window.compactInbox; Layout.fillWidth: true }
                                         }
-                                        Label {
-                                            objectName: "bundleAccountLabel-" + cardId
-                                            text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
-                                            color: cardRow.bundleSummary.unread ? window.ink : window.mutedInk
-                                            font.family: window.themeFont.family
-                                            font.weight: cardRow.bundleSummary.unread ? Font.Bold : Font.Normal
-                                            font.pointSize: window.metaPointSize
+                                        RowLayout {
                                             Layout.fillWidth: true
-                                            leftPadding: cardRow.bundleTextInset
-                                            wrapMode: cardRow.bundleSummary.hasDuplicateNames ? Text.WrapAnywhere : window.compactInbox ? Text.NoWrap : Text.Wrap
-                                            elide: cardRow.bundleSummary.hasDuplicateNames ? Text.ElideNone : Text.ElideRight
+                                            Layout.leftMargin: cardRow.bundleTextInset
+                                            spacing: Kirigami.Units.smallSpacing
+                                            Label {
+                                                objectName: "bundleAccountLabel-" + cardId
+                                                text: cardRow.bundleSummary.senderLabel || bundleToggle.text
+                                                color: cardRow.bundleSummary.unread ? window.ink : window.mutedInk
+                                                font.family: window.themeFont.family
+                                                font.weight: cardRow.bundleSummary.unread ? Font.Bold : Font.Normal
+                                                font.pointSize: window.metaPointSize
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                wrapMode: cardRow.bundleSummary.hasDuplicateNames ? Text.WrapAnywhere : window.compactInbox ? Text.NoWrap : Text.Wrap
+                                                elide: cardRow.bundleSummary.hasDuplicateNames ? Text.ElideNone : Text.ElideRight
+                                            }
+                                            Label {
+                                                objectName: "bundleAccountIndicator-" + cardId
+                                                text: cardRow.bundleSummary.accounts.length > 1 ? qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : (cardRow.bundleSummary.accounts[0] || "")
+                                                visible: text.length > 0
+                                                color: window.mutedInk
+                                                font.family: window.themeFont.family
+                                                font.pointSize: window.metaPointSize
+                                                wrapMode: Text.WrapAnywhere
+                                                Layout.minimumWidth: window.compactInbox ? Math.min(48, bundleToggle.width / 3) : 0
+                                                Layout.preferredWidth: window.compactInbox ? Math.min(implicitWidth, (bundleToggle.width - cardRow.bundleTextInset) * 0.7) : implicitWidth
+                                                Layout.maximumWidth: window.compactInbox ? (bundleToggle.width - cardRow.bundleTextInset) * 0.7 : 180
+                                            }
                                         }
                                         Label {
                                             objectName: "bundleLatestLabel-" + cardId
@@ -2178,11 +2196,12 @@ ApplicationWindow {
                                             text: card.account_name || ""
                                             visible: text.length > 0 && cardRow.showMemberAccount
                                             color: window.mutedInk
-                                            font: window.themeFont
-                                            elide: Text.ElideLeft
+                                            font.family: window.themeFont.family
+                                            font.pointSize: window.metaPointSize
+                                            wrapMode: Text.WrapAnywhere
                                             Layout.minimumWidth: window.compactInbox ? Math.min(48, cardText.width / 3) : 0
-                                            Layout.preferredWidth: window.compactInbox ? Math.min(120, cardText.width * 0.4) : implicitWidth
-                                            Layout.maximumWidth: Math.min(180, cardText.width / 2)
+                                            Layout.preferredWidth: window.compactInbox ? Math.min(implicitWidth, cardText.width * 0.7) : implicitWidth
+                                            Layout.maximumWidth: window.compactInbox ? cardText.width * 0.7 : 180
                                         }
                                     }
                                     Label {

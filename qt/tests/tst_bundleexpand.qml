@@ -131,7 +131,11 @@ TestCase {
         const expectedTitle = data.bundle || cards[0].title
         tryCompare(toggle, "text", expectedTitle)
         const sender = findChild(row, "bundleAccountLabel-sender-0")
-        verify(sender && sender.visible && sender.text.indexOf(cards[0].account_name) >= 0)
+        const account = findChild(row, "bundleAccountIndicator-sender-0")
+        verify(sender && sender.visible)
+        verify(account && account.visible && account.text === cards[0].account_name
+               && !account.truncated && account.contentHeight <= account.height + 1,
+               "bundle account must remain readable")
         for (const name of Array.from(new Set(data.names.filter(name => name))).slice(0, 2))
             verify(sender.text.indexOf(name) >= 0, "bundle metadata must retain sender identity")
         const latest = findChild(row, "bundleLatestLabel-sender-0")
@@ -183,7 +187,8 @@ TestCase {
         compare(title.text, subjects[2], "Newest unpinned original subject wins, not the newer pinned outlier")
         verify(title.text.indexOf("sender:") < 0)
         const metadata = findChild(summary, "bundleAccountLabel-" + ids[0])
-        verify(metadata.text.indexOf("Different pinned writer") < 0 && metadata.text.indexOf("other@synthetic.test") < 0)
+        const account = findChild(summary, "bundleAccountIndicator-" + ids[0])
+        verify(metadata.text.indexOf("Different pinned writer") < 0 && account.text.indexOf("other@synthetic.test") < 0)
         verify(!list.itemAtIndex(2).visible && !list.itemAtIndex(3).visible)
         const toggle = findChild(summary, "bundleToggle-" + ids[0])
         list.positionViewAtIndex(1, ListView.Beginning)
@@ -296,7 +301,7 @@ TestCase {
         const collapsedRows = snapshot(list, sourceIds)
         if (data.width <= 598) {
             const titleLabel = findChild(list.itemAtIndex(leader.index), "bundleTitleLabel-" + leaderId)
-            const accountLabel = findChild(list.itemAtIndex(leader.index), "bundleAccountLabel-" + leaderId)
+            const accountLabel = findChild(list.itemAtIndex(leader.index), "bundleAccountIndicator-" + leaderId)
             verify(titleLabel && !titleLabel.truncated, "Bundle title must not be elided at 520 or 598 px")
             verify(accountLabel && !accountLabel.truncated, "Bundle account must not be elided at 520 or 598 px")
             compare(archive.width, 48, "Narrow archive action must retain a 48 px hit target")
