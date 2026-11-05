@@ -92,6 +92,7 @@ TestCase {
         const stack = findChild(view, "pageStack")
         tryCompare(stack, "busy", false)
         compare(stack.currentItem.objectName, "settingsPage")
+        compare(entry.menu.visible, false)
         const page = stack.currentItem
         compare(findChild(page, "enrollmentStatus").text, "Enrolled")
         verify(findChild(page, "accountSummary").text.indexOf("owner@example.test") >= 0)

@@ -931,6 +931,9 @@ ApplicationWindow {
                         margins: 8
                         padding: 6
                         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                        // Do not leave the popup overlay intercepting input on a
+                        // destination page after its menu item opens that page.
+                        exit: Transition {}
                         contentItem: ListView {
                             objectName: "headerMenuActions"
                             implicitHeight: contentHeight
