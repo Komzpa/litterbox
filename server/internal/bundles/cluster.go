@@ -30,22 +30,33 @@ type ClusterDB interface {
 	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
-// OllamaEmbedder calls the local Ollama embeddings API.
+// OllamaEmbedder calls an embeddings API: Ollama's /api/embed by default, or
+// an OpenAI-compatible /embeddings endpoint (llama-swap, llama.cpp) when
+// OpenAI is set.
 type OllamaEmbedder struct {
 	Host, Model string
 	Client      *http.Client
+	// OpenAI selects POST {Host}/embeddings with {"model","input":[text]}
+	// and reads data[0].embedding; Host then includes the /v1 prefix.
+	OpenAI bool
 }
 
-// NewOllamaEmbedder reads OLLAMA_HOST and LITTERBOX_EMBED_MODEL. Empty config
-// uses localhost and nomic-embed-text.
+// NewOllamaEmbedder reads LITTERBOX_EMBED_URL (an OpenAI-compatible base such
+// as http://172.17.0.1:11450/v1), else OLLAMA_HOST, and LITTERBOX_EMBED_MODEL.
+// Empty config uses Ollama on localhost and nomic-embed-text. The model name is
+// part of the vector cache key, so keep it unchanged when only the transport
+// moves to a server running the same weights.
 func NewOllamaEmbedder() OllamaEmbedder {
-	host := strings.TrimRight(os.Getenv("OLLAMA_HOST"), "/")
-	if host == "" {
-		host = "http://localhost:11434"
-	}
 	model := os.Getenv("LITTERBOX_EMBED_MODEL")
 	if model == "" {
 		model = "nomic-embed-text"
+	}
+	if base := strings.TrimRight(os.Getenv("LITTERBOX_EMBED_URL"), "/"); base != "" {
+		return OllamaEmbedder{Host: base, Model: model, Client: &http.Client{}, OpenAI: true}
+	}
+	host := strings.TrimRight(os.Getenv("OLLAMA_HOST"), "/")
+	if host == "" {
+		host = "http://localhost:11434"
 	}
 	return OllamaEmbedder{Host: host, Model: model, Client: &http.Client{}}
 }
@@ -60,6 +71,9 @@ func (e OllamaEmbedder) Embed(ctx context.Context, text string) ([]float64, erro
 	client := e.Client
 	if client == nil {
 		client = http.DefaultClient
+	}
+	if e.OpenAI {
+		return e.embedOpenAI(ctx, client, text)
 	}
 	body, err := json.Marshal(struct {
 		Model string `json:"model"`
@@ -91,6 +105,41 @@ func (e OllamaEmbedder) Embed(ctx context.Context, text string) ([]float64, erro
 		return nil, errors.New("ollama returned no embeddings")
 	}
 	return result.Embeddings[0], nil
+}
+
+func (e OllamaEmbedder) embedOpenAI(ctx context.Context, client *http.Client, text string) ([]float64, error) {
+	body, err := json.Marshal(struct {
+		Model string   `json:"model"`
+		Input []string `json:"input"`
+	}{e.Model, []string{text}})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(e.Host, "/")+"/embeddings", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("openai embeddings: %s", resp.Status)
+	}
+	var result struct {
+		Data []struct {
+			Embedding []float64 `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if len(result.Data) == 0 || len(result.Data[0].Embedding) == 0 {
+		return nil, errors.New("openai embeddings returned no vector")
+	}
+	return result.Data[0].Embedding, nil
 }
 
 type mailCard struct {
