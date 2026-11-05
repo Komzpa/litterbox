@@ -563,6 +563,7 @@ ApplicationWindow {
     // openPage owns the reader identity, selection highlight and close callback.
     function openReaderEntry(entry) {
         const card = entry.card
+        if (card.source === "mail" && card.unread) store.enqueueOp(entry.cardId, "gmail.mark_read")
         openPage("MailDetailPage", {
             store: window.cardStore, cardId: entry.cardId, cardTitle: entry.title,
             accountName: card.account_name || "", card: card,
@@ -1446,6 +1447,7 @@ ApplicationWindow {
                                 if (card.pinned_rank == null && card.section !== "pinned") {
                                     ++summary.unpinned
                                     if (card.important) ++summary.important
+                                    if (card.unread) summary.unread = true
                                 }
                                 if (!summary.latestAt || (card.received_at && card.received_at > summary.latestAt)) {
                                     summary.latestAt = card.received_at || ""
@@ -1801,7 +1803,7 @@ ApplicationWindow {
                                                 implicitHeight: Kirigami.Units.iconSizes.smallMedium
                                                 Kirigami.Icon { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; source: bundleToggle.icon.name; color: window.ink; isMask: true; width: Kirigami.Units.iconSizes.smallMedium; height: width }
                                             }
-                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: window.ink; font.family: window.themeFont.family; font.pointSize: window.titlePointSize; font.bold: true; wrapMode: Text.WordWrap; maximumLineCount: window.largeText ? Infinity : 2; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                            Label { objectName: "bundleTitleLabel-" + cardId; Layout.leftMargin: window.compactInbox ? cardRow.bundleTextInset : 0; text: bundleToggle.text; color: cardRow.bundleSummary.unread ? window.ink : window.mutedInk; font.family: window.themeFont.family; font.pointSize: window.titlePointSize; font.bold: !!cardRow.bundleSummary.unread; wrapMode: Text.WordWrap; maximumLineCount: window.largeText ? Infinity : 2; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                             Rectangle {
                                                 visible: (card.bundle_member_count || 0) >= 2
                                                 Layout.row: window.compactInbox ? 1 : 0
@@ -1819,8 +1821,9 @@ ApplicationWindow {
                                         Label {
                                             objectName: "bundleAccountLabel-" + cardId
                                             text: (cardRow.bundleSummary.senderLabel || bundleToggle.text) + (cardRow.bundleSummary.accounts.length > 1 ? " · " + qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : card.account_name ? " · " + card.account_name : "")
-                                            color: window.mutedInk
+                                            color: cardRow.bundleSummary.unread ? window.ink : window.mutedInk
                                             font.family: window.themeFont.family
+                                            font.weight: cardRow.bundleSummary.unread ? Font.Bold : Font.Normal
                                             font.pointSize: window.metaPointSize
                                             Layout.fillWidth: true
                                             leftPadding: cardRow.bundleTextInset
@@ -2099,11 +2102,11 @@ ApplicationWindow {
                                     Kirigami.Heading {
                                         objectName: "mailTitle-" + cardId
                                         text: title
-                                        color: window.ink
+                                        color: card.source === "mail" && !card.unread ? window.mutedInk : window.ink
                                         level: 4
                                         // Same as Kirigami's level-4 size without a per-row Theme object.
                                         font.pointSize: window.titlePointSize
-                                        font.weight: Font.DemiBold
+                                        font.weight: card.source === "mail" ? (card.unread ? Font.Bold : Font.Normal) : Font.DemiBold
                                         wrapMode: window.compactInbox || !window.compactDensity || window.largeText ? Text.Wrap : Text.NoWrap
                                         maximumLineCount: window.largeText ? Infinity : window.compactInbox && cardRow.bundled ? 3 : window.compactInbox || !window.compactDensity ? 2 : 1
                                         elide: Text.ElideRight
@@ -2119,8 +2122,9 @@ ApplicationWindow {
                                             objectName: "mailSender-" + cardId
                                             text: window.mailSender(card)
                                             visible: text.length > 0 && cardRow.showMemberSender
-                                            color: window.mutedInk
+                                            color: card.unread ? window.ink : window.mutedInk
                                             font.family: window.themeFont.family
+                                            font.weight: card.unread ? Font.Bold : Font.Normal
                                             font.pointSize: window.metaPointSize
                                             elide: Text.ElideRight
                                             Layout.minimumWidth: 0

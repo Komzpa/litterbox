@@ -6,15 +6,15 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
- 	"log"
- 	"net/http"
- 	"net/mail"
- 	"strconv"
+	"log"
+	"net/http"
+	"net/mail"
+	"strconv"
 	"strings"
 	"sync"
- 	"time"
+	"time"
 
- 	"golang.org/x/net/html"
+	"golang.org/x/net/html"
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/mailbody"
@@ -30,6 +30,7 @@ type Account struct {
 	HistoryID    string
 }
 type Syncer struct {
+	gate         accountGate
 	DB           *pgxpool.Pool
 	Client       func(Account) *Client
 	Images       *mailhtml.ImageFetcher
@@ -39,14 +40,25 @@ type Syncer struct {
 	Build string
 }
 
-func (s *Syncer) SyncAccount(ctx context.Context, a Account) (err error) {
+func (s *Syncer) SyncAccount(ctx context.Context, a Account) error {
+	return s.gate.run(ctx, accountKey{a.TenantID, a.ID}, func() error { return s.syncAccount(ctx, a) })
+}
+
+func (s *Syncer) syncAccount(ctx context.Context, a Account) (err error) {
 	defer func() {
-		if !errors.Is(err, ErrInvalidGrant) { return }
+		if !errors.Is(err, ErrInvalidGrant) {
+			return
+		}
 		health, e := s.beginTenant(ctx, a.TenantID)
-		if e != nil { err = errors.Join(err, e); return }
+		if e != nil {
+			err = errors.Join(err, e)
+			return
+		}
 		defer health.Rollback(ctx)
 		_, e = health.Exec(ctx, `UPDATE accounts SET status='reauth_required' WHERE tenant_id=$1 AND id=$2`, a.TenantID, a.ID)
-		if e == nil { e = health.Commit(ctx) }
+		if e == nil {
+			e = health.Commit(ctx)
+		}
 		err = errors.Join(err, e)
 	}()
 	c := s.Client(a)
@@ -70,9 +82,9 @@ func (s *Syncer) SyncAccount(ctx context.Context, a Account) (err error) {
 	if e = tx.Commit(ctx); e != nil {
 		return e
 	}
- 	if err := s.backfillSenderNames(ctx, a, c); err != nil {
- 		return err
- 	}
+	if err := s.backfillSenderNames(ctx, a, c); err != nil {
+		return err
+	}
 	if cursor == "" {
 		err := s.initial(ctx, a, c, initialStarted, pageToken, initialHistory)
 		// R67: best-effort photo pass after Gmail sync. Missing grants stay
@@ -109,37 +121,38 @@ func senderFields(header string) (string, string) {
 // senderBackfillBatch caps thread metadata fetches per sync pass so a large
 // legacy backlog cannot monopolize a sync cycle.
 const senderBackfillBatch = 50
+
 // Backfill names for existing cards once. NULL distinguishes old records from
 // a parsed bare address, whose sender_name is intentionally the empty string.
 func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) error {
- 	tx, err := s.beginTenant(ctx, a.TenantID)
- 	if err != nil {
- 		return err
- 	}
- 	rows, err := tx.Query(ctx, `SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND source='mail' AND sender_name IS NULL ORDER BY sort_at,id LIMIT $3`, a.TenantID, a.ID, senderBackfillBatch)
- 	if err != nil {
- 		tx.Rollback(ctx)
- 		return err
- 	}
- 	var threads []string
- 	for rows.Next() {
- 		var thread string
- 		if err = rows.Scan(&thread); err != nil {
- 			rows.Close()
- 			tx.Rollback(ctx)
- 			return err
- 		}
- 		threads = append(threads, thread)
- 	}
- 	if err = rows.Err(); err != nil {
- 		rows.Close()
- 		tx.Rollback(ctx)
- 		return err
- 	}
- 	rows.Close()
- 	if err = tx.Commit(ctx); err != nil {
- 		return err
- 	}
+	tx, err := s.beginTenant(ctx, a.TenantID)
+	if err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `SELECT gmail_thread_id FROM cards WHERE tenant_id=$1 AND account_id=$2 AND source='mail' AND sender_name IS NULL ORDER BY sort_at,id LIMIT $3`, a.TenantID, a.ID, senderBackfillBatch)
+	if err != nil {
+		tx.Rollback(ctx)
+		return err
+	}
+	var threads []string
+	for rows.Next() {
+		var thread string
+		if err = rows.Scan(&thread); err != nil {
+			rows.Close()
+			tx.Rollback(ctx)
+			return err
+		}
+		threads = append(threads, thread)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		tx.Rollback(ctx)
+		return err
+	}
+	rows.Close()
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
 
 	names := make(map[string]string, len(threads))
 	for _, threadID := range threads {
@@ -156,25 +169,25 @@ func (s *Syncer) backfillSenderNames(ctx context.Context, a Account, c *Client) 
 			log.Printf("sender-name backfill: build=%s thread=%s: %v", s.Build, threadID, fetchErr)
 			continue
 		}
- 		from := ""
- 		for _, message := range thread.Messages {
- 			for _, header := range message.Payload.Headers {
- 				if strings.EqualFold(header.Name, "From") {
- 					from = header.Value
- 				}
- 			}
- 		}
- 		names[threadID] = senderDisplayName(from)
- 	}
- 	if len(names) == 0 {
- 		return nil
- 	}
+		from := ""
+		for _, message := range thread.Messages {
+			for _, header := range message.Payload.Headers {
+				if strings.EqualFold(header.Name, "From") {
+					from = header.Value
+				}
+			}
+		}
+		names[threadID] = senderDisplayName(from)
+	}
+	if len(names) == 0 {
+		return nil
+	}
 
- 	tx, err = s.beginTenant(ctx, a.TenantID)
- 	if err != nil {
- 		return err
- 	}
- 	defer tx.Rollback(ctx)
+	tx, err = s.beginTenant(ctx, a.TenantID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 	for threadID, name := range names {
 		if _, err = tx.Exec(ctx, `UPDATE cards SET sender_name=$1 WHERE tenant_id=$2 AND account_id=$3 AND gmail_thread_id=$4 AND sender_name IS NULL`, name, a.TenantID, a.ID, threadID); err != nil {
 			return err
@@ -396,23 +409,23 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		prepared[i] = *parsed
 		preparedSenders[i] = senderInfo{name: name, address: address}
 	}
- subject, sender := "", ""
- var newest time.Time
- for _, m := range t.Messages {
- 	millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
- 	date := time.UnixMilli(millis).UTC()
- 	if date.After(newest) {
- 		newest = date
- 	}
- 	for _, h := range m.Payload.Headers {
- 		switch strings.ToLower(h.Name) {
- 		case "subject":
- 			subject = h.Value
- 		case "from":
- 			sender = h.Value
- 		}
- 	}
- }
+	subject, sender := "", ""
+	var newest time.Time
+	for _, m := range t.Messages {
+		millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
+		date := time.UnixMilli(millis).UTC()
+		if date.After(newest) {
+			newest = date
+		}
+		for _, h := range m.Payload.Headers {
+			switch strings.ToLower(h.Name) {
+			case "subject":
+				subject = h.Value
+			case "from":
+				sender = h.Value
+			}
+		}
+	}
 	senderName := senderDisplayName(sender)
 	_, senderAddr := senderFields(sender)
 	if newest.IsZero() {
@@ -471,7 +484,9 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 }
 func (s *Syncer) Run(ctx context.Context, accounts func(context.Context) ([]Account, error)) error {
 	d := s.PollInterval
-	if d <= 0 || d > 5*time.Minute {
+	if d <= 0 {
+		d = time.Minute
+	} else if d > 5*time.Minute {
 		d = 5 * time.Minute
 	}
 	tick := time.NewTicker(d)

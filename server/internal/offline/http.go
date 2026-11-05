@@ -40,6 +40,7 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 		           ) ORDER BY m.received_at)
 		           FROM messages m WHERE m.tenant_id = c.tenant_id AND m.card_id = c.id
 		       ), '[]'::jsonb),
+		       EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'UNREAD'=ANY(m.labels)),
 		       (to_regclass('public.sender_photos') IS NOT NULL AND EXISTS(
 		           SELECT 1 FROM sender_photos sp WHERE sp.tenant_id=c.tenant_id AND sp.account_id=c.account_id
 		           AND sp.sender_address=LOWER(COALESCE((SELECT m.sender_address FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND m.sender_address<>'' ORDER BY m.received_at DESC LIMIT 1), c.sender_address))))
@@ -54,20 +55,20 @@ func (a API) Snapshot(w http.ResponseWriter, r *http.Request) {
 
 	cards := make([]json.RawMessage, 0)
 	for rows.Next() {
- 		var id, subject, sender, senderName, state, note string
+		var id, subject, sender, senderName, state, note string
 		var accountID, threadID sql.NullString
 		var source, sourceKind string
 		var sortAt any
 		var messages []byte
-		var hasPhoto bool
- 		if err = rows.Scan(&id, &subject, &sender, &senderName, &state, &sortAt, &note, &accountID, &threadID, &source, &sourceKind, &messages, &hasPhoto); err != nil {
+		var hasPhoto, unread bool
+		if err = rows.Scan(&id, &subject, &sender, &senderName, &state, &sortAt, &note, &accountID, &threadID, &source, &sourceKind, &messages, &unread, &hasPhoto); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		fields := map[string]any{
- 			"id": id, "subject": subject, "sender": sender, "sender_name": senderName, "state": state, "account_id": accountID.String, "gmail_thread_id": threadID.String,
- 			"sort_at": sortAt, "note": note, "messages": json.RawMessage(messages),
- 			"source": source, "source_kind": sourceKind,
+			"id": id, "subject": subject, "sender": sender, "sender_name": senderName, "state": state, "account_id": accountID.String, "gmail_thread_id": threadID.String,
+			"sort_at": sortAt, "note": note, "messages": json.RawMessage(messages),
+			"source": source, "source_kind": sourceKind, "unread": unread,
 		}
 		// R67: device cache carries the photo flag so offline rows keep real
 		// photos; false stays omitted (initials fallback, same as the API).
@@ -116,7 +117,7 @@ func (a API) Changes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
- 	rows, err := tx.QueryContext(r.Context(), `SELECT seq, entity, id, CASE WHEN entity='card' THEN jsonb_set(value,'{sender_name}',to_jsonb(COALESCE(value->>'sender_name','')),true) ELSE value END FROM changes WHERE tenant_id=$1 AND seq>$2 ORDER BY seq`, tenant, since)
+	rows, err := tx.QueryContext(r.Context(), `SELECT ch.seq, ch.entity, ch.id, CASE WHEN ch.entity='card' AND ch.value IS NOT NULL THEN jsonb_set(jsonb_set(ch.value,'{sender_name}',to_jsonb(COALESCE(ch.value->>'sender_name','')),true),'{unread}',to_jsonb(EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=ch.tenant_id AND m.card_id=ch.id AND 'UNREAD'=ANY(m.labels))),true) ELSE ch.value END FROM changes ch WHERE ch.tenant_id=$1 AND ch.seq>$2 ORDER BY ch.seq`, tenant, since)
 	if err != nil {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return

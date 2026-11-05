@@ -49,9 +49,9 @@ func main() {
 	listenAddr := envOrDefault("LISTEN_ADDR", ":8080")
 	databaseURL := os.Getenv("DATABASE_URL")
 	devTenantID := os.Getenv("LITTERBOX_DEV_TENANT_ID")
-    androidAPKPath := os.Getenv("LITTERBOX_ANDROID_APK_PATH")
-    androidVersion := os.Getenv("LITTERBOX_ANDROID_VERSION")
-    androidPackage := os.Getenv("LITTERBOX_ANDROID_PACKAGE")
+	androidAPKPath := os.Getenv("LITTERBOX_ANDROID_APK_PATH")
+	androidVersion := os.Getenv("LITTERBOX_ANDROID_VERSION")
+	androidPackage := os.Getenv("LITTERBOX_ANDROID_PACKAGE")
 	timezone := time.Local.String()
 	noteSink := os.Getenv("LITTERBOX_NOTE_SINK")
 	flag.StringVar(&listenAddr, "listen", listenAddr, "HTTP listen address (or LISTEN_ADDR)")
@@ -79,9 +79,9 @@ func main() {
 		authHandler.Register(mux)
 		protected = authHandler.Middleware(mux)
 		diagnostics.Register(mux, diagnostics.PostgresStore{DB: pg})
-        androidManifest, androidDownload := httpapi.AndroidUpdateHandlers(androidAPKPath, androidVersion, androidPackage)
-        mux.Handle("GET "+httpapi.AndroidUpdateManifestPath, androidManifest)
-        mux.Handle("GET "+httpapi.AndroidUpdateAPKPath, androidDownload)
+		androidManifest, androidDownload := httpapi.AndroidUpdateHandlers(androidAPKPath, androidVersion, androidPackage)
+		mux.Handle("GET "+httpapi.AndroidUpdateManifestPath, androidManifest)
+		mux.Handle("GET "+httpapi.AndroidUpdateAPKPath, androidDownload)
 		db, err := sql.Open("pgx", databaseURL)
 		if err != nil {
 			log.Fatal(err)
@@ -228,6 +228,12 @@ func main() {
 			defer stopSync()
 			syncer := &gmailsync.Syncer{DB: syncDB, Build: buildSHA, Client: gmailsync.ClientFactory(credentials.ClientID, credentials.ClientSecret, "", "", nil)}
 			gmailsync.RegisterOps(gmailsync.ClientForCard(credentials.ClientID, credentials.ClientSecret, "", "", nil))
+			mux.Handle("POST /v1/gmail/sync", devOnly(gmailsync.TriggerHandler{
+				Context:  syncCtx,
+				Identity: func(r *http.Request) (string, bool) { return cards.TenantFrom(r.Context()) },
+				Accounts: func(ctx context.Context) ([]gmailsync.Account, error) { return gmailsync.LoadAccounts(ctx, syncDB) },
+				Trigger:  syncer.Trigger,
+			}))
 			go func() {
 				for syncCtx.Err() == nil {
 					if err := syncer.Run(syncCtx, func(ctx context.Context) ([]gmailsync.Account, error) { return gmailsync.LoadAccounts(ctx, syncDB) }); err != nil && syncCtx.Err() == nil {

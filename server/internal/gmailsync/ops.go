@@ -140,6 +140,14 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 					return e
 				}
 			}
+			if name == "mark_read" {
+				_, err = tx.Exec(ctx, `UPDATE messages SET labels=array_remove(labels,'UNREAD') WHERE tenant_id=$1 AND card_id=$2 AND 'UNREAD'=ANY(labels)`, tenant, cardID)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec(ctx, `UPDATE cards SET version=version+1 WHERE tenant_id=$1 AND id=$2 AND source='mail'`, tenant, cardID)
+				return err
+			}
 			if name == "label_add" && label == "INBOX" {
 				// Archive Undo commits the provider inverse and normal card change
 				// together; a provider failure leaves the card archived.
@@ -149,6 +157,7 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 			return nil
 		})
 	}
+	register("mark_read", nil, []string{"UNREAD"})
 	register("archive", nil, []string{"INBOX"})
 	register("spam", []string{"SPAM"}, []string{"INBOX"})
 	register("star", []string{"STARRED"}, nil)

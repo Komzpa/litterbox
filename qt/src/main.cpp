@@ -371,9 +371,16 @@ int main(int argc, char *argv[])
     // Enrollment delivers its token through tokenChanged (the QML page sets
     // api.token on success and the connection above persists it). Use the
     // fresh token at once so the app goes online without a restart.
+    auto triggerGmailSync = [&] {
+        if (!api.token().isEmpty()) api.post(QStringLiteral("/v1/gmail/sync"));
+    };
     QObject::connect(&api, &Api::tokenChanged, &app, [&] {
-        if (!api.token().isEmpty()) { store.setOnline(true); store.refresh(); }
+        if (!api.token().isEmpty()) { store.setOnline(true); store.refresh(); triggerGmailSync(); }
     });
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &app, [&](Qt::ApplicationState state) {
+        if (state == Qt::ApplicationActive) triggerGmailSync();
+    });
+    if (!captureMode) QTimer::singleShot(0, &app, triggerGmailSync);
     CrashUploader crashUploader(api);
     if (!captureMode && !profileMode) {
         crashUploader.setDirectory(CrashUploader::androidSpoolDirectory());

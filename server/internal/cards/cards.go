@@ -25,9 +25,9 @@ type Card struct {
 	// stays empty rather than fabricating a Gmail browser index.
 	AccountName string `json:"account_name,omitempty"`
 	BundleTitle string `json:"bundle_title,omitempty"`
- SourceURL   string `json:"source_url,omitempty"`
- SenderName string `json:"sender_name"`
- Snippet string `json:"snippet,omitempty"`
+	SourceURL   string `json:"source_url,omitempty"`
+	SenderName  string `json:"sender_name"`
+	Snippet     string `json:"snippet,omitempty"`
 	// ReceivedAt is the card's latest message arrival and SenderAddress the
 	// addr-spec of its stored From header; both are omitted for non-mail cards.
 	ReceivedAt    *time.Time `json:"received_at,omitempty"`
@@ -35,6 +35,7 @@ type Card struct {
 	// Important marks a thread that carries Gmail's IMPORTANT label; the
 	// client renders it standalone, never concealed inside a bundle.
 	Important bool `json:"important,omitempty"`
+	Unread    bool `json:"unread"`
 	// HasBody reports that card_bodies holds a rendered document for this
 	// card (a Gmail mail body or a server-built file document); the client
 	// prefetches it through GET /v1/cards/{id}/body for offline reads.

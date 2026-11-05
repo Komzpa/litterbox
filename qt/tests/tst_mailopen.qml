@@ -62,7 +62,7 @@ TestCase {
         list.positionViewAtIndex(index, ListView.Beginning)
         wait(100)
     }
-    function populateStore(source) {
+    function populateStore(source, unreadIndex) {
         store.clear()
         store.operations = []
         store.cached = ({[mailId(8)]: {html: "<p>Hello <b>reader</b></p>"}})
@@ -70,7 +70,7 @@ TestCase {
             const id = mailId(i)
             const title = i < 14 ? "Message " + i : "Additional mail"
             store.append({cardId: id, title: title, section: "now", card: {
-                id: id, title: title, source: source, section: "now", account_name: "fixture@example.test",
+                id: id, title: title, source: source, section: "now", unread: i === unreadIndex, account_name: "fixture@example.test",
                 received_at: new Date(Date.UTC(2026, 9, 20, 12, 0, 0) - i * 60000).toISOString(),
                 summary: "Click this preview to read the message",
                 snippet: "Click this preview to read the message", has_body: true,
@@ -81,6 +81,27 @@ TestCase {
     }
     function init() { store.batchRemovalIds = []; populateStore("mail") }
 
+    function test_openUnreadQueuesMarkRead() {
+        pagesDir = Qt.resolvedUrl("fixtures/unread-pages/")
+        populateStore("mail", 8)
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 800
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryCompare(list, "count", 40)
+        positionRow(list, 8)
+        const row = findChild(list.itemAtIndex(8), "openCard-" + mailId(8))
+        verify(row)
+        mouseClick(row)
+        tryCompare(findChild(inbox, "pageStack"), "depth", 2)
+        compare(store.operations.length, 1)
+        compare(store.operations[0].cardId, mailId(8))
+        compare(store.operations[0].type, "gmail.mark_read")
+        inbox.close()
+        pagesDir = Qt.resolvedUrl("../pages/")
+    }
     function test_previewOpensMailAndBackPreservesScroll() {
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,

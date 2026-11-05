@@ -206,7 +206,8 @@ bool CardStore::open(const QString &path) {
             !execute(QStringLiteral("CREATE TABLE IF NOT EXISTS acknowledged_ops (op_id TEXT PRIMARY KEY)")) ||
             !execute(QStringLiteral("DROP TRIGGER IF EXISTS retain_owner_outbox")) ||
             !execute(QStringLiteral("CREATE TRIGGER retain_owner_outbox BEFORE DELETE ON outbox WHEN OLD.owner_write=1 AND NOT EXISTS(SELECT 1 FROM acknowledged_ops WHERE op_id=OLD.op_id) AND NOT EXISTS(SELECT 1 FROM retired_ops WHERE op_id=OLD.op_id) BEGIN SELECT RAISE(ABORT,'Refusing deletion of unacknowledged owner op'); END")) ||
-            !execute(QStringLiteral("CREATE TRIGGER IF NOT EXISTS retain_owner_card BEFORE DELETE ON cards WHEN EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=OLD.id) BEGIN SELECT RAISE(ABORT,'Refusing deletion of unacknowledged owner row'); END")) ||
+            !execute(QStringLiteral("DROP TRIGGER IF EXISTS retain_owner_card")) ||
+            !execute(QStringLiteral("CREATE TRIGGER retain_owner_card BEFORE DELETE ON cards WHEN EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.type')<>'gmail.mark_read' AND json_extract(payload,'$.card_id')=OLD.id) BEGIN SELECT RAISE(ABORT,'Refusing deletion of unacknowledged owner row'); END")) ||
             !execute(QStringLiteral("CREATE TRIGGER IF NOT EXISTS immutable_owner_outbox BEFORE UPDATE OF payload,op_id ON outbox WHEN OLD.owner_write=1 BEGIN SELECT RAISE(ABORT,'Refusing overwrite of owner op'); END"))) return;
         for (const auto &id : retired) {
             QSqlQuery retire(m_db);
@@ -248,6 +249,7 @@ bool CardStore::open(const QString &path) {
         // Apply pending draft rows in journal order, including newer edits to the same card.
         QList<QVariantMap> recovered = cards;
         for (const auto &op : std::as_const(outbox)) {
+            if (op.value(QStringLiteral("type")).toString() == QStringLiteral("gmail.mark_read")) continue;
             const auto draft = m_drafts.value(op.value(QStringLiteral("op_id")).toString());
             for (const QVariant &value : draft.value(QStringLiteral("cards")).toList()) {
                 const auto card = value.toMap();
@@ -288,6 +290,13 @@ bool CardStore::open(const QString &path) {
 void CardStore::retainOwnerRows(QList<QVariantMap> &cards) const {
     for (const auto &op : m_outbox) {
         if (!ownerWrite(op)) continue;
+        if (op.value(QStringLiteral("type")).toString() == QStringLiteral("gmail.mark_read")) {
+            const QString id = op.value(QStringLiteral("card_id")).toString();
+            for (auto &card : cards)
+                if (card.value(QStringLiteral("id")).toString() == id)
+                    card.insert(QStringLiteral("unread"), false);
+            continue;
+        }
         const auto draft = m_drafts.value(op.value(QStringLiteral("op_id")).toString());
         QVariantList authored = draft.value(QStringLiteral("cards")).toList();
         const auto patches = draft.value(QStringLiteral("patches")).toMap();
@@ -453,7 +462,7 @@ bool CardStore::writeCards(const QList<QVariantMap> &before, const QList<QVarian
         const QString id = card.value(QStringLiteral("id")).toString();
         if (ids.contains(id)) { retained.append(id); continue; }
         QSqlQuery guard(m_db);
-        guard.prepare(QStringLiteral("SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?"));
+        guard.prepare(QStringLiteral("SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.type')<>'gmail.mark_read' AND json_extract(payload,'$.card_id')=?"));
         guard.addBindValue(id);
         if (!guard.exec()) return false;
         if (guard.next()) { qWarning() << "Refusing deletion of unacknowledged owner row" << id; continue; }
@@ -896,13 +905,13 @@ QVariantList CardStore::pendingAgentMessages(const QString &threadId) const {
 }
 QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
     if (!m_open || QUuid(cardId).isNull()) return {};
-    static const QSet<QString> types = {QStringLiteral("delete_journal"), QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
+    static const QSet<QString> types = {QStringLiteral("gmail.mark_read"), QStringLiteral("delete_journal"), QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
         QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("create_reminder"), QStringLiteral("agent_message"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_spam"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
     if (!types.contains(type)) return {};
     if (type == QStringLiteral("delete_journal") && std::none_of(m_cards.cbegin(), m_cards.cend(), [&](const auto &card) {
         return card.value(QStringLiteral("id")).toString() == cardId && card.value(QStringLiteral("source")).toString() == QStringLiteral("journal");
     })) return {};
-    if (type == QStringLiteral("spam") || type == QStringLiteral("bundle_spam")) {
+    if (type == QStringLiteral("spam") || type == QStringLiteral("bundle_spam") || type == QStringLiteral("gmail.mark_read")) {
         for (const QVariantMap &op : m_outbox)
             if (op.value(QStringLiteral("card_id")).toString() == cardId &&
                 op.value(QStringLiteral("type")).toString() == type &&
@@ -919,7 +928,15 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         return card.contains(QStringLiteral("pinned_rank")) && rank.isValid() && !rank.isNull();
     };
     bool changed = false;
-    if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal")) {
+    if (type == QStringLiteral("gmail.mark_read")) {
+        for (QVariantMap &card : cards) {
+            if (card.value(QStringLiteral("id")).toString() == cardId && card.value(QStringLiteral("source")).toString() == QStringLiteral("mail") && card.value(QStringLiteral("unread")).toBool()) {
+                card.insert(QStringLiteral("unread"), false);
+                changed = true;
+            }
+        }
+        if (!changed) return {};
+    } else if (type == QStringLiteral("done") || type == QStringLiteral("archive") || type == QStringLiteral("spam") || type == QStringLiteral("snooze") || type == QStringLiteral("delete_journal")) {
         const auto oldSize = cards.size();
         cards.erase(std::remove_if(cards.begin(), cards.end(), [&](const QVariantMap &card) {
             return card.value(QStringLiteral("id")).toString() == cardId;
@@ -1520,7 +1537,7 @@ void CardStore::commitAcks() {
             // Delete only acknowledged removals, through the normal owner guard.
             // In particular a pending note/create must never lose its durable row.
             for (const auto &id : ack.removedIds) {
-                q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.card_id')=?)"));
+                q.prepare(QStringLiteral("DELETE FROM cards WHERE id=? AND NOT EXISTS(SELECT 1 FROM outbox WHERE owner_write=1 AND json_extract(payload,'$.type')<>'gmail.mark_read' AND json_extract(payload,'$.card_id')=?)"));
                 q.addBindValue(id);
                 q.addBindValue(id);
                 if (ok) ok = q.exec();
@@ -1558,6 +1575,24 @@ void CardStore::commitAcks() {
                     acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.label_add") &&
                     acknowledgedOp->value(QStringLiteral("args")).toMap().value(QStringLiteral("label")).toString() == QStringLiteral("INBOX") &&
                     m_mutations.contains(opId);
+                const bool markedRead = acknowledgedOp != m_outbox.cend() &&
+                    acknowledgedOp->value(QStringLiteral("type")).toString() == QStringLiteral("gmail.mark_read");
+                if (markedRead) {
+                    if (!m_mutations.contains(opId)) {
+                        const QString id = acknowledgedOp->value(QStringLiteral("card_id")).toString();
+                        const auto card = std::find_if(m_cards.cbegin(), m_cards.cend(), [&](const QVariantMap &row) {
+                            return row.value(QStringLiteral("id")).toString() == id;
+                        });
+                        if (card != m_cards.cend()) {
+                            QVariantMap before = *card;
+                            before.insert(QStringLiteral("unread"), true);
+                            QVariantMap after = *card;
+                            after.insert(QStringLiteral("unread"), false);
+                            m_mutations.insert(opId, {{before}, {after}});
+                        }
+                    }
+                    m_restoredAwaitingSnapshot.insert(opId, m_cardsRequestSequence);
+                }
                 if (restored) {
                     m_archivedAwaitingSnapshot.remove(acknowledgedOp->value(QStringLiteral("card_id")).toString());
                     m_restoredAwaitingSnapshot.insert(opId, m_cardsRequestSequence);
@@ -1568,10 +1603,10 @@ void CardStore::commitAcks() {
                 m_failedWrites.remove(opId);
                 m_deferredWrites.remove(opId);
                 m_durableOps.remove(opId);
-                if (!restored) m_mutations.remove(opId);
+                if (!restored && !markedRead) m_mutations.remove(opId);
                 emit operationAcknowledged(ack.operation, ack.response);
                 emit pendingOpsChanged();
-                if (restored) refresh();
+                if (restored || markedRead) refresh();
             }
             flush();
             if (!m_ackQueue.isEmpty() && !m_ackScheduled) commitAcks();

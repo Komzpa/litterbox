@@ -106,16 +106,22 @@ func snippetFromList(t *testing.T, title, senderName, sender, text string) strin
 }
 
 type snippetConnector struct{ snippetRowsDriver }
+
 func (c snippetConnector) Connect(context.Context) (driver.Conn, error) {
 	return snippetConn{c.snippetRowsDriver}, nil
 }
 func (c snippetConnector) Driver() driver.Driver { return c.snippetRowsDriver }
 
 type snippetRowsDriver struct{ title, senderName, sender, text string }
+
 func (d snippetRowsDriver) Open(string) (driver.Conn, error) { return snippetConn{d}, nil }
+
 type snippetConn struct{ snippetRowsDriver }
-func (c snippetConn) Prepare(string) (driver.Stmt, error) { return nil, fmt.Errorf("unexpected prepare") }
-func (c snippetConn) Close() error { return nil }
+
+func (c snippetConn) Prepare(string) (driver.Stmt, error) {
+	return nil, fmt.Errorf("unexpected prepare")
+}
+func (c snippetConn) Close() error              { return nil }
 func (c snippetConn) Begin() (driver.Tx, error) { return snippetTx{}, nil }
 func (c snippetConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
 	return driver.RowsAffected(0), nil
@@ -125,15 +131,19 @@ func (c snippetConn) QueryContext(_ context.Context, query string, _ []driver.Na
 		return nil, fmt.Errorf("unexpected query: %s", query)
 	}
 	now := time.Now().UTC()
-	return &snippetRows{values: []driver.Value{"card", "mail", c.title, "", nil, false, "open", "", now, int64(0), nil, nil, "owner@example.test", nil, false, true, "", c.senderName, c.sender, now, c.text, "", "version", []byte("[]"), "unknown"}}, nil
+	return &snippetRows{values: []driver.Value{"card", "mail", c.title, "", nil, false, "open", "", now, int64(0), nil, nil, "owner@example.test", nil, false, false, true, "", c.senderName, c.sender, now, c.text, "", "version", []byte("[]"), "unknown"}}, nil
 }
+
 type snippetTx struct{}
-func (snippetTx) Commit() error { return nil }
+
+func (snippetTx) Commit() error   { return nil }
 func (snippetTx) Rollback() error { return nil }
+
 type snippetRows struct {
 	values []driver.Value
 	done   bool
 }
+
 func (r *snippetRows) Columns() []string {
 	columns := make([]string, len(r.values))
 	for i := range columns {

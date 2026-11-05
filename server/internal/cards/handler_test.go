@@ -271,6 +271,7 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 	account := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	importantCard := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 	ordinaryCard := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	unreadCard := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES ($1)`, tenant); err != nil {
 		t.Fatal(err)
 	}
@@ -283,10 +284,10 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO accounts(tenant_id,id,address,refresh_token) VALUES($1,$2,'user@example.com',decode('00','hex'))`, tenant, account); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject) VALUES($1,$2,$3,'thread-important','Important thread'),($1,$4,$3,'thread-ordinary','Ordinary thread')`, tenant, importantCard, account, ordinaryCard); err != nil {
+	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,subject) VALUES($1,$2,$3,'thread-important','Important thread'),($1,$4,$3,'thread-ordinary','Ordinary thread'),($1,$5,$3,'thread-unread','Unread thread')`, tenant, importantCard, account, ordinaryCard, unreadCard); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m1',ARRAY['IMPORTANT','CATEGORY_PERSONAL'],decode('00','hex'),now()),($1,gen_random_uuid(),$3,'m2',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),now())`, tenant, importantCard, ordinaryCard); err != nil {
+	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m1',ARRAY['IMPORTANT','UNREAD'],decode('00','hex'),now()),($1,gen_random_uuid(),$2,'m3',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),now()),($1,gen_random_uuid(),$3,'m2',ARRAY['CATEGORY_PERSONAL'],decode('00','hex'),now()),($1,gen_random_uuid(),$4,'m4',ARRAY['UNREAD'],decode('00','hex'),now())`, tenant, importantCard, ordinaryCard, unreadCard); err != nil {
 		t.Fatal(err)
 	}
 	handler, err := NewHandler(db, "Asia/Tbilisi", filepath.Join(t.TempDir(), "feedback.md"))
@@ -322,6 +323,10 @@ func TestImportantCardSurfacesImportance(t *testing.T) {
 	if c, ok := byID[ordinaryCard]; !ok || c.Important {
 		t.Fatalf("ordinary card must surface Important=false, got %+v", c)
 	}
+	if !byID[importantCard].Unread || byID[ordinaryCard].Unread || !byID[unreadCard].Unread {
+		t.Fatalf("mixed thread must be unread, absent label read: mixed=%+v read=%+v", byID[importantCard], byID[ordinaryCard])
+	}
+
 }
 
 func TestCardArrivalAndSenderAddress(t *testing.T) {
@@ -370,9 +375,9 @@ func TestCardArrivalAndSenderAddress(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO cards(tenant_id,id,source,external_id,subject) VALUES($1,$2,'manual','arrival-task','Manual task')`, tenant, manualCard); err != nil {
 		t.Fatal(err)
 	}
- 	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,text,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],'old body',decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],'Latest thread preview',decode('00','hex'),'2026-10-04T07:43:00Z')`, tenant, mailCard); err != nil {
- 		t.Fatal(err)
- 	}
+	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,text,body_hash,received_at) VALUES($1,gen_random_uuid(),$2,'m-old',ARRAY['CATEGORY_PERSONAL'],'old body',decode('00','hex'),'2026-10-04T06:00:00Z'),($1,gen_random_uuid(),$2,'m-new',ARRAY['CATEGORY_PERSONAL'],'Latest thread preview',decode('00','hex'),'2026-10-04T07:43:00Z')`, tenant, mailCard); err != nil {
+		t.Fatal(err)
+	}
 	handler, err := NewHandler(db, "Asia/Tbilisi", filepath.Join(t.TempDir(), "feedback.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -404,12 +409,12 @@ func TestCardArrivalAndSenderAddress(t *testing.T) {
 	if got := mail["received_at"]; got != "2026-10-04T07:43:00Z" {
 		t.Fatalf("received_at=%v, want latest message arrival 2026-10-04T07:43:00Z as RFC3339 UTC", got)
 	}
- 	if got := mail["sender_address"]; got != "welcome@cerebras.net" {
- 		t.Fatalf("sender_address=%v, want welcome@cerebras.net", got)
- 	}
- 	if got := mail["snippet"]; got != "Latest thread preview" {
- 		t.Fatalf("snippet=%v, want newest message text", got)
- 	}
+	if got := mail["sender_address"]; got != "welcome@cerebras.net" {
+		t.Fatalf("sender_address=%v, want welcome@cerebras.net", got)
+	}
+	if got := mail["snippet"]; got != "Latest thread preview" {
+		t.Fatalf("snippet=%v, want newest message text", got)
+	}
 	manual, ok := rows[manualCard]
 	if !ok {
 		t.Fatalf("manual card missing from response: %v", rows)

@@ -457,6 +457,116 @@ private slots:
         lock = QSqlDatabase();
         QSqlDatabase::removeDatabase(connection);
     }
+    void markReadRetainsAndRetries() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("read.sqlite")));
+        const QVariantMap card{{"id", cardId}, {"source", "mail"}, {"title", "Mail"}, {"unread", true}};
+        const QVariantMap snapshot{{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}};
+        QVERIFY(store.applyRemoteCards(snapshot));
+        ScriptedTransport transport({422, 200});
+        store.setTransport(&transport);
+        store.setOnline(true);
+        const QString op = store.enqueueOp(cardId, "gmail.mark_read");
+        QVERIFY(!op.isEmpty());
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("unread").toBool(), false);
+        QTRY_COMPARE(transport.posted.size(), 1);
+        QCOMPARE(store.pendingOps(), 1);
+        QVERIFY(store.applyRemoteCards(snapshot));
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("unread").toBool(), false);
+        store.refresh();
+        QTRY_COMPARE(transport.posted.size(), 2);
+        QCOMPARE(transport.posted[0], transport.posted[1]);
+        QTRY_COMPARE(store.pendingOps(), 0);
+    }
+    void markReadSurvivesRestart() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("read-restart.sqlite");
+        QString op;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            const QVariantMap card{{"id", cardId}, {"source", "mail"}, {"title", "Mail"}, {"unread", true}};
+            QVERIFY(store.applyRemoteCards({{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            op = store.enqueueOp(cardId, "gmail.mark_read");
+            QVERIFY(!op.isEmpty());
+            QCOMPARE(store.pendingOps(), 1);
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.pendingOps(), 1);
+        QCOMPARE(restored.data(restored.index(0), CardStore::CardRole).toMap().value("unread").toBool(), false);
+        ScriptedTransport transport({200});
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QCOMPARE(transport.posted.size(), 1);
+        QCOMPARE(transport.posted[0].value("op_id").toString(), op);
+    }
+    void staleSnapshotAfterMarkReadAck() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("read-stale.sqlite")));
+        const QVariantMap card{{"id", cardId}, {"source", "mail"}, {"title", "Mail"}, {"unread", true}};
+        auto snapshot = [&](bool unread) { QVariantMap row = card; row.insert("unread", unread); return QVariantMap{{"now", QVariantList{row}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}; };
+        QVERIFY(store.applyRemoteCards(snapshot(true)));
+        SnapshotConsumer consumer(store);
+        ScriptedTransport transport({200});
+        store.setTransport(&transport);
+        store.setOnline(true);
+        store.refresh();
+        const quint64 stale = consumer.latestRequest;
+        QVERIFY(!store.enqueueOp(cardId, "gmail.mark_read").isEmpty());
+        QTRY_COMPARE(store.pendingOps(), 0);
+        QVERIFY(consumer.latestRequest > stale);
+        QVERIFY(consumer.apply(stale, snapshot(true)));
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("unread").toBool(), false);
+        QVERIFY(consumer.apply(consumer.latestRequest, snapshot(false)));
+        QCOMPARE(store.data(store.index(0), CardStore::CardRole).toMap().value("unread").toBool(), false);
+    }
+    void staleSnapshotAfterRestartedMarkReadAck() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("read-restart-stale.sqlite");
+        const QVariantMap card{{"id", cardId}, {"source", "mail"}, {"title", "Mail"}, {"unread", true}};
+        auto snapshot = [&](bool unread) { QVariantMap row = card; row.insert("unread", unread); return QVariantMap{{"now", QVariantList{row}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}; };
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QVERIFY(store.applyRemoteCards(snapshot(true)));
+            QVERIFY(!store.enqueueOp(cardId, "gmail.mark_read").isEmpty());
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        SnapshotConsumer consumer(restored);
+        restored.retrySync();
+        const quint64 stale = consumer.latestRequest;
+        ScriptedTransport transport({200});
+        restored.setTransport(&transport);
+        restored.setOnline(true);
+        QTRY_COMPARE(restored.pendingOps(), 0);
+        QVERIFY(consumer.latestRequest > stale);
+        QVERIFY(consumer.apply(stale, snapshot(true)));
+        QCOMPARE(restored.data(restored.index(0), CardStore::CardRole).toMap().value("unread").toBool(), false);
+        QVERIFY(consumer.apply(consumer.latestRequest, snapshot(false)));
+    }
+    void pendingMarkReadDoesNotRestoreRemovedCard() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("read-removed.sqlite");
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            const QVariantMap card{{"id", cardId}, {"source", "mail"}, {"title", "Mail"}, {"unread", true}};
+            QVERIFY(store.applyRemoteCards({{"now", QVariantList{card}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            QVERIFY(!store.enqueueOp(cardId, "gmail.mark_read").isEmpty());
+            QVERIFY(store.applyRemoteCards({{"now", QVariantList{}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
+            QCOMPARE(store.rowCount(), 0);
+            QCOMPARE(store.pendingOps(), 1);
+        }
+        CardStore restored;
+        QVERIFY(restored.open(path));
+        QCOMPARE(restored.rowCount(), 0);
+        QCOMPARE(restored.pendingOps(), 1);
+    }
     void archiveFailureRestoresRowWithoutReset() {
         QTemporaryDir directory;
         OpsServer server;

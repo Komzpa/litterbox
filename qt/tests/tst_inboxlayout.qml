@@ -512,8 +512,15 @@ TestCase {
             const snippetBox = snippet.mapToItem(frame, 0, 0)
             verify(sourceBox.y >= titleBox.y + title.height - 1, "source landmark must sit below the subject")
             verify(snippetBox.y >= sourceBox.y + source.height - 1, "preview must sit below source identity")
-            verify(title.font.pointSize > source.font.pointSize && title.font.weight > source.font.weight,
-                   "subject must retain stronger hierarchy than source metadata")
+            verify(title.font.pointSize > source.font.pointSize,
+                   "subject must retain larger type than source metadata")
+            if (sources[i] === "mail") {
+                compare(title.font.weight, Font.Normal)
+                compare(source.font.weight, Font.Normal)
+            } else {
+                verify(title.font.weight > source.font.weight,
+                       "non-mail title must retain stronger weight than source metadata")
+            }
             const primary = findChild(row, "doneButton-mixed-" + i)
             const more = findChild(row, "inboxActions")
             for (const action of [primary, more]) {
@@ -706,6 +713,34 @@ TestCase {
         verify(headerHasAccount, "Shared account identity must remain on the bundle summary")
         verify(mixedAccountVisible, "Mixed-account child must retain its own identity")
         verify(mixedSenderVisible, "Mixed-sender child must retain its own identity")
+    }
+    function test_unreadMailTypography() {
+        store.clear()
+        for (const unread of [true, false]) {
+            const id = unread ? "unread" : "read"
+            store.append({cardId: id, title: id, section: "now", card: {
+                id: id, title: id, source: "mail", section: "now", unread: unread,
+                bundle_id: "", pinned_rank: null, important: false, timed: false, has_body: true,
+                summary: "", snippet: "Preview", note: "", sender_name: "Sender", account_name: "owner@example.test"
+            }})
+        }
+        const inbox = createTemporaryObject(inboxComponent, this, {
+            store: store, api: api, updater: updater, timeRules: timeRules, width: 700, height: 600
+        })
+        verify(inbox)
+        inbox.show()
+        const list = findChild(inbox, "inboxList")
+        tryVerify(function() { list.forceLayout(); return list.itemAtIndex(0) && list.itemAtIndex(1) })
+        for (let i = 0; i < 2; ++i) {
+            const id = i === 0 ? "unread" : "read"
+            const row = list.itemAtIndex(i)
+            const title = findChild(row, "mailTitle-" + id)
+            const sender = findChild(row, "mailSender-" + id)
+            verify(title && sender)
+            compare(title.font.bold, i === 0)
+            compare(sender.font.bold, i === 0)
+        }
+        inbox.close()
     }
     function test_singleMailShowsSenderDateAndSnippet() {
         store.clear()
