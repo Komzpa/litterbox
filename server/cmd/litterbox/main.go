@@ -13,7 +13,6 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/a2a"
 	"github.com/Komzpa/litterbox/server/internal/auth"
-	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/cards"
 	"github.com/Komzpa/litterbox/server/internal/diagnostics"
 	"github.com/Komzpa/litterbox/server/internal/gmail"
@@ -96,7 +95,7 @@ func main() {
 		defer wakerPool.Close()
 		wakerCtx, stopWaker := context.WithCancel(context.Background())
 		defer stopWaker()
-		bundles.StartWaker(wakerCtx, wakerPool)
+		ops.StartWaker(wakerCtx, wakerPool)
 		defer db.Close()
 		pool, poolErr := pgxpool.New(context.Background(), databaseURL)
 		if poolErr != nil {
@@ -159,13 +158,11 @@ func main() {
 				next.ServeHTTP(w, r.WithContext(ctx))
 			})
 		}
-		if devTenantID != "" {
-			go func() {
-				if err := reminders.Run(context.Background(), db, devTenantID, time.Minute); err != nil {
-					log.Printf("reminder scheduler: %v", err)
-				}
-			}()
-		}
+		go func() {
+			if err := reminders.Run(context.Background(), db, time.Minute); err != nil {
+				log.Printf("reminder scheduler: %v", err)
+			}
+		}()
 		reminderMux := http.NewServeMux()
 		(&reminders.Handler{DB: db}).Routes(reminderMux)
 		mux.Handle("/v1/reminders", devOnly(reminderMux))

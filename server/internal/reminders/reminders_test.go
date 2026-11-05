@@ -138,3 +138,58 @@ func TestMeetingClosesAtEnd(t *testing.T) {
 		t.Fatalf("meeting state=%q, want done", state)
 	}
 }
+
+func TestTickAllDiscoversTenantsAsAppRole(t *testing.T) {
+	if os.Getenv("CARD_TEST_POSTGRES") != "1" {
+		t.Skip("CARD_TEST_POSTGRES=1 required")
+	}
+	fixture := testdb.Setup(t)
+	db, err := sql.Open("pgx", fixture.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "013_reminders.sql", "027_worker_tenants.sql"} {
+		b, err := os.ReadFile("../../db/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(fixture.Migration(string(b))); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	tenant := "a0000000-0000-4000-8000-000000000001"
+	if _, err = db.Exec(`INSERT INTO tenants(id) VALUES($1)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`SET ROLE ` + fixture.Role); err != nil {
+		t.Fatal(err)
+	}
+	var bypass bool
+	if err = db.QueryRow(`SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user`).Scan(&bypass); err != nil || bypass {
+		t.Fatalf("role bypass=%v err=%v", bypass, err)
+	}
+	h := &Handler{DB: db}
+	req := httptest.NewRequest(http.MethodPost, "/v1/reminders", strings.NewReader(`{"title":"Due reminder","due_at":"2026-09-28T08:00:00Z"}`)).WithContext(cards.WithTenant(context.Background(), tenant))
+	response := httptest.NewRecorder()
+	h.Create(response, req)
+	if response.Code != 200 {
+		t.Fatalf("create: %d %s", response.Code, response.Body.String())
+	}
+	if err = TickAll(context.Background(), db, time.Date(2026, 9, 28, 8, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`SELECT set_config('litterbox.tenant_id',$1,true)`, tenant); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = tx.QueryRow(`SELECT count(*) FROM cards WHERE source='reminder' AND title='Due reminder' AND state='open'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("due card count=%d err=%v", count, err)
+	}
+}

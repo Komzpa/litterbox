@@ -4,6 +4,7 @@ package bundles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
 	"strings"
@@ -48,7 +49,9 @@ func AssignKey(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, senderKey
 	var bundleID any
 	if !excluded {
 		origin := "topic"
-		if title == key { origin = "seed" }
+		if title == key {
+			origin = "seed"
+		}
 		if err := tx.QueryRow(ctx, upsertTitle, tenant, title, key, origin).Scan(&bundleID); err != nil {
 			return err
 		}
@@ -85,28 +88,21 @@ func Snooze(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, raw json.Raw
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE cards SET state='snoozed',snooze_until=$3::timestamptz WHERE tenant_id=$1 AND id=$2 AND $3::timestamptz > now()`, tenant, card, args.Until)
+	var source string
+	err := tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2 AND $3::timestamptz > now() FOR UPDATE`, tenant, card, args.Until).Scan(&source)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		// Stale op: card is gone or the time already passed. Accept as a no-op.
-		return nil
-	}
-	var source string
-	if err = tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card).Scan(&source); err != nil {
-		return err
-	}
 	if source == "mail" {
-		return callOperation(ctx, tx, tenant, card, "gmail.snooze", raw)
+		if err := callOperation(ctx, tx, tenant, card, "gmail.snooze", raw); err != nil {
+			return err
+		}
 	}
-	return nil
-}
-
-// WakeDueCards wakes expired snoozes; caller schedules this at least once a minute.
-func WakeDueCards(ctx context.Context, tx pgx.Tx) (int64, error) {
-	tag, err := tx.Exec(ctx, `UPDATE cards SET state='open',snooze_until=NULL WHERE state='snoozed' AND snooze_until<=now()`)
-	return tag.RowsAffected(), err
+	_, err = tx.Exec(ctx, `UPDATE cards SET state='snoozed',snooze_until=$3::timestamptz WHERE tenant_id=$1 AND id=$2`, tenant, card, args.Until)
+	return err
 }
 
 // WakeThread wakes a snoozed card when a new thread message is ingested.

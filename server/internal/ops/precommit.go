@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -135,6 +135,12 @@ func (a API) opRecorded(ctx context.Context, read Reader, tenant string, op uuid
 }
 
 func init() {
+	// Take the same thread guard as wake. Snooze validates and applies Gmail
+	// under the card row lock before its local update.
+	RegisterPreCommit("snooze", func(context.Context, Reader, uuid.UUID, uuid.UUID, json.RawMessage) ([]uuid.UUID, error) {
+		return nil, nil
+	})
+
 	for _, kind := range []string{"archive", "spam"} {
 		RegisterPreCommit(kind, func(ctx context.Context, read Reader, tenant, card uuid.UUID, args json.RawMessage) ([]uuid.UUID, error) {
 			return mailProviderPhase(ctx, read, tenant, card, kind, args)

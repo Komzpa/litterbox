@@ -49,10 +49,16 @@ func (c *Client) planModify(ctx context.Context, name, label string, add, remove
 	if err != nil {
 		return nil, nil, err
 	}
-	if name == "label_add" || name == "snooze" {
+	switch name {
+	case "snooze":
+		return []string{id}, []string{"INBOX"}, nil
+	case "unsnooze":
+		return []string{"INBOX"}, []string{id}, nil
+	case "label_add":
 		return []string{id}, nil, nil
+	default:
+		return nil, []string{id}, nil
 	}
-	return nil, []string{id}, nil
 }
 
 // providerOperationError distinguishes temporary provider outages from terminal

@@ -112,14 +112,12 @@ func TestPostgresBundleActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	var state string
-	if _, err = tx.Exec(ctx, `UPDATE cards SET snooze_until=$3 WHERE tenant_id=$1 AND id=$2`, tenant, c3, time.Now().Add(-time.Second)); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c3).Scan(&state); err != nil || state != "snoozed" {
+		t.Fatalf("snooze state=%q err=%v", state, err)
+	}
+	// Waking is exercised through the tenant-scoped worker integration test.
+	if _, err = tx.Exec(ctx, `UPDATE cards SET state='open',snooze_until=NULL WHERE tenant_id=$1 AND id=$2`, tenant, c3); err != nil {
 		t.Fatal(err)
-	}
-	if count, err := WakeDueCards(ctx, tx); err != nil || count != 1 {
-		t.Fatalf("WakeDueCards()=(%d,%v), want one woken card", count, err)
-	}
-	if err = tx.QueryRow(ctx, `SELECT state FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, c3).Scan(&state); err != nil || state != "open" {
-		t.Fatalf("due snooze state=%q err=%v", state, err)
 	}
 	if err = CompleteBundle(ctx, tx, tenant, b4); err != nil {
 		t.Fatal(err)

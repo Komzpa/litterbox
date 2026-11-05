@@ -487,6 +487,9 @@ func CallIfRegistered(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, na
 	h, ok := registry.handlers[name]
 	registry.RUnlock()
 	if !ok {
+		if name == "gmail.snooze" {
+			return fmt.Errorf("Gmail snooze operation unavailable")
+		}
 		return nil
 	}
 	return h(ctx, tx, tenant, card, args)

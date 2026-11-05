@@ -316,7 +316,7 @@ func TestStaleReorderAndSnoozeAreAcceptedAsNoOps(t *testing.T) {
 	}
 	defer db.Close()
 	for _, ddl := range []string{
-		`CREATE TABLE cards (tenant_id uuid NOT NULL, id uuid NOT NULL, source text NOT NULL DEFAULT 'todo', state text NOT NULL DEFAULT 'open', snooze_until timestamptz, note_order integer NOT NULL DEFAULT 9, PRIMARY KEY(tenant_id,id))`,
+		`CREATE TABLE cards (tenant_id uuid NOT NULL, id uuid NOT NULL, account_id uuid, gmail_thread_id text, source text NOT NULL DEFAULT 'todo', state text NOT NULL DEFAULT 'open', snooze_until timestamptz, note_order integer NOT NULL DEFAULT 9, PRIMARY KEY(tenant_id,id))`,
 		`CREATE TABLE ops (tenant_id uuid NOT NULL, op_id uuid NOT NULL, device_id uuid, payload_hash bytea NOT NULL, payload jsonb NOT NULL, PRIMARY KEY(tenant_id,op_id))`,
 	} {
 		if _, err := db.Exec(context.Background(), ddl); err != nil {
