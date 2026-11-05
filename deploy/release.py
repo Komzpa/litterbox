@@ -221,13 +221,27 @@ def request(origin, path, token=None):
         raise ReleaseError("release endpoint unreachable") from None
 
 
-def live(target, source, android, token):
+def wait_reachable(origin, path, ready_timeout):
+    # systemctl restart of a Type=simple unit returns once the process is
+    # forked, before the server binds its socket; v42 failed its readback by
+    # probing in that gap. Retry only unreachability, never a wrong answer.
+    deadline = time.monotonic() + ready_timeout
+    while True:
+        try:
+            return request(origin, path)
+        except ReleaseError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.5)
+
+
+def live(target, source, android, token, ready_timeout=60):
     for origin in target["origins"]:
         parsed = urllib.parse.urlsplit(origin)
         require(parsed.scheme in ("http", "https") and parsed.netloc and not parsed.username
                 and not parsed.password and not parsed.query and not parsed.fragment and not parsed.path,
                 "origin must be a credential-free origin")
-        status, body = request(origin, "/v1/version")
+        status, body = wait_reachable(origin, "/v1/version", ready_timeout)
         require(status == 200 and json.loads(body)["server_build"] == source, "live server stamp mismatch")
         for path in ("/v1/android/update", "/v1/android/update.apk"):
             require(request(origin, path)[0] == 401, "anonymous release access is not protected")
