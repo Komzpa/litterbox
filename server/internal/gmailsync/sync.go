@@ -453,17 +453,35 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if e != nil {
 		return e
 	}
+	if _, e = tx.Exec(ctx, `DELETE FROM messages WHERE tenant_id=$1 AND card_id=$2 AND NOT (gmail_message_id = ANY($3::text[]))`, a.TenantID, cardID, messageIDs); e != nil {
+		return e
+	}
 	var body strings.Builder
 	for i, m := range t.Messages {
 		labels := m.LabelIDs
+		if labels == nil {
+			labels = []string{}
+		}
 		hash := sha256.Sum256([]byte(strings.Join(labels, "\x00")))
 		millis, _ := strconv.ParseInt(m.InternalDate, 10, 64)
 		received := time.UnixMilli(millis).UTC()
 		message := prepared[i]
 		senderMeta := preparedSenders[i]
-		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received, senderMeta.name, senderMeta.address)
+		_, e = tx.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,card_id,gmail_message_id) DO UPDATE SET labels=EXCLUDED.labels,html=EXCLUDED.html,text=EXCLUDED.text,body_hash=EXCLUDED.body_hash,received_at=EXCLUDED.received_at,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received, senderMeta.name, senderMeta.address)
 		if e != nil {
 			return e
+		}
+		// The combined body is the legacy fallback, so it must not expose
+		// drafts or messages Gmail currently labels as trash or spam either.
+		hidden := false
+		for _, label := range labels {
+			if label == "DRAFT" || label == "TRASH" || label == "SPAM" {
+				hidden = true
+				break
+			}
+		}
+		if hidden {
+			continue
 		}
 		if message.HTML != "" {
 			body.WriteString(message.HTML)

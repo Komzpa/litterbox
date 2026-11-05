@@ -106,8 +106,9 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	}
 	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES
 		($1,'11111111-1111-4111-8111-111111111111',$2,'old-message','{}','','Earlier <plain> & text',decode('00','hex'),'2025-01-01T00:00:00Z','',''),
-		($1,'22222222-2222-4222-8222-222222222222',$2,'middle-message','{}','<p>Middle original</p><script>unsafe()</script>','',decode('00','hex'),'2025-01-02T00:00:00Z','Middle Sender','middle@example.com'),
-        ($1,'33333333-3333-4333-8333-333333333333',$2,'new-message','{}','','Latest <plain> & text',decode('00','hex'),'2025-01-03T00:00:00Z','Latest Sender','latest@example.com')`, tenant, mailCard); err != nil {
+		($1,'22222222-2222-4222-8222-222222222222',$2,'middle-message','{UNREAD}','<p>Middle original</p><script>unsafe()</script>','',decode('00','hex'),'2025-01-02T00:00:00Z','Middle Sender','middle@example.com'),
+        ($1,'33333333-3333-4333-8333-333333333333',$2,'new-message','{INBOX}','','Latest <plain> & text',decode('00','hex'),'2025-01-03T00:00:00Z','Latest Sender','latest@example.com'),
+        ($1,'44444444-4444-4444-8444-444444444444',$2,'draft-message','{DRAFT}','','draft',decode('00','hex'),'2025-01-04T00:00:00Z','Draft','draft@example.com')`, tenant, mailCard); err != nil {
 		t.Fatal(err)
 	}
 	h := Handler{DB: db, Images: nil}
@@ -167,8 +168,14 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	if want := "https://mail.google.com/mail/?authuser=user%40example.com#all/thread-abc"; !strings.Contains(got, "|thread-abc|"+account.String()+"|"+want) {
 		t.Fatalf("mail body must keep thread/account/gmail url: %q", got)
 	}
-	if shapeVersion != 1 {
-		t.Fatalf("shape_version=%d, want 1", shapeVersion)
+	if shapeVersion != 2 {
+		t.Fatalf("shape_version=%d, want 2", shapeVersion)
+	}
+	if lastMessages[0].Unread || !lastMessages[1].Unread || lastMessages[2].Unread {
+		t.Fatalf("wrong unread flags: %+v", lastMessages)
+	}
+	if lastMessages[0].Preview != "Earlier <plain> & text" || lastMessages[1].Preview != "Middle original" {
+		t.Fatalf("wrong message previews: %+v", lastMessages)
 	}
 	// Mail exposes every original message oldest-to-newest with truthful
 	// per-message senders; a legacy row without From stays empty rather than

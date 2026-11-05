@@ -26,6 +26,8 @@ type threadMessage struct {
 	SenderAddress  string `json:"sender_address"`
 	ReceivedAt     string `json:"received_at"`
 	HTML           string `json:"html"`
+	Unread         bool   `json:"unread"`
+	Preview        string `json:"preview"`
 }
 
 type Handler struct {
@@ -68,7 +70,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	messages := []threadMessage{}
 	if source == "mail" {
-		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html,text FROM messages WHERE tenant_id=$1 AND card_id=$2 ORDER BY received_at ASC,id ASC`, tenantID, cardID)
+		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html,text,('UNREAD' = ANY(labels)) FROM messages WHERE tenant_id=$1 AND card_id=$2 AND NOT (labels && ARRAY['DRAFT','TRASH','SPAM']::text[]) ORDER BY received_at ASC,gmail_message_id ASC`, tenantID, cardID)
 		if queryErr != nil {
 			http.Error(w, "internal server error", 500)
 			return
@@ -77,11 +79,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			var message threadMessage
 			var received time.Time
 			var plain string
-			if queryErr = rows.Scan(&message.ID, &message.GmailMessageID, &message.SenderName, &message.SenderAddress, &received, &message.HTML, &plain); queryErr != nil {
+			if queryErr = rows.Scan(&message.ID, &message.GmailMessageID, &message.SenderName, &message.SenderAddress, &received, &message.HTML, &plain, &message.Unread); queryErr != nil {
 				rows.Close()
 				http.Error(w, "internal server error", 500)
 				return
 			}
+			message.Preview = messagePreview(plain, message.HTML)
 			isPlain := message.HTML == "" && plain != ""
 			if isPlain {
 				message.HTML = "<pre>" + stdhtml.EscapeString(plain) + "</pre>"
@@ -130,9 +133,38 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SourceURL    string          `json:"source_url,omitempty"`
 		Messages     []threadMessage `json:"messages"`
 		ShapeVersion int             `json:"shape_version"`
-	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages, 1}); err != nil {
+	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages, 2}); err != nil {
 		return
 	}
+}
+
+func messagePreview(plain, source string) string {
+	if strings.TrimSpace(plain) == "" {
+		root, err := html.Parse(strings.NewReader(source))
+		if err == nil {
+			var b strings.Builder
+			var walk func(*html.Node)
+			walk = func(n *html.Node) {
+				if n.Type == html.ElementNode && (n.Data == "style" || n.Data == "script" || n.Data == "head") {
+					return
+				}
+				if n.Type == html.TextNode {
+					b.WriteString(n.Data)
+					b.WriteByte(' ')
+				}
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
+			}
+			walk(root)
+			plain = b.String()
+		}
+	}
+	runes := []rune(strings.Join(strings.Fields(plain), " "))
+	if len(runes) > 120 {
+		runes = runes[:120]
+	}
+	return string(runes)
 }
 
 // gmailSourceURL builds the account-aware Gmail thread permalink from the

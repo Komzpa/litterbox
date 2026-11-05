@@ -266,7 +266,7 @@ bool CardStore::open(const QString &path) {
         while (q.next()) {
             const QString id = q.value(0).toString();
             cachedIds.insert(id);
-            if (q.value(1).toInt() < 1) staleBodyIds.insert(id);
+            if (q.value(1).toInt() < 2) staleBodyIds.insert(id);
         }
         // R67: device photo cache survives restart; file URLs are local only.
         if (!q.exec(QStringLiteral("SELECT card_id,file_url FROM sender_photo_files"))) return;
@@ -1770,7 +1770,7 @@ void CardStore::applyRemoteMailBody(const QString &cardId, const QVariantMap &bo
     m_bodyPrefetchQueue.removeAll(cardId);
     // An older server cannot repair a legacy cache. Keep it readable and
     // retry with backoff until a server that supplies the corrected shape responds.
-    if (m_bodyNeedsRefresh.contains(cardId) && body.value(QStringLiteral("shape_version")).toInt() < 1) {
+    if (m_bodyNeedsRefresh.contains(cardId) && body.value(QStringLiteral("shape_version")).toInt() < 2) {
         reportMailBodyFailed(cardId, 503);
         return;
     }

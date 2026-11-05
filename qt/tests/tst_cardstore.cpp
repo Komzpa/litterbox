@@ -1934,7 +1934,7 @@ private slots:
                 QVariantMap{{"id", missing}, {"source", "mail"}}}},
                 {"later", QVariantList{}}, {"missed", QVariantList{}}}));
             QSignalSpy changed(&store, &CardStore::mailBodyChanged);
-            store.applyRemoteMailBody(cardId, {{"shape_version", 1}, {"html", "<p>Retained original</p>"},
+            store.applyRemoteMailBody(cardId, {{"shape_version", 2}, {"html", "<p>Retained original</p>"},
                 {"messages", QVariantList{QVariantMap{{"html", "<p>Earlier retained</p>"}}}}});
             QTRY_COMPARE(changed.size(), 1);
             store.setOnline(false);
@@ -1969,7 +1969,7 @@ private slots:
             QVERIFY(store.applyRemoteCards({{"now", cards}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
             QSignalSpy changed(&store, &CardStore::mailBodyChanged);
             for (int i = 0; i < count; ++i)
-                store.applyRemoteMailBody(ids.at(i), {{"shape_version", 1}, {"html", QString::number(i) + filler},
+                store.applyRemoteMailBody(ids.at(i), {{"shape_version", 2}, {"html", QString::number(i) + filler},
                     {"messages", QVariantList{QVariantMap{{"html", "<p>earlier " + QString::number(i) + "</p>"}}}}});
             QTRY_COMPARE_WITH_TIMEOUT(changed.size(), count, 10000);
             QVERIFY(store.mailSyncPending() == 0);
@@ -2179,12 +2179,12 @@ private slots:
         {
             CardStore store;
             QVERIFY(store.open(path));
-            store.applyRemoteMailBody(card, {{"shape_version", 1}, {"html", "<p>Newest original</p>"},
+            store.applyRemoteMailBody(card, {{"shape_version", 2}, {"html", "<p>Newest original</p>"},
                 {"source_url", "https://mail.synthetic.test/thread/fixture"}, {"messages", originals}});
             QSignalSpy changed(&store, &CardStore::mailBodyChanged);
             QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 1, 5000);
             QCOMPARE(store.cachedMailBody(card).value("messages").toList(), originals);
-            store.applyRemoteMailBody(card, {{"shape_version", 1}, {"html", "<p>Newest original</p>"}, {"source_url", "https://mail.synthetic.test/thread/fixture"}});
+            store.applyRemoteMailBody(card, {{"shape_version", 2}, {"html", "<p>Newest original</p>"}, {"source_url", "https://mail.synthetic.test/thread/fixture"}});
             QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 2, 5000);
             QCOMPARE(store.cachedMailBody(card).value("messages").toList(), originals);
         }
@@ -2195,7 +2195,7 @@ private slots:
             QCOMPARE(body.value("messages").toList(), originals);
             QCOMPARE(body.value("html").toString(), QStringLiteral("<p>Newest original</p>"));
             QCOMPARE(body.value("source_url").toString(), QStringLiteral("https://mail.synthetic.test/thread/fixture"));
-            restored.applyRemoteMailBody(card, {{"shape_version", 1}, {"html", "<p>Newest original</p>"},
+            restored.applyRemoteMailBody(card, {{"shape_version", 2}, {"html", "<p>Newest original</p>"},
                 {"source_url", "https://mail.synthetic.test/thread/fixture"}, {"messages", QVariantList{}}});
             QSignalSpy changed(&restored, &CardStore::mailBodyChanged);
             QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 1, 5000);
@@ -2261,17 +2261,17 @@ private slots:
             store.setOnline(true);
             QVERIFY(store.applyRemoteCards({{"now", QVariantList{QVariantMap{{"id", cardId}, {"source", "mail"}}}}, {"later", QVariantList{}}, {"missed", QVariantList{}}}));
             QCOMPARE(requested.size(), 1);
-            store.applyRemoteMailBody(cardId, {{"html", "old server"}});
+            store.applyRemoteMailBody(cardId, {{"html", "old server"}, {"shape_version", 1}});
             QCOMPARE(store.cachedMailBody(cardId).value("html").toString(), QString("<p>Old combined</p>"));
             QSignalSpy changed(&store, &CardStore::mailBodyChanged);
-            store.applyRemoteMailBody(cardId, {{"html", "<p>Combined</p>"}, {"messages", messages}, {"shape_version", 1}});
+            store.applyRemoteMailBody(cardId, {{"html", "<p>Combined</p>"}, {"messages", messages}, {"shape_version", 2}});
             QTRY_COMPARE_WITH_TIMEOUT(changed.size(), 1, 15000);
             QCOMPARE(store.cachedMailBody(cardId).value("messages").toList(), messages);
         }
         CardStore offline;
         QVERIFY(offline.open(path));
         QCOMPARE(offline.cachedMailBody(cardId).value("messages").toList(), messages);
-        QCOMPARE(offline.cachedMailBody(cardId).value("shape_version").toInt(), 1);
+        QCOMPARE(offline.cachedMailBody(cardId).value("shape_version").toInt(), 2);
         QCOMPARE(offline.mailSyncPending(), 0);
     }
     void openCachedFileWritesBytesAndRejectsUnsafe() {

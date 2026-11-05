@@ -454,49 +454,51 @@ TestCase {
             card: {source: "mail"}, width: 598, height: 879
         })
         verify(latest)
-        compare(latest.html, "<p>Latest original</p>")
+        compare(latest.html, "<p>Combined fallback</p>")
     }
 
     function test_plainTextThreadNewestAndEarlier() {
-        storeStub.cached = {"mixed": {html: "<p>combined</p>", messages: [
-            {sender_name: "First", received_at: "2026-10-01T10:00:00Z", html: "<pre>First &lt;plain&gt;</pre>"},
-            {sender_name: "Middle", received_at: "2026-10-02T10:00:00Z", html: "<p>Middle HTML</p>"},
-            {sender_name: "Newest", received_at: "2026-10-03T10:00:00Z", html: "<pre>Newest &lt;plain&gt;</pre>"}]}}
+        storeStub.cached = {"mixed": {shape_version: 2, html: "<p>combined</p>", messages: [
+            {id: "a", sender_name: "First", received_at: "2026-10-01T10:00:00Z", preview: "First <plain>", html: "<pre>First &lt;plain&gt;</pre>"},
+            {id: "b", sender_name: "Middle", received_at: "2026-10-02T10:00:00Z", unread: true, preview: "Middle HTML", html: "<p>Middle HTML</p>"},
+            {id: "c", sender_name: "Archived", received_at: "2026-10-03T10:00:00Z", preview: "Archived body", html: "<p>Archived body</p>"},
+            {id: "d", sender_name: "Newest", received_at: "2026-10-04T10:00:00Z", preview: "Newest <plain>", html: "<pre>Newest &lt;plain&gt;</pre>"}]}}
         const page = createTemporaryObject(pageComponent, testCase, {
             store: storeStub, cardId: "mixed", cardTitle: "Mixed", openLinks: false,
             card: {source: "mail"}, width: 598, height: 879
         })
         verify(page)
-        compare(page.html, "<pre>Newest &lt;plain&gt;</pre>")
-        verify(page.documentHtml.indexOf("Newest") >= 0)
-        verify(page.documentHtml.indexOf("<details") >= 0)
-        verify(page.documentHtml.indexOf("First &lt;plain&gt;") >= 0)
-        verify(page.documentHtml.indexOf("Middle HTML") >= 0)
-        verify(page.documentHtml.indexOf("combined") < 0)
         const body = findChild(page, "body")
         verify(body && body.runJavaScript !== undefined)
         tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
         let rendered = null
-        body.runJavaScript(`(() => { const previous = document.querySelectorAll('details');
-            previous[0].open = true; previous[1].open = true;
-            return {latest: document.querySelector('.lb-latest').innerText,
-                primary: document.querySelector('main > .lb-original').innerText,
-                earlier: Array.from(previous).map(d => d.querySelector('.lb-original').innerText)}; })()`,
+        body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => ({open:d.open, summary:d.querySelector('summary').innerText, body:d.querySelector('section').textContent.trim()}))`,
             WebEngineScript.ApplicationWorld, value => rendered = value)
         tryVerify(function() { return rendered !== null })
-        verify(rendered.latest.indexOf("Newest") >= 0)
-        verify(rendered.latest.indexOf("3 Oct") >= 0)
-        compare(rendered.primary.trim(), "Newest <plain>")
-        compare(rendered.earlier.map(s => s.trim()), ["First <plain>", "Middle HTML"])
-        storeStub.cached = {"empty-latest": {html: "<p>Combined</p>", shape_version: 1, messages: [
-            {sender_name: "Earlier", html: "<p>Earlier</p>"}, {sender_name: "Newest", html: ""}]}}
-        const empty = createTemporaryObject(pageComponent, testCase, {
-            store: storeStub, cardId: "empty-latest", cardTitle: "Empty", openLinks: false,
-            card: {source: "mail"}, width: 598, height: 879
-        })
-        verify(empty)
-        compare(empty.html, "")
-        verify(empty.documentHtml.indexOf("Combined") < 0)
+        compare(rendered.map(d => d.open), [false, true, false, true])
+        compare(rendered.map(d => d.body), ["First <plain>", "Middle HTML", "Archived body", "Newest <plain>"])
+        verify(rendered[0].summary.indexOf("First") >= 0 && rendered[2].summary.indexOf("Archived") >= 0 && rendered[3].summary.indexOf("Newest") >= 0)
+        // The summary is keyboard-operable as well as pointer-operable.
+        body.forceActiveFocus()
+        let focused = false
+        body.runJavaScript(`(() => { document.querySelector('details summary').focus(); return true })()`, WebEngineScript.ApplicationWorld, value => focused = value)
+        tryVerify(function() { return focused })
+        keyClick(Qt.Key_Space)
+        let keyboardOpen = null
+        tryVerify(function() {
+            body.runJavaScript(`document.querySelector('details').open`, WebEngineScript.ApplicationWorld, value => keyboardOpen = value)
+            return keyboardOpen === true
+        }, 5000, "Space opens a focused message")
+        // Simulate the body refresh after gmail.mark_read. Open state must survive.
+        let refreshed = storeStub.cached["mixed"]
+        refreshed.messages[1].unread = false
+        storeStub.cached = {"mixed": refreshed}
+        storeStub.mailBodyChanged("mixed")
+        wait(200)
+        let states = null
+        body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => d.open)`, WebEngineScript.ApplicationWorld, value => states = value)
+        tryVerify(function() { return states !== null })
+        compare(states, [true, true, false, true])
     }
 
     function test_originalThreadUsesNativeDisclosureInsideSingleDocumentScroll() {
@@ -515,27 +517,25 @@ TestCase {
             arrivalNow: new Date("2026-10-05T12:00:00Z").getTime()
         })
         verify(page)
-        compare(page.html, "<p>Latest field note</p>")
         const body = findChild(page, "body")
         verify(body && body.runJavaScript !== undefined)
         tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
         let result = null
         body.runJavaScript(`({details: Array.from(document.querySelectorAll('details')).map(d => ({open: d.open,
             summary: d.querySelector('summary').innerText, body: d.querySelector('.lb-original').textContent.trim()})),
-            latest: document.querySelector('.lb-latest').innerText, originalHtml: Array.from(document.querySelectorAll('.lb-original')).map(e => e.innerHTML),
+            originalHtml: Array.from(document.querySelectorAll('.lb-original')).map(e => e.innerHTML),
             sections: document.querySelectorAll('.lb-original').length,
             scrollHeight: document.scrollingElement.scrollHeight,
             clientHeight: document.scrollingElement.clientHeight,
             nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length})`,
             WebEngineScript.ApplicationWorld, value => result = value)
         tryVerify(function() { return result !== null })
-        compare(result.details.map(d => d.open), [false, false])
-        compare(result.details.map(d => d.body), ["First field note", historyText.trim()])
+        compare(result.details.map(d => d.open), [false, false, true])
+        compare(result.details.map(d => d.body), ["First field note", historyText.trim(), "Latest field note"])
         verify(result.originalHtml[0].indexOf("<b>field</b>") >= 0, "Collapsed originals retain their HTML")
         verify(result.details[0].summary.indexOf("Older historian <old@synthetic.test>") >= 0)
         verify(result.details[1].summary.indexOf("Newer historian <new@synthetic.test>") >= 0)
-        verify(result.latest.indexOf("Latest historian <latest@synthetic.test>") >= 0)
-        verify(result.latest.indexOf("Latest field note") < 0)
+        verify(result.details[2].summary.indexOf("Latest historian <latest@synthetic.test>") >= 0)
         compare(result.sections, 3)
         compare(result.nestedScrolls, 0)
         let summaryBox = null

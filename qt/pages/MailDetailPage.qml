@@ -82,6 +82,8 @@ Kirigami.Page {
     property string html: ""
     property string sourceUrl: ""
     property var messages: []
+    property var initialUnread: ({})
+    property bool legacyIncomplete: false
     readonly property bool hasDocument: html !== "" || messages.length > 0
     property string bodySource: Qt.platform.os === "android" ? "MailBodyAndroid.qml" : "MailBodyDesktop.qml"
 
@@ -89,12 +91,21 @@ Kirigami.Page {
 
     function readCache() {
         const body = store.cachedMailBody(cardId)
-        messages = body.messages || []
-        // Legacy cached responses can have empty message slots. Keep the
-        // combined body readable until the background refresh replaces them.
+        const incoming = body.messages || []
+        let flags = Object.assign({}, initialUnread)
+        let changed = false
+        let stable = []
+        for (let i = 0; i < incoming.length; ++i) {
+            const key = incoming[i].gmail_message_id || incoming[i].id || ("index:" + i)
+            if (!(key in flags)) { flags[key] = !!incoming[i].unread; changed = true }
+            let message = Object.assign({}, incoming[i])
+            message.unread = flags[key]
+            stable.push(message)
+        }
+        if (changed) initialUnread = flags
+        if (JSON.stringify(messages) !== JSON.stringify(stable)) messages = stable
+        legacyIncomplete = Number(body.shape_version || 0) < 1 && stable.some(m => !m.html)
         html = body.html || ""
-        if (messages.length && (Number(body.shape_version || 0) >= 1 || String(messages[messages.length - 1].html || "")))
-            html = String(messages[messages.length - 1].html)
         if (!html && (root.card || {}).source !== "mail") html = fallbackHtml()
         sourceUrl = body.source_url || ""
         errorText = hasDocument ? "" : qsTr("This message is not cached on this device yet.")
@@ -144,6 +155,7 @@ Kirigami.Page {
     onVisibleChanged: { if (visible) closing = false }
     onCardIdChanged: {
         closing = false
+        initialUnread = ({})
         if (ready && cardId !== "") reload()
     }
 
@@ -151,7 +163,7 @@ Kirigami.Page {
     // today, day + month + time this year, full date otherwise; no separator
     // without an arrival time.
     function arrivalLine(message) {
-        const c = message || (root.messages.length ? root.messages[root.messages.length - 1] : root.card) || {}
+        const c = message || root.card || {}
         const name = String(c.sender_name || "").trim()
         const addr = String(c.sender_address || "").trim()
         let sender = name
@@ -237,24 +249,28 @@ Kirigami.Page {
         + (root.accountName ? "<div style='color:#586d70'>" + escapeHtml(root.accountName) + "</div>" : "")
         + "</header>"
     function threadHtml() {
+        if (!messages.length || legacyIncomplete)
+            return "<div class='lb-latest'>" + escapeHtml(arrivalLine()) + "</div><section class='lb-original'>" + html + "</section>"
         let result = ""
-        for (let i = 0; i + 1 < messages.length; ++i) {
+        for (let i = 0; i < messages.length; ++i) {
             const message = messages[i]
             const senderKnown = String(message.sender_name || message.sender_address || "").trim() !== ""
-            const line = arrivalLine(message)
-            const label = senderKnown ? line : qsTr("Earlier message") + (line ? " · " + line : "")
-            result += "<details class='lb-previous'><summary>" + escapeHtml(label) + "</summary>"
-                + "<section class='lb-original'>" + String(message.html || "") + "</section></details>"
+            const arrival = arrivalLine(message)
+            const line = senderKnown ? arrival : qsTr("Earlier message") + (arrival ? " · " + arrival : "")
+            const key = message.gmail_message_id || message.id || ("index:" + i)
+            const expanded = initialUnread[key] || i === messages.length - 1
+            const preview = String(message.preview || "")
+            result += "<details class='lb-previous'" + (expanded ? " open" : "") + "><summary>" + escapeHtml(line)
+                + (preview ? " · " + escapeHtml(preview) : "") + "</summary><section class='lb-original'>"
+                + String(message.html || "") + "</section></details>"
         }
-        const latest = arrivalLine()
-        return result + (latest ? "<div class='lb-latest'>" + escapeHtml(latest) + "</div>" : "")
-            + "<section class='lb-original'>" + html + "</section>"
+        return result
     }
     // Native <details> works without scripting in both Chromium renderers.
     // Originals remain intact in one document, with no nested browser/vertical scroll.
     readonly property string documentHtml: !root.hasDocument ? "" : "<main class='lb-reader'>" + headerHtml + threadHtml() + "</main>"
         + "<style>.lb-reader{max-width:880px;margin:0 auto;padding:16px 24px 40px}"
-        + ".lb-previous{border-top:1px solid #dce5e3}.lb-previous>summary{cursor:pointer;padding:14px 4px;min-height:48px;color:#586d70;font:inherit}"
+        + ".lb-previous{border-top:1px solid #dce5e3}.lb-previous>summary{cursor:pointer;padding:14px 4px;min-height:48px;color:#586d70;font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}"
         + ".lb-previous>summary:focus-visible{outline:2px solid #397d73;outline-offset:-2px}"
         + ".lb-original{padding:8px 0 16px}.lb-latest{border-top:1px solid #dce5e3;padding-top:16px;color:#586d70}"
         + "@media(max-width:600px){.lb-reader{padding:12px 16px 32px}}</style>"
