@@ -90,16 +90,11 @@ Kirigami.Page {
     function readCache() {
         const body = store.cachedMailBody(cardId)
         messages = body.messages || []
-        // Plain-text-only threads store an empty per-message html while the
-        // combined body.html carries the <pre> fallback (gmailsync saveThread:
-        // HTML when present, else <pre>escaped Text). The last message slot
-        // must not shadow that good document with an empty string: take the
-        // last non-empty message html, else the combined body.
+        // Legacy cached responses can have empty message slots. Keep the
+        // combined body readable until the background refresh replaces them.
         html = body.html || ""
-        for (let i = messages.length - 1; i >= 0; --i) {
-            const candidate = String(messages[i].html || "")
-            if (candidate) { html = candidate; break }
-        }
+        if (messages.length && (Number(body.shape_version || 0) >= 1 || String(messages[messages.length - 1].html || "")))
+            html = String(messages[messages.length - 1].html)
         if (!html && (root.card || {}).source !== "mail") html = fallbackHtml()
         sourceUrl = body.source_url || ""
         errorText = hasDocument ? "" : qsTr("This message is not cached on this device yet.")

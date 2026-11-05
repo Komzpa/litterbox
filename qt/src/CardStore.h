@@ -95,7 +95,7 @@ public:
     // Durable per-card body cache, independent of the open-card set.
     // Mail and has_body agent result bodies share the same mail_bodies table
     // so full results and file links survive restart and read offline.
-    // cachedMailBody returns {html, source_url, messages} or an empty map on a miss.
+    // cachedMailBody returns {html, source_url, messages, shape_version} or an empty map on a miss.
     // messages is a JSON array retained verbatim for offline thread reading.
     Q_INVOKABLE QVariantMap cachedMailBody(const QString &cardId) const;
     // Pending counts fetchable open cards missing a durable original. Completion
@@ -236,8 +236,9 @@ private:
     // Body ids only; html/messages stay in SQLite and are read on demand
     // through a byte-bounded LRU (R9 bodies on demand).
     QSet<QString> m_bodyCached;
+    QSet<QString> m_bodyNeedsRefresh;
     // Fetched bodies waiting for the next batched SQLite transaction.
-    struct BodyWrite { QString id, html, sourceUrl, messagesJson; bool hadBody = false; };
+    struct BodyWrite { QString id, html, sourceUrl, messagesJson; bool hadBody = false; int shapeVersion = 0; };
     QList<BodyWrite> m_bodyWriteBatch;
     QTimer m_bodyFlushTimer;
     void flushBodyWrites();

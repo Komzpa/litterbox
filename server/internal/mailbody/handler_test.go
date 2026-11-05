@@ -105,14 +105,16 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES
-		($1,'11111111-1111-4111-8111-111111111111',$2,'old-message','{}','<p>Earlier original</p>','',decode('00','hex'),'2025-01-01T00:00:00Z','',''),
-		($1,'22222222-2222-4222-8222-222222222222',$2,'new-message','{}','<p>Latest original</p>','',decode('00','hex'),'2025-01-02T00:00:00Z','Latest Sender','latest@example.com')`, tenant, mailCard); err != nil {
+		($1,'11111111-1111-4111-8111-111111111111',$2,'old-message','{}','','Earlier <plain> & text',decode('00','hex'),'2025-01-01T00:00:00Z','',''),
+		($1,'22222222-2222-4222-8222-222222222222',$2,'middle-message','{}','<p>Middle original</p><script>unsafe()</script>','',decode('00','hex'),'2025-01-02T00:00:00Z','Middle Sender','middle@example.com'),
+        ($1,'33333333-3333-4333-8333-333333333333',$2,'new-message','{}','','Latest <plain> & text',decode('00','hex'),'2025-01-03T00:00:00Z','Latest Sender','latest@example.com')`, tenant, mailCard); err != nil {
 		t.Fatal(err)
 	}
 	h := Handler{DB: db, Images: nil}
 	mux := http.NewServeMux()
 	mux.Handle("GET /v1/cards/{id}/body", h)
 	var lastMessages []threadMessage
+	var shapeVersion int
 	fetch := func(tenantID, cardID string) (int, string) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/cards/"+cardID+"/body", nil)
 		req = req.WithContext(agents.WithTenant(req.Context(), tenantID))
@@ -123,16 +125,18 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 			return w.Code, ""
 		}
 		var resp struct {
-			HTML      string          `json:"html"`
-			ThreadID  string          `json:"threadId"`
-			AccountID string          `json:"accountId"`
-			SourceURL string          `json:"source_url"`
-			Messages  []threadMessage `json:"messages"`
+			HTML         string          `json:"html"`
+			ThreadID     string          `json:"threadId"`
+			AccountID    string          `json:"accountId"`
+			SourceURL    string          `json:"source_url"`
+			Messages     []threadMessage `json:"messages"`
+			ShapeVersion int             `json:"shape_version"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 			t.Fatal(err)
 		}
 		lastMessages = resp.Messages
+		shapeVersion = resp.ShapeVersion
 		return w.Code, resp.HTML + "|" + resp.ThreadID + "|" + resp.AccountID + "|" + resp.SourceURL
 	}
 
@@ -163,19 +167,25 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	if want := "https://mail.google.com/mail/?authuser=user%40example.com#all/thread-abc"; !strings.Contains(got, "|thread-abc|"+account.String()+"|"+want) {
 		t.Fatalf("mail body must keep thread/account/gmail url: %q", got)
 	}
+	if shapeVersion != 1 {
+		t.Fatalf("shape_version=%d, want 1", shapeVersion)
+	}
 	// Mail exposes every original message oldest-to-newest with truthful
 	// per-message senders; a legacy row without From stays empty rather than
 	// inheriting the card's latest sender.
-	if len(lastMessages) != 2 {
-		t.Fatalf("messages=%d, want 2", len(lastMessages))
+	if len(lastMessages) != 3 {
+		t.Fatalf("messages=%d, want 3", len(lastMessages))
+	}
+	if strings.Contains(lastMessages[1].HTML, "script") {
+		t.Fatalf("message HTML was not sanitized: %q", lastMessages[1].HTML)
 	}
 	if lastMessages[0].GmailMessageID != "old-message" || lastMessages[0].SenderName != "" || lastMessages[0].SenderAddress != "" {
 		t.Fatalf("legacy message sender must stay empty: %+v", lastMessages[0])
 	}
-	if lastMessages[1].GmailMessageID != "new-message" || lastMessages[1].SenderName != "Latest Sender" || lastMessages[1].SenderAddress != "latest@example.com" {
-		t.Fatalf("latest message sender: %+v", lastMessages[1])
+	if lastMessages[2].GmailMessageID != "new-message" || lastMessages[2].SenderName != "Latest Sender" || lastMessages[2].SenderAddress != "latest@example.com" {
+		t.Fatalf("latest message sender: %+v", lastMessages[2])
 	}
-	if lastMessages[0].HTML != "<p>Earlier original</p>" || lastMessages[1].HTML != "<p>Latest original</p>" {
+	if lastMessages[0].HTML != "<pre>Earlier &lt;plain&gt; &amp; text</pre>" || !strings.Contains(lastMessages[1].HTML, "<p>Middle original</p>") || lastMessages[2].HTML != "<pre>Latest &lt;plain&gt; &amp; text</pre>" {
 		t.Fatalf("message order/content wrong: %+v", lastMessages)
 	}
 	// Non-mail sources keep no message history.

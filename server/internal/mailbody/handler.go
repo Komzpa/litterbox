@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	stdhtml "html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -67,7 +68,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	messages := []threadMessage{}
 	if source == "mail" {
-		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html FROM messages WHERE tenant_id=$1 AND card_id=$2 ORDER BY received_at ASC,id ASC`, tenantID, cardID)
+		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id::text,gmail_message_id,sender_name,sender_address,received_at,html,text FROM messages WHERE tenant_id=$1 AND card_id=$2 ORDER BY received_at ASC,id ASC`, tenantID, cardID)
 		if queryErr != nil {
 			http.Error(w, "internal server error", 500)
 			return
@@ -75,10 +76,23 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var message threadMessage
 			var received time.Time
-			if queryErr = rows.Scan(&message.ID, &message.GmailMessageID, &message.SenderName, &message.SenderAddress, &received, &message.HTML); queryErr != nil {
+			var plain string
+			if queryErr = rows.Scan(&message.ID, &message.GmailMessageID, &message.SenderName, &message.SenderAddress, &received, &message.HTML, &plain); queryErr != nil {
 				rows.Close()
 				http.Error(w, "internal server error", 500)
 				return
+			}
+			isPlain := message.HTML == "" && plain != ""
+			if isPlain {
+				message.HTML = "<pre>" + stdhtml.EscapeString(plain) + "</pre>"
+			}
+			if message.HTML != "" && !isPlain {
+				message.HTML, queryErr = Sanitize(r.Context(), message.HTML, h.Images)
+				if queryErr != nil {
+					rows.Close()
+					http.Error(w, "internal server error", 500)
+					return
+				}
 			}
 			message.ReceivedAt = received.UTC().Format(time.RFC3339Nano)
 			messages = append(messages, message)
@@ -110,12 +124,13 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "private, no-store")
 	if err := json.NewEncoder(w).Encode(struct {
-		HTML      string          `json:"html"`
-		ThreadID  string          `json:"threadId"`
-		AccountID string          `json:"accountId"`
-		SourceURL string          `json:"source_url,omitempty"`
-		Messages  []threadMessage `json:"messages"`
-	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages}); err != nil {
+		HTML         string          `json:"html"`
+		ThreadID     string          `json:"threadId"`
+		AccountID    string          `json:"accountId"`
+		SourceURL    string          `json:"source_url,omitempty"`
+		Messages     []threadMessage `json:"messages"`
+		ShapeVersion int             `json:"shape_version"`
+	}{clean, threadID.String, account.String, gmailSourceURL(address.String, threadID.String), messages, 1}); err != nil {
 		return
 	}
 }

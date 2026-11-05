@@ -435,9 +435,8 @@ TestCase {
         scmShot.save(mailFixtures.screenshotPath("scm-plain-text-598.png"))
     }
 
-    function test_threadPrefersLastNonEmptyMessage() {
-        // Plain control: a thread whose latest message has HTML keeps it; an
-        // empty trailing slot must not shadow the earlier good message.
+    function test_legacyThreadUsesCombinedBodyWhenLatestMissing() {
+        // Incomplete legacy message data keeps the combined body readable.
         storeStub.cached = {"thread-ctl": {html: "<p>Combined fallback</p>", messages: [
             {id: "m-1", gmail_message_id: "g-1", html: "<p>First original</p>"},
             {id: "m-2", gmail_message_id: "g-2", html: ""}]}}
@@ -446,7 +445,7 @@ TestCase {
             card: {source: "mail"}, width: 598, height: 879
         })
         verify(page)
-        compare(page.html, "<p>First original</p>")
+        compare(page.html, "<p>Combined fallback</p>")
         storeStub.cached = {"thread-latest": {html: "<p>Combined fallback</p>", messages: [
             {id: "m-1", gmail_message_id: "g-1", html: "<p>First original</p>"},
             {id: "m-2", gmail_message_id: "g-2", html: "<p>Latest original</p>"}]}}
@@ -456,6 +455,48 @@ TestCase {
         })
         verify(latest)
         compare(latest.html, "<p>Latest original</p>")
+    }
+
+    function test_plainTextThreadNewestAndEarlier() {
+        storeStub.cached = {"mixed": {html: "<p>combined</p>", messages: [
+            {sender_name: "First", received_at: "2026-10-01T10:00:00Z", html: "<pre>First &lt;plain&gt;</pre>"},
+            {sender_name: "Middle", received_at: "2026-10-02T10:00:00Z", html: "<p>Middle HTML</p>"},
+            {sender_name: "Newest", received_at: "2026-10-03T10:00:00Z", html: "<pre>Newest &lt;plain&gt;</pre>"}]}}
+        const page = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "mixed", cardTitle: "Mixed", openLinks: false,
+            card: {source: "mail"}, width: 598, height: 879
+        })
+        verify(page)
+        compare(page.html, "<pre>Newest &lt;plain&gt;</pre>")
+        verify(page.documentHtml.indexOf("Newest") >= 0)
+        verify(page.documentHtml.indexOf("<details") >= 0)
+        verify(page.documentHtml.indexOf("First &lt;plain&gt;") >= 0)
+        verify(page.documentHtml.indexOf("Middle HTML") >= 0)
+        verify(page.documentHtml.indexOf("combined") < 0)
+        const body = findChild(page, "body")
+        verify(body && body.runJavaScript !== undefined)
+        tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
+        let rendered = null
+        body.runJavaScript(`(() => { const previous = document.querySelectorAll('details');
+            previous[0].open = true; previous[1].open = true;
+            return {latest: document.querySelector('.lb-latest').innerText,
+                primary: document.querySelector('main > .lb-original').innerText,
+                earlier: Array.from(previous).map(d => d.querySelector('.lb-original').innerText)}; })()`,
+            WebEngineScript.ApplicationWorld, value => rendered = value)
+        tryVerify(function() { return rendered !== null })
+        verify(rendered.latest.indexOf("Newest") >= 0)
+        verify(rendered.latest.indexOf("3 Oct") >= 0)
+        compare(rendered.primary.trim(), "Newest <plain>")
+        compare(rendered.earlier.map(s => s.trim()), ["First <plain>", "Middle HTML"])
+        storeStub.cached = {"empty-latest": {html: "<p>Combined</p>", shape_version: 1, messages: [
+            {sender_name: "Earlier", html: "<p>Earlier</p>"}, {sender_name: "Newest", html: ""}]}}
+        const empty = createTemporaryObject(pageComponent, testCase, {
+            store: storeStub, cardId: "empty-latest", cardTitle: "Empty", openLinks: false,
+            card: {source: "mail"}, width: 598, height: 879
+        })
+        verify(empty)
+        compare(empty.html, "")
+        verify(empty.documentHtml.indexOf("Combined") < 0)
     }
 
     function test_originalThreadUsesNativeDisclosureInsideSingleDocumentScroll() {
