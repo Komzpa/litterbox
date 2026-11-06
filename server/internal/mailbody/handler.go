@@ -259,8 +259,13 @@ func tracker(src string, attrs []html.Attribute) bool {
 	if strings.TrimSpace(src) == "" {
 		return true
 	}
-	if matched, _ := trackers.IsTracker(src); matched {
-		return true
+	// Tracking rules describe network URLs. Inline data:/cid: images are
+	// already local; running ~470 case-insensitive patterns over a
+	// multi-megabyte data URI pegged the server CPU during content repair.
+	if low := strings.ToLower(strings.TrimSpace(src)); strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") || strings.HasPrefix(low, "//") {
+		if matched, _ := trackers.IsTracker(src); matched {
+			return true
+		}
 	}
 	values := make(map[string]string, len(attrs))
 	for _, a := range attrs {

@@ -267,3 +267,19 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 		t.Fatalf("agent messages: code=%d len=%d, want 200/0", code, len(lastMessages))
 	}
 }
+
+func TestSanitizeSkipsTrackerRulesForInlineDataImages(t *testing.T) {
+	payload := strings.Repeat("QUJDRA", 2<<20/6) // ~2 MiB base64
+	src := `<p>hi</p>` + strings.Repeat(`<img width="300" height="200" src="data:image/png;base64,`+payload+`">`, 5)
+	start := time.Now()
+	out, err := Sanitize(context.Background(), src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("sanitize of 10 MiB inline images took %v", elapsed)
+	}
+	if strings.Count(out, "data:image/png;base64,") != 5 {
+		t.Fatal("inline images were dropped")
+	}
+}
