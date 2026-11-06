@@ -20,6 +20,8 @@ TestCase {
         property bool online: false
         property var bodyRequests: []
         property var operations: []
+        property var fileRequests: []
+        function requestMailFile(card, file, save) { fileRequests = fileRequests.concat([{card:card, file:file, save:save}]) }
         signal mailBodyChanged(string cardId)
         signal mailBodyFailed(string cardId)
         function cachedMailBody(cardId) { return cached[cardId] || {} }
@@ -38,6 +40,65 @@ TestCase {
         storeStub.online = false
         storeStub.bodyRequests = []
         storeStub.operations = []
+        storeStub.fileRequests = []
+    }
+
+    function test_recipientsAndAttachmentsPerMessage() {
+        storeStub.cached = {card: {shape_version: 2, html: "<p>Latest</p>", messages: [
+            {id: "old", sender_name: "Old sender", html: "<p>Older</p>",
+                to: [{name: "Old recipient", address: "old@example.test"}], cc: [],
+                attachments: [{id: "old-file", name: "older.pdf", size: 5}]},
+            {id: "new", sender_name: "New sender", html: "<p>Latest</p>",
+                to: [{name: "New recipient", address: "new@example.test"}, {address: "second@example.test"}],
+                cc: [{address: "copy@example.test"}], attachments: [{id: "raw", name: "original.eml", size: 12}]}]}}
+        const page = createTemporaryObject(pageComponent, testCase, {cardId: "card", store: storeStub, width: 412, height: 915})
+        verify(page !== null)
+        verify(page.documentHtml.indexOf("Old recipient &lt;old@example.test&gt;") >= 0)
+        verify(page.documentHtml.indexOf("New recipient &lt;new@example.test&gt;") >= 0)
+        verify(page.documentHtml.indexOf("copy@example.test") >= 0)
+        verify(page.documentHtml.indexOf("To: New recipient +1") >= 0)
+        verify(page.documentHtml.indexOf("older.pdf") >= 0)
+        verify(page.documentHtml.indexOf("original.eml") >= 0)
+        verify(page.documentHtml.indexOf("litterbox-file:open/old-file") >= 0)
+        verify(page.documentHtml.indexOf("litterbox-file:save/raw") >= 0)
+        compare((page.documentHtml.match(/Latest<\/p>/g) || []).length, 1)
+        const body = findChild(page, "body")
+        tryVerify(function() { return body && !body.loading && body.loadProgress === 100 }, 15000)
+        let metadata = null
+        body.runJavaScript(`(() => {
+            const recipients = document.querySelectorAll('.lb-recipients');
+            recipients[1].open = true;
+            const links = Array.from(document.querySelectorAll('.lb-file a'));
+            return {recipients: recipients.length, text: recipients[1].innerText,
+                files: document.querySelectorAll('.lb-file').length,
+                targets: links.map(a => ({height:a.getBoundingClientRect().height, width:a.getBoundingClientRect().width}))};
+        })()`, WebEngineScript.ApplicationWorld, value => metadata = value)
+        tryVerify(function() { return metadata !== null })
+        compare(metadata.recipients, 2)
+        compare(metadata.files, 2)
+        let target = null
+        body.runJavaScript(`(() => { const a=document.querySelector("a[href='litterbox-file:open/raw']");
+            a.scrollIntoView(); const r=a.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`,
+            WebEngineScript.ApplicationWorld, value => target = value)
+        tryVerify(function() { return target !== null })
+        mouseClick(body, target.x, target.y)
+        tryCompare(storeStub, "fileRequests", [{card:"card",file:"raw",save:false}])
+        target = null
+        body.runJavaScript(`(() => { const a=document.querySelector("a[href='litterbox-file:save/raw']");
+            const r=a.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`,
+            WebEngineScript.ApplicationWorld, value => target = value)
+        tryVerify(function() { return target !== null })
+        mouseClick(body, target.x, target.y)
+        tryCompare(storeStub, "fileRequests", [{card:"card",file:"raw",save:false},{card:"card",file:"raw",save:true}])
+
+
+        verify(metadata.text.indexOf("copy@example.test") >= 0)
+        // The older message is collapsed, so its links have zero painted area.
+        for (let i = 2; i < metadata.targets.length; ++i) {
+            verify(metadata.targets[i].height >= 48)
+            verify(metadata.targets[i].width >= 48)
+        }
+
     }
 
     function relativeLuminance(color) {
@@ -472,7 +533,7 @@ TestCase {
         verify(body && body.runJavaScript !== undefined)
         tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
         let rendered = null
-        body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => ({open:d.open, summary:d.querySelector('summary').innerText, body:d.querySelector('section').textContent.trim()}))`,
+        body.runJavaScript(`Array.from(document.querySelectorAll('details.lb-previous')).map(d => ({open:d.open, summary:d.querySelector('summary').innerText, body:d.querySelector('section').textContent.trim()}))`,
             WebEngineScript.ApplicationWorld, value => rendered = value)
         tryVerify(function() { return rendered !== null })
         compare(rendered.map(d => d.open), [false, true, false, true])
@@ -481,12 +542,12 @@ TestCase {
         // The summary is keyboard-operable as well as pointer-operable.
         body.forceActiveFocus()
         let focused = false
-        body.runJavaScript(`(() => { document.querySelector('details summary').focus(); return true })()`, WebEngineScript.ApplicationWorld, value => focused = value)
+        body.runJavaScript(`(() => { document.querySelector('details.lb-previous>summary').focus(); return true })()`, WebEngineScript.ApplicationWorld, value => focused = value)
         tryVerify(function() { return focused })
         keyClick(Qt.Key_Space)
         let keyboardOpen = null
         tryVerify(function() {
-            body.runJavaScript(`document.querySelector('details').open`, WebEngineScript.ApplicationWorld, value => keyboardOpen = value)
+            body.runJavaScript(`document.querySelector('details.lb-previous').open`, WebEngineScript.ApplicationWorld, value => keyboardOpen = value)
             return keyboardOpen === true
         }, 5000, "Space opens a focused message")
         // Simulate the body refresh after gmail.mark_read. Open state must survive.
@@ -496,7 +557,7 @@ TestCase {
         storeStub.mailBodyChanged("mixed")
         wait(200)
         let states = null
-        body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => d.open)`, WebEngineScript.ApplicationWorld, value => states = value)
+        body.runJavaScript(`Array.from(document.querySelectorAll('details.lb-previous')).map(d => d.open)`, WebEngineScript.ApplicationWorld, value => states = value)
         tryVerify(function() { return states !== null })
         compare(states, [true, true, false, true])
         // A new reply changes the document. The manually opened first message
@@ -506,7 +567,7 @@ TestCase {
         storeStub.mailBodyChanged("mixed")
         let updated = null
         tryVerify(function() {
-            body.runJavaScript(`Array.from(document.querySelectorAll('details')).map(d => d.open)`,
+            body.runJavaScript(`Array.from(document.querySelectorAll('details.lb-previous')).map(d => d.open)`,
                 WebEngineScript.ApplicationWorld, value => updated = value)
             return updated && updated.length === 5
         }, 15000)
@@ -534,7 +595,7 @@ TestCase {
         verify(body && body.runJavaScript !== undefined)
         tryVerify(function() { return !body.loading && body.loadProgress === 100 }, 15000)
         let result = null
-        body.runJavaScript(`({details: Array.from(document.querySelectorAll('details')).map(d => ({open: d.open,
+        body.runJavaScript(`({details: Array.from(document.querySelectorAll('details.lb-previous')).map(d => ({open: d.open,
             summary: d.querySelector('summary').innerText, body: d.querySelector('.lb-original').textContent.trim()})),
             originalHtml: Array.from(document.querySelectorAll('.lb-original')).map(e => e.innerHTML),
             sections: document.querySelectorAll('.lb-original').length,
@@ -552,7 +613,7 @@ TestCase {
         compare(result.sections, 3)
         compare(result.nestedScrolls, 0)
         let summaryBox = null
-        body.runJavaScript(`(() => { const summary = document.querySelector('details summary');
+        body.runJavaScript(`(() => { const summary = document.querySelector('details.lb-previous>summary');
             summary.scrollIntoView(); const box = summary.getBoundingClientRect();
             return {x: box.x + box.width / 2, y: box.y + box.height / 2}; })()`,
             WebEngineScript.ApplicationWorld, value => summaryBox = value)
@@ -564,7 +625,7 @@ TestCase {
         // WebEngine consumes Qt pointer events asynchronously. Re-query the
         // native disclosure until the real click has reached the renderer.
         tryVerify(function() {
-            body.runJavaScript(`(() => { const details = document.querySelector('details');
+            body.runJavaScript(`(() => { const details = document.querySelector('details.lb-previous');
                 const original = details.querySelector('.lb-original');
                 return {open: details.open, text: original.innerText, height: original.getBoundingClientRect().height,
                     nestedScrolls: Array.from(document.querySelectorAll('*')).filter(e => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== 'visible').length}; })()`,
@@ -574,7 +635,7 @@ TestCase {
         compare(opened.text.trim(), "First field note", "Clicking the native summary renders the original")
         compare(opened.nestedScrolls, 0)
         summaryBox = null
-        body.runJavaScript(`(() => { const summary = document.querySelectorAll('details summary')[1];
+        body.runJavaScript(`(() => { const summary = document.querySelectorAll('details.lb-previous>summary')[1];
             summary.scrollIntoView(); const box = summary.getBoundingClientRect();
             return {x: box.x + box.width / 2, y: box.y + box.height / 2}; })()`,
             WebEngineScript.ApplicationWorld, value => summaryBox = value)
@@ -582,7 +643,7 @@ TestCase {
         mouseClick(body, summaryBox.x, summaryBox.y)
         let scroll = null
         tryVerify(function() {
-            body.runJavaScript(`(() => { const details = document.querySelectorAll('details')[1];
+            body.runJavaScript(`(() => { const details = document.querySelectorAll('details.lb-previous')[1];
                 const documentScroll = document.scrollingElement;
                 documentScroll.scrollTop = documentScroll.scrollHeight;
                 return {open: details.open, top: documentScroll.scrollTop,

@@ -10,6 +10,7 @@
 #include <QVariantMap>
 #include <QThread>
 #include <QSet>
+#include <QUrl>
 #include <functional>
 
 namespace cardstore {
@@ -110,6 +111,13 @@ public:
     // reportMailBodyFailed never deletes already-cached content.
     Q_INVOKABLE void applyRemoteMailBody(const QString &cardId, const QVariantMap &body);
     Q_INVOKABLE void reportMailBodyFailed(const QString &cardId, int status = 0);
+    // Card-scoped attachment bytes live beside this profile's database.
+    Q_INVOKABLE void requestMailFile(const QString &cardId, const QString &fileId, bool save = false);
+    Q_INVOKABLE QString cachedMailFile(const QString &cardId, const QString &fileId) const;
+    Q_INVOKABLE bool saveMailFile(const QString &localUrl, const QUrl &destination);
+    void applyRemoteMailFile(const QString &cardId, const QString &fileId, const QByteArray &bytes);
+    void reportMailFileFailed(const QString &cardId, const QString &fileId);
+
     // Open a file embedded as a data: link in the cached body. Accepts only a
     // data: URL present byte-for-byte in that card's cached HTML, decodes its
     // base64 payload, writes it under CacheLocation/card-files/<cardId>/<name>
@@ -139,6 +147,9 @@ signals:
     void requestPost(const QString &opId, const QString &path, const QVariantMap &body);
     void requestCards(const QString &path, quint64 requestId);
     void requestMailBodyGet(const QString &cardId, const QString &path);
+    void requestMailFileGet(const QString &cardId, const QString &fileId, const QString &path);
+    void mailFileReady(const QString &cardId, const QString &localUrl, bool save);
+    void mailFileFailed(const QString &cardId);
     void requestSenderPhotoGet(const QString &cardId, const QString &path);
     void mailBodyChanged(const QString &cardId);
     void mailBodyFailed(const QString &cardId);
@@ -182,6 +193,9 @@ private:
     QString m_rejectedReorder;
     quint64 m_rejectedReorderSnapshot = 0;
     QString m_draftPath;
+    QHash<QString, QList<bool>> m_mailFileRequests;
+    QVariantMap mailFileMetadata(const QString &cardId, const QString &fileId) const;
+    QString mailFilePath(const QString &cardId, const QString &fileId) const;
     bool m_draftDirSynced = false;
     QHash<QString, QVariantMap> m_drafts;
     QStringList m_draftOrder;

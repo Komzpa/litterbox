@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Offline browser renderers preserve real HTML and responsive email layouts.
 import QtQuick
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import QtQuick.Controls.Material
@@ -66,7 +67,7 @@ Kirigami.Page {
         const snooze = mailActions.snoozeDialogItem()
         return !!((sheet && sheet.visible) || (snooze && snooze.visible))
     }
-    readonly property bool actualPopupsVisible: ownerPopupVisible || localPopupsVisible
+    readonly property bool actualPopupsVisible: ownerPopupVisible || localPopupsVisible || saveFileDialog.visible
     // 48 dp tap floor in item px. Android AX reports a box one device px short of its painted size, so Android adds one px above ceil(48 dp).
     readonly property real tapTarget: (Math.ceil(48 * Screen.devicePixelRatio) + (Qt.platform.os === "android" ? 1 : 0)) / Screen.devicePixelRatio
     readonly property bool compactActions: width < Math.max(720, Kirigami.Units.gridUnit * 42)
@@ -82,6 +83,8 @@ Kirigami.Page {
     property string html: ""
     property string sourceUrl: ""
     property var messages: []
+    property string attachmentError: ""
+    property string saveSource: ""
     property var initialUnread: ({})
     property bool legacyIncomplete: false
     readonly property bool hasDocument: html !== "" || messages.length > 0
@@ -114,6 +117,50 @@ Kirigami.Page {
         readCache()
         loading = !hasDocument && store.online
         if (store.online && ((root.card || {}).source === "mail" || (root.card || {}).has_body)) store.requestMailBody(cardId)
+    }
+    function recipientSummary(message) {
+        const rows = (message && message.to) || []
+        if (!rows.length) return qsTr("To") + ": —"
+        const first = rows[0].name || rows[0].address || ""
+        const count = rows.length - 1
+        return qsTr("To") + ": " + first + (count > 0 ? qsTr(" +%1").arg(count) : "")
+    }
+    function recipientDetails(message, field) {
+        return ((message && message[field]) || []).map(function(row) {
+            const name = String(row.name || "").trim()
+            const address = String(row.address || "").trim()
+            return name && address ? name + " <" + address + ">" : (name || address)
+        }).filter(function(value) { return !!value }).join(", ")
+    }
+    function messageMetadata(message) {
+        let result = "<details class='lb-recipients'><summary>" + escapeHtml(recipientSummary(message)) + "</summary><p>"
+            + escapeHtml(qsTr("To: %1").arg(recipientDetails(message, "to") || "—")) + "<br>"
+            + escapeHtml(qsTr("Cc: %1").arg(recipientDetails(message, "cc") || "—")) + "</p></details>"
+        for (const file of (message.attachments || [])) {
+            const id = encodeURIComponent(String(file.id)).replace(/'/g, "%27")
+            result += "<p class='lb-file'>" + escapeHtml(file.name || qsTr("Attachment")) + " · " + Number(file.size || 0) + " B "
+                + "<a href='litterbox-file:open/" + id + "'>" + escapeHtml(qsTr("Open")) + "</a> · "
+                + "<a href='litterbox-file:save/" + id + "'>" + escapeHtml(qsTr("Save")) + "</a></p>"
+        }
+        return result
+    }
+    FileDialog {
+        id: saveFileDialog
+        fileMode: FileDialog.SaveFile
+        onAccepted: {
+            if (!root.store.saveMailFile(root.saveSource, selectedFile)) root.attachmentError = qsTr("Could not save attachment")
+        }
+    }
+    Connections {
+        target: root.store
+        ignoreUnknownSignals: true
+        function onMailFileReady(card, local, save) {
+            if (card !== root.cardId) return
+            root.attachmentError = ""
+            if (save) { root.saveSource = local; saveFileDialog.selectedFile = local; saveFileDialog.open() }
+            else if (root.openLinks && !Qt.openUrlExternally(local)) root.attachmentError = qsTr("Could not open attachment")
+        }
+        function onMailFileFailed(card) { if (card === root.cardId) root.attachmentError = qsTr("Attachment unavailable. Connect and try again.") }
     }
     Connections {
         target: root.store
@@ -265,7 +312,7 @@ Kirigami.Page {
             const preview = String(message.preview || "")
             const encodedKey = encodeURIComponent(String(key)).replace(/'/g, "%27")
             result += "<details class='lb-previous' data-lb-key='" + encodedKey + "'" + (expanded ? " open" : "") + "><summary>" + escapeHtml(line)
-                + (preview ? " · " + escapeHtml(preview) : "") + "</summary><section class='lb-original'>"
+                + (preview ? " · " + escapeHtml(preview) : "") + "</summary>" + messageMetadata(message) + "<section class='lb-original'>"
                 + String(message.html || "") + "</section></details>"
         }
         return result
@@ -276,6 +323,7 @@ Kirigami.Page {
         + "<style>.lb-reader{max-width:880px;margin:0 auto;padding:16px 24px 40px}"
         + ".lb-previous{border-top:1px solid #dce5e3}.lb-previous>summary{cursor:pointer;padding:14px 4px;min-height:48px;color:#586d70;font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}"
         + ".lb-previous>summary:focus-visible{outline:2px solid #397d73;outline-offset:-2px}"
+        + ".lb-recipients>summary{min-height:48px;padding:12px 4px;cursor:pointer}.lb-file a{display:inline-block;min-width:48px;min-height:48px;padding:12px 8px;box-sizing:border-box}"
         + ".lb-original{padding:8px 0 16px}.lb-latest{border-top:1px solid #dce5e3;padding-top:16px;color:#586d70}"
         + "@media(max-width:600px){.lb-reader{padding:12px 16px 32px}}</style>"
 
@@ -412,6 +460,12 @@ Kirigami.Page {
             Layout.fillWidth: true
         }
 
+        QQC2.Label {
+            visible: root.attachmentError !== ""
+            text: root.attachmentError
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
         Item {
             objectName: "messageDocument"
             visible: root.hasDocument || root.loading
@@ -439,7 +493,10 @@ Kirigami.Page {
                 Connections {
                     target: bodyLoader.item
                     function onLinkActivated(link) {
-                        if (link.indexOf("data:") === 0) {
+                        if (link.indexOf("litterbox-file:") === 0) {
+                            const parts = link.substring(15).split("/")
+                            root.store.requestMailFile(root.cardId, decodeURIComponent(parts.slice(1).join("/")), parts[0] === "save")
+                        } else if (link.indexOf("data:") === 0) {
                             var local = ""
                             if (typeof store.openCachedFile === "function")
                                 local = store.openCachedFile(root.cardId, link)

@@ -450,6 +450,7 @@ int main(int argc, char *argv[])
     CardEventRefresh cardEventRefresh(store, cardsRequests);
     QHash<int, QString> mailBodyRequests;
     QHash<int, QString> senderPhotoRequests;
+    MailFileTransport mailFileTransport(store, api);
     QObject::connect(&store, &CardStore::requestMailBodyGet, &app,
         [&](const QString &cardId, const QString &path) {
             mailBodyRequests.insert(api.get(path), cardId);

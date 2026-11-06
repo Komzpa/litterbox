@@ -2318,6 +2318,93 @@ private slots:
         QCOMPARE(offline.cachedMailBody(cardId).value("shape_version").toInt(), 2);
         QCOMPARE(offline.mailSyncPending(), 0);
     }
+    void mailFilesUseAuthenticatedFixedRoute() {
+        QTemporaryDir directory;
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("cache.sqlite")));
+        QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+        store.applyRemoteMailBody(cardId, {{"shape_version", 2}, {"html", "Body"}, {"messages", QVariantList{
+            QVariantMap{{"html", "Body"}, {"attachments", QVariantList{QVariantMap{
+                {"id", "file"}, {"name", "file.txt"}, {"size", 5}, {"download_url", "https://evil.test/steal"}}}}}}}});
+        QTRY_COMPARE(changed.size(), 1);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QByteArray request;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket] {
+                request += socket->readAll();
+                if (!request.contains("\r\n\r\n")) return;
+                socket->write("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nhello");
+                socket->disconnectFromHost();
+            });
+        });
+        Api api;
+        api.setBaseUrl(QString("http://127.0.0.1:%1").arg(server.serverPort()));
+        api.setToken("isolated-test-token");
+        MailFileTransport transport(store, api);
+        store.setOnline(true);
+        QSignalSpy ready(&store, &CardStore::mailFileReady);
+        store.requestMailFile(cardId, "file");
+        QTRY_COMPARE(ready.size(), 1);
+        QVERIFY(request.startsWith(("GET /v1/cards/" + cardId + "/mail-files/file HTTP/1.1").toUtf8()));
+        QVERIFY(request.toLower().contains("authorization: bearer isolated-test-token"));
+        QFile bytes(QUrl(ready[0][1].toString()).toLocalFile());
+        QVERIFY(bytes.open(QIODevice::ReadOnly));
+        QCOMPARE(bytes.readAll(), QByteArray("hello"));
+    }
+    void mailFilesPersistRecipientsBytesAndSaveOffline() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("cache.sqlite");
+        const QVariantList recipients{QVariantMap{{"name", "Reader"}, {"address", "reader@example.test"}}};
+        const QVariantList messages{QVariantMap{{"id", "message"}, {"html", "<p>Body</p>"},
+            {"to", recipients}, {"cc", recipients}, {"attachments", QVariantList{
+                QVariantMap{{"id", "file"}, {"name", "report.pdf"}, {"size", 5}},
+                QVariantMap{{"id", "raw"}, {"name", "original.eml"}, {"size", 0}}}}}};
+        QString local;
+        {
+            CardStore store;
+            QVERIFY(store.open(path));
+            QSignalSpy changed(&store, &CardStore::mailBodyChanged);
+            store.applyRemoteMailBody(cardId, {{"html", "<p>Body</p>"}, {"messages", messages}, {"shape_version", 2}});
+            QTRY_COMPARE(changed.size(), 1);
+            store.setOnline(true);
+            QSignalSpy get(&store, &CardStore::requestMailFileGet);
+            QSignalSpy ready(&store, &CardStore::mailFileReady);
+            QSignalSpy failed(&store, &CardStore::mailFileFailed);
+            store.requestMailFile(cardId, "file");
+            store.requestMailFile(cardId, "file", true);
+            QCOMPARE(get.size(), 1);
+            QCOMPARE(get[0][2].toString(), "/v1/cards/" + cardId + "/mail-files/file");
+            store.applyRemoteMailFile(cardId, "file", "short wrong bytes");
+            QCOMPARE(failed.size(), 1);
+            QVERIFY(store.cachedMailFile(cardId, "file").isEmpty());
+            store.requestMailFile(cardId, "file");
+            store.applyRemoteMailFile(cardId, "file", "hello");
+            QCOMPARE(ready.size(), 1);
+            local = ready[0][1].toString();
+            QFile file(QUrl(local).toLocalFile());
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), QByteArray("hello"));
+            store.requestMailFile(cardId, "unknown");
+            QCOMPARE(failed.size(), 2);
+        }
+        CardStore offline;
+        QVERIFY(offline.open(path));
+        QCOMPARE(offline.cachedMailBody(cardId).value("messages").toList(), messages);
+        QSignalSpy get(&offline, &CardStore::requestMailFileGet);
+        QSignalSpy ready(&offline, &CardStore::mailFileReady);
+        offline.requestMailFile(cardId, "file", true);
+        QCOMPARE(get.size(), 0);
+        QCOMPARE(ready.size(), 1);
+        QCOMPARE(ready[0][1].toString(), local);
+        QCOMPARE(ready[0][2].toBool(), true);
+        const QUrl destination = QUrl::fromLocalFile(directory.filePath("saved.pdf"));
+        QVERIFY(offline.saveMailFile(local, destination));
+        QFile saved(destination.toLocalFile());
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        QCOMPARE(saved.readAll(), QByteArray("hello"));
+    }
     void openCachedFileWritesBytesAndRejectsUnsafe() {
         QStandardPaths::setTestModeEnabled(true);
         QTemporaryDir directory;

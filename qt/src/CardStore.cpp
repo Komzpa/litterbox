@@ -22,6 +22,8 @@
 #include <fcntl.h>
 #include <QFileInfo>
 #include <QLoggingCategory>
+#include <QCryptographicHash>
+#include <QSaveFile>
 
 // One 429 pauses only the op pump, for this long; the server's per-device token
 // bucket refills five requests per second.
@@ -1875,6 +1877,68 @@ void CardStore::reportMailBodyFailed(const QString &cardId, int status) {
     if (!m_bodyCached.contains(cardId)) emit mailBodyFailed(cardId);
     emit mailSyncStateChanged();
     queueMailBodyPrefetch();
+}
+QVariantMap CardStore::mailFileMetadata(const QString &cardId, const QString &fileId) const {
+    const auto messages = cachedMailBody(cardId).value(QStringLiteral("messages")).toList();
+    for (const auto &message : messages)
+        for (const auto &file : message.toMap().value(QStringLiteral("attachments")).toList())
+            if (!fileId.isEmpty() && file.toMap().value(QStringLiteral("id")).toString() == fileId)
+                return file.toMap();
+    return {};
+}
+QString CardStore::mailFilePath(const QString &cardId, const QString &fileId) const {
+    const auto meta = mailFileMetadata(cardId, fileId);
+    if (!m_open || meta.isEmpty()) return {};
+    QString name = QFileInfo(meta.value(QStringLiteral("name")).toString().replace(QLatin1Char('\\'), QLatin1Char('/'))).fileName();
+    if (name.isEmpty() || name.startsWith(QLatin1Char('.'))) name = QStringLiteral("attachment");
+    const auto key = QCryptographicHash::hash((cardId + QLatin1Char('/') + fileId).toUtf8(), QCryptographicHash::Sha256).toHex();
+    return m_db.databaseName() + QStringLiteral(".mail-files/") + QString::fromLatin1(key) + QLatin1Char('/') + name;
+}
+QString CardStore::cachedMailFile(const QString &cardId, const QString &fileId) const {
+    const QString path = mailFilePath(cardId, fileId);
+    const auto meta = mailFileMetadata(cardId, fileId);
+    const QFileInfo file(path);
+    return !path.isEmpty() && file.isFile() &&
+        (!meta.contains(QStringLiteral("size")) || file.size() == meta.value(QStringLiteral("size")).toLongLong())
+        ? QUrl::fromLocalFile(path).toString() : QString();
+}
+void CardStore::requestMailFile(const QString &cardId, const QString &fileId, bool save) {
+    if (mailFileMetadata(cardId, fileId).isEmpty()) { emit mailFileFailed(cardId); return; }
+    const auto local = cachedMailFile(cardId, fileId);
+    if (!local.isEmpty()) { emit mailFileReady(cardId, local, save); return; }
+    if (!m_online) { emit mailFileFailed(cardId); return; }
+    const QString key = cardId + QLatin1Char('/') + fileId;
+    const bool pending = m_mailFileRequests.contains(key);
+    m_mailFileRequests[key].append(save);
+    if (!pending) emit requestMailFileGet(cardId, fileId, QStringLiteral("/v1/cards/") +
+        QString::fromLatin1(QUrl::toPercentEncoding(cardId)) + QStringLiteral("/mail-files/") + QString::fromLatin1(QUrl::toPercentEncoding(fileId)));
+}
+void CardStore::applyRemoteMailFile(const QString &cardId, const QString &fileId, const QByteArray &bytes) {
+    const auto meta = mailFileMetadata(cardId, fileId);
+    const QString path = mailFilePath(cardId, fileId);
+    if (path.isEmpty() || (meta.contains(QStringLiteral("size")) && meta.value(QStringLiteral("size")).toLongLong() != bytes.size()) ||
+        !QDir().mkpath(QFileInfo(path).absolutePath())) { reportMailFileFailed(cardId, fileId); return; }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+        reportMailFileFailed(cardId, fileId); return;
+    }
+    const auto actions = m_mailFileRequests.take(cardId + QLatin1Char('/') + fileId);
+    for (bool save : actions) emit mailFileReady(cardId, QUrl::fromLocalFile(path).toString(), save);
+}
+void CardStore::reportMailFileFailed(const QString &cardId, const QString &fileId) {
+    m_mailFileRequests.remove(cardId + QLatin1Char('/') + fileId);
+    emit mailFileFailed(cardId);
+}
+bool CardStore::saveMailFile(const QString &localUrl, const QUrl &destination) {
+    const QString source = QUrl(localUrl).toLocalFile();
+    const QString base = m_db.databaseName() + QStringLiteral(".mail-files/");
+    if (!source.startsWith(base) || !destination.isValid()) return false;
+    QFile input(source);
+    QFile output(destination.isLocalFile() ? destination.toLocalFile() : destination.toString());
+    if (source == output.fileName()) return true;
+    if (!input.open(QIODevice::ReadOnly) || !output.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    while (!input.atEnd()) { const auto bytes = input.read(65536); if (bytes.isEmpty() || output.write(bytes) != bytes.size()) return false; }
+    return output.flush();
 }
 QString CardStore::openCachedFile(const QString &cardId, const QString &dataUrl) const {
     if (!m_open || cardId.isEmpty() || dataUrl.isEmpty()) return {};

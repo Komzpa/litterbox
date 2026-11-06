@@ -79,3 +79,28 @@ private:
     QElapsedTimer m_firstDirty;
     bool m_dirty = false;
 };
+
+// Shared by normal startup and the loopback HTTP consumer oracle.
+class MailFileTransport : public QObject {
+public:
+    MailFileTransport(CardStore &store, Api &api) : QObject(&store) {
+        connect(&store, &CardStore::requestMailFileGet, this,
+            [this, &api](const QString &card, const QString &file, const QString &path) {
+                m_requests.insert(api.getBytes(path), qMakePair(card, file));
+            });
+        connect(&api, &Api::requestFinishedBytes, this,
+            [this, &store](int id, const QByteArray &bytes, const QString &, int) {
+                if (!m_requests.contains(id)) return;
+                const auto target = m_requests.take(id);
+                store.applyRemoteMailFile(target.first, target.second, bytes);
+            });
+        connect(&api, &Api::requestFailed, this,
+            [this, &store](int id, int, const QString &, const QJsonValue &) {
+                if (!m_requests.contains(id)) return;
+                const auto target = m_requests.take(id);
+                store.reportMailFileFailed(target.first, target.second);
+            });
+    }
+private:
+    QHash<int, QPair<QString, QString>> m_requests;
+};
