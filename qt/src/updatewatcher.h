@@ -31,6 +31,12 @@ public:
     // Chained auto-restarts so far (LB_RESTART_GENERATION set by the spawner).
     static int restartGeneration();
     static constexpr int MaxRestartGeneration = 5;
+    // The cap guards against rapid chained restarts (a broken package that
+    // keeps being replaced). A process that ran this long before restarting
+    // is a healthy upgrade, so its child starts a fresh chain at 1 instead of
+    // inheriting a counter that ordinary weekly releases would exhaust.
+    static constexpr qint64 StableUptimeMs = 10 * 60 * 1000;
+    static int nextGeneration(int current, qint64 uptimeMs);
 
     // Test seams; must be set before start().
     void setArguments(const QStringList &args);
@@ -73,6 +79,7 @@ private:
     Identity m_candidate;
     bool m_candidateValid = false;
     QElapsedTimer m_stable;
+    QElapsedTimer m_alive;
     int m_pollIntervalMs = 1000;
     int m_stableIntervalMs = 3000;
     bool m_handled = false;

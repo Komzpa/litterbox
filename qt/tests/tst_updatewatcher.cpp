@@ -199,6 +199,22 @@ private slots:
         QVERIFY(UpdateWatcher::watchingEnabled(binary));
         qunsetenv("LB_RESTART_GENERATION");
     }
+    void healthyUpgradesDoNotExhaustTheCap()
+    {
+        // Rapid chained restarts still count toward the loop guard...
+        int generation = 0;
+        for (int i = 0; i < UpdateWatcher::MaxRestartGeneration; ++i)
+            generation = UpdateWatcher::nextGeneration(generation, 1000);
+        QCOMPARE(generation, UpdateWatcher::MaxRestartGeneration);
+        // ...but a process that ran stably restarts into a fresh chain, so
+        // any number of ordinary releases keeps self-update enabled.
+        generation = UpdateWatcher::MaxRestartGeneration - 1;
+        for (int release = 0; release < 20; ++release) {
+            generation = UpdateWatcher::nextGeneration(generation, UpdateWatcher::StableUptimeMs);
+            QVERIFY(generation < UpdateWatcher::MaxRestartGeneration);
+        }
+        QCOMPARE(generation, 1);
+    }
 };
 
 QTEST_MAIN(UpdateWatcherTest)

@@ -23,6 +23,11 @@ UpdateWatcher::UpdateWatcher(const QString &binaryPath, QObject *parent)
       // waiting on them keeps the restart clear of a half-installed package.
       m_lockPaths({QStringLiteral("/var/lib/dpkg/lock-frontend"),
                    QStringLiteral("/var/lib/dpkg/lock")}) {
+    m_alive.start();
+}
+
+int UpdateWatcher::nextGeneration(int current, qint64 uptimeMs) {
+    return uptimeMs >= StableUptimeMs ? 1 : current + 1;
 }
 
 int UpdateWatcher::restartGeneration() {
@@ -106,12 +111,12 @@ bool UpdateWatcher::spawnReplacement() {
     }
 
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    environment.insert(QStringLiteral("LB_RESTART_GENERATION"),
-                       QString::number(restartGeneration() + 1));
+    const int generation = nextGeneration(restartGeneration(), m_alive.elapsed());
+    environment.insert(QStringLiteral("LB_RESTART_GENERATION"), QString::number(generation));
 
     const QString unit = QStringLiteral("litterbox-qt-restart-%1-%2")
                              .arg(QCoreApplication::applicationPid())
-                             .arg(restartGeneration() + 1);
+                             .arg(generation);
     QStringList arguments{QStringLiteral("--user"),
                           QStringLiteral("--unit=%1").arg(unit),
                           QStringLiteral("--collect")};
