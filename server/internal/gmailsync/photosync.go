@@ -120,16 +120,20 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			peopleBase = people.DefaultBaseURL
 		}
 		peopleClient := &people.Client{HTTP: httpClient, BaseURL: peopleBase}
-		pctx, pcancel := context.WithTimeout(ctx, 90*time.Second)
-		built, buildErr := peopleClient.BuildIndex(pctx, token)
-		pcancel()
+		built, buildErr, _ := s.peopleIndex.get(peopleIndexKey{accountKey{a.TenantID, a.ID}, "people"}, func() (map[string]string, error) {
+			pctx, pcancel := context.WithTimeout(ctx, 90*time.Second)
+			defer pcancel()
+			return peopleClient.BuildIndex(pctx, token)
+		})
 		if buildErr != nil {
 			if isPhotoAuthError(buildErr) {
 				return errPhotoAuthRequired
 			}
 			// Keep an empty index and still try BIMI for brand senders.
-			log.Printf("sender-photos: build=%s account=%s: people index: %v", s.Build, a.ID, buildErr)
-		} else {
+			log.Printf("sender-photos: build=%s account=%s: people index: %v (next attempt backs off)", s.Build, a.ID, buildErr)
+		}
+		// A failed rebuild keeps serving the last good index.
+		if built != nil {
 			index = built
 		}
 	}
@@ -146,12 +150,15 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			if base == "" {
 				base = people.DefaultBaseURL
 			}
-			dctx, dcancel := context.WithTimeout(ctx, 90*time.Second)
-			dir, dErr := (&people.Client{HTTP: httpClient, BaseURL: base}).BuildDirectoryIndex(dctx, token)
-			dcancel()
+			dir, dErr, _ := s.peopleIndex.get(peopleIndexKey{accountKey{a.TenantID, a.ID}, "directory"}, func() (map[string]string, error) {
+				dctx, dcancel := context.WithTimeout(ctx, 90*time.Second)
+				defer dcancel()
+				return (&people.Client{HTTP: httpClient, BaseURL: base}).BuildDirectoryIndex(dctx, token)
+			})
 			if dErr != nil {
-				log.Printf("sender-photos: build=%s account=%s: directory index skipped: %v", s.Build, a.ID, dErr)
-			} else {
+				log.Printf("sender-photos: build=%s account=%s: directory index skipped: %v (next attempt backs off)", s.Build, a.ID, dErr)
+			}
+			if dir != nil {
 				for k, v := range dir {
 					if _, ok := index[k]; !ok {
 						index[k] = v

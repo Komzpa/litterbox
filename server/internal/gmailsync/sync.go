@@ -30,6 +30,7 @@ type Account struct {
 }
 type Syncer struct {
 	gate         accountGate
+	peopleIndex  peopleIndexCache
 	DB           *pgxpool.Pool
 	Client       func(Account) *Client
 	Images       *mailhtml.ImageFetcher
