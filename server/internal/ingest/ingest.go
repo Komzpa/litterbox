@@ -30,6 +30,8 @@ type Card struct {
 	Kind       string          `json:"kind"`
 	Title      string          `json:"title"`
 	Summary    string          `json:"summary"`
+	Body       string          `json:"body,omitempty"`
+	FilesMode  string          `json:"files_mode,omitempty"`
 	At         *time.Time      `json:"at"`
 	Timed      bool            `json:"timed,omitempty"`
 	Order      int             `json:"note_order,omitempty"`
@@ -135,6 +137,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, reason, http.StatusBadRequest)
 			return
 		}
+	}
+	if req.FilesMode != "" && req.FilesMode != "replace" && req.FilesMode != "delete" {
+		http.Error(w, "invalid files_mode", 400)
+		return
 	}
 	files, code := checkedFiles(req, body)
 	if code != 0 {
@@ -364,12 +370,53 @@ func apply(ctx context.Context, db *sql.DB, a Auth, req Request) error {
 		if err != nil {
 			return err
 		}
-		// The card and its body land or fail together. A batch replaces the
-		// stored body; an upsert without files removes it.
-		if len(req.Files) > 0 {
-			_, err = tx.ExecContext(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html) VALUES($1,$2,$3) ON CONFLICT(tenant_id,card_id) DO UPDATE SET html=EXCLUDED.html`, a.TenantID, cardID, renderBody(req.Summary, req.Files))
-		} else {
-			_, err = tx.ExecContext(ctx, `DELETE FROM card_bodies WHERE tenant_id=$1 AND card_id=$2`, a.TenantID, cardID)
+		// Omission is a partial update. Only an explicit replace/delete can
+		// discard accepted deliverables, including legacy bodies.
+		if len(req.Files) > 0 || req.FilesMode != "" || req.Body != "" {
+			var previous, legacy, fullBody string
+			var raw []byte
+			err = tx.QueryRowContext(ctx, `SELECT html,source_files,legacy_html,source_body FROM card_bodies WHERE tenant_id=$1 AND card_id=$2 FOR UPDATE`, a.TenantID, cardID).Scan(&previous, &raw, &legacy, &fullBody)
+			if err != nil && err != sql.ErrNoRows {
+				return err
+			}
+			var files []File
+			if len(raw) > 0 {
+				if err = json.Unmarshal(raw, &files); err != nil {
+					return err
+				}
+			} else {
+				legacy = previous
+			}
+			if req.FilesMode == "replace" || req.FilesMode == "delete" {
+				files = nil
+				legacy = ""
+			}
+			if req.FilesMode != "delete" {
+				for _, incoming := range req.Files {
+					duplicate := false
+					for _, old := range files {
+						if old.Name == incoming.Name && bytes.Equal(old.Data, incoming.Data) {
+							duplicate = true
+							break
+						}
+					}
+					if !duplicate {
+						files = append(files, incoming)
+					}
+				}
+			}
+			if req.Body != "" {
+				fullBody = req.Body
+			}
+			text := fullBody
+			if text == "" {
+				text = req.Summary
+			}
+			data, e := json.Marshal(files)
+			if e != nil {
+				return e
+			}
+			_, err = tx.ExecContext(ctx, `INSERT INTO card_bodies(tenant_id,card_id,html,source_files,legacy_html,source_body) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,card_id) DO UPDATE SET html=EXCLUDED.html,source_files=EXCLUDED.source_files,legacy_html=EXCLUDED.legacy_html,source_body=EXCLUDED.source_body,updated_at=now()`, a.TenantID, cardID, legacy+renderBody(text, files), data, legacy, fullBody)
 		}
 	case "close":
 		_, err = tx.ExecContext(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND source=$2 AND external_id=$3`, a.TenantID, a.Source, req.ExternalID)

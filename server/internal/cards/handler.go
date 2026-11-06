@@ -155,7 +155,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	// remain valid for this request even if the bounded cache evicts them.
 	cached, versions := h.previews.snapshot(tenant)
 	versionsJSON, _ := json.Marshal(versions)
-	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'UNREAD' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),latest.received_at,COALESCE(latest.text,''),CASE WHEN COALESCE(latest.version,'')=$2::jsonb->>c.id::text THEN '' ELSE COALESCE(latest.html,'') END,COALESCE(latest.version,''),COALESCE((SELECT json_agg(json_build_object('subject',bc.subject,'sender',bc.sender)) FROM cards bc WHERE bc.tenant_id=c.tenant_id AND bc.bundle_id=c.bundle_id),'[]'),COALESCE(b.title_origin,'unknown'),`+bodyversion.SQL+` FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id LEFT JOIN LATERAL (SELECT m.received_at,m.text,m.html,m.id::text || ':' || m.xmin::text AS version FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND `+mailvisibility.SQL+` ORDER BY m.received_at DESC,m.gmail_message_id DESC LIMIT 1) latest ON true WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant, string(versionsJSON))
+	rows, err := tx.QueryContext(r.Context(), `SELECT c.id::text,c.source,COALESCE(NULLIF(c.title,''),c.subject),c.summary,c.at,c.timed,c.state,c.note,c.note_revision,c.created_at,c.note_order,c.bundle_id::text,c.pinned_rank,a.address,b.title,EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'IMPORTANT' = ANY(m.labels)),EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND 'UNREAD' = ANY(m.labels)),EXISTS (SELECT 1 FROM card_bodies cb WHERE cb.tenant_id=c.tenant_id AND cb.card_id=c.id),c.source_kind,COALESCE(c.sender_name,''),COALESCE(c.sender,''),latest.received_at,COALESCE(latest.text,''),CASE WHEN COALESCE(latest.version,'')=$2::jsonb->>c.id::text THEN '' ELSE COALESCE(latest.html,'') END,COALESCE(latest.version,''),COALESCE((SELECT json_agg(json_build_object('subject',bc.subject,'sender',bc.sender)) FROM cards bc WHERE bc.tenant_id=c.tenant_id AND bc.bundle_id=c.bundle_id),'[]'),COALESCE(b.title_origin,'unknown'),`+bodyversion.SQL+` FROM cards c LEFT JOIN accounts a ON a.tenant_id=c.tenant_id AND a.id=c.account_id LEFT JOIN bundles b ON b.tenant_id=c.tenant_id AND b.id=c.bundle_id LEFT JOIN LATERAL (SELECT m.received_at,m.text,m.html,m.id::text || ':' || m.xmin::text AS version FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND `+mailvisibility.SQL+` ORDER BY m.received_at DESC,m.gmail_message_id DESC LIMIT 1) latest ON true WHERE c.tenant_id=$1 AND c.state='open' ORDER BY CASE WHEN c.pinned_rank IS NOT NULL THEN 0 ELSE 1 END, c.pinned_rank, CASE WHEN c.source='manual' THEN 0 ELSE 1 END, c.note_order, c.created_at DESC`, tenant, string(versionsJSON))
 	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
@@ -172,7 +172,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		var senderRaw, htmlBody, htmlVersion string
 		var titleMembers []byte
 		var titleOrigin string
-		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.createdAt, &c.order, &bundleID, &pinnedRank, &accountName, &bundleTitle, &c.Important, &c.Unread, &c.HasBody, &c.SourceKind, &c.SenderName, &senderRaw, &receivedAt, &c.Snippet, &htmlBody, &htmlVersion, &titleMembers, &titleOrigin, &c.BodyVersion); err != nil {
+		if err := rows.Scan(&c.ID, &c.Source, &c.Title, &c.Summary, &at, &c.Timed, &c.State, &c.Note, &c.NoteRevision, &c.createdAt, &c.order, &bundleID, &pinnedRank, &accountName, &bundleTitle, &c.Important, &c.Unread, &c.HasBody, &c.SourceKind, &c.SenderName, &senderRaw, &receivedAt, &c.Snippet, &htmlBody, &htmlVersion, &titleMembers, &titleOrigin, &c.BodyVersion); err != nil {
 			http.Error(w, "internal server error", 500)
 			return
 		}
@@ -292,8 +292,9 @@ func joinIDs(ids []string) string {
 }
 
 type feedback struct {
-	Note string `json:"note"`
-	Text string `json:"text"`
+	Note        string `json:"note"`
+	Text        string `json:"text"`
+	BaseVersion int64  `json:"base_version"`
 }
 
 func (h *Handler) Dismiss(w http.ResponseWriter, r *http.Request) {
@@ -304,7 +305,7 @@ func (h *Handler) Dismiss(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.mutate(w, r, body.Note, true)
+	h.mutate(w, r, body.Note, true, body.BaseVersion)
 }
 func (h *Handler) SetNote(w http.ResponseWriter, r *http.Request) {
 	var body feedback
@@ -312,9 +313,9 @@ func (h *Handler) SetNote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", 400)
 		return
 	}
-	h.mutate(w, r, body.Text, false)
+	h.mutate(w, r, body.Text, false, body.BaseVersion)
 }
-func (h *Handler) mutate(w http.ResponseWriter, r *http.Request, note string, dismiss bool) {
+func (h *Handler) mutate(w http.ResponseWriter, r *http.Request, note string, dismiss bool, base ...int64) {
 	tenant, ok := h.tenant(r)
 	if !ok {
 		http.Error(w, "unauthorized", 401)
@@ -330,15 +331,33 @@ func (h *Handler) mutate(w http.ResponseWriter, r *http.Request, note string, di
 		http.Error(w, "internal server error", 500)
 		return
 	}
-	var title string
-	query := `UPDATE cards SET note=$1,note_updated_at=now() WHERE tenant_id=$2 AND id::text=$3 RETURNING COALESCE(NULLIF(title,''),subject)`
-	if dismiss {
-		query = `UPDATE cards SET note=$1,note_updated_at=now(),state='done' WHERE tenant_id=$2 AND id::text=$3 RETURNING COALESCE(NULLIF(title,''),subject)`
-	}
-	if err = tx.QueryRowContext(r.Context(), query, note, tenant, r.PathValue("id")).Scan(&title); err == sql.ErrNoRows {
+	var title, current string
+	var revision int64
+	err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(NULLIF(title,''),subject),note,note_revision FROM cards WHERE tenant_id=$1 AND id::text=$2 FOR UPDATE`, tenant, r.PathValue("id")).Scan(&title, &current, &revision)
+	if err == sql.ErrNoRows {
 		http.NotFound(w, r)
 		return
-	} else if err != nil {
+	}
+	if err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+	expected := int64(0)
+	if len(base) > 0 {
+		expected = base[0]
+	}
+	if current != note {
+		if expected != revision {
+			title = "Conflicting card note: " + title
+			_, err = tx.ExecContext(r.Context(), `INSERT INTO cards(tenant_id,id,source,external_id,title,summary,note,state) VALUES($1,gen_random_uuid(),'manual',gen_random_uuid()::text,'Conflicting card note',$2,$2,'open')`, tenant, note)
+		} else {
+			_, err = tx.ExecContext(r.Context(), `UPDATE cards SET note=$3,note_revision=note_revision+1,note_updated_at=now(),version=version+1 WHERE tenant_id=$1 AND id::text=$2`, tenant, r.PathValue("id"), note)
+		}
+	}
+	if err == nil && dismiss {
+		_, err = tx.ExecContext(r.Context(), `UPDATE cards SET state='done' WHERE tenant_id=$1 AND id::text=$2`, tenant, r.PathValue("id"))
+	}
+	if err != nil {
 		http.Error(w, "internal server error", 500)
 		return
 	}

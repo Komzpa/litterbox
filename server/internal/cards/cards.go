@@ -8,17 +8,18 @@ import (
 )
 
 type Card struct {
-	ID         string     `json:"id"`
-	BundleID   *string    `json:"bundle_id"`
-	PinnedRank *int64     `json:"pinned_rank"`
-	Source     string     `json:"source"`
-	SourceKind string     `json:"source_kind,omitempty"`
-	Title      string     `json:"title"`
-	Summary    string     `json:"summary"`
-	At         *time.Time `json:"at"`
-	Timed      bool       `json:"timed"`
-	State      string     `json:"state"`
-	Note       string     `json:"note"`
+	ID           string     `json:"id"`
+	BundleID     *string    `json:"bundle_id"`
+	PinnedRank   *int64     `json:"pinned_rank"`
+	Source       string     `json:"source"`
+	SourceKind   string     `json:"source_kind,omitempty"`
+	Title        string     `json:"title"`
+	Summary      string     `json:"summary"`
+	At           *time.Time `json:"at"`
+	Timed        bool       `json:"timed"`
+	State        string     `json:"state"`
+	Note         string     `json:"note"`
+	NoteRevision int64      `json:"note_revision"`
 	// Display-origin metadata. AccountName is the tenant-scoped account
 	// address; BundleTitle is the tenant-scoped bundle title. SourceURL is
 	// only populated for an established source destination (none yet), so it

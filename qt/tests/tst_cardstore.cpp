@@ -151,6 +151,30 @@ public:
 class CardStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void noteBaseVersionIsDurableAndAdvances() {
+        QTemporaryDir directory;
+        const QString cardId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const auto snapshot = QVariantMap{{"now", QVariantList{QVariantMap{{"id",cardId},{"source","manual"},{"state","open"},{"note_revision",7}}}}, {"later",QVariantList{}},{"missed",QVariantList{}}};
+        {
+            CardStore store;
+            QVERIFY(store.open(directory.filePath("revisions.sqlite")));
+            QVERIFY(store.applyRemoteCards(snapshot));
+            QVERIFY(!store.saveNote(cardId,"first").isEmpty());
+            QVERIFY(store.applyRemoteCards(snapshot));
+        }
+        CardStore store;
+        QVERIFY(store.open(directory.filePath("revisions.sqlite")));
+        QVERIFY(store.applyRemoteCards(snapshot));
+        QVERIFY(!store.saveNote(cardId,"second").isEmpty());
+        QSignalSpy sent(&store,&CardStore::requestPost);
+        store.setOnline(true);
+        QTRY_COMPARE(sent.size(),1);
+        store.reportPostResult(sent.at(0).at(0).toString(),200,{{"ok",true}});
+        QTRY_COMPARE(sent.size(),2);
+        QCOMPARE(sent.at(0).at(2).toMap().value("args").toMap().value("base_version").toInt(),7);
+        QCOMPARE(sent.at(1).at(2).toMap().value("args").toMap().value("base_version").toInt(),8);
+    }
+
     void retrySyncBypassesOfflineRefreshGate() {
         QTemporaryDir directory;
         CardStore store;

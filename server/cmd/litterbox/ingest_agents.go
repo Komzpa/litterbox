@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/Komzpa/litterbox/server/internal/ingest"
+	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 )
 
 func RunIngestAgents(args []string, stdout io.Writer) int {
@@ -37,8 +37,11 @@ func RunIngestAgents(args []string, stdout io.Writer) int {
 			return 2
 		}
 		for _, card := range cards {
-			err = ingest.Post(context.Background(), *endpoint, *token, ingest.Request{Card: ingest.Card{ExternalID: card.ExternalID, Kind: "agent_result", Title: card.Title, Summary: card.Summary, At: &card.SortAt}})
-			if err != nil { fmt.Fprintln(stdout, "ingest-agents:", err); return 1 }
+			err = ingest.Post(context.Background(), *endpoint, *token, ingest.Request{Card: ingest.Card{ExternalID: card.ExternalID, Kind: "agent_result", Title: card.Title, Summary: card.Summary, Body: card.Body, At: &card.SortAt}})
+			if err != nil {
+				fmt.Fprintln(stdout, "ingest-agents:", err)
+				return 1
+			}
 		}
 	}
 	fmt.Fprintf(stdout, "count=%d\n", len(cards))

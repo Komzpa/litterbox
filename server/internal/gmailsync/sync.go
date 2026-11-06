@@ -17,6 +17,7 @@ import (
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
+	"github.com/Komzpa/litterbox/server/internal/ops"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -81,6 +82,9 @@ func (s *Syncer) syncAccount(ctx context.Context, a Account) (err error) {
 		return e
 	}
 	if err := s.backfillSenderNames(ctx, a, c); err != nil {
+		return err
+	}
+	if err := s.reconcileLabelState(ctx, a, c); err != nil {
 		return err
 	}
 	if cursor == "" {
@@ -261,14 +265,42 @@ func (s *Syncer) initial(ctx context.Context, a Account, c *Client, started bool
 		}
 		page = x.NextPageToken
 	}
+	// Pagination is not a snapshot: confirm every absence with threads.get.
 	tx, e := s.beginTenant(ctx, a.TenantID)
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback(ctx)
-	if _, e = tx.Exec(ctx, "UPDATE cards c SET state='archived',version=version+1 WHERE c.tenant_id=$1 AND c.account_id=$2 AND c.state <> 'done' AND NOT EXISTS (SELECT 1 FROM gmail_initial_sync_threads seen WHERE seen.tenant_id=c.tenant_id AND seen.account_id=c.account_id AND seen.thread_id=c.gmail_thread_id)", a.TenantID, a.ID); e != nil {
+	rows, e := tx.Query(ctx, `SELECT gmail_thread_id FROM cards c WHERE tenant_id=$1 AND account_id=$2 AND source='mail' AND state NOT IN ('archived','done') AND NOT EXISTS(SELECT 1 FROM gmail_initial_sync_threads seen WHERE seen.tenant_id=c.tenant_id AND seen.account_id=c.account_id AND seen.thread_id=c.gmail_thread_id)`, a.TenantID, a.ID)
+	if e != nil {
+		tx.Rollback(ctx)
 		return e
 	}
+	var absent []string
+	for rows.Next() {
+		var id string
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			tx.Rollback(ctx)
+			return e
+		}
+		absent = append(absent, id)
+	}
+	e = rows.Err()
+	rows.Close()
+	tx.Rollback(ctx)
+	if e != nil {
+		return e
+	}
+	for _, id := range absent {
+		if e = s.confirmLabelState(ctx, a, c, id, "initial_absence_confirmed"); e != nil {
+			return e
+		}
+	}
+	tx, e = s.beginTenant(ctx, a.TenantID)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback(ctx)
 	if _, e = tx.Exec(ctx, "UPDATE accounts SET history_id=NULLIF($1,''),gmail_synced_at=now(),gmail_initial_sync=false,gmail_initial_page_token=NULL,gmail_initial_history_id=NULL WHERE tenant_id=$2 AND id=$3", history, a.TenantID, a.ID); e != nil {
 		return e
 	}
@@ -288,6 +320,7 @@ func (s *Syncer) initial(ctx context.Context, a Account, c *Client, started bool
 func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) error {
 	page := ""
 	ids := map[string]bool{}
+	added, removed := map[string]string{}, map[string]string{}
 	newest := cursor
 	for {
 		x, e := c.History(ctx, cursor, page)
@@ -306,9 +339,19 @@ func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) 
 			}
 			for _, m := range h.LabelsAdded {
 				ids[m.Message.ThreadID] = true
+				for _, l := range m.LabelIDs {
+					if l == "INBOX" {
+						added[m.Message.ThreadID] = h.ID
+					}
+				}
 			}
 			for _, m := range h.LabelsRemoved {
 				ids[m.Message.ThreadID] = true
+				for _, l := range m.LabelIDs {
+					if l == "INBOX" {
+						removed[m.Message.ThreadID] = h.ID
+					}
+				}
 			}
 		}
 		if x.NextPageToken == "" {
@@ -317,40 +360,8 @@ func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) 
 		page = x.NextPageToken
 	}
 	for id := range ids {
-		t, e := c.GetThread(ctx, id)
-		if e != nil {
-			if isNotFound(e) {
-				// The thread was deleted in Gmail; skip it so one dead
-				// thread cannot wedge the account's history cursor.
-				continue
-			}
+		if e := s.pollThread(ctx, a, c, id, added[id], removed[id]); e != nil {
 			return e
-		}
-		inbox := false
-		for _, m := range t.Messages {
-			for _, l := range m.LabelIDs {
-				if l == "INBOX" {
-					inbox = true
-				}
-			}
-		}
-		if inbox {
-			if e = s.saveThread(ctx, a, c, id, true); e != nil {
-				return e
-			}
-		} else {
-			tx, e := s.beginTenant(ctx, a.TenantID)
-			if e != nil {
-				return e
-			}
-			_, e = tx.Exec(ctx, "UPDATE cards SET state='archived',version=version+1 WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3 AND state NOT IN ('archived','done')", a.TenantID, a.ID, id)
-			if e != nil {
-				tx.Rollback(ctx)
-				return e
-			}
-			if e = tx.Commit(ctx); e != nil {
-				return e
-			}
 		}
 	}
 	if newest != cursor {
@@ -367,7 +378,65 @@ func (s *Syncer) poll(ctx context.Context, a Account, c *Client, cursor string) 
 	}
 	return nil
 }
-func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID string, inbox bool) error {
+func (s *Syncer) pollThread(ctx context.Context, a Account, c *Client, id string, added, removed string) error {
+	unlock, err := ops.LockThread(ctx, a.TenantID, a.ID, id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	t, e := c.GetThread(ctx, id)
+	if e != nil {
+		if isNotFound(e) {
+			// The thread was deleted in Gmail; skip it so one dead
+			// thread cannot wedge the account's history cursor.
+			return nil
+		}
+		return e
+	}
+	inbox := threadInInbox(t)
+	if removed != "" {
+		tx, e := s.beginTenant(ctx, a.TenantID)
+		if e != nil {
+			return e
+		}
+		_, e = tx.Exec(ctx, `UPDATE cards SET gmail_pending_inbox=NULL WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3 AND gmail_pending_inbox=false AND gmail_intent_history <= $4::numeric`, a.TenantID, a.ID, id, removed)
+		if e != nil {
+			tx.Rollback(ctx)
+			return e
+		}
+		if e = tx.Commit(ctx); e != nil {
+			return e
+		}
+	}
+	if inbox {
+		if e = s.saveThreadLocked(ctx, a, c, id, true, added); e != nil {
+			return e
+		}
+	} else {
+		tx, e := s.beginTenant(ctx, a.TenantID)
+		if e != nil {
+			return e
+		}
+		_, e = tx.Exec(ctx, "UPDATE cards SET state=CASE WHEN state IN ('done','snoozed') THEN state ELSE 'archived' END,gmail_provider_inbox=false,gmail_pending_inbox=NULL,version=version+1 WHERE tenant_id=$1 AND account_id=$2 AND gmail_thread_id=$3 AND (gmail_provider_inbox IS DISTINCT FROM false OR gmail_pending_inbox IS NOT NULL OR state NOT IN ('archived','done','snoozed'))", a.TenantID, a.ID, id)
+		if e != nil {
+			tx.Rollback(ctx)
+			return e
+		}
+		if e = tx.Commit(ctx); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID string, inbox bool, transition ...string) error {
+	unlock, err := ops.LockThread(ctx, a.TenantID, a.ID, threadID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return s.saveThreadLocked(ctx, a, c, threadID, inbox, transition...)
+}
+func (s *Syncer) saveThreadLocked(ctx context.Context, a Account, c *Client, threadID string, inbox bool, transition ...string) error {
 	t, e := c.GetThread(ctx, threadID)
 	if e != nil {
 		if isNotFound(e) {
@@ -380,6 +449,8 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 	if e != nil {
 		return e
 	}
+	// threads.list is only discovery; the fetched thread owns current state.
+	inbox = threadInInbox(t)
 	preparedSenders := make([]senderInfo, len(t.Messages))
 	prepared := make([]mailhtml.Message, len(t.Messages))
 	for i, m := range t.Messages {
@@ -437,7 +508,7 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		return e
 	}
 	defer tx.Rollback(ctx)
-	_, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sender_address,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='open' AND (cards.state<>'archived' OR EXISTS(SELECT 1 FROM unnest($11::text[]) AS incoming(id) WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=cards.tenant_id AND m.card_id=cards.id AND m.gmail_message_id=incoming.id))) THEN 'open' ELSE cards.state END,subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, senderAddr, newest, messageIDs)
+	_, e = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,state,subject,sender,sender_name,sender_address,sort_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(tenant_id,account_id,gmail_thread_id) DO UPDATE SET state=CASE WHEN EXCLUDED.state='archived' AND cards.state NOT IN ('done','snoozed') THEN 'archived' WHEN EXCLUDED.state='open' AND (cards.state NOT IN ('archived','snoozed','done') OR (NULLIF($12,'')::numeric > cards.gmail_intent_history AND (cards.gmail_pending_inbox IS NULL OR cards.gmail_intent_history>0)) OR EXISTS(SELECT 1 FROM unnest($11::text[]) AS incoming(id) WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=cards.tenant_id AND m.card_id=cards.id AND m.gmail_message_id=incoming.id))) THEN 'open' ELSE cards.state END,gmail_pending_inbox=CASE WHEN EXCLUDED.state='archived' THEN NULL WHEN NULLIF($12,'')::numeric > cards.gmail_intent_history AND (cards.gmail_pending_inbox IS NULL OR cards.gmail_intent_history>0) THEN NULL ELSE cards.gmail_pending_inbox END,gmail_provider_inbox=(EXCLUDED.state='open'),subject=EXCLUDED.subject,sender=EXCLUDED.sender,sender_name=EXCLUDED.sender_name,sender_address=EXCLUDED.sender_address,sort_at=EXCLUDED.sort_at,version=cards.version+1`, a.TenantID, uuid.New(), a.ID, threadID, state, subject, sender, senderName, senderAddr, newest, messageIDs, transitionHistory(transition))
 	if e != nil {
 		return e
 	}
@@ -610,4 +681,11 @@ func (s *Syncer) beginTenant(ctx context.Context, tenant uuid.UUID) (pgx.Tx, err
 		return nil, err
 	}
 	return tx, nil
+}
+
+func transitionHistory(ids []string) string {
+	if len(ids) > 0 {
+		return ids[0]
+	}
+	return ""
 }

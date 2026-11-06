@@ -267,3 +267,15 @@ LOCAL_PORT=8080
 ```
 
 Provision the VPS account with key-only auth and a forced reverse-forward policy bound to loopback; firewall its listener and expose it only through an authenticated TLS reverse proxy. Configure that public proxy to limit each client IP to 60 requests per minute on the unauthenticated enrollment and OAuth-callback paths (`/v1/devices/enroll`, `/v1/gmail/oauth/callback`), and to apply only a high bulk ceiling (6000 requests per minute) to all other paths, so authenticated device sync is not throttled at the proxy. The reverse tunnel hides the original client address from the home server, whose middleware can only apply its own limits to the observed remote address. Install and enable the instance after configuring pinned host keys: `systemctl enable --now litterbox-reverse-ssh@prod.service`. Values and VPS are intentionally placeholders; this repository does not open firewall ports or create remote accounts.
+
+## Gmail label state and retained owner content
+
+Apply migrations 001..031 in lexical order, including `028_mail_content.sql`,
+`029_content_preservation.sql`, `030_gmail_label_state.sql` and
+`031_owner_revisions.sql`, before running the combined server. Migration 028 owns
+message MIME, attachments and recipients; 029 adds producer deliverable fields to
+card_bodies. Their objects do not overlap. The normal account poll retains both
+workers: label reconciliation checks at most 50 archived threads per account,
+and content repair handles at most 10 cards / 20 messages per card within 60
+seconds, with a one-hour retry cooldown. Owner note/journal revisions preserve
+stale writes as visible conflicts. No manual data backfill is required.

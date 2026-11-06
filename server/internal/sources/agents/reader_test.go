@@ -1,8 +1,10 @@
 package agents
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -215,5 +217,31 @@ func TestOMPChildSessionIsDropped(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("child session emitted a card")
+	}
+}
+
+func TestFullResultSurvivesSummaryLimit(t *testing.T) {
+	result := strings.Repeat("Detailed finding. ", 80) + "FINAL PARAGRAPH"
+	for _, source := range []string{"omp", "codex"} {
+		var input string
+		if source == "omp" {
+			input = `{"type":"session","id":"result"}` + "\n" + `{"type":"message","message":{"role":"assistant","stopReason":"stop","content":` + strconv.Quote(result) + `}}`
+		} else {
+			input = `{"type":"session_meta","payload":{"id":"result"}}` + "\n" + `{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"final","content":` + strconv.Quote(result) + `}}`
+		}
+		var c Card
+		var ok bool
+		var err error
+		if source == "omp" {
+			c, ok, err = readOMP(strings.NewReader(input))
+		} else {
+			c, ok, err = readCodex(strings.NewReader(input))
+		}
+		b, _ := json.Marshal(c)
+		var fields map[string]any
+		json.Unmarshal(b, &fields)
+		if err != nil || !ok || fields["body"] != result || len(c.Summary) >= len(result) {
+			t.Fatalf("%s lost full result: ok=%v err=%v body=%v", source, ok, err, fields["body"])
+		}
 	}
 }

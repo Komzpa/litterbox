@@ -45,6 +45,7 @@ type Entry struct {
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Revision  int64     `json:"revision"`
 }
 type tenantKey struct{}
 
@@ -80,7 +81,7 @@ func (s Store) Create(ctx context.Context, tenant, body string) (Entry, error) {
 // supplies its card ID and commits both records atomically in the same tenant.
 func CreateInTx(ctx context.Context, tx pgx.Tx, tenant, id, body string) (Entry, error) {
 	var e Entry
-	err := tx.QueryRow(ctx, `INSERT INTO journal_entries(id,tenant_id,body) VALUES($1,$2,$3) RETURNING id::text,body,created_at,updated_at`, id, tenant, body).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt)
+	err := tx.QueryRow(ctx, `INSERT INTO journal_entries(id,tenant_id,body) VALUES($1,$2,$3) RETURNING id::text,body,created_at,updated_at,revision`, id, tenant, body).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt, &e.Revision)
 	return e, err
 }
 func (s Store) List(ctx context.Context, tenant string) ([]Entry, error) {
@@ -89,14 +90,14 @@ func (s Store) List(ctx context.Context, tenant string) ([]Entry, error) {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT id::text,body,created_at,updated_at FROM journal_entries WHERE tenant_id=$1 ORDER BY created_at DESC`, tenant)
+	rows, err := tx.Query(ctx, `SELECT id::text,body,created_at,updated_at,revision FROM journal_entries WHERE tenant_id=$1 ORDER BY created_at DESC`, tenant)
 	if err != nil {
 		return nil, err
 	}
 	out := []Entry{}
 	for rows.Next() {
 		var e Entry
-		if err = rows.Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt); err != nil {
+		if err = rows.Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt, &e.Revision); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -110,14 +111,38 @@ func (s Store) List(ctx context.Context, tenant string) ([]Entry, error) {
 	err = tx.Commit(ctx)
 	return out, err
 }
-func (s Store) Update(ctx context.Context, tenant, id, body string) (Entry, error) {
+func (s Store) Update(ctx context.Context, tenant, id, body string, base ...int64) (Entry, error) {
 	tx, err := s.tenantTx(ctx, tenant)
 	if err != nil {
 		return Entry{}, err
 	}
 	defer tx.Rollback(ctx)
 	var e Entry
-	err = tx.QueryRow(ctx, `UPDATE journal_entries SET body=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING id::text,body,created_at,updated_at`, tenant, id, body).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt)
+	err = tx.QueryRow(ctx, `SELECT id::text,body,created_at,updated_at,revision FROM journal_entries WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, tenant, id).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt, &e.Revision)
+	if err != nil {
+		return e, err
+	}
+	if e.Body == body {
+		return e, tx.Commit(ctx)
+	}
+	expected := int64(0)
+	if len(base) > 0 {
+		expected = base[0]
+	}
+	conflict := expected != e.Revision
+	if conflict {
+		e, err = CreateInTx(ctx, tx, tenant, uuid.NewString(), body)
+	} else {
+		err = tx.QueryRow(ctx, `UPDATE journal_entries SET body=$3,revision=revision+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING id::text,body,created_at,updated_at,revision`, tenant, id, body).Scan(&e.ID, &e.Body, &e.CreatedAt, &e.UpdatedAt, &e.Revision)
+	}
+	if err != nil {
+		return e, err
+	}
+	title := "Journal note"
+	if conflict {
+		title = "Conflicting journal edit"
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,source,external_id,title,summary,state) VALUES($1,$2,'journal',$2::uuid::text,$3,$4,'open') ON CONFLICT(tenant_id,id) DO UPDATE SET summary=EXCLUDED.summary,version=cards.version+1`, tenant, e.ID, title, body)
 	if err != nil {
 		return e, err
 	}
@@ -300,13 +325,14 @@ func (s Store) privateHandler(item bool) http.Handler {
 			switch r.Method {
 			case "PUT":
 				var v struct {
-					Body string `json:"body"`
+					Body        string `json:"body"`
+					BaseVersion int64  `json:"base_version"`
 				}
 				if json.NewDecoder(r.Body).Decode(&v) != nil {
 					http.Error(w, "bad request", 400)
 					return
 				}
-				e, err := s.Update(r.Context(), tenant, id, v.Body)
+				e, err := s.Update(r.Context(), tenant, id, v.Body, v.BaseVersion)
 				if err != nil {
 					http.NotFound(w, r)
 					return

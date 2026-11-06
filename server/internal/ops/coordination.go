@@ -15,8 +15,8 @@ import (
 // local commit, not just through the HTTP response: Gmail may execute batch
 // members in any order. Unrelated threads retain their batching concurrency.
 var operationLocks = struct {
- sync.Mutex
- entries map[string]*operationLock
+	sync.Mutex
+	entries map[string]*operationLock
 }{entries: make(map[string]*operationLock)}
 
 type operationLock struct {
@@ -145,4 +145,10 @@ func lockThreads(ctx context.Context, keys []string) (func(), error) {
 		releases = append(releases, unlock)
 	}
 	return release, nil
+}
+
+// LockThread coordinates sync snapshots with the provider-to-commit operation
+// guard. The caller must hold it from the provider read through local commit.
+func LockThread(ctx context.Context, tenant, account uuid.UUID, thread string) (func(), error) {
+	return lockOperation(ctx, tenant.String()+"/thread/"+account.String()+"/"+thread)
 }

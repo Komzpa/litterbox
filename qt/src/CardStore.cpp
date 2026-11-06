@@ -328,6 +328,8 @@ void CardStore::retainOwnerRows(QList<QVariantMap> &cards) const {
                 const auto patch = patches.contains(id) ? patches.value(id).toMap() : op.value(QStringLiteral("args")).toMap();
                 for (auto it = patch.begin(); it != patch.end(); ++it)
                     if (row.contains(it.key())) target->insert(it.key(), row.value(it.key()));
+                if (op.value(QStringLiteral("type")).toString() == QStringLiteral("note"))
+                    target->insert(QStringLiteral("note_revision"), op.value(QStringLiteral("args")).toMap().value(QStringLiteral("base_version")).toLongLong() + 1);
             }
         }
     }
@@ -916,7 +918,8 @@ QVariantList CardStore::pendingAgentMessages(const QString &threadId) const {
     }
     return messages;
 }
-QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &args) {
+QString CardStore::enqueueOp(const QString &cardId, const QString &type, const QVariantMap &inputArgs) {
+    QVariantMap args = inputArgs;
     if (!m_open || QUuid(cardId).isNull()) return {};
     static const QSet<QString> types = {QStringLiteral("gmail.mark_read"), QStringLiteral("delete_journal"), QStringLiteral("done"), QStringLiteral("archive"), QStringLiteral("spam"), QStringLiteral("note"), QStringLiteral("pin"), QStringLiteral("unpin"),
         QStringLiteral("reorder_pins"), QStringLiteral("reorder_cards"), QStringLiteral("create_card"), QStringLiteral("create_reminder"), QStringLiteral("agent_message"), QStringLiteral("snooze"), QStringLiteral("bundle_archive"), QStringLiteral("bundle_spam"), QStringLiteral("bundle_done"), QStringLiteral("take_out")};
@@ -930,6 +933,14 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
                 op.value(QStringLiteral("type")).toString() == type &&
                 op.value(QStringLiteral("args")).toMap() == args)
                 return op.value(QStringLiteral("op_id")).toString();
+    }
+    if (type == QStringLiteral("note")) {
+        for (const auto &card : m_cards) {
+            if (card.value(QStringLiteral("id")).toString() == cardId) {
+                args.insert(QStringLiteral("base_version"), card.value(QStringLiteral("note_revision"), 0));
+                break;
+            }
+        }
     }
     const QString id = type == QStringLiteral("agent_message") ? cardId : QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QVariantMap payload{{QStringLiteral("op_id"), id}, {QStringLiteral("card_id"), cardId},
@@ -970,6 +981,7 @@ QString CardStore::enqueueOp(const QString &cardId, const QString &type, const Q
         for (QVariantMap &card : cards) {
             if (card.value(QStringLiteral("id")).toString() != cardId) continue;
             card.insert(QStringLiteral("note"), args.value(QStringLiteral("note")));
+            card.insert(QStringLiteral("note_revision"), args.value(QStringLiteral("base_version")).toLongLong() + 1);
             changed = true;
         }
     } else if (type == QStringLiteral("take_out")) {

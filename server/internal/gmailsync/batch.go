@@ -28,12 +28,13 @@ const (
 )
 
 type modifyResult struct {
-	retry bool
-	err   error
+	retry   bool
+	err     error
+	history string
 }
 
 type modifyCall struct {
-	ctx context.Context
+	ctx     context.Context
 	thread  string
 	payload []byte
 	done    chan modifyResult
@@ -48,15 +49,21 @@ type modifyCall struct {
 // answers are retried per call with backoff; the batch removes the per-request
 // round trips, not the quota.
 func (c *Client) ModifyBatched(ctx context.Context, thread string, add, remove []string) error {
+	_, err := c.modifyBatchedHistory(ctx, thread, add, remove)
+	return err
+}
+func (c *Client) modifyBatchedHistory(ctx context.Context, thread string, add, remove []string) (string, error) {
+	var history string
 	payload, err := json.Marshal(map[string][]string{"addLabelIds": add, "removeLabelIds": remove})
 	if err != nil {
-		return err
+		return "", err
 	}
 	err = c.retrying(ctx, func() (bool, error) {
 		call := &modifyCall{ctx: ctx, thread: thread, payload: payload, done: make(chan modifyResult, 1)}
 		c.enqueue(call)
 		select {
 		case r := <-call.done:
+			history = r.history
 			return r.retry, r.err
 		case <-ctx.Done():
 			return false, ctx.Err()
@@ -66,7 +73,7 @@ func (c *Client) ModifyBatched(ctx context.Context, thread string, add, remove [
 	if errors.As(err, &api) && (api.StatusCode == http.StatusBadRequest || api.StatusCode == http.StatusNotFound) {
 		c.forgetLabels() // a deleted or recreated label would otherwise stay cached
 	}
-	return err
+	return history, err
 }
 
 func (c *Client) enqueue(call *modifyCall) {
@@ -154,8 +161,12 @@ func (c *Client) send(calls []*modifyCall) {
 	c.quotaUsed += len(active)
 	if len(active) == 1 {
 		call := active[0]
-		retry, err := c.try(call.ctx, "POST", threadModifyPath(call.thread), call.payload, nil)
-		call.done <- modifyResult{retry, err}
+		var result Thread
+		retry, err := c.try(call.ctx, "POST", threadModifyPath(call.thread), call.payload, &result)
+		if errors.Is(err, io.EOF) {
+			err = nil
+		}
+		call.done <- modifyResult{retry, err, result.HistoryID}
 	} else {
 		results := c.sendBatch(ctx, active)
 		for i, call := range active {
@@ -171,7 +182,7 @@ func (c *Client) sendBatch(ctx context.Context, calls []*modifyCall) []modifyRes
 	results := make([]modifyResult, len(calls))
 	fail := func(retry bool, err error) []modifyResult {
 		for i := range results {
-			results[i] = modifyResult{retry, err}
+			results[i] = modifyResult{retry, err, ""}
 		}
 		return results
 	}
@@ -231,7 +242,7 @@ func (c *Client) sendBatch(ctx context.Context, calls []*modifyCall) []modifyRes
 		if err != nil {
 			for i := range results {
 				if !seen[i] {
-					results[i] = modifyResult{true, fmt.Errorf("gmail batch: %w", err)}
+					results[i] = modifyResult{true, fmt.Errorf("gmail batch: %w", err), ""}
 					seen[i] = true
 				}
 			}
@@ -245,22 +256,25 @@ func (c *Client) sendBatch(ctx context.Context, calls []*modifyCall) []modifyRes
 		seen[idx] = true
 		inner, err := http.ReadResponse(bufio.NewReader(part), nil)
 		if err != nil {
-			results[idx] = modifyResult{true, fmt.Errorf("gmail batch part: %w", err)}
+			results[idx] = modifyResult{true, fmt.Errorf("gmail batch part: %w", err), ""}
 			continue
 		}
-		b, _ := io.ReadAll(io.LimitReader(inner.Body, 2048))
+		b, _ := io.ReadAll(io.LimitReader(inner.Body, 10<<20))
 		inner.Body.Close()
 		if inner.StatusCode/100 == 2 {
+			var result Thread
+			_ = json.Unmarshal(b, &result)
+			results[idx].history = result.HistoryID
 			continue
 		}
 		if inner.StatusCode == http.StatusUnauthorized {
 			c.invalidateToken(tok)
 		}
-		results[idx] = modifyResult{retryableStatus(inner.StatusCode, b), &APIError{StatusCode: inner.StatusCode, Method: "POST", Path: threadModifyPath(calls[idx].thread), Status: inner.Status, Body: string(b)}}
+		results[idx] = modifyResult{retryableStatus(inner.StatusCode, b), &APIError{StatusCode: inner.StatusCode, Method: "POST", Path: threadModifyPath(calls[idx].thread), Status: inner.Status, Body: string(b)}, ""}
 	}
 	for i := range results {
 		if !seen[i] {
-			results[i] = modifyResult{false, fmt.Errorf("gmail batch: no response for call %d", i)}
+			results[i] = modifyResult{false, fmt.Errorf("gmail batch: no response for call %d", i), ""}
 		}
 	}
 	return results

@@ -40,7 +40,7 @@ type Handler func(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, cardID uuid.
 // GmailReconnectError identifies the account whose refresh grant was revoked.
 type GmailReconnectError struct {
 	AccountID uuid.UUID
-	Address string
+	Address   string
 }
 
 func (e *GmailReconnectError) Error() string { return "Gmail access expired; reconnect the account" }
@@ -71,8 +71,12 @@ func init() {
 		if err := tx.QueryRow(ctx, `SELECT source FROM cards WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, tenant, card).Scan(&source); err != nil {
 			return fmt.Errorf("journal card not found: %w", err)
 		}
-		if source != "journal" { return fmt.Errorf("delete requires a journal card") }
-		if _, err := tx.Exec(ctx, `DELETE FROM journal_entries WHERE tenant_id=$1 AND id=$2`, tenant, card); err != nil { return err }
+		if source != "journal" {
+			return fmt.Errorf("delete requires a journal card")
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM journal_entries WHERE tenant_id=$1 AND id=$2`, tenant, card); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `DELETE FROM cards WHERE tenant_id=$1 AND id=$2`, tenant, card)
 		return err
 	})
@@ -81,8 +85,12 @@ func init() {
 			ID uuid.UUID `json:"id"`
 			reminders.CreateInput
 		}
-		if err := json.Unmarshal(args, &in); err != nil { return err }
-		if in.ID == uuid.Nil { return fmt.Errorf("reminder id required") }
+		if err := json.Unmarshal(args, &in); err != nil {
+			return err
+		}
+		if in.ID == uuid.Nil {
+			return fmt.Errorf("reminder id required")
+		}
 		return reminders.CreateInTx(ctx, func(ctx context.Context, query string, args ...any) error {
 			_, err := tx.Exec(ctx, query, args...)
 			return err
@@ -119,7 +127,15 @@ func init() {
 					return err
 				}
 			}
-			if _, err := tx.Exec(ctx, `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2`, tenant, card); err != nil {
+			query := `UPDATE cards SET state='archived' WHERE tenant_id=$1 AND id=$2`
+			if source == "mail" {
+				query = `UPDATE cards SET state='archived',gmail_pending_inbox=false,gmail_intent_history=$3::numeric WHERE tenant_id=$1 AND id=$2`
+			}
+			params := []any{tenant, card}
+			if source == "mail" {
+				params = append(params, ProviderHistory(ctx, card))
+			}
+			if _, err := tx.Exec(ctx, query, params...); err != nil {
 				return err
 			}
 			return ingest.OnDone(ctx, tx, tenant, card)
@@ -127,12 +143,13 @@ func init() {
 	}
 	Register("note", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
 		var v struct {
-			Note string `json:"note"`
+			Note        string `json:"note"`
+			BaseVersion *int64 `json:"base_version"`
 		}
 		if err := json.Unmarshal(args, &v); err != nil {
 			return err
 		}
-		return applyCardUpdate(ctx, tx, tenant, card, false, v.Note)
+		return applyNoteUpdate(ctx, tx, tenant, card, v.Note, v.BaseVersion)
 	})
 	Register("snooze", func(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, args json.RawMessage) error {
 		return bundles.Snooze(ctx, tx, tenant, card, args)
@@ -334,7 +351,7 @@ func applyCardUpdate(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, don
 	if done {
 		tag, err = tx.Exec(ctx, `UPDATE cards SET state='done' WHERE tenant_id=$1 AND id=$2`, tenant, card)
 	} else {
-		tag, err = tx.Exec(ctx, `UPDATE cards SET note=$1 WHERE tenant_id=$2 AND id=$3`, note, tenant, card)
+		return applyNoteUpdate(ctx, tx, tenant, card, note, nil)
 	}
 	if err != nil {
 		return err
@@ -343,6 +360,33 @@ func applyCardUpdate(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, don
 		return fmt.Errorf("card not found")
 	}
 	return nil
+}
+
+// A missing base from a legacy client is safe only for the first revision.
+// Stale writes are accepted as visible copies, never as a destructive overwrite.
+func applyNoteUpdate(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUID, note string, base *int64) error {
+	var revision int64
+	var current string
+	err := tx.QueryRow(ctx, `SELECT note_revision,note FROM cards WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, tenant, card).Scan(&revision, &current)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("card not found")
+	}
+	if err != nil {
+		return err
+	}
+	if current == note {
+		return nil
+	}
+	expected := int64(0)
+	if base != nil {
+		expected = *base
+	}
+	if expected != revision {
+		_, err = tx.Exec(ctx, `INSERT INTO cards(tenant_id,id,source,external_id,title,summary,note,state) VALUES($1,$2,'manual',$2::uuid::text,'Conflicting card note',$3,$3,'open')`, tenant, uuid.New(), note)
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE cards SET note=$3,note_revision=note_revision+1,note_updated_at=now(),version=version+1 WHERE tenant_id=$1 AND id=$2`, tenant, card, note)
+	return err
 }
 
 func mustUUID(value string) uuid.UUID { id, _ := uuid.Parse(value); return id }
@@ -399,7 +443,7 @@ func (a API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Provider (WAN) work runs before any transaction: an op that already has a
 	// receipt is a replay and never repeats side effects.
-	hctx := r.Context()
+	hctx := withProviderHistory(r.Context())
 	if pre, ok := lookupPreCommit(in.Type); ok {
 		read := a.reader(tenant)
 		// Keep conflicting thread mutations ordered until their DB commit.

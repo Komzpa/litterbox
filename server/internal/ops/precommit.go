@@ -258,3 +258,24 @@ func (a API) reject(w http.ResponseWriter, r *http.Request, tenant string, in re
 	w.WriteHeader(http.StatusUnprocessableEntity)
 	_ = json.NewEncoder(w).Encode(response)
 }
+
+// ProviderHistory carries the acknowledged Gmail mutation boundary through the
+// WAN phase to the local commit. The existing thread guards serialize its use.
+type providerHistoryKey struct{}
+
+func withProviderHistory(ctx context.Context) context.Context {
+	return context.WithValue(ctx, providerHistoryKey{}, &sync.Map{})
+}
+func RecordProviderHistory(ctx context.Context, card uuid.UUID, history string) {
+	if m, ok := ctx.Value(providerHistoryKey{}).(*sync.Map); ok {
+		m.Store(card, history)
+	}
+}
+func ProviderHistory(ctx context.Context, card uuid.UUID) string {
+	if m, ok := ctx.Value(providerHistoryKey{}).(*sync.Map); ok {
+		if v, ok := m.Load(card); ok && v.(string) != "" {
+			return v.(string)
+		}
+	}
+	return "0"
+}

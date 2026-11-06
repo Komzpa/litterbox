@@ -39,7 +39,7 @@ func journalMigrationDatabase(t *testing.T) *pgxpool.Pool {
 	if existing {
 		t.Fatal("throwaway cluster already has litterbox_app; refusing to alter it")
 	}
-	name := "journal_grants_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	name := "litterbox_test_journal_grants_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	if _, err := admin.Exec(ctx, `CREATE DATABASE `+name); err != nil {
 		t.Fatal(err)
 	}

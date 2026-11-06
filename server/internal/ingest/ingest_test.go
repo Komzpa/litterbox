@@ -12,10 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Komzpa/litterbox/server/internal/mailbody"
+	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 	"github.com/Komzpa/litterbox/server/internal/testdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -399,12 +402,12 @@ func TestIngestFilesAndCardBodies(t *testing.T) {
 		t.Fatalf("only the png entry should render an <img>, got %d: %q", n, html)
 	}
 
-	// Upsert without files removes the stored body.
+	// Upsert without files preserves accepted bytes.
 	if got := send(`{"external_id":"res-1","kind":"research_result","title":"Report","summary":"updated"}`); got != http.StatusNoContent {
 		t.Fatalf("files upsert: got %d, want 204", got)
 	}
-	if _, html := bodyOf("res-1"); html != "" {
-		t.Fatalf("body must be deleted by an upsert without files, got %q", html)
+	if _, retained := bodyOf("res-1"); retained != html {
+		t.Fatalf("partial upsert lost accepted files: %q", retained)
 	}
 	// And a later batch restores it.
 	if got := send(happy); got != http.StatusNoContent {
@@ -412,6 +415,50 @@ func TestIngestFilesAndCardBodies(t *testing.T) {
 	}
 	if _, html := bodyOf("res-1"); !strings.Contains(html, "name=report.pdf;base64,") {
 		t.Fatalf("re-files upsert must restore the body, got %q", html)
+	}
+
+	// Full result travels independently of the short list summary.
+	full := strings.Repeat("Detailed finding. ", 80) + "FINAL PARAGRAPH"
+	if got := send(`{"external_id":"full","kind":"agent_result","title":"Result","summary":"List preview","body":` + strconv.Quote(full) + `}`); got != 204 {
+		t.Fatalf("full result: %d", got)
+	}
+	if _, body := bodyOf("full"); !strings.Contains(body, "FINAL PARAGRAPH") {
+		t.Fatal("reader body lost result tail")
+	}
+	id, _ := bodyOf("full")
+	reader := mailbody.Handler{DB: db}
+	r := httptest.NewRequest("GET", "/v1/cards/"+id+"/body", nil)
+	r.SetPathValue("id", id)
+	r = r.WithContext(agents.WithTenant(r.Context(), tenant))
+	w := httptest.NewRecorder()
+	reader.ServeHTTP(w, r)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "FINAL PARAGRAPH") {
+		t.Fatalf("reader: %d %s", w.Code, w.Body.String())
+	}
+
+	// File updates must not replace an accepted full body with a preview.
+	fileUpdate := strings.Replace(happy, `"res-1"`, `"full"`, 1)
+	if got := send(fileUpdate); got != 204 {
+		t.Fatal(got)
+	}
+	if _, body := bodyOf("full"); !strings.Contains(body, "FINAL PARAGRAPH") || !strings.Contains(body, "base64,") {
+		t.Fatal("file update lost body or files")
+	}
+	if got := send(`{"external_id":"full","kind":"agent_result","title":"Result","files_mode":"replace","files":[]}`); got != 204 {
+		t.Fatal(got)
+	}
+	if _, body := bodyOf("full"); !strings.Contains(body, "FINAL PARAGRAPH") || strings.Contains(body, "base64,") {
+		t.Fatal("replace must replace only files")
+	}
+
+	if got := send(`{"external_id":"res-1","kind":"research_result","title":"Report","summary":"cleared","files_mode":"delete"}`); got != 204 {
+		t.Fatalf("explicit delete: %d", got)
+	}
+	if _, body := bodyOf("res-1"); strings.Contains(body, "base64,") {
+		t.Fatal("explicit delete kept attachments")
+	}
+	if got := send(happy); got != 204 {
+		t.Fatal(got)
 	}
 
 	// Reminder files use the same atomic body storage and exact byte contract.

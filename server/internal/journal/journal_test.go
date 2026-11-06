@@ -27,7 +27,7 @@ func TestMCPPostgresScopesRevocationAndTools(t *testing.T) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "012_journal.sql"} {
+	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "004_card_time_note.sql", "005_card_notify.sql", "012_journal.sql", "031_owner_revisions.sql"} {
 		b, e := os.ReadFile(filepath.Join("../../db", name))
 		if e != nil {
 			t.Fatal(e)

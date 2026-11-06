@@ -215,7 +215,7 @@ func TestJournalCreateReplayArchiveAndTenantIsolation(t *testing.T) {
 	defer db.Close()
 	for _, ddl := range []string{
 		`CREATE TABLE cards (tenant_id uuid NOT NULL, id uuid NOT NULL, account_id uuid, gmail_thread_id text, source text NOT NULL, source_kind text, source_actions jsonb, external_id text, title text NOT NULL, summary text NOT NULL, state text NOT NULL, PRIMARY KEY(tenant_id,id))`,
-		`CREATE TABLE journal_entries (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())`,
+		`CREATE TABLE journal_entries (revision bigint NOT NULL DEFAULT 0, id uuid PRIMARY KEY, tenant_id uuid NOT NULL, body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())`,
 		`CREATE TABLE ops (tenant_id uuid NOT NULL, op_id uuid NOT NULL, device_id uuid, payload_hash bytea NOT NULL, payload jsonb NOT NULL, PRIMARY KEY(tenant_id,op_id))`,
 		`CREATE TABLE source_tokens (tenant_id uuid, source text, callback_url text, revoked_at timestamptz)`,
 		`CREATE TABLE source_action_callbacks (tenant_id uuid, card_id uuid, source text, callback_url text, action jsonb)`,
@@ -286,8 +286,12 @@ func TestJournalCreateReplayArchiveAndTenantIsolation(t *testing.T) {
 		}
 	}
 	manual := uuid.New()
-	if status := post(uuid.New(), manual, "create_card", `{"title":"Keep task","kind":"manual"}`); status != 200 { t.Fatal(status) }
-	if status := post(uuid.New(), manual, "delete_journal", `{}`); status != 422 { t.Fatalf("manual delete status=%d", status) }
+	if status := post(uuid.New(), manual, "create_card", `{"title":"Keep task","kind":"manual"}`); status != 200 {
+		t.Fatal(status)
+	}
+	if status := post(uuid.New(), manual, "delete_journal", `{}`); status != 422 {
+		t.Fatalf("manual delete status=%d", status)
+	}
 }
 
 func TestStaleReorderAndSnoozeAreAcceptedAsNoOps(t *testing.T) {

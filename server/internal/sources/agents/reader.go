@@ -19,6 +19,7 @@ type Card struct {
 	ExternalID string    `json:"external_id"`
 	Title      string    `json:"title"`
 	Summary    string    `json:"summary"`
+	Body       string    `json:"body"`
 	SortAt     time.Time `json:"sort_at"`
 	State      string    `json:"state"`
 }
@@ -136,6 +137,7 @@ func readOMP(r io.Reader) (Card, bool, error) {
 	if card.ExternalID == "" || summary == "" || !ready || childSession || IsNoiseResult(summary, userPrompt) {
 		return Card{}, false, nil
 	}
+	card.Body = summary
 	summary = cleanSummary(summary)
 	if summary == "" {
 		return Card{}, false, nil
@@ -226,6 +228,7 @@ func readCodex(r io.Reader) (Card, bool, error) {
 	if card.ExternalID == "" || summary == "" || !completed || childSession || IsNoiseResult(summary, userPrompt) {
 		return Card{}, false, nil
 	}
+	card.Body = summary
 	summary = cleanSummary(summary)
 	if summary == "" {
 		return Card{}, false, nil

@@ -117,9 +117,11 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 			if err != nil {
 				return nil, err
 			}
-			if err = c.ModifyBatched(ctx, thread, adds, removes); err != nil {
+			history, err := c.modifyBatchedHistory(ctx, thread, adds, removes)
+			if err != nil {
 				return nil, err
 			}
+			ops.RecordProviderHistory(ctx, cardID, history)
 			return []uuid.UUID{cardID}, nil
 		})
 		ops.Register("gmail."+name, func(ctx context.Context, tx pgx.Tx, tenant, cardID uuid.UUID, args json.RawMessage) (err error) {
@@ -146,6 +148,13 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 					return e
 				}
 			}
+			// Provider success and the local intent commit together. Sync must
+			// observe the removal before an old INBOX snapshot can reopen it.
+			if name == "snooze" || (name == "label_remove" && label == "INBOX") {
+				if _, err = tx.Exec(ctx, `UPDATE cards SET gmail_pending_inbox=false,gmail_intent_history=$3::numeric WHERE tenant_id=$1 AND id=$2`, tenant, cardID, ops.ProviderHistory(ctx, cardID)); err != nil {
+					return err
+				}
+			}
 			if name == "mark_read" {
 				_, err = tx.Exec(ctx, `UPDATE messages SET labels=array_remove(labels,'UNREAD') WHERE tenant_id=$1 AND card_id=$2 AND 'UNREAD'=ANY(labels)`, tenant, cardID)
 				if err != nil {
@@ -157,7 +166,7 @@ func RegisterOps(clientFor func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (
 			if name == "label_add" && label == "INBOX" {
 				// Archive Undo commits the provider inverse and normal card change
 				// together; a provider failure leaves the card archived.
-				_, err = tx.Exec(ctx, `UPDATE cards SET state='open' WHERE tenant_id=$1 AND id=$2 AND source='mail'`, tenant, cardID)
+				_, err = tx.Exec(ctx, `UPDATE cards SET state='open',gmail_pending_inbox=NULL WHERE tenant_id=$1 AND id=$2 AND source='mail'`, tenant, cardID)
 				return err
 			}
 			return nil

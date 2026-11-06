@@ -201,7 +201,7 @@ func TestPostgresNotePersistence(t *testing.T) {
 		t.Fatalf("upsert lost note=%q", got)
 	}
 	t.Run("ClearedNoteDelta", func(t *testing.T) {
-		if w := request(tenant, "POST", "/v1/cards/"+id+"/note", `{"text":""}`); w.Code != 204 {
+		if w := request(tenant, "POST", "/v1/cards/"+id+"/note", `{"text":"","base_version":1}`); w.Code != 204 {
 			t.Fatalf("clear: %d", w.Code)
 		}
 		w := request(tenant, "GET", "/v1/cards/notes?since=2000-01-01T00:00:00Z", "")
@@ -212,7 +212,7 @@ func TestPostgresNotePersistence(t *testing.T) {
 			t.Fatalf("cleared note missing: %s (%v)", w.Body.String(), err)
 		}
 	})
-	if w := request(tenant, "POST", "/v1/cards/"+id+"/dismiss", `{"note":"do not repeat"}`); w.Code != 204 {
+	if w := request(tenant, "POST", "/v1/cards/"+id+"/dismiss", `{"note":"do not repeat","base_version":2}`); w.Code != 204 {
 		t.Fatalf("dismiss status=%d body=%s", w.Code, w.Body.String())
 	}
 	readEvent(response)
