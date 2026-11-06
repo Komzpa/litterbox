@@ -1,5 +1,9 @@
 # Gmail state and retained owner content — local lane
 
+Rebased integration onto main `3bd6a6b`: see [rebase.md](rebase.md) for the
+combined migration mapping, conflict decisions and fresh verification. The original
+lane results below are historical; they do not describe current production state.
+
 Worktree: `/home/kom/litterbox-releases/fix-label-state-wt`, branch
 `fix/label-state`; baseline `699f88f40ee3512e6c55c511500258111700d974`
 (v44 published). Input `dataloss-audit.md` SHA-256:
@@ -118,5 +122,5 @@ retry supplies its passing result. Logs retain both failures and retries.
 
 Not delivered: no release or deployed repair, as explicitly forbidden by this
 lane. The published v44 runtime and production schema remain untouched. The
-mail-content branch still needs integration/rebase; migration numbers must be
-checked for collisions then. Local generated logs/builds/captures are untracked.
+original pending mail-content integration and migration collision check are now
+recorded in [rebase.md](rebase.md). Local generated logs/builds/captures are untracked.

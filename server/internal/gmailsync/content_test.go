@@ -237,13 +237,16 @@ func TestContentRepairWorkerBoundedAndDoesNotStarve(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var requests atomic.Int32
+	var requests, labelChecks atomic.Int32
 	gmail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/token":
 			json.NewEncoder(w).Encode(map[string]any{"access_token": "x", "expires_in": 3600})
 		case strings.HasSuffix(r.URL.Path, "/history"):
 			json.NewEncoder(w).Encode(map[string]any{"historyId": "1", "history": []any{}})
+		case strings.Contains(r.URL.Path, "/threads/"):
+			labelChecks.Add(1)
+			json.NewEncoder(w).Encode(map[string]any{"messages": []any{map[string]any{"labelIds": []string{}}}})
 		case strings.Contains(r.URL.Path, "/messages/"):
 			requests.Add(1)
 			if strings.HasSuffix(r.URL.Path, "/11") {
@@ -270,6 +273,9 @@ func TestContentRepairWorkerBoundedAndDoesNotStarve(t *testing.T) {
 	}
 	if requests.Load() != 12 {
 		t.Fatalf("unchecked cards starved or failed immediately retried: %d", requests.Load())
+	}
+	if labelChecks.Load() != 12 {
+		t.Fatalf("label reconciliation checks=%d, want 12 exactly once alongside content repair", labelChecks.Load())
 	}
 	var repaired, changed int
 	if err := db.QueryRow(ctx, `SELECT count(*) FILTER(WHERE content_version=1) FROM messages WHERE tenant_id=$1`, tenant).Scan(&repaired); err != nil {
