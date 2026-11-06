@@ -44,7 +44,7 @@ func TestMailContentPersistenceDownloadAndRepair(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/messages/"):
 			requests.Add(1)
 			if fail {
-				http.Error(w, "gone", 404)
+				http.Error(w, "temporary refusal", 400)
 				return
 			}
 			json.NewEncoder(w).Encode(map[string]string{"raw": base64.RawURLEncoding.EncodeToString(raw)})
@@ -176,6 +176,9 @@ func TestMailContentPersistenceDownloadAndRepair(t *testing.T) {
 		t.Fatal("failed repair immediately retried")
 	}
 	fail = false
+	if _, err := db.Exec(ctx, `UPDATE messages SET content_repair_attempted_at=now()-interval '2 hours' WHERE id=$1`, message); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(ctx, `UPDATE cards SET mail_content_checked_at=now()-interval '2 hours' WHERE id=$1`, card); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +207,7 @@ func TestMailContentPersistenceDownloadAndRepair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(ctx, `UPDATE messages SET raw_mime=$1,content_version=1,decode_status='Unsupported message part (text/calendar)',html='<p>Unsupported message part (text/calendar)</p>',text='' WHERE id=$2`, calendarRaw, message); err != nil {
+	if _, err = db.Exec(ctx, `UPDATE messages SET content_repair_attempted_at=NULL,raw_mime=$1,content_version=1,decode_status='Unsupported message part (text/calendar)',html='<p>Unsupported message part (text/calendar)</p>',text='' WHERE id=$2`, calendarRaw, message); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(ctx, `UPDATE cards SET mail_content_checked_at=NULL WHERE id=$1`, card); err != nil {

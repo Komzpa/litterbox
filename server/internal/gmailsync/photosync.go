@@ -40,11 +40,14 @@ func (s *Syncer) syncSenderPhotos(ctx context.Context, a Account, c *Client) {
 		log.Printf("sender-photos: build=%s account=%s: %v", s.Build, a.ID, err)
 	}
 }
+
 // errPhotoAuthRequired marks a People 401/403: the stored grant lacks the
 // photo scopes (user denied or revoked). The account stays usable for
 // Gmail; photos stay in authorization_required until incremental consent.
 var errPhotoAuthRequired = photoAuthRequiredError{}
+
 type photoAuthRequiredError struct{}
+
 func (photoAuthRequiredError) Error() string { return "sender photos require incremental consent" }
 func isPhotoAuthError(err error) bool {
 	if err == nil {
@@ -134,7 +137,9 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 		}
 		// A failed rebuild keeps serving the last good index.
 		if built != nil {
-			index = built
+			for k, v := range built {
+				index[k] = v
+			}
 		}
 	}
 	// Workspace colleagues need directory.readonly. This pass is best-effort:
@@ -172,13 +177,6 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 	defer cancel()
 	fetched, stored, bimiStored := 0, 0, 0
 	gravatarStored, faviconStored := 0, 0
-	domainLogo := map[string]string{}
-	type faviconResult struct {
-		raw   []byte
-		ct    string
-		found bool // false = definitive negative, cached per run
-	}
-	faviconRun := map[string]faviconResult{}
 	globeFetched := false
 	var globeRef []byte
 	var samples []string
@@ -187,6 +185,11 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 		if key == "" {
 			continue
 		}
+		senderKey := photoCacheKey{accountKey{a.TenantID, a.ID}, "sender", key + "|" + granted + "|" + index[key]}
+		if _, fresh := s.photoResults.get(senderKey); fresh {
+			continue
+		}
+		transientFailure := false
 		var raw []byte
 		var contentType string
 		source := ""
@@ -195,6 +198,7 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			raw, contentType, err = people.FetchPhoto(indexCtx, httpClient, photoURL)
 			if err != nil {
 				raw = nil
+				transientFailure = true
 			} else {
 				if directoryKeys[key] {
 					source = "directory"
@@ -207,20 +211,28 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 			at := strings.LastIndexByte(key, '@')
 			if at > 0 && at < len(key)-1 {
 				dom := key[at+1:]
-				logoURL, ok := domainLogo[dom]
+				domainKey := photoCacheKey{accountKey{a.TenantID, a.ID}, "bimi", dom}
+				logo, ok := s.photoResults.get(domainKey)
 				if !ok {
-					if u, found := bimiLogoURL(indexCtx, key); found {
-						logoURL = u
-					}
-					domainLogo[dom] = logoURL
+					logo.url, _ = bimiLogoURL(indexCtx, key)
+					// DNS failure and absence share a shorter retry period.
+					s.photoResults.put(domainKey, logo, senderPhotoRetryTTL)
 				}
+				logoURL := logo.url
 				if logoURL != "" {
-					fetched++
-					raw, contentType, err = bimi.FetchLogo(indexCtx, httpClient, logoURL)
+					if len(logo.raw) > 0 {
+						raw, contentType = logo.raw, logo.ct
+						err = nil
+					} else {
+						fetched++
+						raw, contentType, err = bimi.FetchLogo(indexCtx, httpClient, logoURL)
+					}
 					if err != nil {
 						raw = nil
+						transientFailure = true
 					} else {
 						source = "bimi"
+						s.photoResults.put(domainKey, photoCacheEntry{url: logoURL, raw: raw, ct: contentType}, senderPhotoTTL)
 					}
 				}
 			}
@@ -228,12 +240,10 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 		// Gravatar + domain-icon fallback: only when People, directory
 		// and BIMI all missed. Gravatar first; its 404 falls through to
 		// the domain icon (skipped for personal-mail domains). Definitive
-		// negatives land in the process-level miss cache so the same
-		// address is not refetched on every sync; transient errors never
-		// do. Per-domain favicon outcomes are cached for this run.
+		// negatives use a six-hour sender TTL. Transient failures retry in
+		// fifteen minutes; domain results survive subsequent account polls.
 		if raw == nil {
-			missKey := people.MissKey(a.TenantID.String(), a.ID.String(), key)
-			if !people.HasMiss(missKey) {
+			if indexCtx.Err() == nil {
 				transient := false
 				fetched++
 				raw, contentType, err = people.FetchGravatar(indexCtx, httpClient, key)
@@ -246,7 +256,8 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 							dom = key[at+1:]
 						}
 						if dom != "" && !people.IsFreeMailDomain(dom) {
-							fr, ok := faviconRun[dom]
+							faviconKey := photoCacheKey{accountKey{a.TenantID, a.ID}, "favicon", dom}
+							fr, ok := s.photoResults.get(faviconKey)
 							ferr := people.ErrNoAvatar
 							if !ok {
 								if !globeFetched {
@@ -257,33 +268,41 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 								fraw, fct, ferr2 := people.FetchFavicon(indexCtx, httpClient, dom, globeRef)
 								ferr = ferr2
 								if ferr2 == nil {
-									fr = faviconResult{raw: fraw, ct: fct, found: true}
+									fr = photoCacheEntry{raw: fraw, ct: fct}
 								} else if errors.Is(ferr2, people.ErrNoAvatar) {
-									fr = faviconResult{found: false}
+									fr = photoCacheEntry{}
 								} else {
 									transient = true
 								}
-								if fr.found || errors.Is(ferr, people.ErrNoAvatar) {
-									faviconRun[dom] = fr
+								if len(fr.raw) > 0 || errors.Is(ferr, people.ErrNoAvatar) {
+									s.photoResults.put(faviconKey, fr, senderPhotoMissTTL)
 								}
 							}
-							if fr.found {
+							if len(fr.raw) > 0 {
 								raw, contentType = fr.raw, fr.ct
 								source = "favicon"
 							} else if !ok && !errors.Is(ferr, people.ErrNoAvatar) {
 								transient = true
 							}
 						}
-						if raw == nil && !transient {
-							people.AddMiss(missKey)
-						}
 					}
 				} else {
 					source = "gravatar"
 				}
+				if err != nil && !errors.Is(err, people.ErrNoAvatar) {
+					transient = true
+				}
+				transientFailure = transientFailure || transient
 			}
 		}
 		if raw == nil || source == "" {
+			ttl := senderPhotoMissTTL
+			if transientFailure {
+				ttl = senderPhotoRetryTTL
+			}
+			if indexCtx.Err() == nil {
+				s.photoResults.put(senderKey, photoCacheEntry{}, ttl)
+			}
 			continue
 		}
 		wtx, err := s.beginTenant(ctx, a.TenantID)
@@ -297,6 +316,11 @@ func (s *Syncer) trySenderPhotos(ctx context.Context, a Account, c *Client) erro
 		if err = wtx.Commit(ctx); err != nil {
 			continue
 		}
+		ttl := senderPhotoTTL
+		if transientFailure {
+			ttl = senderPhotoRetryTTL
+		}
+		s.photoResults.put(senderKey, photoCacheEntry{}, ttl)
 		stored++
 		switch source {
 		case "bimi":

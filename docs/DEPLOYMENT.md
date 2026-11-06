@@ -37,13 +37,22 @@ messages, and tenant-scoped `message_parts` with the normal application grants
 and RLS. Existing rows keep their readable bodies and revision zero.
 
 The ordinary Gmail account worker repairs messages below the current parser revision after a
-successful account poll. Each pass considers at most ten cards and twenty
-messages per card, with a sixty-second repair budget and a persisted one-hour
-retry cooldown per card. It obtains original MIME through Gmail's authenticated
+successful account poll. Apply `server/db/032_content_repair_progress.sql`
+before this worker version. Each pass considers at most ten cards, one message
+per card, with an independent three-minute deadline per message (the Gmail HTTP
+client also bounds each request to 90 seconds by default). Successful message
+commits survive interruption; the next poll continues with remaining messages.
+A persisted one-hour retry cooldown belongs to each attempted message, so a
+failed message cannot block its siblings; card timestamps order the fair queue.
+Gmail 404/410 marks `content_provider_deleted` and an explicit `decode_status`,
+retaining readable content and attachments. Only ordinary thread sync deletes
+rows missing from Gmail's complete thread; a subsequent successful sync clears
+the terminal marker. It obtains original MIME through Gmail's authenticated
 raw-message endpoint; no operator SQL backfill is needed. A successful repair
 updates bodies and metadata, advances the existing body version so devices
 refresh their SQLite copy, and preserves labels, card lifecycle, notes and pins.
-Failed repairs retain the previous content and remain eligible after cooldown.
+Failed repairs retain the previous content and remain eligible after cooldown;
+provider-deleted originals are terminal for repair.
 Parser revision 2 recognizes calendar invitations, including `.ics` attachments.
 The body API projects VEVENT metadata from retained MIME; the shared Qt reader
 shows it before the original body in the system locale/timezone. Original `.ics`
@@ -67,6 +76,14 @@ Real sender avatars need the Google Cloud project's People API enabled and the i
 The loopback-only listener is kept as the server's only bind. To reach clients on a trusted LAN (for example `192.168.100.0/24`), install `deploy/systemd/litterbox-lan-proxy.socket` and `deploy/systemd/litterbox-lan-proxy.service`: the socket listens on the host's LAN address (`192.168.100.74:8081`) and `systemd-socket-proxyd` forwards accepted connections to `127.0.0.1:8081`. Enable with `systemctl enable --now litterbox-lan-proxy.socket`. This exposes the API only on the specified LAN address; docker bridges and other interfaces stay closed. Authentication is unchanged, so every `/v1` route still requires a bearer token. Rollback with `systemctl disable --now litterbox-lan-proxy.socket litterbox-lan-proxy.service` and remove the two unit files.
 
 The socket uses `FreeBind=yes` so the LAN address may be assigned after the listener is created. Do not add `After=network-online.target` or `Wants=network-online.target` to this socket: network startup can depend on `sockets.target`, creating an ordering cycle that deletes the socket's boot start job. Existing installations can retain `/etc/systemd/system/litterbox-lan-proxy.socket.d/10-freebind.conf` with `[Socket]` and `FreeBind=yes`.
+
+Sender-photo fetch results are cached per tenant/account/sender for 24 hours;
+definitive misses for six hours, transient failures for fifteen minutes. A
+changed granted scope set or People photo URL bypasses the sender cache. Domain
+BIMI images and favicon successes/misses are reused across polls and for new
+senders on the same domain; BIMI DNS absence/errors retry after fifteen minutes.
+These bounded caches are process-local: a restart warms them again, while stored
+photos remain readable from PostgreSQL. Failed refreshes never erase stored photos.
 
 ## Unified release installation and rollback
 
@@ -275,12 +292,13 @@ Provision the VPS account with key-only auth and a forced reverse-forward policy
 
 ## Gmail label state and retained owner content
 
-Apply migrations 001..031 in lexical order, including `028_mail_content.sql`,
+Apply migrations 001..032 in lexical order, including `028_mail_content.sql`,
 `029_content_preservation.sql`, `030_gmail_label_state.sql` and
 `031_owner_revisions.sql`, before running the combined server. Migration 028 owns
 message MIME, attachments and recipients; 029 adds producer deliverable fields to
 card_bodies. Their objects do not overlap. The normal account poll retains both
 workers: label reconciliation checks at most 50 archived threads per account,
-and content repair handles at most 10 cards / 20 messages per card within 60
-seconds, with a one-hour retry cooldown. Owner note/journal revisions preserve
+and content repair handles at most ten cards / one message per card with a
+three-minute deadline per message and a one-hour per-message retry cooldown.
+Owner note/journal revisions preserve
 stale writes as visible conflicts. No manual data backfill is required.

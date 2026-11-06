@@ -21,6 +21,9 @@ import (
 )
 
 const mailContentVersion = 2
+const providerDeletedContent = "Original unavailable: provider deleted message (Gmail 404)"
+const repairMessageTimeout = 3 * time.Minute
+const repairPendingSQL = `(content_version<$3 OR html LIKE '%data-fetch-state="unavailable"%') AND NOT content_provider_deleted AND (content_repair_attempted_at IS NULL OR content_repair_attempted_at < now()-interval '1 hour')`
 
 func (s *Syncer) prepareContent(ctx context.Context, raw []byte, cached ...string) (*mailhtml.Message, error) {
 	parsed, err := mailhtml.Parse(raw)
@@ -67,7 +70,7 @@ func persistMessageContent(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUI
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE messages SET raw_mime=$1,decode_status=$2,to_recipients=$3,cc_recipients=$4,content_version=$5 WHERE tenant_id=$6 AND id=$7 AND (raw_mime,decode_status,to_recipients,cc_recipients,content_version) IS DISTINCT FROM ($1::bytea,$2::text,$3::jsonb,$4::jsonb,$5::integer)`, message.Raw, message.DecodeStatus, to, cc, mailContentVersion, tenant, id)
+	_, err = tx.Exec(ctx, `UPDATE messages SET content_provider_deleted=false,raw_mime=$1,decode_status=$2,to_recipients=$3,cc_recipients=$4,content_version=$5 WHERE tenant_id=$6 AND id=$7 AND (content_provider_deleted OR (raw_mime,decode_status,to_recipients,cc_recipients,content_version) IS DISTINCT FROM ($1::bytea,$2::text,$3::jsonb,$4::jsonb,$5::integer))`, message.Raw, message.DecodeStatus, to, cc, mailContentVersion, tenant, id)
 	if err != nil {
 		return err
 	}
@@ -114,16 +117,16 @@ func persistMessageContent(ctx context.Context, tx pgx.Tx, tenant, card uuid.UUI
 }
 
 // backfillContent repairs bounded message batches through ordinary account polls.
-// It never calls saveThread: provider labels and card lifecycle are outside this
-// repair. Claims are durable before WAN access, so errors wait an hour and cannot
-// monopolize the same poll; newer unchecked cards are considered first.
+// Each card gets one message with its own deadline. Claims are durable before
+// WAN access; a failed message waits an hour without blocking its siblings.
+// Provider labels and card lifecycle stay with ordinary thread synchronization.
 func (s *Syncer) backfillContent(ctx context.Context, a Account, c *Client) error {
 	tx, err := s.beginTenant(ctx, a.TenantID)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT c.id FROM cards c WHERE c.tenant_id=$1 AND c.account_id=$2 AND c.source='mail' AND (c.mail_content_checked_at IS NULL OR c.mail_content_checked_at < now()-interval '1 hour') AND EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND (m.content_version<$3 OR m.html LIKE '%data-fetch-state="unavailable"%')) ORDER BY c.mail_content_checked_at NULLS FIRST,c.sort_at DESC,c.id LIMIT 10`, a.TenantID, a.ID, mailContentVersion)
+	rows, err := tx.Query(ctx, `SELECT c.id FROM cards c WHERE c.tenant_id=$1 AND c.account_id=$2 AND c.source='mail' AND EXISTS(SELECT 1 FROM messages m WHERE m.tenant_id=c.tenant_id AND m.card_id=c.id AND `+repairPendingSQL+`) ORDER BY c.mail_content_checked_at NULLS FIRST,c.sort_at DESC,c.id LIMIT 10`, a.TenantID, a.ID, mailContentVersion)
 	if err != nil {
 		return err
 	}
@@ -149,13 +152,11 @@ func (s *Syncer) backfillContent(ctx context.Context, a Account, c *Client) erro
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
-	repairCtx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
 	for _, card := range cards {
-		if repairCtx.Err() != nil {
+		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err = s.repairCardContent(repairCtx, a, c, card); err != nil {
+		if err = s.repairCardContent(ctx, a, c, card); err != nil {
 			log.Printf("mail content repair: build=%s card=%s: %v", s.Build, card, err)
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -171,7 +172,7 @@ func (s *Syncer) repairCardContent(ctx context.Context, a Account, c *Client, ca
 		return err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT gmail_message_id,raw_mime,html FROM messages WHERE tenant_id=$1 AND card_id=$2 AND (content_version<$3 OR html LIKE '%data-fetch-state="unavailable"%') ORDER BY content_version,received_at,gmail_message_id LIMIT 20`, a.TenantID, card, mailContentVersion)
+	rows, err := tx.Query(ctx, `SELECT gmail_message_id,raw_mime,html FROM messages WHERE tenant_id=$1 AND card_id=$2 AND `+repairPendingSQL+` ORDER BY content_repair_attempted_at NULLS FIRST,content_version,received_at,gmail_message_id LIMIT 1`, a.TenantID, card, mailContentVersion)
 	if err != nil {
 		return err
 	}
@@ -194,14 +195,24 @@ func (s *Syncer) repairCardContent(ctx context.Context, a Account, c *Client, ca
 	if err != nil {
 		return err
 	}
+	for _, id := range ids {
+		if _, err = tx.Exec(ctx, `UPDATE messages SET content_repair_attempted_at=now() WHERE tenant_id=$1 AND card_id=$2 AND gmail_message_id=$3`, a.TenantID, card, id.id); err != nil {
+			return err
+		}
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
 	for _, id := range ids {
+		ctx, cancel := context.WithTimeout(ctx, repairMessageTimeout)
+		defer cancel()
 		raw := id.raw
 		if len(raw) == 0 {
 			raw, err = c.GetMessageRaw(ctx, id.id)
 			if err != nil {
+				if isNotFound(err) {
+					return s.markProviderDeleted(ctx, a, card, id.id)
+				}
 				return err
 			}
 		}
@@ -234,6 +245,24 @@ func (s *Syncer) repairCardContent(ctx context.Context, a Account, c *Client, ca
 		}
 	}
 	return nil
+}
+
+// Preserve readable bodies and attachments. Only normal thread sync owns
+// deletion after comparing Gmail's complete message list.
+func (s *Syncer) markProviderDeleted(ctx context.Context, a Account, card uuid.UUID, id string) error {
+	tx, err := s.beginTenant(ctx, a.TenantID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `UPDATE messages SET content_provider_deleted=true,decode_status=$4 WHERE tenant_id=$1 AND card_id=$2 AND gmail_message_id=$3`, a.TenantID, card, id, providerDeletedContent)
+	if err == nil {
+		_, err = tx.Exec(ctx, `UPDATE cards SET version=version+1 WHERE tenant_id=$1 AND id=$2`, a.TenantID, card)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // retainFetchedImages reuses already downloaded bytes when the same MIME source

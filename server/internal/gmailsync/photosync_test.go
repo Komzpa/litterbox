@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -143,7 +144,9 @@ func TestTrySenderPhotosStoresBIMIWhenPeopleMiss(t *testing.T) {
 	if _, err := db.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,'m1','{}','','','\x00',now(),'News','news@brand.example')`, tenant, uuid.New(), card); err != nil {
 		t.Fatal(err)
 	}
+	var photoRequests atomic.Int32
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		photoRequests.Add(1)
 		if strings.HasSuffix(r.URL.Path, "/logo.png") {
 			w.Header().Set("Content-Type", "image/png")
 			_, _ = w.Write(pngBytes)
@@ -168,6 +171,13 @@ func TestTrySenderPhotosStoresBIMIWhenPeopleMiss(t *testing.T) {
 	c := &Client{HTTP: srv.Client(), accessToken: "t", tokenExpiry: time.Now().Add(time.Hour)}
 	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
 		t.Fatalf("trySenderPhotos: %v", err)
+	}
+	before := photoRequests.Load()
+	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
+		t.Fatal(err)
+	}
+	if photoRequests.Load() != before {
+		t.Fatal("unchanged sender refetched People/directory/BIMI")
 	}
 	var n int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM sender_photos WHERE tenant_id=$1 AND account_id=$2 AND sender_address='news@brand.example'`, tenant, account).Scan(&n); err != nil {
@@ -201,8 +211,10 @@ func TestTrySenderPhotosStoresDirectoryPhoto(t *testing.T) {
 	if _, err := db.Exec(ctx, `INSERT INTO messages(tenant_id,id,card_id,gmail_message_id,labels,html,text,body_hash,received_at,sender_name,sender_address) VALUES($1,$2,$3,'m1','{}','','','\x00',now(),'Ann','ann@sunbim.example')`, tenant, uuid.New(), card); err != nil {
 		t.Fatal(err)
 	}
+	var photoRequests atomic.Int32
 	var srv *httptest.Server
 	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		photoRequests.Add(1)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/ann.png"):
 			w.Header().Set("Content-Type", "image/png")
@@ -227,6 +239,13 @@ func TestTrySenderPhotosStoresDirectoryPhoto(t *testing.T) {
 	c := &Client{HTTP: srv.Client(), accessToken: "t", tokenExpiry: time.Now().Add(time.Hour)}
 	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
 		t.Fatalf("trySenderPhotos: %v", err)
+	}
+	before := photoRequests.Load()
+	if err := s.trySenderPhotos(ctx, Account{TenantID: tenant, ID: account}, c); err != nil {
+		t.Fatal(err)
+	}
+	if photoRequests.Load() != before {
+		t.Fatal("unchanged sender refetched People/directory/BIMI")
 	}
 	var n int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM sender_photos WHERE tenant_id=$1 AND account_id=$2 AND sender_address='ann@sunbim.example'`, tenant, account).Scan(&n); err != nil {

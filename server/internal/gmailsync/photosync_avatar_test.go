@@ -1,13 +1,13 @@
 package gmailsync
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"image"
 	"image/color"
 	"image/png"
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,11 +163,11 @@ func TestTrySenderPhotosGravatarAndFavicon(t *testing.T) {
 		return n
 	}
 	for addr, want := range map[string]int{
-		"ghit@avatar.example": 1, // Gravatar hit
-		"bico@brandico.example": 1, // Gravatar 404 -> s2 icon
-		"donly@ddgonly.example": 1, // s2 globe -> DDG icon
-		"plain@gmail.com":       0, // free-mail: no icon
-		"gdef@globedef.example": 0, // default globe rejected
+		"ghit@avatar.example":     1, // Gravatar hit
+		"bico@brandico.example":   1, // Gravatar 404 -> s2 icon
+		"donly@ddgonly.example":   1, // s2 globe -> DDG icon
+		"plain@gmail.com":         0, // free-mail: no icon
+		"gdef@globedef.example":   0, // default globe rejected
 		"small@smallicon.example": 0, // 16px icon rejected
 	} {
 		if got := stored(addr); got != want {
@@ -192,11 +192,36 @@ func TestTrySenderPhotosGravatarAndFavicon(t *testing.T) {
 	for _, k := range missKeys {
 		before[k] = byURL[k].Load()
 	}
+	beforeAll := hits.Load()
 	run()
+	if delta := hits.Load() - beforeAll; delta != 0 {
+		t.Errorf("unchanged poll fetched %d HTTP requests, want 0", delta)
+	}
 	for _, k := range missKeys {
 		if got := byURL[k].Load(); got != before[k] {
 			t.Fatalf("miss URL refetched on second pass: %s hits %d -> %d (want no refetch)", k, before[k], got)
 		}
 	}
-	t.Logf("external fetches: %d", hits.Load())
+	t.Logf("unchanged polls: first=%d second=%d HTTP requests", beforeAll, hits.Load()-beforeAll)
+	card := uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO cards(tenant_id,id,account_id,gmail_thread_id,sender_address) VALUES($1,$2,$3,'new','new@brandico.example')`, tenant, card, account); err != nil {
+		t.Fatal(err)
+	}
+	beforeNew := hits.Load()
+	run()
+	if delta := hits.Load() - beforeNew; delta != 1 {
+		t.Fatalf("new sender should only request Gravatar, cached domain reused: %d", delta)
+	}
+	beforeNew = hits.Load()
+	run()
+	if hits.Load() != beforeNew {
+		t.Fatal("new sender refetched on next poll")
+	}
+	s.photoResults.now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	beforeExpiry := hits.Load()
+	run()
+	if hits.Load() == beforeExpiry {
+		t.Fatal("expired photos never refreshed")
+	}
+
 }
