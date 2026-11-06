@@ -1,0 +1,189 @@
+{
+  "source_sha": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+  "version_code": 43,
+  "release_cli_commit": "2ab3dd8d869a74430a8bfdf690d6033aa6c3e9ef",
+  "release_cli_sha256": "3bdce27185d9258019e41e52a9c3321c52338b3d3b5e32bc6b84f3f935203e1e",
+  "canonical_receipt": "/var/backups/litterbox/release-v43-20261106T011915Z/receipt.json",
+  "mobile": "not_requested",
+  "artifacts": {
+    "server": {
+      "path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/release-artifacts/litterbox-server_0.1-61_amd64.deb",
+      "sha256": "e289584fee07de07e9debc6fc23b4815a4af60c349c4087bce6624aa5856df96",
+      "source_sha": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+      "binary_sha256": "eed0907ea7ca6f7c5b295c2f8dd87aeae8893fb9e1ff5795a7d08856512cdd67",
+      "package": "litterbox-server",
+      "version": "0.1-61",
+      "architecture": "amd64"
+    },
+    "desktop": {
+      "path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/release-artifacts/litterbox-qt_0.1-61_amd64.deb",
+      "sha256": "aedc029d489acdba50edb90392432cc2757cdc8c50328494041491aad411a9c3",
+      "source_sha": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+      "binary_sha256": "678e7a8d92d8470e76b4e88a3f673407f328a5dfc820bb676ddf1fc74c3c3064",
+      "package": "litterbox-qt",
+      "version": "0.1-61",
+      "architecture": "amd64"
+    },
+    "android": {
+      "path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/release-artifacts/litterbox-v43.apk",
+      "sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+      "source_sha": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+      "package": "org.qtproject.example.litterbox_qt",
+      "version_code": 43,
+      "version_name": "0.1-61",
+      "signer_sha256": "a36ea8f6c4aa164adbbfb07ccbd4161ef2756b9bbdeef37123a7fe30d9e76a37"
+    }
+  },
+  "live": {
+    "checked_at": "2026-11-06T01:32:16.211880+00:00",
+    "source_sha": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+    "origins": {
+      "http://127.0.0.1:8081": {
+        "version_status": 200,
+        "version": {
+          "api": 1,
+          "min_client_api": 1,
+          "server_build": "796c6b087c0b291efbffb8faffd8b8d33ab7907a"
+        },
+        "manifest_status": 200,
+        "manifest": {
+          "version": "43",
+          "package": "org.qtproject.example.litterbox_qt",
+          "sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+          "download_path": "/v1/android/update.apk"
+        },
+        "apk_status": 200,
+        "apk_sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+        "apk_bytes": 21299520,
+        "anonymous": {
+          "/v1/android/update": 401,
+          "/v1/android/update.apk": 401,
+          "/v1/cards": 401
+        }
+      },
+      "https://komzpa.net:9443": {
+        "version_status": 200,
+        "version": {
+          "api": 1,
+          "min_client_api": 1,
+          "server_build": "796c6b087c0b291efbffb8faffd8b8d33ab7907a"
+        },
+        "manifest_status": 200,
+        "manifest": {
+          "version": "43",
+          "package": "org.qtproject.example.litterbox_qt",
+          "sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+          "download_path": "/v1/android/update.apk"
+        },
+        "apk_status": 200,
+        "apk_sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+        "apk_bytes": 21299520,
+        "anonymous": {
+          "/v1/android/update": 401,
+          "/v1/android/update.apk": 401,
+          "/v1/cards": 401
+        }
+      }
+    },
+    "thread": {
+      "status": 200,
+      "messages": 8,
+      "dates_ordered": true,
+      "shape_version": 2,
+      "body_version": "39e3607ab15867169690241c156177c5"
+    }
+  },
+  "updater": {
+    "checked_at": "2026-11-06T01:33:33.053290+00:00",
+    "artifact_source": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+    "apk_sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+    "older": {
+      "emulator": "5682",
+      "installed_version": 42,
+      "normal_ui_enrollment": true,
+      "command": "Check for app updates",
+      "banner": "Update ready",
+      "downloaded_version": 43,
+      "downloaded_sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+      "installer_approved": false
+    },
+    "same_version": {
+      "emulator": "5680",
+      "installed_version": 43,
+      "command": "Check for app updates",
+      "banner": "No update available",
+      "downloaded_update_apks": []
+    },
+    "banner_evidence": "screenshots opened and visually reviewed; transient same-version line expired before UI XML dump",
+    "screenshots": {
+      "older": {
+        "path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/receipts/older-v42/update-ready.png",
+        "sha256": "30e2879ce78f452a02d0257fee1dce0311fc73d86828e43a633b9a4d728d8212"
+      },
+      "same_version": {
+        "path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/receipts/native-v43/negative-final.png",
+        "sha256": "a86f35ad3692f90bfca8a3b0d33f3bfe163e3ac4ec783db5bc89111df6921996"
+      }
+    }
+  },
+  "journal": {
+    "checked_at": "2026-11-06T01:33:33.065014+00:00",
+    "since": "2026-11-06T01:19:50Z",
+    "duration_seconds": 823,
+    "pid": 2089745,
+    "lines": 46,
+    "sender_photo_successes": 45,
+    "error_lines": 0,
+    "worker_start_log_lines": "not emitted by this source; goroutines started in main; no worker error lines",
+    "private_log": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/publish/journal-new-process-private.txt",
+    "private_log_sha256": "b34bd20535d42283e1d0c3d023df148ffad62e3507158e3a57fbd04e4638395f"
+  },
+  "migration_027": {
+    "function": "public.litterbox_worker_tenants()",
+    "owner": "postgres",
+    "security_definer": true,
+    "execute_roles": [
+      "postgres",
+      "litterbox_app"
+    ],
+    "public_execute": false,
+    "search_path": "pg_catalog, public",
+    "readback": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/publish/migration-027.txt"
+  },
+  "embeddings": {
+    "configuration_applied": true,
+    "probe_dimensions": 384,
+    "effective_url": "http://172.17.0.1:11450/v1",
+    "cache_model_unchanged": "all-minilm:latest",
+    "pre_edit_backup": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/root-private/ollama-embeddings.conf",
+    "production_cache_miss_traffic": "PENDING: no new mail after cutover; no server-origin embedding request observed",
+    "release_rollback_snapshots_post_edit_configuration": true,
+    "pre_edit_configuration_restore_requires_private_backup": true
+  },
+  "tests": {
+    "frozen_qt": "32 passed, known scrollresilience failure; restart_service_survival skipped while owner client runs",
+    "r36_full_unfiltered": "61 passed under documented desktop style",
+    "native_acceptance_attempts": 2
+  },
+  "remaining": [
+    "Observe a production server embedding cache miss through llama-swap after Gmail sync; no owner content/cache changed to manufacture it.",
+    "Worker start lines are not emitted by this source; no worker errors observed."
+  ],
+  "proof_cleanup": {
+    "checked_at": "2026-11-06T01:34:41.164735+00:00",
+    "devices": [
+      {
+        "proof": "native-v43",
+        "revoke_status": 204,
+        "token_after_revocation": 401
+      },
+      {
+        "proof": "older-v42",
+        "revoke_status": 204,
+        "token_after_revocation": 401
+      }
+    ]
+  },
+  "release_status_output": "ok   served APK 43 sha256 matches ledger\nrelease status: published 43 (0.1-61) is served\n",
+  "release_status_exit": 0
+}

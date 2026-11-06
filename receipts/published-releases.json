@@ -103,6 +103,39 @@
           "receipt": "/var/backups/litterbox/release-v42-20261105T201520Z/receipt.json"
         }
       }
+    },
+    {
+      "versionCode": 43,
+      "versionName": "0.1-61",
+      "package": "org.qtproject.example.litterbox_qt",
+      "sha256": "94db33287452e57658dfff0f305f0f42d890703051961c06ea18a0c593c15306",
+      "bytes": 21299520,
+      "servedPath": "/opt/litterbox/server/litterbox-qt-v43-94db3328.apk",
+      "source": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+      "publishedAt": "2026-11-06T01:19:50Z",
+      "receipt": "/var/backups/litterbox/release-v43-20261106T011915Z/receipt.json",
+      "artifacts": {
+        "server": {
+          "versionName": "0.1-61",
+          "source": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+          "sha256": "e289584fee07de07e9debc6fc23b4815a4af60c349c4087bce6624aa5856df96",
+          "binary_sha256": "eed0907ea7ca6f7c5b295c2f8dd87aeae8893fb9e1ff5795a7d08856512cdd67",
+          "bytes": 8716836,
+          "deb": "litterbox-server",
+          "deb_path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/release-artifacts/litterbox-server_0.1-61_amd64.deb",
+          "receipt": "/var/backups/litterbox/release-v43-20261106T011915Z/receipt.json"
+        },
+        "desktop": {
+          "versionName": "0.1-61",
+          "source": "796c6b087c0b291efbffb8faffd8b8d33ab7907a",
+          "sha256": "aedc029d489acdba50edb90392432cc2757cdc8c50328494041491aad411a9c3",
+          "binary_sha256": "678e7a8d92d8470e76b4e88a3f673407f328a5dfc820bb676ddf1fc74c3c3064",
+          "bytes": 660852,
+          "deb": "litterbox-qt",
+          "deb_path": "/home/kom/proj/ai_pr/litterbox-release-v43-20261106/release-artifacts/litterbox-qt_0.1-61_amd64.deb",
+          "receipt": "/var/backups/litterbox/release-v43-20261106T011915Z/receipt.json"
+        }
+      }
     }
   ]
 }
