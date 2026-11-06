@@ -663,6 +663,7 @@ TestCase {
         populate(cards)
         const inbox = createTemporaryObject(inboxComponent, this, {
             store: store, api: api, updater: updater, timeRules: timeRules,
+            gmailAccounts: [{address: "reader@example.test"}],
             width: data.viewWidth, height: data.viewHeight
         })
         verify(inbox)
@@ -676,6 +677,11 @@ TestCase {
             if (typeof mailFixtures !== "undefined")
                 grabImage(inbox.contentItem.parent).save(mailFixtures.screenshotPath(name + "-" + data.viewWidth + ".png"))
         }
+        const sender = findChild(list.itemAtIndex(0), "bundleAccountLabel-" + cards[0].id)
+        const account = findChild(list.itemAtIndex(0), "bundleAccountIndicator-" + cards[0].id)
+        verify(!sender.truncated, "bundle sender is fully visible")
+        compare(account.text, "example.test")
+        verify(!account.truncated && account.contentHeight <= account.height + 1, "bundle account is fully visible")
         capture("collapsed")
         mouseClick(findChild(list.itemAtIndex(0), "bundleToggle-" + cards[0].id))
         tryVerify(function() { list.forceLayout(); return list.itemAtIndex(1).visible })
@@ -688,7 +694,7 @@ TestCase {
         })
         const header = findChild(list.itemAtIndex(0), "bundleAccountLabel-" + cards[0].id)
         const accountIndicator = findChild(list.itemAtIndex(0), "bundleAccountIndicator-" + cards[0].id)
-        const headerHasAccount = accountIndicator.visible && accountIndicator.width >= 40 && accountIndicator.text === cards[0].account_name
+        const headerHasAccount = accountIndicator.visible && accountIndicator.width >= 40 && accountIndicator.text === "example.test"
         compare(header.text.split(cards[0].sender_name).length - 1, 1, "Shared sender appears once on summary")
         verify(headerHasAccount, "Shared account appears on summary")
         for (let i = 0; i < cards.length; ++i) {

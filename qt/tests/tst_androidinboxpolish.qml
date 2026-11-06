@@ -60,7 +60,7 @@ TestCase {
         for (let i = store.count - 1; i >= 0; --i)
             if (store.get(i).cardId !== "today-single" && store.get(i).cardId !== "yesterday-head") store.remove(i)
         const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
-            timeRules: timeRules, width: 412, height: 915})
+            timeRules: timeRules, gmailAccounts: [{address: "owner@example.test"}], width: 412, height: 915})
         verify(inbox)
         const baseSize = inbox.themeFont.pointSize
         inbox.systemFontScale = data.scale
@@ -109,7 +109,24 @@ TestCase {
     }
     function test_capture_data() {
         return [{tag: "phone", w: 549, h: 1280}, {tag: "neighbor", w: 480, h: 1280},
-            {tag: "narrow", w: 412, h: 915}, {tag: "desktop", w: 1440, h: 900}]
+            {tag: "narrow", w: 412, h: 915}, {tag: "neighbor915", w: 480, h: 915}, {tag: "desktop", w: 1440, h: 900}]
+    }
+    function test_accountLabels() {
+        const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater, timeRules: timeRules})
+        inbox.gmailAccounts = [{address: "a@one.test"}, {address: "b@two.test"}]
+        compare(inbox.accountLabel("a@one.test"), "one.test")
+        inbox.gmailAccounts = [{address: "a@one.test"}, {address: "b@one.test"}, {address: "a@two.test"}]
+        compare(inbox.accountLabel("b@one.test"), "b")
+        compare(inbox.accountLabel("a@one.test"), "a")
+        inbox.gmailAccounts = [{address: "a@one.test"}, {address: "b@one.test"},
+                               {address: "a@two.test"}, {address: "c@two.test"}]
+        compare(inbox.accountLabel("a@one.test"), "a@one.test")
+        compare(inbox.accountLabel("a@two.test"), "a@two.test")
+        inbox.gmailAccounts = [{address: "x@one.test"}, {address: "y@one.test"}, {address: "a@x"}]
+        compare(inbox.accountLabel("x@one.test"), "x@one.test")
+        compare(inbox.accountLabel("a@x"), "x")
+        inbox.gmailAccounts = [{address: "a@one.test"}]
+        compare(inbox.accountLabel("a@one.test"), "one.test")
     }
     function test_headerOrder() {
         fixture()
@@ -131,7 +148,7 @@ TestCase {
     function test_capture(data) {
         fixture()
         const inbox = createTemporaryObject(inboxComponent, this, {store: store, api: api, updater: updater,
-            timeRules: timeRules, width: data.w, height: data.h})
+            timeRules: timeRules, gmailAccounts: [{address: "owner@example.test"}], width: data.w, height: data.h})
         verify(inbox)
         inbox.show()
         inbox.expandedBundles = {yesterday: true}
@@ -154,9 +171,10 @@ TestCase {
         const singleArchive = findChild(single, "doneButton-today-single")
         const singleDate = findChild(single, "mailDate-today-single")
         const singleAccount = findChild(single, "mailAccount-today-single")
-        verify(singleAccount.visible && singleAccount.text === "owner@example.test")
+        verify(singleAccount.visible && singleAccount.text === "example.test")
         verify(!singleAccount.truncated && singleAccount.contentHeight <= singleAccount.height + 1,
                "standalone account remains fully readable")
+        verify(!findChild(single, "mailSender-today-single").truncated, "sender remains readable")
         for (const id of ["today-head", "yesterday-head", "yesterday-child", "yesterday", "older", "older-head"]) {
             const row = rowFor(id)
             const frame = findChild(row, "inboxCard")
@@ -170,6 +188,10 @@ TestCase {
             compare(archive.mapToItem(frame, 0, 0).x, singleArchive.mapToItem(singleFrame, 0, 0).x)
             compare(archive.icon.width, singleArchive.icon.width, "bundle and single archive icons have equal width")
             compare(archive.icon.height, singleArchive.icon.height, "bundle and single archive icons have equal height")
+            if (bundle) {
+                verify(!findChild(row, "bundleAccountLabel-" + id).truncated, "bundle sender remains readable")
+                verify(!findChild(row, "bundleAccountIndicator-" + id).truncated, "bundle account remains readable")
+            }
             if (bundle && id !== "yesterday-head") {
                 const bundleAvatar = findChild(row, "senderAvatar")
                 const singleAvatar = findChild(single, "senderAvatar")
@@ -182,10 +204,14 @@ TestCase {
                 verify(p.x >= 0 && p.y >= 0 && p.x + item.width <= frame.width + 1 && p.y + item.height <= frame.height + 1, item.objectName + " stays inside card")
             }
             verify(archive.width >= 48 && archive.height >= 48 && more.width >= 48 && more.height >= 48)
+            if (bundle) {
+                verify(!findChild(row, "bundleAccountLabel-" + id).truncated, "bundle sender remains readable")
+                verify(!findChild(row, "bundleAccountIndicator-" + id).truncated, "bundle account remains readable")
+            }
             if (bundle && id !== "yesterday-head") {
                 const chip = findChild(row, "bundleMemberCount-" + id)
                 const account = findChild(row, "bundleAccountIndicator-" + id)
-                verify(account.visible && account.text === "owner@example.test")
+                verify(account.visible && account.text === "example.test")
                 verify(!account.truncated && account.contentHeight <= account.height + 1,
                        "bundle account remains fully readable")
                 compare(chip.visible, id !== "today-head", "count chip appears only for two or more messages")

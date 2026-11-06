@@ -352,6 +352,23 @@ ApplicationWindow {
     required property var timeRules
     property var cardStore: store
     property var gmailAccounts: []
+    // Recomputed only when the connected-account list changes, not per row.
+    readonly property var accountLabels: {
+        const addresses = gmailAccounts.map(a => String(a.address || "").trim()).filter(a => a.length)
+        const parts = addresses.map(a => { const i = a.lastIndexOf("@"); return i > 0 ? [a.slice(0, i), a.slice(i + 1)] : [a, ""] })
+        const domainUnique = parts.map(p => p[1] && parts.filter(q => q[1].toLowerCase() === p[1].toLowerCase()).length === 1)
+        const labels = parts.map((p, i) => domainUnique[i] ? p[1] : p[0])
+        // Prefer a unique domain over another account's identical local part.
+        return addresses.reduce((result, address, i) => {
+            const collision = !domainUnique[i] && labels.some((label, j) => j !== i && label.toLowerCase() === labels[i].toLowerCase())
+            result[address.toLowerCase()] = collision ? address : labels[i]
+            return result
+        }, {})
+    }
+    function accountLabel(address) {
+        const full = String(address || "").trim()
+        return accountLabels[full.toLowerCase()] || full
+    }
     readonly property string reconnectAddress: gmailAccounts.filter(account => account.status === "reauth_required").map(account => account.address).join(", ")
     readonly property string reconnectStatus: reconnectAddress ? qsTr("Gmail access for %1 expired. Reconnect it in Accounts → Connect account…").arg(reconnectAddress) : ""
     function reloadGmailAccounts() {
@@ -1848,20 +1865,23 @@ ApplicationWindow {
                                                 font.pointSize: window.metaPointSize
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
-                                                wrapMode: cardRow.bundleSummary.hasDuplicateNames ? Text.WrapAnywhere : window.compactInbox ? Text.NoWrap : Text.Wrap
-                                                elide: cardRow.bundleSummary.hasDuplicateNames ? Text.ElideNone : Text.ElideRight
+                                                wrapMode: Text.WrapAnywhere
+                                                elide: Text.ElideNone
                                             }
                                             Label {
                                                 objectName: "bundleAccountIndicator-" + cardId
-                                                text: cardRow.bundleSummary.accounts.length > 1 ? qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : (cardRow.bundleSummary.accounts[0] || "")
+                                                text: cardRow.bundleSummary.accounts.length > 1 ? qsTr("%n account", "", cardRow.bundleSummary.accounts.length) : window.accountLabel(cardRow.bundleSummary.accounts[0] || "")
                                                 visible: text.length > 0
                                                 color: window.mutedInk
                                                 font.family: window.themeFont.family
                                                 font.pointSize: window.metaPointSize
+                                                Accessible.name: cardRow.bundleSummary.accounts.join(", ")
+                                                ToolTip.text: Accessible.name
+                                                ToolTip.visible: accountHover.hovered
+                                                HoverHandler { id: accountHover }
                                                 wrapMode: Text.WrapAnywhere
-                                                Layout.minimumWidth: window.compactInbox ? Math.min(48, bundleToggle.width / 3) : 0
-                                                Layout.preferredWidth: window.compactInbox ? Math.min(implicitWidth, (bundleToggle.width - cardRow.bundleTextInset) * 0.7) : implicitWidth
-                                                Layout.maximumWidth: window.compactInbox ? (bundleToggle.width - cardRow.bundleTextInset) * 0.7 : 180
+                                                Layout.maximumWidth: Math.max(1, (bundleToggle.width - cardRow.bundleTextInset) / 2)
+                                                Layout.preferredWidth: Math.min(implicitWidth, Layout.maximumWidth)
                                             }
                                         }
                                         Label {
@@ -2164,8 +2184,8 @@ ApplicationWindow {
                                             font.family: window.themeFont.family
                                             font.weight: card.unread ? Font.Bold : Font.Normal
                                             font.pointSize: window.metaPointSize
-                                            wrapMode: sharedName ? Text.WrapAnywhere : Text.NoWrap
-                                            elide: sharedName ? Text.ElideNone : Text.ElideRight
+                                            wrapMode: Text.WrapAnywhere
+                                            elide: Text.ElideNone
                                             Layout.minimumWidth: 0
                                             Layout.fillWidth: window.compactInbox
                                             // R67: every displayed sender identity line carries its avatar.
@@ -2193,15 +2213,18 @@ ApplicationWindow {
                                         Label {
                                             id: mailAccountLabel
                                             objectName: "mailAccount-" + cardId
-                                            text: card.account_name || ""
+                                            text: window.accountLabel(card.account_name || "")
+                                            Accessible.name: card.account_name || ""
+                                            ToolTip.text: Accessible.name
+                                            ToolTip.visible: mailAccountHover.hovered
+                                            HoverHandler { id: mailAccountHover }
                                             visible: text.length > 0 && cardRow.showMemberAccount
                                             color: window.mutedInk
                                             font.family: window.themeFont.family
                                             font.pointSize: window.metaPointSize
                                             wrapMode: Text.WrapAnywhere
-                                            Layout.minimumWidth: window.compactInbox ? Math.min(48, cardText.width / 3) : 0
-                                            Layout.preferredWidth: window.compactInbox ? Math.min(implicitWidth, cardText.width * 0.7) : implicitWidth
-                                            Layout.maximumWidth: window.compactInbox ? cardText.width * 0.7 : 180
+                                            Layout.maximumWidth: Math.max(1, cardText.width / 2)
+                                            Layout.preferredWidth: Math.min(implicitWidth, Layout.maximumWidth)
                                         }
                                     }
                                     Label {
