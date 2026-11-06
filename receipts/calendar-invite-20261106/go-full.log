@@ -1,0 +1,28 @@
+Creating new PostgreSQL cluster 18/regress ...
+ok  	github.com/Komzpa/litterbox/server/cmd/litterbox	0.009s
+ok  	github.com/Komzpa/litterbox/server/internal/a2a	2.246s
+ok  	github.com/Komzpa/litterbox/server/internal/auth	0.039s
+ok  	github.com/Komzpa/litterbox/server/internal/bimi	0.016s
+?   	github.com/Komzpa/litterbox/server/internal/bodyversion	[no test files]
+ok  	github.com/Komzpa/litterbox/server/internal/bundles	15.555s
+ok  	github.com/Komzpa/litterbox/server/internal/cards	1.644s
+ok  	github.com/Komzpa/litterbox/server/internal/diagnostics	0.114s
+ok  	github.com/Komzpa/litterbox/server/internal/gmail	0.595s
+ok  	github.com/Komzpa/litterbox/server/internal/gmailsync	22.057s
+ok  	github.com/Komzpa/litterbox/server/internal/httpapi	0.464s
+ok  	github.com/Komzpa/litterbox/server/internal/ingest	0.846s
+ok  	github.com/Komzpa/litterbox/server/internal/journal	0.106s
+ok  	github.com/Komzpa/litterbox/server/internal/mailbody	0.303s
+ok  	github.com/Komzpa/litterbox/server/internal/mailhtml	0.239s
+ok  	github.com/Komzpa/litterbox/server/internal/mailhtml/trackers	0.027s
+?   	github.com/Komzpa/litterbox/server/internal/mailvisibility	[no test files]
+?   	github.com/Komzpa/litterbox/server/internal/offline	[no test files]
+ok  	github.com/Komzpa/litterbox/server/internal/ops	0.329s
+ok  	github.com/Komzpa/litterbox/server/internal/people	0.053s
+ok  	github.com/Komzpa/litterbox/server/internal/reminders	0.394s
+ok  	github.com/Komzpa/litterbox/server/internal/senderphoto	0.303s
+?   	github.com/Komzpa/litterbox/server/internal/sourceactions	[no test files]
+ok  	github.com/Komzpa/litterbox/server/internal/sources/agentoracle	0.030s
+ok  	github.com/Komzpa/litterbox/server/internal/sources/agents	0.095s
+ok  	github.com/Komzpa/litterbox/server/internal/sources/todos	0.033s
+?   	github.com/Komzpa/litterbox/server/internal/testdb	[no test files]

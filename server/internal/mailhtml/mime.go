@@ -30,6 +30,7 @@ type Part struct {
 
 // Message is the parsed content of one RFC 822 message.
 type Message struct {
+	Invitations  []Invitation
 	Raw          []byte          // exact RFC 822 source, including every MIME leaf
 	DecodeStatus string          // visible explanation when decoding or rendering is incomplete
 	HTML         string          // text/html body decoded to UTF-8, empty when absent
@@ -51,7 +52,7 @@ func Parse(raw []byte) (*Message, error) {
 	if err := m.walk(textproto.MIMEHeader(msg.Header), msg.Body, false); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(m.HTML) == "" && strings.TrimSpace(m.Text) == "" {
+	if strings.TrimSpace(m.HTML) == "" && strings.TrimSpace(m.Text) == "" && len(m.Invitations) == 0 {
 		m.note("No readable message body. Open in Gmail to view the original.")
 	}
 	if m.DecodeStatus != "" {
@@ -108,6 +109,7 @@ func (m *Message) walk(h textproto.MIMEHeader, body io.Reader, multipartPart boo
 			return err
 		}
 		m.Attachments = append(m.Attachments, child.Attachments...)
+		m.Invitations = append(m.Invitations, child.Invitations...)
 		m.note(child.DecodeStatus)
 		if mediaType == "multipart/alternative" {
 			if strings.TrimSpace(child.HTML) != "" {
@@ -176,6 +178,21 @@ func (m *Message) leaf(mediaType string, params map[string]string, h textproto.M
 		if _, exists := m.Inline[cid]; !exists {
 			m.Inline[cid] = part
 		}
+	}
+	if mediaType == "text/calendar" || strings.HasSuffix(strings.ToLower(filename), ".ics") {
+		if part.Filename == "" {
+			part.Filename = "invitation.ics"
+		}
+		m.Attachments = append(m.Attachments, part)
+		decoded, status := decodeText(raw, params["charset"])
+		m.note(status)
+		events, err := parseCalendar(decoded, params["method"])
+		if err != nil {
+			m.note("Calendar invitation could not be decoded. Download the original .ics.")
+		} else {
+			m.Invitations = append(m.Invitations, events...)
+		}
+		return nil
 	}
 	if disposition == "attachment" || filename != "" && cid == "" {
 		m.Attachments = append(m.Attachments, part)

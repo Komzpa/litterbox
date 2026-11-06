@@ -1,0 +1,15 @@
+********* Start testing of maildetail *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.0), debian unknown
+PASS   : maildetail::MailDetailPage::initTestCase()
+QWARN  : maildetail::MailDetailPage::test_calendarInvitation(desktop) QRhiGles2: Failed to create temporary context
+QWARN  : maildetail::MailDetailPage::test_calendarInvitation(desktop) QRhiGles2: Failed to create context
+QWARN  : maildetail::MailDetailPage::test_calendarInvitation(desktop) Failed to create RHI for backend: OpenGL
+QWARN  : maildetail::MailDetailPage::test_calendarInvitation(desktop) <Unknown File>: QML WebEngineProfile: Please use WebEngineProfilePrototype for profile creation from 6.9, as this function will be deprecated in the future releases
+PASS   : maildetail::MailDetailPage::test_calendarInvitation(desktop)
+QWARN  : maildetail::MailDetailPage::test_calendarInvitation(phone) <Unknown File>: QML WebEngineProfile: Please use WebEngineProfilePrototype for profile creation from 6.9, as this function will be deprecated in the future releases
+PASS   : maildetail::MailDetailPage::test_calendarInvitation(phone)
+QWARN  : maildetail::MailDetailPage::test_calendarInvitation(phone-neighbor) <Unknown File>: QML WebEngineProfile: Please use WebEngineProfilePrototype for profile creation from 6.9, as this function will be deprecated in the future releases
+PASS   : maildetail::MailDetailPage::test_calendarInvitation(phone-neighbor)
+PASS   : maildetail::MailDetailPage::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 960ms
+********* Finished testing of maildetail *********

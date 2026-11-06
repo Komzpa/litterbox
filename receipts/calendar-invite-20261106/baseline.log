@@ -1,0 +1,11 @@
+Base 8b8a70e, TestCalendarMIMEFixtures using the versioned synthetic fixtures.
+--- FAIL: TestCalendarMIMEFixtures (0.01s)
+    --- FAIL: TestCalendarMIMEFixtures/google (0.00s)
+    --- FAIL: TestCalendarMIMEFixtures/outlook (0.00s)
+    --- FAIL: TestCalendarMIMEFixtures/all-day (0.00s)
+    --- FAIL: TestCalendarMIMEFixtures/cancel (0.00s)
+    --- FAIL: TestCalendarMIMEFixtures/attachment (0.00s)
+    --- FAIL: TestCalendarMIMEFixtures/alternative (0.00s)
+FAIL
+FAIL	github.com/Komzpa/litterbox/server/internal/mailhtml	0.030s
+FAIL

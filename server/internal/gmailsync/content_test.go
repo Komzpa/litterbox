@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -197,6 +198,43 @@ func TestMailContentPersistenceDownloadAndRepair(t *testing.T) {
 	if requests.Load() != 0 {
 		t.Fatal("complete message was refetched")
 	}
+
+	// v1 retained MIME must be reprocessed locally by the ordinary repair worker.
+	calendarRaw, err := os.ReadFile("../mailhtml/testdata/calendar/google.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(ctx, `UPDATE messages SET raw_mime=$1,content_version=1,decode_status='Unsupported message part (text/calendar)',html='<p>Unsupported message part (text/calendar)</p>',text='' WHERE id=$2`, calendarRaw, message); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(ctx, `UPDATE cards SET mail_content_checked_at=NULL WHERE id=$1`, card); err != nil {
+		t.Fatal(err)
+	}
+	oldVersion := bodyVersion()
+	if err = s.backfillContent(ctx, a, c); err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 0 || bodyVersion() == oldVersion {
+		t.Fatal("repair must use retained MIME and advance body revision")
+	}
+	meta = metadata()
+	if meta.DecodeStatus != "" || len(meta.Invitations) != 1 || meta.Invitations[0].Summary != "Meet with Example" || len(meta.Attachments) != 2 {
+		t.Fatalf("calendar metadata=%+v", meta)
+	}
+	if got := download(tenant.String(), meta.Attachments[0].ID); got.Code != 200 || !bytes.Contains(got.Body.Bytes(), []byte("BEGIN:VCALENDAR")) {
+		t.Fatal("ICS download lost")
+	}
+	bodyResponse = httptest.NewRecorder()
+	h.ServeHTTP(bodyResponse, bodyRequest)
+	if bodyResponse.Code != 200 || strings.Contains(bodyResponse.Body.String(), "Unsupported") || !strings.Contains(bodyResponse.Body.String(), `"invitations":[{`) {
+		t.Fatal(bodyResponse.Body.String())
+	}
+	if err = db.QueryRow(ctx, `SELECT c.state,c.note,c.pinned_rank,m.labels,m.raw_mime,m.content_version FROM cards c JOIN messages m ON m.card_id=c.id WHERE c.id=$1`, card).Scan(&state, &note, &pinned, &labels, &stored, &version); err != nil {
+		t.Fatal(err)
+	}
+	if state != "snoozed" || note != "owner note" || pinned != 7 || fmt.Sprint(labels) != "[INBOX]" || !bytes.Equal(stored, calendarRaw) || version != 2 {
+		t.Fatal("calendar repair changed owner state or failed revision")
+	}
 }
 
 func TestReprocessingPreservesFetchedImages(t *testing.T) {
@@ -278,7 +316,7 @@ func TestContentRepairWorkerBoundedAndDoesNotStarve(t *testing.T) {
 		t.Fatalf("label reconciliation checks=%d, want 12 exactly once alongside content repair", labelChecks.Load())
 	}
 	var repaired, changed int
-	if err := db.QueryRow(ctx, `SELECT count(*) FILTER(WHERE content_version=1) FROM messages WHERE tenant_id=$1`, tenant).Scan(&repaired); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FILTER(WHERE content_version=$2) FROM messages WHERE tenant_id=$1`, tenant, mailContentVersion).Scan(&repaired); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM cards WHERE tenant_id=$1 AND state<>'archived'`, tenant).Scan(&changed); err != nil {

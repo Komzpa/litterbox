@@ -1,0 +1,19 @@
+Creating new PostgreSQL cluster 18/regress ...
+=== RUN   TestAllPublicTablesGrantAppInsert
+    journal_grants_test.go:111: checked INSERT privilege on all 26 public tables
+--- PASS: TestAllPublicTablesGrantAppInsert (0.08s)
+=== RUN   TestJournalCreateAsAppRole
+2026/11/06 15:06:29 operation rejected: type=create_card card_id=479b6d22-0e3c-45a6-8ced-c9ba919b655f error=journal body required
+    journal_grants_test.go:163: POST /v1/ops as non-owner litterbox_app: 200; card and journal body persisted; blank-body negative control: 422
+--- PASS: TestJournalCreateAsAppRole (0.18s)
+=== RUN   TestCreateReminderAsAppRole
+2026/11/06 15:06:29 operation rejected: type=create_reminder card_id=6c17c276-5ec9-4408-891c-13fd26163513 error=reminder id required
+2026/11/06 15:06:29 operation rejected: type=create_reminder card_id=6c17c276-5ec9-4408-891c-13fd26163513 error=invalid UUID length: 10
+2026/11/06 15:06:29 operation rejected: type=create_reminder card_id=6c17c276-5ec9-4408-891c-13fd26163513 error=title, due_at and optional daily/weekly recurrence required
+2026/11/06 15:06:29 operation rejected: type=create_reminder card_id=6c17c276-5ec9-4408-891c-13fd26163513 error=title, due_at and optional daily/weekly recurrence required
+2026/11/06 15:06:29 operation rejected: type=create_reminder card_id=6c17c276-5ec9-4408-891c-13fd26163513 error=title, due_at and optional daily/weekly recurrence required
+    reminder_grants_test.go:101: create_reminder as litterbox_app: creates one normalized reminder; identical op replay returns original response; second op preserves reminder; other tenant sees zero; invalid args roll back; legacy POST persists server-generated ID
+--- PASS: TestCreateReminderAsAppRole (0.07s)
+PASS
+ok  	github.com/Komzpa/litterbox/server/internal/ops	0.335s
+Dropping cluster 18/regress ...

@@ -1,0 +1,26 @@
+MIME-Version: 1.0
+From: Host <host@example.test>
+To: owner@example.test
+Content-Type: text/calendar
+
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+METHOD:CANCEL
+BEGIN:VEVENT
+UID:synthetic-invite@example.test
+DTSTAMP:20261101T120000Z
+SUMMARY:Meet with Example
+DTSTART:20261106T100000Z
+DTEND:20261106T110000Z
+RRULE:FREQ=WEEKLY;BYDAY=FR
+LOCATION:Room 2\, upstairs
+ORGANIZER;CN=Host:mailto:host@example.test
+ATTENDEE;CN=Guest;PARTSTAT=ACCEPTED:mailto:guest@example.test
+ATTENDEE;CN=Other;PARTSTAT=NEEDS-ACTION:mailto:other@example.test
+DESCRIPTION:First line\nJoin https://meet.example.test/abc\nFolded long
+  description with escaped \; punctuation.
+URL:https://calendar.example.test/event
+CONFERENCE;VALUE=URI:https://meet.example.test/abc
+END:VEVENT
+END:VCALENDAR

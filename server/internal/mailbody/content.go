@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/Komzpa/litterbox/server/internal/sources/agents"
 )
 
@@ -24,18 +25,22 @@ type Attachment struct {
 	DownloadURL string `json:"download_url"`
 }
 type ContentMetadata struct {
-	To           []Recipient  `json:"to"`
-	Cc           []Recipient  `json:"cc"`
-	Attachments  []Attachment `json:"attachments"`
-	DecodeStatus string       `json:"decode_status"`
+	Invitations  []mailhtml.Invitation `json:"invitations"`
+	To           []Recipient           `json:"to"`
+	Cc           []Recipient           `json:"cc"`
+	Attachments  []Attachment          `json:"attachments"`
+	DecodeStatus string                `json:"decode_status"`
 }
 
 // MessageContent reads within the body's repeatable-read tenant transaction.
 func MessageContent(ctx context.Context, tx *sql.Tx, tenant, card, message string) (ContentMetadata, error) {
 	result := ContentMetadata{To: []Recipient{}, Cc: []Recipient{}, Attachments: []Attachment{}}
 	var to, cc []byte
+	var raw []byte
 	var rawSize int64
-	err := tx.QueryRowContext(ctx, `SELECT to_recipients,cc_recipients,decode_status,octet_length(raw_mime) FROM messages WHERE tenant_id=$1 AND card_id=$2 AND id=$3`, tenant, card, message).Scan(&to, &cc, &result.DecodeStatus, &rawSize)
+	err := tx.QueryRowContext(ctx, `SELECT to_recipients,cc_recipients,decode_status,octet_length(raw_mime),
+ CASE WHEN EXISTS (SELECT 1 FROM message_parts p WHERE p.tenant_id=m.tenant_id AND p.message_id=m.id AND (p.media_type='text/calendar' OR lower(p.name) LIKE '%.ics')) THEN raw_mime ELSE ''::bytea END
+ FROM messages m WHERE tenant_id=$1 AND card_id=$2 AND id=$3`, tenant, card, message).Scan(&to, &cc, &result.DecodeStatus, &rawSize, &raw)
 	if err != nil {
 		return result, err
 	}
@@ -60,6 +65,11 @@ func MessageContent(ctx context.Context, tx *sql.Tx, tenant, card, message strin
 	}
 	if err = rows.Err(); err != nil {
 		return result, err
+	}
+	if len(raw) > 0 {
+		if parsed, err := mailhtml.Parse(raw); err == nil {
+			result.Invitations = parsed.Invitations
+		}
 	}
 	if rawSize > 0 {
 		result.Attachments = append(result.Attachments, Attachment{ID: message, Name: "original.eml", Type: "message/rfc822", Size: rawSize, DownloadURL: "/v1/cards/" + card + "/mail-files/" + message})

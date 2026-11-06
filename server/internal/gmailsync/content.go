@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const mailContentVersion = 1
+const mailContentVersion = 2
 
 func (s *Syncer) prepareContent(ctx context.Context, raw []byte, cached ...string) (*mailhtml.Message, error) {
 	parsed, err := mailhtml.Parse(raw)

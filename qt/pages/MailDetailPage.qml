@@ -132,6 +132,53 @@ Kirigami.Page {
             return name && address ? name + " <" + address + ">" : (name || address)
         }).filter(function(value) { return !!value }).join(", ")
     }
+    // System locale/timezone is the same owner state used by arrivalLine.
+    function invitationRange(event) {
+        function format(value, dateOnly) {
+            if (!value) return ""
+            const d = new Date(dateOnly ? value + "T00:00:00" : value)
+            if (isNaN(d.getTime())) return value
+            return dateOnly ? d.toLocaleDateString(Qt.locale(), Locale.LongFormat)
+                            : d.toLocaleString(Qt.locale(), Locale.ShortFormat)
+        }
+        if (event.all_day) {
+            // DTEND is exclusive for all-day events. Never convert dates via UTC.
+            let end = new Date(event.end + "T00:00:00")
+            end.setDate(end.getDate() - 1)
+            const start = format(event.start, true)
+            const last = isNaN(end.getTime()) ? "" : end.toLocaleDateString(Qt.locale(), Locale.LongFormat)
+            return start + (last && last !== start ? " – " + last : "") + " · " + qsTr("All day")
+        }
+        return format(event.start, false) + (event.end ? " – " + format(event.end, false) : "")
+    }
+    function invitationHtml(message) {
+        function person(p) {
+            p = p || {}
+            return (p.name ? p.name + (p.address ? " <" + p.address + ">" : "") : p.address || "")
+        }
+        function linked(value) {
+            return escapeHtml(value).replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1">$1</a>').replace(/\n/g, "<br>")
+        }
+        let result = ""
+        for (const event of (message.invitations || [])) {
+            result += "<section class='lb-invitation' style='border-left:4px solid #397d73;padding:12px;margin:12px 0;overflow-wrap:anywhere'>"
+                + "<strong>" + escapeHtml(event.cancelled ? qsTr("Cancelled") : event.method === "REPLY" ? qsTr("Invitation reply") : qsTr("Calendar invitation")) + "</strong>"
+                + "<h2>" + escapeHtml(event.summary || qsTr("Untitled event")) + "</h2>"
+                + "<p class='lb-invitation-time'>" + escapeHtml(invitationRange(event)) + "</p>"
+            if (event.time_error) result += "<p>" + escapeHtml(event.time_error) + "</p>"
+            if (event.recurring) result += "<p>" + escapeHtml(qsTr("Repeating event")) + "</p>"
+            if (event.location) result += "<p>" + linked(event.location) + "</p>"
+            for (const link of (event.links || [])) {
+                if (/^https?:\/\//i.test(link)) result += "<p><a href='" + escapeHtml(link).replace(/'/g, "&#39;") + "'>" + escapeHtml(link) + "</a></p>"
+            }
+            if (person(event.organizer)) result += "<p>" + escapeHtml(qsTr("Organizer: %1").arg(person(event.organizer))) + "</p>"
+            for (const attendee of (event.attendees || []))
+                result += "<p>" + escapeHtml(person(attendee) + (attendee.status ? " · " + attendee.status : "")) + "</p>"
+            if (event.description) result += "<p>" + linked(event.description) + "</p>"
+            result += "</section>"
+        }
+        return result
+    }
     function messageMetadata(message) {
         let result = "<details class='lb-recipients'><summary>" + escapeHtml(recipientSummary(message)) + "</summary><p>"
             + escapeHtml(qsTr("To: %1").arg(recipientDetails(message, "to") || "—")) + "<br>"
@@ -312,7 +359,7 @@ Kirigami.Page {
             const preview = String(message.preview || "")
             const encodedKey = encodeURIComponent(String(key)).replace(/'/g, "%27")
             result += "<details class='lb-previous' data-lb-key='" + encodedKey + "'" + (expanded ? " open" : "") + "><summary>" + escapeHtml(line)
-                + (preview ? " · " + escapeHtml(preview) : "") + "</summary>" + messageMetadata(message) + "<section class='lb-original'>"
+                + (preview ? " · " + escapeHtml(preview) : "") + "</summary>" + messageMetadata(message) + invitationHtml(message) + "<section class='lb-original'>"
                 + String(message.html || "") + "</section></details>"
         }
         return result

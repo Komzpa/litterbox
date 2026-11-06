@@ -36,7 +36,7 @@ It adds original RFC822 bytes, To/Cc, decode status and a parser revision to
 messages, and tenant-scoped `message_parts` with the normal application grants
 and RLS. Existing rows keep their readable bodies and revision zero.
 
-The ordinary Gmail account worker repairs revision-zero messages after a
+The ordinary Gmail account worker repairs messages below the current parser revision after a
 successful account poll. Each pass considers at most ten cards and twenty
 messages per card, with a sixty-second repair budget and a persisted one-hour
 retry cooldown per card. It obtains original MIME through Gmail's authenticated
@@ -44,6 +44,11 @@ raw-message endpoint; no operator SQL backfill is needed. A successful repair
 updates bodies and metadata, advances the existing body version so devices
 refresh their SQLite copy, and preserves labels, card lifecycle, notes and pins.
 Failed repairs retain the previous content and remain eligible after cooldown.
+Parser revision 2 recognizes calendar invitations, including `.ics` attachments.
+The body API projects VEVENT metadata from retained MIME; the shared Qt reader
+shows it before the original body in the system locale/timezone. Original `.ics`
+bytes stay downloadable. Revision-1 messages use the same bounded worker and
+body-version refresh path, without an operator data backfill.
 
 Remote image failures retain their original URL and explicit fetch state in the
 stored HTML. The same worker retries unavailable images from the retained MIME

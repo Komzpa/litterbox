@@ -92,9 +92,6 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if isPlain {
 				message.HTML = "<pre>" + stdhtml.EscapeString(plain) + "</pre>"
 			}
-			if message.HTML == "" {
-				message.HTML = "<p>Unsupported/empty message — open in Gmail</p>"
-			}
 			if message.HTML != "" && !isPlain {
 				message.HTML, queryErr = Sanitize(r.Context(), message.HTML, h.Images)
 				if queryErr != nil {
@@ -117,6 +114,9 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "internal server error", 500)
 				return
+			}
+			if messages[i].HTML == "" && len(messages[i].Invitations) == 0 {
+				messages[i].HTML = "<p>Unsupported/empty message — open in Gmail</p>"
 			}
 		}
 	}

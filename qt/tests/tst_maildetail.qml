@@ -43,6 +43,44 @@ TestCase {
         storeStub.fileRequests = []
     }
 
+    function test_calendarInvitation_data() {
+        return [{tag:"desktop", w:1280}, {tag:"phone", w:412}, {tag:"phone-neighbor", w:480}]
+    }
+    function test_calendarInvitation(data) {
+        const event = {summary:"Planning <review>", start:"2026-11-06T10:00:00Z", end:"2026-11-06T11:00:00Z",
+            method:"REQUEST", location:"Room 2", recurring:true, organizer:{name:"Host",address:"host@example.test"},
+            attendees:[{name:"Guest",address:"guest@example.test",status:"ACCEPTED"}],
+            description:"Discuss changes\nhttps://meet.example.test/abc", links:["https://meet.example.test/abc", "javascript:bad()"]}
+        storeStub.cached = {card:{shape_version:2, messages:[{id:"invite", invitations:[event],
+            attachments:[{id:"ics",name:"invitation.ics",size:123}], html:"<p>Original body remains below</p>"}]}}
+        const page = createTemporaryObject(pageComponent,testCase,{cardId:"card",store:storeStub,width:data.w,height:915})
+        verify(page !== null)
+        const body=findChild(page,"body")
+        tryVerify(function(){return body && !body.loading && body.loadProgress===100},15000)
+        let painted=null
+        body.runJavaScript(`(() => { const e=document.querySelector('.lb-invitation'); const r=e.getBoundingClientRect();
+            return {text:e.innerText,width:r.width,height:r.height,viewport:innerWidth,
+                time:e.querySelector('.lb-invitation-time').innerText,
+                link:!!e.querySelector('a[href="https://meet.example.test/abc"]'),
+                original:document.querySelector('.lb-original').innerText}; })()`,WebEngineScript.ApplicationWorld,value=>painted=value)
+        tryVerify(function(){return painted!==null})
+        verify(painted.text.indexOf("Planning <review>")>=0)
+        verify(painted.text.indexOf("Host <host@example.test>")>=0)
+        verify(painted.text.indexOf("ACCEPTED")>=0)
+        verify(painted.text.indexOf("Discuss changes")>=0)
+        verify(painted.width>100 && painted.width<=painted.viewport && painted.height>100)
+        verify(painted.link)
+        compare(painted.original,"Original body remains below")
+        compare(painted.time, new Date(event.start).toLocaleString(Qt.locale(),Locale.ShortFormat)+" – "+new Date(event.end).toLocaleString(Qt.locale(),Locale.ShortFormat))
+        verify(page.documentHtml.indexOf("javascript:bad")<0)
+        verify(page.documentHtml.indexOf("litterbox-file:save/ics")>=0)
+        verify(page.invitationHtml({invitations:[Object.assign({},event,{cancelled:true,method:"CANCEL"})]}).indexOf("Cancelled")>=0)
+        verify(page.invitationHtml({invitations:[Object.assign({},event,{method:"REPLY"})]}).indexOf("Invitation reply")>=0)
+        const day={all_day:true,start:"2026-11-06",end:"2026-11-07"}
+        compare(page.invitationRange(day),new Date("2026-11-06T00:00:00").toLocaleDateString(Qt.locale(),Locale.LongFormat)+" · All day")
+        compare(storeStub.operations.length,0)
+    }
+
     function test_recipientsAndAttachmentsPerMessage() {
         storeStub.cached = {card: {shape_version: 2, html: "<p>Latest</p>", messages: [
             {id: "old", sender_name: "Old sender", html: "<p>Older</p>",
