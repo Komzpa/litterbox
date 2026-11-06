@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -13,14 +14,14 @@ import (
 	"net/mail"
 	"net/textproto"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/charmap"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/encoding/traditionalchinese"
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/encoding/ianaindex"
 )
 
-// Part is one non-body MIME part: an inline resource or an attachment.
+// Part is a transfer-decoded MIME resource or attachment.
 type Part struct {
 	ContentType string // media type, lowercased (e.g. "image/png")
 	Filename    string // decoded filename, empty when absent
@@ -29,24 +30,35 @@ type Part struct {
 
 // Message is the parsed content of one RFC 822 message.
 type Message struct {
-	HTML        string          // text/html body decoded to UTF-8, empty when absent
-	Text        string          // text/plain body decoded to UTF-8, empty when absent
-	Inline      map[string]Part // inline parts keyed by Content-ID without angle brackets
-	Attachments []Part          // parts with Content-Disposition: attachment
+	Raw          []byte          // exact RFC 822 source, including every MIME leaf
+	DecodeStatus string          // visible explanation when decoding or rendering is incomplete
+	HTML         string          // text/html body decoded to UTF-8, empty when absent
+	Text         string          // text/plain body decoded to UTF-8, empty when absent
+	Inline       map[string]Part // inline parts keyed by Content-ID without angle brackets
+	Attachments  []Part          // explicit files and unsupported non-CID leaves
 }
 
 // Parse reads a raw RFC 822 message and extracts its bodies and parts.
 // Multipart alternative/related/mixed containers are resolved recursively;
-// the first text/html and text/plain alternatives win. Unknown charsets and
-// transfer encodings pass through undecoded rather than failing the message.
+// alternatives select representations while mixed parts remain in source order.
+// Raw source is retained even when a charset cannot be decoded.
 func Parse(raw []byte) (*Message, error) {
 	msg, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("mailhtml: reading message: %w", err)
 	}
-	m := &Message{Inline: map[string]Part{}}
+	m := &Message{Raw: bytes.Clone(raw), Inline: map[string]Part{}}
 	if err := m.walk(textproto.MIMEHeader(msg.Header), msg.Body, false); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(m.HTML) == "" && strings.TrimSpace(m.Text) == "" {
+		m.note("No readable message body. Open in Gmail to view the original.")
+	}
+	if m.DecodeStatus != "" {
+		if m.HTML == "" && m.Text != "" {
+			m.HTML = "<pre>" + html.EscapeString(m.Text) + "</pre>"
+		}
+		m.HTML += "<p>" + html.EscapeString(m.DecodeStatus) + "</p>"
 	}
 	return m, nil
 }
@@ -86,11 +98,46 @@ func (m *Message) walk(h textproto.MIMEHeader, body io.Reader, multipartPart boo
 	if mediaType == "multipart/related" {
 		parts = startFirst(parts, params["start"])
 	}
+	// Resolve each subtree before combining it: alternatives replace one
+	// representation; mixed children are successive sections of the message.
+	var sections []string
+	hasHTML := false
 	for _, part := range parts {
-		if err := m.walk(part.header, bytes.NewReader(part.body), true); err != nil {
+		child := &Message{Inline: m.Inline}
+		if err := child.walk(part.header, bytes.NewReader(part.body), true); err != nil {
 			return err
 		}
+		m.Attachments = append(m.Attachments, child.Attachments...)
+		m.note(child.DecodeStatus)
+		if mediaType == "multipart/alternative" {
+			if strings.TrimSpace(child.HTML) != "" {
+				m.HTML = child.HTML
+			}
+			if strings.TrimSpace(child.Text) != "" {
+				m.Text = child.Text
+			}
+		} else {
+			if child.Text != "" {
+				if m.Text != "" {
+					m.Text += "\n"
+				}
+				m.Text += child.Text
+			}
+			if child.HTML != "" {
+				hasHTML = true
+				sections = append(sections, child.HTML)
+			} else if child.Text != "" {
+				sections = append(sections, "<pre>"+html.EscapeString(child.Text)+"</pre>")
+			}
+		}
 	}
+	if mediaType != "multipart/alternative" {
+		// A lone plain body retains the plain-only API contract.
+		if len(sections) > 1 || hasHTML {
+			m.HTML = strings.Join(sections, "\n")
+		}
+	}
+
 	return nil
 }
 
@@ -123,28 +170,33 @@ func (m *Message) leaf(mediaType string, params map[string]string, h textproto.M
 		return fmt.Errorf("mailhtml: reading %s part: %w", mediaType, err)
 	}
 	filename := decodeHeader(firstOf(dispParams["filename"], params["name"]))
-	if disposition == "attachment" {
-		m.Attachments = append(m.Attachments, Part{ContentType: mediaType, Filename: filename, Data: raw})
-		return nil
-	}
-	switch mediaType {
-	case "text/html":
-		if m.HTML == "" {
-			m.HTML = decodeCharset(raw, params["charset"])
-			return nil
-		}
-	case "text/plain":
-		if m.Text == "" {
-			m.Text = decodeCharset(raw, params["charset"])
-			return nil
-		}
-	}
+	part := Part{ContentType: mediaType, Filename: filename, Data: raw}
 	cid := contentID(h)
 	if cid != "" {
 		if _, exists := m.Inline[cid]; !exists {
-			m.Inline[cid] = Part{ContentType: mediaType, Filename: filename, Data: raw}
+			m.Inline[cid] = part
 		}
 	}
+	if disposition == "attachment" || filename != "" && cid == "" {
+		m.Attachments = append(m.Attachments, part)
+		return nil
+	}
+	switch mediaType {
+	case "text/html", "text/plain":
+		decoded, status := decodeText(raw, params["charset"])
+		m.note(status)
+		if mediaType == "text/html" {
+			m.HTML = decoded
+		} else {
+			m.Text = decoded
+		}
+	default:
+		if cid == "" {
+			m.Attachments = append(m.Attachments, part)
+			m.note("Unsupported message part (" + mediaType + "). Open in Gmail to view the original.")
+		}
+	}
+
 	return nil
 }
 
@@ -165,42 +217,58 @@ func transferReader(h textproto.MIMEHeader, r io.Reader, multipartPart bool) io.
 	}
 }
 
-// decodeCharset converts a text body to UTF-8. Charsets without a decoder
-// keep their bytes but are forced to valid UTF-8, so an exotic label never
-// loses the message and never poisons a text column with invalid UTF-8.
-func decodeCharset(raw []byte, charset string) string {
-	enc := charsetEncoding(charset)
-	if enc == nil {
-		return strings.ToValidUTF8(string(raw), "�")
+func (m *Message) note(status string) {
+	if status == "" {
+		return
 	}
-	decoded, err := enc.NewDecoder().Bytes(raw)
-	if err != nil {
-		return strings.ToValidUTF8(string(raw), "�")
+	if m.DecodeStatus != "" {
+		m.DecodeStatus += " "
 	}
-	return string(decoded)
+	m.DecodeStatus += status
 }
 
-// charsetEncoding maps the charset labels Litterbox must read (utf-8,
-// windows-1251, windows-1252, koi8-r, iso-8859-1, gb2312, big5) onto
-// decoders. utf-8 and us-ascii need none; unknown labels return nil for
-// pass-through.
-func charsetEncoding(charset string) encoding.Encoding {
-	switch strings.ToLower(strings.Trim(strings.TrimSpace(charset), `"`)) {
-	case "windows-1251":
-		return charmap.Windows1251
-	case "windows-1252", "cp1252", "x-cp1252":
-		return charmap.Windows1252
-	case "koi8-r", "koi8r":
-		return charmap.KOI8R
-	case "iso-8859-1", "latin1", "latin-1":
-		return charmap.ISO8859_1
-	case "gb2312", "gb-2312", "gbk", "gb18030":
-		return simplifiedchinese.GB18030
-	case "big5", "big-5", "cp950":
-		return traditionalchinese.Big5
-	default:
-		return nil
+func decodeCharset(raw []byte, charset string) string {
+	decoded, _ := decodeText(raw, charset)
+	return decoded
+}
+
+func decodeText(raw []byte, charset string) (string, string) {
+	label := strings.ToLower(strings.Trim(strings.TrimSpace(charset), `"`))
+	note := "Message text could not be decoded completely (charset " + label + "). Original bytes retained; open in Gmail."
+	if label == "" || label == "utf-8" || label == "utf8" || label == "us-ascii" {
+		if utf8.Valid(raw) && (label != "us-ascii" || isASCII(raw)) {
+			return string(raw), ""
+		}
+		return strings.ToValidUTF8(string(raw), "�"), note
 	}
+	enc := charsetEncoding(label)
+	if enc == nil {
+		return strings.ToValidUTF8(string(raw), "�"), note
+	}
+	decoded, err := enc.NewDecoder().Bytes(raw)
+	if err != nil || !utf8.Valid(decoded) || bytes.Contains(decoded, []byte("�")) {
+		return strings.ToValidUTF8(string(decoded), "�"), note
+	}
+	return string(decoded), ""
+}
+
+func isASCII(raw []byte) bool {
+	for _, b := range raw {
+		if b > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+func charsetEncoding(charset string) encoding.Encoding {
+	label := strings.ToLower(strings.Trim(strings.TrimSpace(charset), `"`))
+	enc, err := ianaindex.MIME.Encoding(label)
+	if err == nil && enc != nil {
+		return enc
+	}
+	enc, _ = htmlindex.Get(label)
+	return enc
 }
 
 // contentID normalizes a Content-ID header to the bare addr-spec used by
