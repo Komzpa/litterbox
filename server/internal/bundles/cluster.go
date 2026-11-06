@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -108,14 +109,45 @@ func (e OllamaEmbedder) Embed(ctx context.Context, text string) ([]float64, erro
 }
 
 func (e OllamaEmbedder) embedOpenAI(ctx context.Context, client *http.Client, text string) ([]float64, error) {
-	body, err := json.Marshal(struct {
-		Model string   `json:"model"`
-		Input []string `json:"input"`
-	}{e.Model, []string{text}})
+	vec, tooLarge, err := e.postOpenAI(ctx, client, []string{text})
+	if !tooLarge {
+		return vec, err
+	}
+	// llama.cpp rejects input longer than the model window, where Ollama
+	// silently kept its first tokens. Do the same truncation explicitly: the
+	// served model tokenizes with its specials, and a token array embeds to
+	// exactly the vector of the equivalent text.
+	tokens, terr := e.tokenize(ctx, client, text)
+	if terr != nil {
+		return nil, fmt.Errorf("%w; tokenize for truncation: %v", err, terr)
+	}
+	limit := embedMaxTokens()
+	if len(tokens) <= limit {
+		return nil, err
+	}
+	cut := append(append([]int(nil), tokens[:limit-1]...), tokens[len(tokens)-1])
+	vec, _, err = e.postOpenAI(ctx, client, [][]int{cut})
+	return vec, err
+}
+
+// embedMaxTokens is the model window (all-MiniLM: 512 positions).
+func embedMaxTokens() int {
+	var n int
+	if _, err := fmt.Sscan(os.Getenv("LITTERBOX_EMBED_MAX_TOKENS"), &n); err == nil && n > 1 {
+		return n
+	}
+	return 512
+}
+
+// tokenize asks the served model (llama-swap's /upstream/<model>/tokenize
+// passthrough to llama-server) for the token ids including specials.
+func (e OllamaEmbedder) tokenize(ctx context.Context, client *http.Client, text string) ([]int, error) {
+	body, err := json.Marshal(map[string]any{"content": text, "add_special": true})
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(e.Host, "/")+"/embeddings", bytes.NewReader(body))
+	base := strings.TrimSuffix(strings.TrimRight(e.Host, "/"), "/v1")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/upstream/"+e.Model+"/tokenize", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +158,43 @@ func (e OllamaEmbedder) embedOpenAI(ctx context.Context, client *http.Client, te
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("openai embeddings: %s", resp.Status)
+		return nil, fmt.Errorf("tokenize: %s", resp.Status)
+	}
+	var result struct {
+		Tokens []int `json:"tokens"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if len(result.Tokens) < 2 {
+		return nil, errors.New("tokenize returned no tokens")
+	}
+	return result.Tokens, nil
+}
+
+// postOpenAI sends one input (text or token ids). tooLarge reports llama.cpp's
+// over-window rejection so the caller can retry truncated.
+func (e OllamaEmbedder) postOpenAI(ctx context.Context, client *http.Client, input any) ([]float64, bool, error) {
+	body, err := json.Marshal(struct {
+		Model string `json:"model"`
+		Input any    `json:"input"`
+	}{e.Model, input})
+	if err != nil {
+		return nil, false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(e.Host, "/")+"/embeddings", bytes.NewReader(body))
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, strings.Contains(string(msg), "too large"), fmt.Errorf("openai embeddings: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var result struct {
 		Data []struct {
@@ -134,12 +202,12 @@ func (e OllamaEmbedder) embedOpenAI(ctx context.Context, client *http.Client, te
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(result.Data) == 0 || len(result.Data[0].Embedding) == 0 {
-		return nil, errors.New("openai embeddings returned no vector")
+		return nil, false, errors.New("openai embeddings returned no vector")
 	}
-	return result.Data[0].Embedding, nil
+	return result.Data[0].Embedding, false, nil
 }
 
 type mailCard struct {

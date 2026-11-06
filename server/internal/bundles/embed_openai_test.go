@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -65,5 +66,67 @@ func TestOpenAIEmbeddingsAgainstLlamaSwap(t *testing.T) {
 	}
 	if len(v) != 384 {
 		t.Fatalf("dims=%d, want 384 (all-minilm)", len(v))
+	}
+}
+
+func TestOpenAIEmbeddingsTruncatesOverWindowInput(t *testing.T) {
+	var sentTokens []int
+	var tokenizePath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/upstream/all-minilm:latest/tokenize":
+			tokenizePath = r.URL.Path
+			toks := []int{101}
+			for i := 0; i < 600; i++ {
+				toks = append(toks, 1000+i)
+			}
+			json.NewEncoder(w).Encode(map[string]any{"tokens": append(toks, 102)})
+		case "/v1/embeddings":
+			var req struct {
+				Input []json.RawMessage `json:"input"`
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			if len(req.Input) == 1 && json.Unmarshal(req.Input[0], &sentTokens) == nil {
+				json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"embedding": []float64{1, 2}}}})
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":{"code":500,"message":"input (602 tokens) is too large to process. increase the physical batch size (current batch size: 512)"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	e := OllamaEmbedder{Host: server.URL + "/v1", Model: "all-minilm:latest", OpenAI: true}
+	v, err := e.Embed(context.Background(), "long mail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokenizePath == "" || len(v) != 2 {
+		t.Fatalf("tokenize=%q vector=%v", tokenizePath, v)
+	}
+	if len(sentTokens) != 512 || sentTokens[0] != 101 || sentTokens[1] != 1000 || sentTokens[510] != 1509 || sentTokens[511] != 102 {
+		t.Fatalf("sent %d tokens: head=%v tail=%v", len(sentTokens), sentTokens[:2], sentTokens[len(sentTokens)-2:])
+	}
+}
+
+func TestOpenAIEmbeddingsLongInputAgainstLlamaSwap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("live llama-swap probe")
+	}
+	e := OllamaEmbedder{Host: "http://172.17.0.1:11450/v1", Model: "all-minilm:latest", OpenAI: true}
+	long := "PostGIS security advisory raster overflow"
+	for i := 0; i < 400; i++ {
+		long += " lorem ipsum dolor"
+	}
+	v, err := e.Embed(context.Background(), long)
+	if err != nil {
+		if strings.Contains(err.Error(), "connect") {
+			t.Skipf("llama-swap not reachable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if len(v) != 384 {
+		t.Fatalf("dims=%d", len(v))
 	}
 }
