@@ -3,7 +3,6 @@ package gmailsync
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -17,7 +16,6 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/Komzpa/litterbox/server/internal/bundles"
-	"github.com/Komzpa/litterbox/server/internal/mailbody"
 	"github.com/Komzpa/litterbox/server/internal/mailhtml"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -90,10 +88,16 @@ func (s *Syncer) syncAccount(ctx context.Context, a Account) (err error) {
 		// R67: best-effort photo pass after Gmail sync. Missing grants stay
 		// in authorization_required; photo errors never fail the account.
 		s.syncSenderPhotos(ctx, a, c)
+		if err == nil {
+			err = s.backfillContent(ctx, a, c)
+		}
 		return err
 	}
 	err = s.poll(ctx, a, c, cursor)
 	s.syncSenderPhotos(ctx, a, c)
+	if err == nil {
+		err = s.backfillContent(ctx, a, c)
+	}
 	return err
 }
 
@@ -372,31 +376,20 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
 		}
 		return e
 	}
+	cached, e := s.cachedThreadContent(ctx, a, threadID)
+	if e != nil {
+		return e
+	}
 	preparedSenders := make([]senderInfo, len(t.Messages))
 	prepared := make([]mailhtml.Message, len(t.Messages))
-	fetcher := s.Images
-	if fetcher == nil {
-		fetcher = mailhtml.NewImageFetcher(nil, nil)
-	}
 	for i, m := range t.Messages {
 		raw, err := c.GetMessageRaw(ctx, m.ID)
 		if err != nil {
 			return err
 		}
-		parsed, err := mailhtml.Parse(raw)
+		parsed, err := s.prepareContent(ctx, raw, cached[m.ID])
 		if err != nil {
 			return err
-		}
-		if parsed.HTML != "" {
-			for cid, part := range parsed.Inline {
-				if strings.HasPrefix(part.ContentType, "image/") {
-					parsed.HTML = strings.ReplaceAll(parsed.HTML, "cid:"+cid, "data:"+part.ContentType+";base64,"+base64.StdEncoding.EncodeToString(part.Data))
-				}
-			}
-			parsed.HTML, err = mailbody.Sanitize(ctx, parsed.HTML, fetcher)
-			if err != nil {
-				return err
-			}
 		}
 		from := ""
 		for _, header := range m.Payload.Headers {
@@ -471,6 +464,9 @@ func (s *Syncer) saveThread(ctx context.Context, a Account, c *Client, threadID 
         WHERE (messages.labels,messages.html,messages.text,messages.body_hash,messages.received_at,messages.sender_name,messages.sender_address)
           IS DISTINCT FROM (EXCLUDED.labels,EXCLUDED.html,EXCLUDED.text,EXCLUDED.body_hash,EXCLUDED.received_at,EXCLUDED.sender_name,EXCLUDED.sender_address)`, a.TenantID, uuid.New(), cardID, m.ID, labels, message.HTML, message.Text, hash[:], received, senderMeta.name, senderMeta.address)
 		if e != nil {
+			return e
+		}
+		if e = persistMessageContent(ctx, tx, a.TenantID, cardID, m.ID, message); e != nil {
 			return e
 		}
 		// The combined body is the legacy fallback, so it must not expose

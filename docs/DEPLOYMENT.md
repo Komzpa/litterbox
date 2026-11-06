@@ -29,6 +29,32 @@ LinkedIn topic isolation is repaired by the ordinary `AfterIngest`/`Cluster` pas
 
 Apply `server/db/019_card_embeddings.sql` before running the embedding-cache release. Semantic clustering persists vectors in tenant-scoped `card_embeddings`, keyed by card id and `LITTERBOX_EMBED_MODEL` (default `nomic-embed-text`), with SHA-256 of the exact normalized input sent to Ollama. The first run warms the cache; unchanged cards make no embedding calls on subsequent runs, including after restarts. A new card or changed embedding input costs one call; changing models requires a new vector for each candidate. Cache hits do not bypass re-clustering or membership repair. Cache reads share the short mail-read transaction, and each successful miss is written in its own short transaction committed before the next embedding call. Embedder failures are not cached and still use structured fallback. No transaction spans an Ollama call.
 
+## Mail content upgrade
+
+Apply `server/db/028_mail_content.sql` before running the mail-content server.
+It adds original RFC822 bytes, To/Cc, decode status and a parser revision to
+messages, and tenant-scoped `message_parts` with the normal application grants
+and RLS. Existing rows keep their readable bodies and revision zero.
+
+The ordinary Gmail account worker repairs revision-zero messages after a
+successful account poll. Each pass considers at most ten cards and twenty
+messages per card, with a sixty-second repair budget and a persisted one-hour
+retry cooldown per card. It obtains original MIME through Gmail's authenticated
+raw-message endpoint; no operator SQL backfill is needed. A successful repair
+updates bodies and metadata, advances the existing body version so devices
+refresh their SQLite copy, and preserves labels, card lifecycle, notes and pins.
+Failed repairs retain the previous content and remain eligible after cooldown.
+
+Remote image failures retain their original URL and explicit fetch state in the
+stored HTML. The same worker retries unavailable images from the retained MIME
+without refetching Gmail; already cached image bytes survive transient failures.
+The body response also retries missing images and shows an original-image link
+when unavailable. Tracking pixels are removed; clickable destinations survive.
+Per-message attachment metadata includes a fixed authenticated download route;
+`original.eml` exposes the complete retained source, including unselected MIME
+alternatives and undecodable leaves. Qt lists files and To/Cc inside the reader
+and retains downloaded files beside its isolated SQLite profile for reopening.
+
 ## Gmail sender photos (R67)
 
 Real sender avatars need the Google Cloud project's People API enabled and the incremental photo grant. `gmail.modify` alone carries no sender-photo field: the photo sync gates on both `contacts.readonly` and `contacts.other.readonly` actually granted, never on the requested string. To grant, call `POST /v1/gmail/photo-consent` (authenticated, same tenant) and open the returned `authorization_url` in a browser; the shared OAuth callback persists the granted scopes. `GET /v1/gmail/sender-photos/status` reports per-account `photo_ready` and explicit `authorization_required` with `required_scopes` without touching Google. Accounts stay fully usable for Gmail while photos wait for consent. Coverage is contact photos only (saved contacts plus other contacts, exact mailbox match, non-default): senders absent from both datasets stay explicitly uncovered even when Gmail renders a photo. No credentials enter the repository; proof runs use disposable fake People servers, never production grants.

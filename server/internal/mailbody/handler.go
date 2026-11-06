@@ -22,6 +22,7 @@ import (
 )
 
 type threadMessage struct {
+	ContentMetadata
 	ID             string `json:"id"`
 	GmailMessageID string `json:"gmail_message_id"`
 	SenderName     string `json:"sender_name"`
@@ -91,6 +92,9 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if isPlain {
 				message.HTML = "<pre>" + stdhtml.EscapeString(plain) + "</pre>"
 			}
+			if message.HTML == "" {
+				message.HTML = "<p>Unsupported/empty message — open in Gmail</p>"
+			}
 			if message.HTML != "" && !isPlain {
 				message.HTML, queryErr = Sanitize(r.Context(), message.HTML, h.Images)
 				if queryErr != nil {
@@ -107,6 +111,13 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if queryErr != nil {
 			http.Error(w, "internal server error", 500)
 			return
+		}
+		for i := range messages {
+			messages[i].ContentMetadata, err = MessageContent(r.Context(), tx, tenantID, cardID, messages[i].ID)
+			if err != nil {
+				http.Error(w, "internal server error", 500)
+				return
+			}
 		}
 	}
 	// Mail bodies keep the Sanitize pipeline and the account-aware Gmail URL.
@@ -194,6 +205,23 @@ func Sanitize(ctx context.Context, source string, fetcher *mailhtml.ImageFetcher
 				c = next
 				continue
 			}
+			if c.Type == html.ElementNode && attr(c, "data-image-placeholder") == "true" {
+				n.RemoveChild(c)
+				c = next
+				continue
+			}
+			if c.Type == html.ElementNode && c.Data == "img" {
+				src := attr(c, "src")
+				if original := attr(c, "data-original-src"); original != "" {
+					src = original
+				}
+				if tracker(src, c.Attr) {
+					n.RemoveChild(c)
+					c = next
+					continue
+				}
+				prepareImage(ctx, c, src, fetcher)
+			}
 			if c.Type == html.ElementNode {
 				attrs := c.Attr[:0]
 				for _, a := range c.Attr {
@@ -207,28 +235,8 @@ func Sanitize(ctx context.Context, source string, fetcher *mailhtml.ImageFetcher
 						if strings.HasPrefix(low, "javascript:") || strings.HasPrefix(low, "data:text/html") {
 							continue
 						}
-						if key == "href" {
-							if matched, _ := trackers.IsTracker(value); matched {
-								continue
-							}
-						}
 					}
-					if c.Data == "img" && key == "src" {
-						if tracker(value, c.Attr) {
-							n.RemoveChild(c)
-							break
-						}
-						if strings.HasPrefix(strings.ToLower(value), "http://") || strings.HasPrefix(strings.ToLower(value), "https://") {
-							if fetcher == nil {
-								continue
-							}
-							image, e := fetcher.FetchImage(ctx, value)
-							if e != nil {
-								continue
-							}
-							value = "data:" + image.ContentType + ";base64," + base64.StdEncoding.EncodeToString(image.Bytes)
-						}
-					}
+
 					a.Val = value
 					attrs = append(attrs, a)
 				}
@@ -259,4 +267,55 @@ func tracker(src string, attrs []html.Attribute) bool {
 		values[strings.ToLower(a.Key)] = a.Val
 	}
 	return trackers.IsTinyOrHidden(values)
+}
+
+// Image provenance travels with the stored HTML. An unavailable remote image
+// has no network-loading src, but retains a visible original link and retry input.
+func attr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
+		}
+	}
+	return ""
+}
+func setAttr(n *html.Node, key, value string) {
+	for i := range n.Attr {
+		if n.Attr[i].Key == key {
+			n.Attr[i].Val = value
+			return
+		}
+	}
+	n.Attr = append(n.Attr, html.Attribute{Key: key, Val: value})
+}
+func prepareImage(ctx context.Context, n *html.Node, original string, fetcher *mailhtml.ImageFetcher) {
+	low := strings.ToLower(original)
+	if !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "https://") {
+		return
+	}
+	setAttr(n, "data-original-src", original)
+	// Already cached images never need another request.
+	if strings.HasPrefix(attr(n, "src"), "data:image/") && attr(n, "data-fetch-state") == "available" {
+		return
+	}
+	fetched, err := fetcher.FetchImage(ctx, original)
+	if err == nil {
+		setAttr(n, "src", "data:"+fetched.ContentType+";base64,"+base64.StdEncoding.EncodeToString(fetched.Bytes))
+		setAttr(n, "data-fetch-state", "available")
+		return
+	}
+	attrs := n.Attr[:0]
+	for _, a := range n.Attr {
+		if a.Key != "src" {
+			attrs = append(attrs, a)
+		}
+	}
+	n.Attr = attrs
+	setAttr(n, "data-fetch-state", "unavailable")
+	if attr(n, "alt") == "" {
+		setAttr(n, "alt", "Image unavailable")
+	}
+	link := &html.Node{Type: html.ElementNode, Data: "a", Attr: []html.Attribute{{Key: "href", Val: original}, {Key: "data-image-placeholder", Val: "true"}}}
+	link.AppendChild(&html.Node{Type: html.TextNode, Data: "Image unavailable — open original"})
+	n.Parent.InsertBefore(link, n.NextSibling)
 }

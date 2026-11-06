@@ -184,6 +184,7 @@ func main() {
 		cardHandler.Routes(cardMux)
 		mux.Handle("/v1/cards", devOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cardMux.ServeHTTP(w, r) })))
 		mux.Handle("GET /v1/cards/{id}/body", devOnly(mailbody.Handler{DB: db, Images: mailhtml.NewImageFetcher(nil, nil)}))
+		mux.Handle("GET /v1/cards/{id}/mail-files/{fileID}", devOnly(http.HandlerFunc(mailbody.Handler{DB: db}.DownloadFile)))
 		// R67: authenticated card-scoped Google sender photo (server-mediated
 		// bytes; no provider URLs, tokens, or addresses in URLs/logs).
 		mux.Handle("GET /v1/cards/{id}/sender-photo", devOnly(senderphoto.Handler{DB: db}))

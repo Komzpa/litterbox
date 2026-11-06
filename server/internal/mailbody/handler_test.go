@@ -27,7 +27,7 @@ func TestSanitizeDropsTrackersAndScripts(t *testing.T) {
 	if !strings.Contains(got, "Keep me") {
 		t.Fatalf("content lost: %s", got)
 	}
-	if strings.Contains(got, "script") || strings.Contains(got, "mailtrack.io") || strings.Contains(got, "example.org") {
+	if strings.Contains(got, "script") || strings.Contains(got, "mailtrack.io") {
 		t.Fatalf("unsafe/unfetched resources remain: %s", got)
 	}
 }
@@ -167,7 +167,7 @@ func TestBodyRouteAgentAndMail(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("mail body: got %d, want 200", code)
 	}
-	if !strings.Contains(got, "Hello") || strings.Contains(got, "script") || strings.Contains(got, "sendgrid.net") {
+	if !strings.Contains(got, "Hello") || strings.Contains(got, "script") {
 		t.Fatalf("mail body must keep sanitizing: %q", got)
 	}
 	if want := "https://mail.google.com/mail/?authuser=user%40example.com#all/thread-abc"; !strings.Contains(got, "|thread-abc|"+account.String()+"|"+want) {

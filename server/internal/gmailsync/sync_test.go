@@ -121,7 +121,12 @@ func testPool(t *testing.T) (*pgxpool.Pool, *testdb.DB) {
 		t.Fatal(e)
 	}
 	t.Cleanup(db.Close)
-	for _, name := range []string{"001_mail.sql", "002_security.sql", "003_agent_cards.sql", "006_mail_sync.sql", "008_bundles.sql", "009_ingest.sql", "011_card_bodies.sql", "016_gmail_initial_sync.sql", "017_card_sender_name.sql", "019_card_embeddings.sql", "020_bundle_title_origin.sql", "021_message_sender.sql", "022_sender_photos.sql"} {
+	paths, e := filepath.Glob("../../db/0*.sql")
+	if e != nil || len(paths) == 0 {
+		t.Fatalf("migration discovery: %v", e)
+	}
+	for _, path := range paths {
+		name := filepath.Base(path)
 		b, e := os.ReadFile(filepath.Join("..", "..", "db", name))
 		if e != nil {
 			t.Fatal(e)

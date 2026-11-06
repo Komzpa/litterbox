@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -42,15 +40,6 @@ func newSpamFixture(t *testing.T) *spamFixture {
 	db, tdb := testPool(t)
 	f := &spamFixture{db: db, dsn: tdb.DSN, tdb: tdb, tenant: uuid.New(), account: uuid.New(), card: uuid.New(), gmail: fakeGmail{inbox: true, messageCount: 1, history: "1"}}
 	ctx := context.Background()
-	for _, name := range []string{"005_card_notify.sql", "007_offline_ops.sql"} {
-		migration, err := os.ReadFile(filepath.Join("..", "..", "db", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := db.Exec(ctx, tdb.Migration(string(migration))); err != nil {
-			t.Fatal(err)
-		}
-	}
 	device := uuid.New()
 	for _, stmt := range []struct { sql string; args []any }{
 		{`INSERT INTO tenants(id) VALUES($1)`, []any{f.tenant}},
